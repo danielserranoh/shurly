@@ -1,0 +1,32 @@
+import uuid
+from datetime import datetime
+
+from sqlalchemy import Column, DateTime, ForeignKey, String, Text
+from sqlalchemy.dialects.postgresql import ARRAY, UUID
+from sqlalchemy.orm import relationship
+
+from server.core import Base
+
+
+class Campaign(Base):
+    """Campaign model for bulk URL creation."""
+
+    __tablename__ = "campaigns"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name = Column(String(255), nullable=False)
+    original_url = Column(Text, nullable=False)
+    csv_columns = Column(
+        ARRAY(String), nullable=False
+    )  # e.g., ['firstName', 'lastName', 'company']
+
+    # Audit fields
+    created_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    # Relationships
+    creator = relationship("User", back_populates="campaigns")
+    urls = relationship("URL", back_populates="campaign", cascade="all, delete-orphan")
+
+    def __repr__(self):
+        return f"<Campaign(id={self.id}, name={self.name})>"

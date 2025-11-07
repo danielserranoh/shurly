@@ -13,15 +13,20 @@ class Settings(BaseSettings):
 
     # Database settings
     db_host: str = "localhost"
-    db_port: int = 3306
-    db_user: str = "root"
+    db_port: int = 5432
+    db_user: str = "postgres"
     db_password: str = ""
     db_name: str = "shurly"
 
     @property
-    def mysql_db_url(self) -> str:
-        """Construct MySQL database URL."""
-        return f"mysql+pymysql://{self.db_user}:{self.db_password}@{self.db_host}:{self.db_port}/{self.db_name}"
+    def database_url(self) -> str:
+        """Construct PostgreSQL database URL."""
+        return f"postgresql+psycopg2://{self.db_user}:{self.db_password}@{self.db_host}:{self.db_port}/{self.db_name}"
+
+    # JWT Settings
+    jwt_secret_key: str = "your-secret-key-change-in-production"
+    jwt_algorithm: str = "HS256"
+    jwt_access_token_expire_minutes: int = 60 * 24 * 7  # 7 days
 
     # API settings
     api_title: str = "Shurly API"
@@ -39,4 +44,4 @@ class Settings(BaseSettings):
 settings = Settings()
 
 # Backwards compatibility
-MYSQL_DB_URL = settings.mysql_db_url
+MYSQL_DB_URL = settings.database_url  # Name kept for compatibility, but uses PostgreSQL now

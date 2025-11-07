@@ -23,8 +23,8 @@ def create_app() -> FastAPI:
         allow_headers=settings.cors_allow_headers,
     )
 
-    # Include API routes
-    app.include_router(api_router)
+    # Include API routes with /api prefix
+    app.include_router(api_router, prefix="/api")
 
     return app
 
