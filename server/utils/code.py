@@ -1,7 +1,9 @@
-from captcha.image import ImageCaptcha
 from base64 import b64encode
 from random import randint
-from server.core.config import WIDTH, HEIGHT
+
+from captcha.image import ImageCaptcha
+
+from server.core.config import HEIGHT, WIDTH
 
 captcha = ImageCaptcha(width=WIDTH, height=HEIGHT)
 

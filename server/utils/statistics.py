@@ -1,9 +1,11 @@
-from sqlalchemy.orm import Session
-from sqlalchemy import func
-from server.core.models.visitor import Visitor
-from server.core.models.url import URL
-from datetime import datetime, timedelta
 from collections import defaultdict
+from datetime import datetime, timedelta
+
+from sqlalchemy import func
+from sqlalchemy.orm import Session
+
+from server.core.models.url import URL
+from server.core.models.visitor import Visitor
 
 
 def day(surl: str, session: Session):
@@ -42,7 +44,7 @@ def week(surl: str, session: Session):
             .filter(
                 URL.short_url == surl,
                 Visitor.created_at >= week_start,
-                Visitor.created_at <= week_end
+                Visitor.created_at <= week_end,
             )
             .scalar()
         )
@@ -60,10 +62,14 @@ def world(surl: str, session: Session):
 
     stats = defaultdict(int)
 
-    visits = session.query(Visitor.country).filter(Visitor.url_id == uuid, Visitor.created_at >= one_week_ago).all()
+    visits = (
+        session.query(Visitor.country)
+        .filter(Visitor.url_id == uuid, Visitor.created_at >= one_week_ago)
+        .all()
+    )
 
     for visit in visits:
-        country = visit[0].split(';')[2]
+        country = visit[0].split(";")[2]
         stats[country] += 1
 
     return dict(stats)

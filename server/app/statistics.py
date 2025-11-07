@@ -1,8 +1,9 @@
-from server.core import session_scope
+from datetime import date
 
 from fastapi import APIRouter
-from server.utils.statistics import day, week, world, main
-from datetime import date
+
+from server.core import session_scope
+from server.utils.statistics import day, main, week, world
 
 statistics_router = APIRouter()
 
