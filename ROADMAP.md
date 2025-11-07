@@ -178,8 +178,8 @@ System creates:
 - [x] Create URL form (standard + custom toggle)
 - [x] URL card component with statistics
 - [x] Copy short URL button
-- [ ] URL details page with mini analytics
-- [ ] Delete URL confirmation
+- [x] URL details page with mini analytics
+- [x] Delete URL confirmation
 
 ### 3.3 Campaign Management ✅
 - [x] Campaigns list page
@@ -310,7 +310,7 @@ System creates:
 
 ---
 
-## Current Status: Phase 2 - Analytics Backend Complete
+## Current Status: Phase 3.2 Complete - Ready for Analytics Dashboard
 
 **Last Updated**: 2025-11-07
 
@@ -323,19 +323,19 @@ System creates:
 - ✅ Phase 2.1: Analytics endpoints (URL stats, campaign stats, overview) - **12 integration tests passing**
 - ✅ Phase 2.2: User agent parsing utilities - **18 unit tests passing**
 - ✅ Phase 3.1: Frontend authentication UI (login, register, protected routes)
-- ✅ Phase 3.2: Frontend URL management (dashboard, create form, URL cards)
+- ✅ Phase 3.2: Frontend URL management (dashboard, create form, URL cards, details page, delete) - **FULLY COMPLETE**
 - ✅ Phase 3.3: Campaign management UI (list, create wizard, details, export, delete)
 - ✅ Fixed critical database session management bug
-- ✅ Test-driven development approach with **98 tests passing (100%)**
+- ✅ Test-driven development approach with **104 tests passing (100%)**
 
 **Test Coverage**:
 - 13 unit tests for URL utilities (code generation, validation)
-- 13 integration tests for URL endpoints
+- 19 integration tests for URL endpoints (added 6 delete tests)
 - 15 unit tests for campaign utilities (CSV parsing, validation)
 - 27 integration tests for campaign endpoints
 - 12 integration tests for analytics endpoints
 - 18 unit tests for user agent parsing
-- Total: **98 tests, 0 failures**
+- Total: **104 tests, 0 failures**
 
 **Backend Features**:
 - Complete URL shortening (standard, custom, campaign)
@@ -349,8 +349,13 @@ System creates:
 
 **Frontend Features**:
 - Complete authentication flow (register, login, logout)
-- URL management (create standard/custom URLs, list, copy to clipboard)
+- URL management (create standard/custom URLs, list, copy to clipboard, details page with analytics, delete with confirmation)
 - Campaign management (create wizard with CSV upload, list, details table, export CSV, delete)
+- URL details page with:
+  * Statistics cards (total clicks, recent clicks, unique visitors)
+  * Bar chart visualization (last 7 days)
+  * Campaign info display with user data tags
+  * Copy and delete actions
 - Responsive Tailwind design with protected routes
 
 **Next Steps**:
