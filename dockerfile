@@ -1,13 +1,13 @@
-# 도커 베이스 이미지 선택
+# Selecting a Docker Base Image
 FROM python:3.10-alpine
 
-# 필요한 파일들을 컨테이너 내부로 복사
+# Copy the necessary files into the container
 COPY requirements.txt requirements.txt
 COPY server server
 COPY main.py main.py
 
-# 필요한 패키지 설치
+# Install required packages
 RUN pip install --no-cache-dir -r requirements.txt
 
-# 컨테이너 실행시 실행할 명령어
+# Command to execute when running the container
 CMD ["python", "main.py"]
