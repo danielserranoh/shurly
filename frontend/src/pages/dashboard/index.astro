@@ -110,6 +110,31 @@ import URLCard from '@/components/URLCard.astro';
         </div>
       </div>
     </main>
+
+    <!-- Delete Confirmation Modal -->
+    <div id="delete-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+      <div class="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+        <h3 class="text-lg font-semibold text-gray-900 mb-2">Delete URL?</h3>
+        <p class="text-gray-600 mb-1">
+          Are you sure you want to delete <strong id="delete-url-name" class="text-gray-900"></strong>?
+        </p>
+        <p class="text-sm text-gray-500 mb-6">This action cannot be undone.</p>
+        <div class="flex gap-3 justify-end">
+          <button
+            id="cancel-delete"
+            class="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors font-medium"
+          >
+            Cancel
+          </button>
+          <button
+            id="confirm-delete"
+            class="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors font-medium"
+          >
+            Delete
+          </button>
+        </div>
+      </div>
+    </div>
   </ProtectedRoute>
 
   <script>
@@ -290,6 +315,27 @@ import URLCard from '@/components/URLCard.astro';
               }
             });
           });
+
+          // Add delete functionality
+          const deleteButtons = document.querySelectorAll('.delete-btn');
+          deleteButtons.forEach(button => {
+            button.addEventListener('click', (e) => {
+              const btn = e.target as HTMLButtonElement;
+              const shortCode = btn.dataset.shortCode;
+              const shortUrl = btn.dataset.shortUrl;
+
+              if (!shortCode || !shortUrl) return;
+
+              // Show modal
+              const modal = document.getElementById('delete-modal')!;
+              const urlName = document.getElementById('delete-url-name')!;
+              urlName.textContent = shortUrl;
+
+              // Store the short code for deletion
+              (window as any).deleteShortCode = shortCode;
+              modal.classList.remove('hidden');
+            });
+          });
         }
       } catch (error) {
         console.error('Failed to load dashboard:', error);
@@ -300,6 +346,44 @@ import URLCard from '@/components/URLCard.astro';
         `;
       }
     }
+
+    // Delete modal handlers
+    const deleteModal = document.getElementById('delete-modal')!;
+    const cancelDeleteBtn = document.getElementById('cancel-delete')!;
+    const confirmDeleteBtn = document.getElementById('confirm-delete')!;
+
+    cancelDeleteBtn.addEventListener('click', () => {
+      deleteModal.classList.add('hidden');
+      (window as any).deleteShortCode = null;
+    });
+
+    confirmDeleteBtn.addEventListener('click', async () => {
+      const shortCode = (window as any).deleteShortCode;
+      if (!shortCode) return;
+
+      try {
+        // Disable button during deletion
+        confirmDeleteBtn.disabled = true;
+        confirmDeleteBtn.textContent = 'Deleting...';
+
+        await apiDelete(`/api/urls/${shortCode}`, true);
+
+        // Hide modal
+        deleteModal.classList.add('hidden');
+        (window as any).deleteShortCode = null;
+
+        // Reload dashboard
+        window.location.reload();
+      } catch (error) {
+        console.error('Failed to delete URL:', error);
+        alert('Failed to delete URL. Please try again.');
+        confirmDeleteBtn.disabled = false;
+        confirmDeleteBtn.textContent = 'Delete';
+      }
+    });
+
+    // Import apiDelete
+    import { apiDelete } from '@/utils/api';
 
     loadDashboard();
   </script>

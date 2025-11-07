@@ -157,6 +157,41 @@ def list_urls(
     return URLListResponse(urls=url_responses, total=total)
 
 
+@urls_router.delete("/{short_code}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_url(
+    short_code: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Delete a URL by short code.
+
+    Only standard and custom URLs can be deleted directly.
+    Campaign URLs must be deleted through the campaign.
+    """
+    # Find the URL
+    url = db.query(URL).filter(URL.short_code == short_code, URL.created_by == current_user.id).first()
+
+    if not url:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="URL not found",
+        )
+
+    # Prevent deleting campaign URLs directly
+    if url.url_type == URLType.CAMPAIGN:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Campaign URLs must be deleted through the campaign",
+        )
+
+    # Delete the URL (visitors will be cascade deleted if configured)
+    db.delete(url)
+    db.commit()
+
+    return None
+
+
 @redirect_router.get("/{short_code}")
 def redirect_short_url(short_code: str, request: Request, db: Session = Depends(get_db)):
     """

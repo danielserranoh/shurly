@@ -237,3 +237,125 @@ class TestURLList:
         response = client.get("/api/urls")
 
         assert response.status_code == 403  # FastAPI returns 403 when auth is missing
+
+
+@pytest.mark.integration
+class TestURLDelete:
+    """Tests for DELETE /api/urls/{short_code}"""
+
+    def test_delete_standard_url_success(
+        self, client: TestClient, db_session: Session, test_user, auth_headers: dict
+    ):
+        """Test deleting a standard URL successfully."""
+        url = URL(
+            short_code="deleteme",
+            original_url="https://example.com",
+            url_type=URLType.STANDARD,
+            created_by=test_user.id,
+        )
+        db_session.add(url)
+        db_session.commit()
+
+        response = client.delete("/api/urls/deleteme", headers=auth_headers)
+
+        assert response.status_code == 204
+        # Verify URL is deleted
+        assert db_session.query(URL).filter(URL.short_code == "deleteme").first() is None
+
+    def test_delete_custom_url_success(
+        self, client: TestClient, db_session: Session, test_user, auth_headers: dict
+    ):
+        """Test deleting a custom URL successfully."""
+        url = URL(
+            short_code="customdelete",
+            original_url="https://example.com",
+            url_type=URLType.CUSTOM,
+            created_by=test_user.id,
+        )
+        db_session.add(url)
+        db_session.commit()
+
+        response = client.delete("/api/urls/customdelete", headers=auth_headers)
+
+        assert response.status_code == 204
+        assert db_session.query(URL).filter(URL.short_code == "customdelete").first() is None
+
+    def test_delete_campaign_url_forbidden(
+        self, client: TestClient, db_session: Session, test_user, auth_headers: dict
+    ):
+        """Test that campaign URLs cannot be deleted directly."""
+        from server.core.models.campaign import Campaign
+
+        campaign = Campaign(
+            name="Test Campaign",
+            original_url="https://example.com",
+            csv_columns=["name"],
+            created_by=test_user.id,
+        )
+        db_session.add(campaign)
+        db_session.flush()
+
+        url = URL(
+            short_code="campaignurl",
+            original_url="https://example.com",
+            url_type=URLType.CAMPAIGN,
+            campaign_id=campaign.id,
+            created_by=test_user.id,
+        )
+        db_session.add(url)
+        db_session.commit()
+
+        response = client.delete("/api/urls/campaignurl", headers=auth_headers)
+
+        assert response.status_code == 400
+        assert "campaign" in response.json()["detail"].lower()
+        # Verify URL still exists
+        assert db_session.query(URL).filter(URL.short_code == "campaignurl").first() is not None
+
+    def test_delete_url_not_found(self, client: TestClient, auth_headers: dict):
+        """Test deleting a non-existent URL."""
+        response = client.delete("/api/urls/nonexistent", headers=auth_headers)
+        assert response.status_code == 404
+
+    def test_delete_url_unauthorized(self, client: TestClient, db_session: Session, test_user):
+        """Test deleting a URL without authentication."""
+        url = URL(
+            short_code="noperm",
+            original_url="https://example.com",
+            url_type=URLType.STANDARD,
+            created_by=test_user.id,
+        )
+        db_session.add(url)
+        db_session.commit()
+
+        response = client.delete("/api/urls/noperm")
+        assert response.status_code == 403
+
+    def test_delete_url_wrong_user(
+        self, client: TestClient, db_session: Session, test_user, auth_headers: dict
+    ):
+        """Test deleting another user's URL."""
+        from server.core.models.user import User as UserModel
+
+        # Create another user
+        other_user = UserModel(
+            email="other@example.com",
+            password_hash="hashed",
+            is_active=True,
+        )
+        db_session.add(other_user)
+        db_session.flush()
+
+        # Create URL owned by other user
+        url = URL(
+            short_code="notmine",
+            original_url="https://example.com",
+            url_type=URLType.STANDARD,
+            created_by=other_user.id,
+        )
+        db_session.add(url)
+        db_session.commit()
+
+        # Try to delete with test_user's auth
+        response = client.delete("/api/urls/notmine", headers=auth_headers)
+        assert response.status_code == 404  # Returns 404 for security (not revealing URL exists)
