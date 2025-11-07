@@ -1,0 +1,63 @@
+---
+import type { Campaign } from '@/utils/types';
+
+interface Props {
+  campaign: Campaign;
+}
+
+const { campaign } = Astro.props;
+
+const formatDate = (dateString: string) => {
+  return new Date(dateString).toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  });
+};
+---
+
+<div class="bg-white border border-gray-200 rounded-lg p-6 hover:shadow-md transition-shadow">
+  <div class="flex items-start justify-between mb-4">
+    <div class="flex-1">
+      <h3 class="text-lg font-semibold text-gray-900 mb-1">{campaign.name}</h3>
+      <p class="text-sm text-gray-500 truncate">{campaign.original_url}</p>
+    </div>
+    <a
+      href={`/dashboard/campaigns/${campaign.id}`}
+      class="ml-4 text-blue-600 hover:text-blue-700 text-sm font-medium"
+    >
+      View Details →
+    </a>
+  </div>
+
+  <div class="flex items-center gap-6 text-sm">
+    <div>
+      <span class="text-gray-500">URLs:</span>
+      <span class="ml-1 font-medium text-gray-900">{campaign.url_count}</span>
+    </div>
+    <div>
+      <span class="text-gray-500">Columns:</span>
+      <span class="ml-1 font-medium text-gray-900">{campaign.csv_columns.length}</span>
+    </div>
+    <div class="ml-auto">
+      <span class="text-gray-500">Created:</span>
+      <span class="ml-1 font-medium text-gray-900">{formatDate(campaign.created_at)}</span>
+    </div>
+  </div>
+
+  <div class="mt-4 pt-4 border-t border-gray-100">
+    <div class="flex flex-wrap gap-2">
+      <span class="text-xs text-gray-500">CSV Columns:</span>
+      {campaign.csv_columns.slice(0, 4).map((col) => (
+        <span class="inline-flex items-center px-2 py-1 rounded bg-blue-50 text-blue-700 text-xs font-medium">
+          {col}
+        </span>
+      ))}
+      {campaign.csv_columns.length > 4 && (
+        <span class="inline-flex items-center px-2 py-1 text-xs text-gray-500">
+          +{campaign.csv_columns.length - 4} more
+        </span>
+      )}
+    </div>
+  </div>
+</div>

@@ -50,3 +50,34 @@ export interface CreateURLResponse extends URL {
 export interface ApiError {
   detail: string | { msg: string; type: string }[];
 }
+
+// Campaign Types
+
+export interface CampaignURL {
+  id: string;
+  short_code: string;
+  short_url: string;
+  user_data: Record<string, string> | null;
+  created_at: string;
+}
+
+export interface Campaign {
+  id: string;
+  name: string;
+  original_url: string;
+  csv_columns: string[];
+  url_count: number;
+  created_at: string;
+  urls?: CampaignURL[];
+}
+
+export interface CampaignListResponse {
+  campaigns: Campaign[];
+  total: number;
+}
+
+export interface CreateCampaignRequest {
+  name: string;
+  original_url: string;
+  csv_data: string;
+}

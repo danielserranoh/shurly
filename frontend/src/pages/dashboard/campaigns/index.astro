@@ -1,0 +1,172 @@
+---
+import ProtectedRoute from '@/components/ProtectedRoute.astro';
+import Navbar from '@/components/Navbar.astro';
+import CampaignCard from '@/components/CampaignCard.astro';
+
+const title = 'My Campaigns | Shurly';
+---
+
+<ProtectedRoute>
+  <!DOCTYPE html>
+  <html lang="en">
+    <head>
+      <meta charset="UTF-8" />
+      <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+      <title>{title}</title>
+    </head>
+    <body class="bg-gray-50 min-h-screen">
+      <Navbar />
+
+      <main class="container mx-auto px-4 py-8">
+        <div class="flex items-center justify-between mb-8">
+          <div>
+            <h1 class="text-3xl font-bold text-gray-900">Campaigns</h1>
+            <p class="text-gray-600 mt-1">Manage your bulk URL campaigns</p>
+          </div>
+          <a
+            href="/dashboard/campaigns/create"
+            class="bg-blue-600 text-white px-6 py-2.5 rounded-lg hover:bg-blue-700 transition-colors font-medium"
+          >
+            + New Campaign
+          </a>
+        </div>
+
+        <!-- Campaigns will be loaded dynamically -->
+        <div id="campaigns-container">
+          <div class="flex items-center justify-center py-12">
+            <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+            <span class="ml-3 text-gray-600">Loading campaigns...</span>
+          </div>
+        </div>
+
+        <!-- Empty state (hidden by default) -->
+        <div id="empty-state" class="hidden text-center py-12">
+          <svg
+            class="mx-auto h-12 w-12 text-gray-400"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+            />
+          </svg>
+          <h3 class="mt-2 text-sm font-medium text-gray-900">No campaigns yet</h3>
+          <p class="mt-1 text-sm text-gray-500">
+            Get started by creating your first campaign.
+          </p>
+          <div class="mt-6">
+            <a
+              href="/dashboard/campaigns/create"
+              class="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700"
+            >
+              + New Campaign
+            </a>
+          </div>
+        </div>
+
+        <!-- Error state (hidden by default) -->
+        <div id="error-state" class="hidden">
+          <div class="bg-red-50 border border-red-200 rounded-lg p-4">
+            <p class="text-red-800" id="error-message">Failed to load campaigns</p>
+          </div>
+        </div>
+      </main>
+
+      <script>
+        import { apiGet } from '@/utils/api';
+        import type { CampaignListResponse } from '@/utils/types';
+
+        const container = document.getElementById('campaigns-container');
+        const emptyState = document.getElementById('empty-state');
+        const errorState = document.getElementById('error-state');
+        const errorMessage = document.getElementById('error-message');
+
+        async function loadCampaigns() {
+          try {
+            const data = await apiGet<CampaignListResponse>('/api/campaigns', true);
+
+            if (data.campaigns.length === 0) {
+              container?.classList.add('hidden');
+              emptyState?.classList.remove('hidden');
+              return;
+            }
+
+            // Build campaigns HTML
+            const campaignsHTML = data.campaigns.map(campaign => {
+              const date = new Date(campaign.created_at).toLocaleDateString('en-US', {
+                year: 'numeric',
+                month: 'short',
+                day: 'numeric',
+              });
+
+              const columnsPreview = campaign.csv_columns.slice(0, 4).map(col =>
+                `<span class="inline-flex items-center px-2 py-1 rounded bg-blue-50 text-blue-700 text-xs font-medium">${col}</span>`
+              ).join('');
+
+              const moreColumns = campaign.csv_columns.length > 4
+                ? `<span class="inline-flex items-center px-2 py-1 text-xs text-gray-500">+${campaign.csv_columns.length - 4} more</span>`
+                : '';
+
+              return `
+                <div class="bg-white border border-gray-200 rounded-lg p-6 hover:shadow-md transition-shadow">
+                  <div class="flex items-start justify-between mb-4">
+                    <div class="flex-1">
+                      <h3 class="text-lg font-semibold text-gray-900 mb-1">${campaign.name}</h3>
+                      <p class="text-sm text-gray-500 truncate">${campaign.original_url}</p>
+                    </div>
+                    <a
+                      href="/dashboard/campaigns/${campaign.id}"
+                      class="ml-4 text-blue-600 hover:text-blue-700 text-sm font-medium"
+                    >
+                      View Details →
+                    </a>
+                  </div>
+
+                  <div class="flex items-center gap-6 text-sm">
+                    <div>
+                      <span class="text-gray-500">URLs:</span>
+                      <span class="ml-1 font-medium text-gray-900">${campaign.url_count}</span>
+                    </div>
+                    <div>
+                      <span class="text-gray-500">Columns:</span>
+                      <span class="ml-1 font-medium text-gray-900">${campaign.csv_columns.length}</span>
+                    </div>
+                    <div class="ml-auto">
+                      <span class="text-gray-500">Created:</span>
+                      <span class="ml-1 font-medium text-gray-900">${date}</span>
+                    </div>
+                  </div>
+
+                  <div class="mt-4 pt-4 border-t border-gray-100">
+                    <div class="flex flex-wrap gap-2">
+                      <span class="text-xs text-gray-500">CSV Columns:</span>
+                      ${columnsPreview}
+                      ${moreColumns}
+                    </div>
+                  </div>
+                </div>
+              `;
+            }).join('');
+
+            if (container) {
+              container.innerHTML = `<div class="grid gap-6 md:grid-cols-2">${campaignsHTML}</div>`;
+            }
+          } catch (error) {
+            console.error('Failed to load campaigns:', error);
+            container?.classList.add('hidden');
+            errorState?.classList.remove('hidden');
+            if (errorMessage && error instanceof Error) {
+              errorMessage.textContent = error.message;
+            }
+          }
+        }
+
+        loadCampaigns();
+      </script>
+    </body>
+  </html>
+</ProtectedRoute>

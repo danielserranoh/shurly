@@ -22,16 +22,25 @@ const { userEmail, showAuth = false } = Astro.props;
         {showAuth ? (
           <>
             {userEmail && (
-              <div class="flex items-center space-x-4">
+              <div class="flex items-center space-x-6">
+                <div class="flex items-center space-x-6">
+                  <a
+                    href="/dashboard"
+                    class="text-gray-700 hover:text-blue-600 transition-colors font-medium"
+                  >
+                    URLs
+                  </a>
+                  <a
+                    href="/dashboard/campaigns"
+                    class="text-gray-700 hover:text-blue-600 transition-colors font-medium"
+                  >
+                    Campaigns
+                  </a>
+                </div>
+                <span class="text-sm text-gray-400 hidden sm:inline">|</span>
                 <span class="text-sm text-gray-600 hidden sm:inline">
                   {userEmail}
                 </span>
-                <a
-                  href="/dashboard"
-                  class="text-gray-700 hover:text-blue-600 transition-colors font-medium"
-                >
-                  Dashboard
-                </a>
                 <button
                   id="logout-btn"
                   class="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition-colors font-medium text-sm"

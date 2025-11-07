@@ -122,3 +122,38 @@ export async function apiDelete<T>(
 ): Promise<T> {
   return apiFetch<T>(endpoint, { method: 'DELETE', requiresAuth });
 }
+
+/**
+ * Download file from API (e.g., CSV export)
+ */
+export async function apiDownload(
+  endpoint: string,
+  filename: string,
+  requiresAuth = false
+): Promise<void> {
+  const token = getToken();
+  const url = endpoint.startsWith('http')
+    ? endpoint
+    : `${API_BASE_URL}${endpoint}`;
+
+  const headers: HeadersInit = {};
+  if (requiresAuth && token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+
+  const response = await fetch(url, { headers });
+
+  if (!response.ok) {
+    throw new Error('Failed to download file');
+  }
+
+  const blob = await response.blob();
+  const downloadUrl = window.URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = downloadUrl;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  window.URL.revokeObjectURL(downloadUrl);
+}
