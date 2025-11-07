@@ -1,0 +1,363 @@
+---
+import Layout from '@/layouts/Layout.astro';
+import Navbar from '@/components/Navbar.astro';
+import ProtectedRoute from '@/components/ProtectedRoute.astro';
+---
+
+<Layout title="Create Short URL - Shurly">
+  <ProtectedRoute>
+    <div id="dashboard-navbar"></div>
+
+    <main class="min-h-screen bg-gray-50 py-8">
+      <div class="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
+        <!-- Header -->
+        <div class="mb-8">
+          <div class="flex items-center gap-2 mb-2">
+            <a href="/dashboard" class="text-gray-600 hover:text-gray-900">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+              </svg>
+            </a>
+            <h1 class="text-3xl font-bold text-gray-900">
+              Create Short URL
+            </h1>
+          </div>
+          <p class="text-gray-600">
+            Generate a shortened URL for easy sharing
+          </p>
+        </div>
+
+        <!-- Form Card -->
+        <div class="bg-white rounded-lg shadow-lg p-8">
+          <!-- URL Type Toggle -->
+          <div class="mb-6">
+            <label class="block text-sm font-medium text-gray-700 mb-3">
+              URL Type
+            </label>
+            <div class="flex rounded-lg border border-gray-300 overflow-hidden">
+              <button
+                id="standard-btn"
+                class="flex-1 py-3 px-4 font-medium transition-colors bg-blue-600 text-white"
+              >
+                Standard
+              </button>
+              <button
+                id="custom-btn"
+                class="flex-1 py-3 px-4 font-medium transition-colors bg-white text-gray-700 hover:bg-gray-50"
+              >
+                Custom
+              </button>
+            </div>
+          </div>
+
+          <form id="create-form" class="space-y-6">
+            <!-- Original URL Field -->
+            <div>
+              <label for="url" class="block text-sm font-medium text-gray-700 mb-2">
+                Original URL *
+              </label>
+              <input
+                type="url"
+                id="url"
+                name="url"
+                required
+                placeholder="https://example.com/very/long/url"
+                class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+            </div>
+
+            <!-- Custom Code Field (Hidden by default) -->
+            <div id="custom-code-field" class="hidden">
+              <label for="custom-code" class="block text-sm font-medium text-gray-700 mb-2">
+                Custom Short Code *
+              </label>
+              <div class="flex items-center gap-2">
+                <span class="text-gray-500">http://localhost:8000/</span>
+                <input
+                  type="text"
+                  id="custom-code"
+                  name="custom-code"
+                  placeholder="my-custom-code"
+                  pattern="[a-zA-Z0-9_-]+"
+                  class="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
+              <p class="mt-1 text-xs text-gray-500">
+                Only letters, numbers, hyphens, and underscores allowed
+              </p>
+            </div>
+
+            <!-- Error Message -->
+            <div id="error-message" class="hidden">
+              <div class="bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-lg text-sm">
+                <span id="error-text"></span>
+              </div>
+            </div>
+
+            <!-- Warning Message -->
+            <div id="warning-message" class="hidden">
+              <div class="bg-yellow-50 border border-yellow-200 text-yellow-800 px-4 py-3 rounded-lg text-sm">
+                <span id="warning-text"></span>
+              </div>
+            </div>
+
+            <!-- Success Message -->
+            <div id="success-message" class="hidden">
+              <div class="bg-green-50 border border-green-200 rounded-lg p-6">
+                <div class="flex items-center mb-4">
+                  <svg class="w-6 h-6 text-green-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                  </svg>
+                  <h3 class="text-lg font-semibold text-green-900">
+                    URL Created Successfully!
+                  </h3>
+                </div>
+                <div class="space-y-3">
+                  <div>
+                    <label class="text-xs text-green-700 uppercase tracking-wide font-semibold">
+                      Your Short URL
+                    </label>
+                    <div class="flex items-center gap-2 mt-1">
+                      <input
+                        type="text"
+                        id="created-url"
+                        readonly
+                        class="flex-1 px-3 py-2 bg-white border border-green-300 rounded-lg text-green-900 font-medium"
+                      />
+                      <button
+                        type="button"
+                        id="copy-success-btn"
+                        class="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors font-medium"
+                      >
+                        Copy
+                      </button>
+                    </div>
+                  </div>
+                  <div class="flex gap-2">
+                    <a
+                      href="/dashboard"
+                      class="flex-1 text-center px-4 py-2 border border-green-600 text-green-700 rounded-lg hover:bg-green-50 transition-colors font-medium"
+                    >
+                      Back to Dashboard
+                    </a>
+                    <button
+                      type="button"
+                      id="create-another-btn"
+                      class="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
+                    >
+                      Create Another
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Submit Button -->
+            <div id="submit-section">
+              <button
+                type="submit"
+                id="submit-btn"
+                class="w-full flex justify-center items-center py-3 px-6 border border-transparent text-base font-medium rounded-lg text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors"
+              >
+                <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                </svg>
+                Create Short URL
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </main>
+  </ProtectedRoute>
+
+  <script>
+    import { apiGet, apiPost } from '@/utils/api';
+    import type { User, CreateURLResponse } from '@/utils/types';
+
+    const standardBtn = document.getElementById('standard-btn') as HTMLButtonElement;
+    const customBtn = document.getElementById('custom-btn') as HTMLButtonElement;
+    const customCodeField = document.getElementById('custom-code-field') as HTMLDivElement;
+    const customCodeInput = document.getElementById('custom-code') as HTMLInputElement;
+    const form = document.getElementById('create-form') as HTMLFormElement;
+    const submitBtn = document.getElementById('submit-btn') as HTMLButtonElement;
+    const submitSection = document.getElementById('submit-section') as HTMLDivElement;
+    const errorMessage = document.getElementById('error-message') as HTMLDivElement;
+    const errorText = document.getElementById('error-text') as HTMLSpanElement;
+    const warningMessage = document.getElementById('warning-message') as HTMLDivElement;
+    const warningText = document.getElementById('warning-text') as HTMLSpanElement;
+    const successMessage = document.getElementById('success-message') as HTMLDivElement;
+    const createdUrlInput = document.getElementById('created-url') as HTMLInputElement;
+    const copySuccessBtn = document.getElementById('copy-success-btn') as HTMLButtonElement;
+    const createAnotherBtn = document.getElementById('create-another-btn') as HTMLButtonElement;
+    const dashboardNavbar = document.getElementById('dashboard-navbar') as HTMLDivElement;
+
+    let isCustomMode = false;
+
+    // Load user info and render navbar
+    async function loadUserInfo() {
+      try {
+        const user = await apiGet<User>('/api/auth/me', true);
+        const navbarHTML = `
+          <nav class="bg-white shadow-sm border-b border-gray-200">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+              <div class="flex justify-between items-center h-16">
+                <div class="flex-shrink-0">
+                  <a href="/" class="text-2xl font-bold text-blue-600 hover:text-blue-700 transition-colors">
+                    Shurly
+                  </a>
+                </div>
+                <div class="flex items-center space-x-4">
+                  <span class="text-sm text-gray-600 hidden sm:inline">
+                    ${user.email}
+                  </span>
+                  <a
+                    href="/dashboard"
+                    class="text-gray-700 hover:text-blue-600 transition-colors font-medium"
+                  >
+                    Dashboard
+                  </a>
+                  <button
+                    id="logout-btn"
+                    class="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition-colors font-medium text-sm"
+                  >
+                    Logout
+                  </button>
+                </div>
+              </div>
+            </div>
+          </nav>
+        `;
+        dashboardNavbar.innerHTML = navbarHTML;
+
+        const logoutBtn = document.getElementById('logout-btn');
+        if (logoutBtn) {
+          logoutBtn.addEventListener('click', () => {
+            import('@/utils/auth').then(({ logout }) => logout());
+          });
+        }
+      } catch (error) {
+        console.error('Failed to load user info:', error);
+      }
+    }
+
+    // Toggle between standard and custom mode
+    standardBtn.addEventListener('click', () => {
+      isCustomMode = false;
+      standardBtn.classList.add('bg-blue-600', 'text-white');
+      standardBtn.classList.remove('bg-white', 'text-gray-700', 'hover:bg-gray-50');
+      customBtn.classList.remove('bg-blue-600', 'text-white');
+      customBtn.classList.add('bg-white', 'text-gray-700', 'hover:bg-gray-50');
+      customCodeField.classList.add('hidden');
+      customCodeInput.required = false;
+    });
+
+    customBtn.addEventListener('click', () => {
+      isCustomMode = true;
+      customBtn.classList.add('bg-blue-600', 'text-white');
+      customBtn.classList.remove('bg-white', 'text-gray-700', 'hover:bg-gray-50');
+      standardBtn.classList.remove('bg-blue-600', 'text-white');
+      standardBtn.classList.add('bg-white', 'text-gray-700', 'hover:bg-gray-50');
+      customCodeField.classList.remove('hidden');
+      customCodeInput.required = true;
+    });
+
+    function showError(message: string) {
+      errorText.textContent = message;
+      errorMessage.classList.remove('hidden');
+      warningMessage.classList.add('hidden');
+    }
+
+    function showWarning(message: string) {
+      warningText.textContent = message;
+      warningMessage.classList.remove('hidden');
+    }
+
+    function hideMessages() {
+      errorMessage.classList.add('hidden');
+      warningMessage.classList.add('hidden');
+    }
+
+    function setLoading(loading: boolean) {
+      submitBtn.disabled = loading;
+      submitBtn.innerHTML = loading
+        ? '<div class="animate-spin rounded-full h-5 w-5 border-b-2 border-white mx-auto"></div>'
+        : '<svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg> Create Short URL';
+      submitBtn.classList.toggle('opacity-50', loading);
+      submitBtn.classList.toggle('cursor-not-allowed', loading);
+    }
+
+    // Copy button functionality
+    copySuccessBtn.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(createdUrlInput.value);
+        const originalText = copySuccessBtn.textContent;
+        copySuccessBtn.textContent = 'Copied!';
+        setTimeout(() => {
+          copySuccessBtn.textContent = originalText;
+        }, 2000);
+      } catch (error) {
+        console.error('Failed to copy:', error);
+      }
+    });
+
+    // Create another button
+    createAnotherBtn.addEventListener('click', () => {
+      form.reset();
+      successMessage.classList.add('hidden');
+      submitSection.classList.remove('hidden');
+      hideMessages();
+    });
+
+    // Form submission
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      hideMessages();
+
+      const formData = new FormData(form);
+      const url = formData.get('url') as string;
+      const customCode = formData.get('custom-code') as string;
+
+      if (!url) {
+        showError('Please enter a URL');
+        return;
+      }
+
+      setLoading(true);
+
+      try {
+        let response: CreateURLResponse;
+
+        if (isCustomMode && customCode) {
+          response = await apiPost<CreateURLResponse>(
+            '/api/urls/custom',
+            { url, custom_code: customCode },
+            true
+          );
+        } else {
+          response = await apiPost<CreateURLResponse>(
+            '/api/urls',
+            { url },
+            true
+          );
+        }
+
+        // Show warning if present
+        if (response.warning) {
+          showWarning(response.warning);
+        }
+
+        // Show success
+        createdUrlInput.value = response.short_url;
+        submitSection.classList.add('hidden');
+        successMessage.classList.remove('hidden');
+      } catch (error) {
+        setLoading(false);
+        const message = error instanceof Error ? error.message : 'Failed to create URL. Please try again.';
+        showError(message);
+      }
+    });
+
+    loadUserInfo();
+  </script>
+</Layout>

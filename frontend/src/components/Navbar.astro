@@ -1,0 +1,90 @@
+---
+interface Props {
+  userEmail?: string;
+  showAuth?: boolean;
+}
+
+const { userEmail, showAuth = false } = Astro.props;
+---
+
+<nav class="bg-white shadow-sm border-b border-gray-200">
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div class="flex justify-between items-center h-16">
+      <!-- Logo -->
+      <div class="flex-shrink-0">
+        <a href="/" class="text-2xl font-bold text-blue-600 hover:text-blue-700 transition-colors">
+          Shurly
+        </a>
+      </div>
+
+      <!-- Navigation -->
+      <div class="flex items-center space-x-4">
+        {showAuth ? (
+          <>
+            {userEmail && (
+              <div class="flex items-center space-x-4">
+                <span class="text-sm text-gray-600 hidden sm:inline">
+                  {userEmail}
+                </span>
+                <a
+                  href="/dashboard"
+                  class="text-gray-700 hover:text-blue-600 transition-colors font-medium"
+                >
+                  Dashboard
+                </a>
+                <button
+                  id="logout-btn"
+                  class="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition-colors font-medium text-sm"
+                >
+                  Logout
+                </button>
+              </div>
+            )}
+            {!userEmail && (
+              <div class="flex items-center space-x-4">
+                <a
+                  href="/login"
+                  class="text-gray-700 hover:text-blue-600 transition-colors font-medium"
+                >
+                  Login
+                </a>
+                <a
+                  href="/register"
+                  class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors font-medium"
+                >
+                  Sign Up
+                </a>
+              </div>
+            )}
+          </>
+        ) : (
+          <div class="flex items-center space-x-4">
+            <a
+              href="/login"
+              class="text-gray-700 hover:text-blue-600 transition-colors font-medium"
+            >
+              Login
+            </a>
+            <a
+              href="/register"
+              class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors font-medium"
+            >
+              Sign Up
+            </a>
+          </div>
+        )}
+      </div>
+    </div>
+  </div>
+</nav>
+
+<script>
+  import { logout } from '@/utils/auth';
+
+  const logoutBtn = document.getElementById('logout-btn');
+  if (logoutBtn) {
+    logoutBtn.addEventListener('click', () => {
+      logout();
+    });
+  }
+</script>

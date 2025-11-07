@@ -1,0 +1,34 @@
+---
+// This component checks authentication on the client side
+// It should wrap protected pages to ensure users are logged in
+---
+
+<div id="protected-content" style="display: none;">
+  <slot />
+</div>
+
+<div id="loading-screen" class="min-h-screen flex items-center justify-center">
+  <div class="text-center">
+    <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+    <p class="mt-4 text-gray-600">Loading...</p>
+  </div>
+</div>
+
+<script>
+  import { isAuthenticated } from '@/utils/auth';
+
+  // Check authentication on page load
+  const protectedContent = document.getElementById('protected-content');
+  const loadingScreen = document.getElementById('loading-screen');
+
+  if (isAuthenticated()) {
+    // User is authenticated, show content
+    if (protectedContent && loadingScreen) {
+      protectedContent.style.display = 'block';
+      loadingScreen.style.display = 'none';
+    }
+  } else {
+    // User is not authenticated, redirect to login
+    window.location.href = '/login';
+  }
+</script>
