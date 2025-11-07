@@ -41,7 +41,7 @@ class URLResponse(BaseModel):
 
     id: UUID
     short_code: str
-    short_url: str
+    short_url: str | None = None  # Computed field, set after validation
     original_url: str
     url_type: URLType
     created_at: datetime

@@ -2,29 +2,48 @@
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
 from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.pool import StaticPool
 
 from main import app
 from server.core import Base, get_db
 from server.core.auth import create_access_token
-from server.core.models import Campaign, URL, User, Visitor  # noqa: F401 - Import all models for SQLAlchemy
+from server.core.models import (  # noqa: F401 - Import all models for SQLAlchemy
+    URL,
+    Campaign,
+    User,
+    Visitor,
+)
 
-# Use in-memory SQLite for testing
+# Use in-memory SQLite for testing with proper configuration
 SQLALCHEMY_DATABASE_URL = "sqlite:///:memory:"
 
+# Create engine with StaticPool to keep the in-memory database alive
 engine = create_engine(
     SQLALCHEMY_DATABASE_URL,
     connect_args={"check_same_thread": False},
+    poolclass=StaticPool,  # Keep single connection alive for in-memory DB
 )
+
+
+# Enable foreign keys for SQLite
+@event.listens_for(engine, "connect")
+def set_sqlite_pragma(dbapi_conn, connection_record):
+    cursor = dbapi_conn.cursor()
+    cursor.execute("PRAGMA foreign_keys=ON")
+    cursor.close()
+
+
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
+# Create tables once when the module loads
+Base.metadata.create_all(bind=engine)
 
-@pytest.fixture(scope="function", autouse=False)
+
+@pytest.fixture(scope="function")
 def db_session():
     """Create a fresh database session for each test."""
-    # Create tables
-    Base.metadata.create_all(bind=engine)
     session = TestingSessionLocal()
     try:
         yield session
@@ -33,8 +52,12 @@ def db_session():
         session.rollback()
         raise
     finally:
+        # Clean up data but keep tables
         session.close()
-        Base.metadata.drop_all(bind=engine)
+        # Rollback any uncommitted changes
+        for table in reversed(Base.metadata.sorted_tables):
+            session.execute(table.delete())
+        session.commit()
 
 
 @pytest.fixture(scope="function")
