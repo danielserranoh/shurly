@@ -3,6 +3,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from server.app import api_router
+from server.app.urls import redirect_router
 from server.core.config import settings
 
 
@@ -25,6 +26,9 @@ def create_app() -> FastAPI:
 
     # Include API routes with /api prefix
     app.include_router(api_router, prefix="/api")
+
+    # Include redirect endpoint at root level (/{short_code})
+    app.include_router(redirect_router)
 
     return app
 

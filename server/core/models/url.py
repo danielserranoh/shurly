@@ -2,8 +2,8 @@ import enum
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Column, DateTime, Enum, ForeignKey, String, Text
-from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy import JSON, Column, DateTime, Enum, ForeignKey, String, Text
+from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 
 from server.core import Base
@@ -29,7 +29,7 @@ class URL(Base):
 
     # Campaign-related fields
     campaign_id = Column(UUID(as_uuid=True), ForeignKey("campaigns.id"), nullable=True)
-    user_data = Column(JSONB, nullable=True)  # Store arbitrary key-value pairs for campaign URLs
+    user_data = Column(JSON, nullable=True)  # Store arbitrary key-value pairs for campaign URLs
 
     # Audit fields
     created_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)

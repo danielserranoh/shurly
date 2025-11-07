@@ -1,8 +1,8 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Column, DateTime, ForeignKey, String, Text
-from sqlalchemy.dialects.postgresql import ARRAY, UUID
+from sqlalchemy import JSON, Column, DateTime, ForeignKey, String, Text
+from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 
 from server.core import Base
@@ -17,8 +17,8 @@ class Campaign(Base):
     name = Column(String(255), nullable=False)
     original_url = Column(Text, nullable=False)
     csv_columns = Column(
-        ARRAY(String), nullable=False
-    )  # e.g., ['firstName', 'lastName', 'company']
+        JSON, nullable=False
+    )  # e.g., ['firstName', 'lastName', 'company'] - stored as JSON for SQLite compatibility
 
     # Audit fields
     created_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
