@@ -45,13 +45,13 @@ The fastest way to test Shurly locally:
 
 ```bash
 # Start the entire stack (PostgreSQL + FastAPI)
-docker-compose up -d
+docker compose up -d
 
 # View logs
-docker-compose logs -f api
+docker compose logs -f api
 
 # Stop when done
-docker-compose down
+docker compose down
 ```
 
 - **API**: http://localhost:8000

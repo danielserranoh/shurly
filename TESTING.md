@@ -28,13 +28,13 @@ The easiest way to test locally is using Docker Compose, which sets up both the 
 
 ```bash
 # Start the entire stack (PostgreSQL + FastAPI)
-docker-compose up -d
+docker compose up -d
 
 # View logs
-docker-compose logs -f api
+docker compose logs -f api
 
 # Stop when done
-docker-compose down
+docker compose down
 ```
 
 The API will be available at `http://localhost:8000`
