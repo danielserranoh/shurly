@@ -244,14 +244,21 @@ System creates:
 - [ ] VPC setup (deferred - using default VPC for dev)
 - [ ] Secrets Manager integration (deferred - using parameters for now)
 
-### 4.4 CI/CD Pipeline
-- [ ] GitHub Actions workflow (optional)
-  - [ ] Run tests
-  - [ ] Lint with ruff
-  - [ ] Deploy Lambda function
-  - [ ] Deploy frontend to S3
-  - [ ] Invalidate CloudFront cache
-- [ ] Deployment documentation
+### 4.4 CI/CD Pipeline ✅
+- [x] GitHub Actions test workflow
+  - [x] Run tests with pytest (Python 3.10 & 3.11)
+  - [x] Lint with ruff (check and format)
+  - [x] Coverage reporting to Codecov
+- [x] GitHub Actions backend deployment workflow
+  - [x] Deploy Lambda function via SAM
+  - [x] Environment-based deployments (dev/staging/prod)
+  - [x] Manual deployment triggers
+- [x] GitHub Actions frontend deployment workflow
+  - [x] Deploy frontend to S3
+  - [x] Invalidate CloudFront cache
+- [x] Comprehensive CI/CD setup documentation
+- [x] IAM permissions guide
+- [x] GitHub Secrets configuration guide
 
 ### 4.5 Custom Domain Setup
 - [ ] Route 53 hosted zone for griddo.io
