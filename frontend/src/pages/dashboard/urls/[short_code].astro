@@ -115,6 +115,21 @@ const title = 'URL Details | Shurly';
             <div id="chart-labels" class="flex justify-between mt-2 text-xs text-gray-500"></div>
           </div>
 
+          <!-- Geographic Distribution -->
+          <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-6">
+            <h2 class="text-lg font-semibold text-gray-900 mb-4">Geographic Distribution</h2>
+            <div id="geo-container">
+              <div id="geo-loading" class="flex items-center justify-center py-8">
+                <div class="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+                <span class="ml-2 text-gray-600 text-sm">Loading geographic data...</span>
+              </div>
+              <div id="geo-stats" class="hidden space-y-2"></div>
+              <div id="geo-empty" class="hidden text-center py-8 text-gray-500 text-sm">
+                No geographic data available yet
+              </div>
+            </div>
+          </div>
+
           <!-- Campaign Info (if applicable) -->
           <div id="campaign-info" class="hidden bg-blue-50 rounded-lg border border-blue-200 p-6">
             <h3 class="text-sm font-medium text-blue-900 mb-2">Campaign URL</h3>
@@ -166,6 +181,16 @@ const title = 'URL Details | Shurly';
           short_code: string;
           stats: DailyStats[];
           total_clicks: number;
+        }
+
+        interface GeoStats {
+          country: string;
+          clicks: number;
+        }
+
+        interface GeoStatsResponse {
+          stats: GeoStats[];
+          total_countries: number;
         }
 
         const shortCode = window.location.pathname.split('/').pop() || '';
@@ -251,6 +276,9 @@ const title = 'URL Details | Shurly';
             // Show container
             loadingContainer?.classList.add('hidden');
             urlContainer?.classList.remove('hidden');
+
+            // Load geographic data
+            loadGeoData();
           } catch (error) {
             console.error('Failed to load URL details:', error);
             loadingContainer?.classList.add('hidden');
@@ -258,6 +286,54 @@ const title = 'URL Details | Shurly';
             if (errorMessage && error instanceof Error) {
               errorMessage.textContent = error.message;
             }
+          }
+        }
+
+        async function loadGeoData() {
+          try {
+            const geoData = await apiGet<GeoStatsResponse>(
+              `/api/analytics/urls/${shortCode}/geo`,
+              true
+            );
+
+            const geoLoading = document.getElementById('geo-loading')!;
+            const geoStats = document.getElementById('geo-stats')!;
+            const geoEmpty = document.getElementById('geo-empty')!;
+
+            geoLoading.classList.add('hidden');
+
+            if (!geoData.stats || geoData.stats.length === 0) {
+              geoEmpty.classList.remove('hidden');
+              return;
+            }
+
+            // Render geo stats
+            const maxClicks = Math.max(...geoData.stats.map(s => s.clicks));
+
+            geoStats.innerHTML = geoData.stats.map(stat => {
+              const percentage = (stat.clicks / maxClicks) * 100;
+              return `
+                <div class="flex items-center gap-3">
+                  <div class="w-24 text-sm font-medium text-gray-700 truncate">${stat.country}</div>
+                  <div class="flex-1 bg-gray-200 rounded-full h-6 relative">
+                    <div
+                      class="bg-blue-500 h-6 rounded-full flex items-center justify-end pr-2"
+                      style="width: ${percentage}%"
+                    >
+                      <span class="text-xs font-medium text-white">${stat.clicks}</span>
+                    </div>
+                  </div>
+                </div>
+              `;
+            }).join('');
+
+            geoStats.classList.remove('hidden');
+          } catch (error) {
+            console.error('Failed to load geographic data:', error);
+            const geoLoading = document.getElementById('geo-loading')!;
+            const geoEmpty = document.getElementById('geo-empty')!;
+            geoLoading.classList.add('hidden');
+            geoEmpty.classList.remove('hidden');
           }
         }
 

@@ -81,3 +81,50 @@ export interface CreateCampaignRequest {
   original_url: string;
   csv_data: string;
 }
+
+// Analytics Types
+
+export interface DailyStats {
+  date: string;
+  clicks: number;
+}
+
+export interface WeeklyStats {
+  week_start: string;
+  week_end: string;
+  clicks: number;
+}
+
+export interface GeoStats {
+  country: string;
+  clicks: number;
+}
+
+export interface GeoStatsResponse {
+  stats: GeoStats[];
+  total_countries: number;
+}
+
+export interface DailyStatsResponse {
+  stats: DailyStats[];
+  total_clicks: number;
+}
+
+export interface WeeklyStatsResponse {
+  stats: WeeklyStats[];
+  total_clicks: number;
+}
+
+export interface OverviewStats {
+  total_urls: number;
+  total_campaigns: number;
+  total_clicks: number;
+  unique_visitors: number;
+  recent_clicks: number;
+  top_urls: Array<{
+    short_code: string;
+    short_url: string;
+    clicks: number;
+  }>;
+  daily_timeline: DailyStats[];
+}
