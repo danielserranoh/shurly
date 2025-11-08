@@ -39,7 +39,7 @@ services:
       API_VERSION: 0.1.0
       API_DESCRIPTION: A modern URL shortener API
       # CORS Configuration (must be JSON array for pydantic-settings)
-      CORS_ORIGINS: '["http://localhost:4321","http://localhost:3000"]'
+      CORS_ORIGINS: '["http://localhost:4321","http://localhost:4322","http://localhost:3000"]'
     ports:
       - "8000:8000"
     depends_on:
