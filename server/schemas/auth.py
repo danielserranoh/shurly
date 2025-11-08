@@ -34,6 +34,20 @@ class UserResponse(BaseModel):
     email: str
     is_active: bool
     created_at: datetime
+    api_key: str | None = None
 
     class Config:
         from_attributes = True  # Pydantic v2 (was orm_mode in v1)
+
+
+class ChangePasswordRequest(BaseModel):
+    """Schema for changing password."""
+
+    current_password: str
+    new_password: str = Field(..., min_length=8, description="Password must be at least 8 characters")
+
+
+class APIKeyResponse(BaseModel):
+    """Schema for API key response."""
+
+    api_key: str

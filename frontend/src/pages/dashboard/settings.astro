@@ -1,0 +1,352 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import ProtectedRoute from '../../components/ProtectedRoute.astro';
+---
+
+<Layout title="Settings - Shurly">
+  <ProtectedRoute>
+    <div class="min-h-screen bg-gray-50 py-8">
+      <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+        <!-- Header -->
+        <div class="mb-8">
+          <h1 class="text-3xl font-bold text-gray-900">Account Settings</h1>
+          <p class="mt-2 text-sm text-gray-600">Manage your account preferences and security</p>
+        </div>
+
+        <!-- Profile Information -->
+        <div class="bg-white shadow rounded-lg mb-6">
+          <div class="px-6 py-5 border-b border-gray-200">
+            <h2 class="text-lg font-semibold text-gray-900">Profile Information</h2>
+          </div>
+          <div class="px-6 py-5">
+            <div class="space-y-4">
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Email Address</label>
+                <input
+                  type="email"
+                  id="user-email"
+                  disabled
+                  class="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-50 text-gray-500 cursor-not-allowed"
+                />
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Account Created</label>
+                <input
+                  type="text"
+                  id="user-created"
+                  disabled
+                  class="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-50 text-gray-500 cursor-not-allowed"
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Change Password -->
+        <div class="bg-white shadow rounded-lg mb-6">
+          <div class="px-6 py-5 border-b border-gray-200">
+            <h2 class="text-lg font-semibold text-gray-900">Change Password</h2>
+          </div>
+          <div class="px-6 py-5">
+            <form id="password-form" class="space-y-4">
+              <div>
+                <label for="current-password" class="block text-sm font-medium text-gray-700 mb-1">
+                  Current Password
+                </label>
+                <input
+                  type="password"
+                  id="current-password"
+                  required
+                  class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
+              <div>
+                <label for="new-password" class="block text-sm font-medium text-gray-700 mb-1">
+                  New Password
+                </label>
+                <input
+                  type="password"
+                  id="new-password"
+                  required
+                  minlength="8"
+                  class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+                <p class="mt-1 text-xs text-gray-500">Must be at least 8 characters</p>
+              </div>
+              <div>
+                <label for="confirm-password" class="block text-sm font-medium text-gray-700 mb-1">
+                  Confirm New Password
+                </label>
+                <input
+                  type="password"
+                  id="confirm-password"
+                  required
+                  minlength="8"
+                  class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
+              <div id="password-error" class="hidden">
+                <div class="bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-md text-sm"></div>
+              </div>
+              <div id="password-success" class="hidden">
+                <div class="bg-green-50 border border-green-200 text-green-800 px-4 py-3 rounded-md text-sm">
+                  Password changed successfully!
+                </div>
+              </div>
+              <button
+                type="submit"
+                id="change-password-btn"
+                class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors font-medium"
+              >
+                Change Password
+              </button>
+            </form>
+          </div>
+        </div>
+
+        <!-- API Key Management -->
+        <div class="bg-white shadow rounded-lg">
+          <div class="px-6 py-5 border-b border-gray-200">
+            <h2 class="text-lg font-semibold text-gray-900">API Key</h2>
+            <p class="mt-1 text-sm text-gray-600">Use your API key to access the Shurly API programmatically</p>
+          </div>
+          <div class="px-6 py-5">
+            <div class="space-y-4">
+              <div id="no-api-key" class="hidden">
+                <p class="text-sm text-gray-600 mb-4">You don't have an API key yet. Generate one to get started.</p>
+              </div>
+              <div id="has-api-key" class="hidden">
+                <div class="flex items-center gap-3 mb-4">
+                  <input
+                    type="text"
+                    id="api-key-display"
+                    readonly
+                    class="flex-1 px-3 py-2 border border-gray-300 rounded-md bg-gray-50 font-mono text-sm"
+                  />
+                  <button
+                    id="copy-api-key-btn"
+                    class="px-4 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 transition-colors font-medium"
+                  >
+                    Copy
+                  </button>
+                </div>
+                <p class="text-xs text-amber-600 mb-4">
+                  <svg class="inline w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                    <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd" />
+                  </svg>
+                  Keep your API key secure. Don't share it publicly.
+                </p>
+              </div>
+              <div class="flex gap-3">
+                <button
+                  id="generate-api-key-btn"
+                  class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors font-medium"
+                >
+                  <span id="generate-btn-text">Generate API Key</span>
+                </button>
+                <button
+                  id="revoke-api-key-btn"
+                  class="hidden px-4 py-2 border border-red-300 text-red-700 rounded-md hover:bg-red-50 transition-colors font-medium"
+                >
+                  Revoke API Key
+                </button>
+              </div>
+              <div id="api-key-success" class="hidden">
+                <div class="bg-green-50 border border-green-200 text-green-800 px-4 py-3 rounded-md text-sm"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      import { apiGet, apiPost, apiDelete } from '../../utils/api';
+      import type { User } from '../../utils/types';
+
+      let currentUser: User | null = null;
+
+      async function loadUserInfo() {
+        try {
+          const user = await apiGet<User>('/api/auth/me', true);
+          currentUser = user;
+
+          // Populate profile info
+          (document.getElementById('user-email') as HTMLInputElement).value = user.email;
+          const createdDate = new Date(user.created_at).toLocaleDateString('en-US', {
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric',
+          });
+          (document.getElementById('user-created') as HTMLInputElement).value = createdDate;
+
+          // Handle API key display
+          if (user.api_key) {
+            document.getElementById('no-api-key')!.classList.add('hidden');
+            document.getElementById('has-api-key')!.classList.remove('hidden');
+            (document.getElementById('api-key-display') as HTMLInputElement).value = user.api_key;
+            document.getElementById('generate-btn-text')!.textContent = 'Regenerate API Key';
+            document.getElementById('revoke-api-key-btn')!.classList.remove('hidden');
+          } else {
+            document.getElementById('no-api-key')!.classList.remove('hidden');
+            document.getElementById('has-api-key')!.classList.add('hidden');
+            document.getElementById('generate-btn-text')!.textContent = 'Generate API Key';
+            document.getElementById('revoke-api-key-btn')!.classList.add('hidden');
+          }
+        } catch (error) {
+          console.error('Failed to load user info:', error);
+          alert('Failed to load user information');
+        }
+      }
+
+      // Change password form
+      document.getElementById('password-form')!.addEventListener('submit', async (e) => {
+        e.preventDefault();
+
+        const currentPassword = (document.getElementById('current-password') as HTMLInputElement).value;
+        const newPassword = (document.getElementById('new-password') as HTMLInputElement).value;
+        const confirmPassword = (document.getElementById('confirm-password') as HTMLInputElement).value;
+
+        // Hide previous messages
+        document.getElementById('password-error')!.classList.add('hidden');
+        document.getElementById('password-success')!.classList.add('hidden');
+
+        // Validate passwords match
+        if (newPassword !== confirmPassword) {
+          const errorDiv = document.getElementById('password-error')!;
+          errorDiv.querySelector('div')!.textContent = 'New passwords do not match';
+          errorDiv.classList.remove('hidden');
+          return;
+        }
+
+        const btn = document.getElementById('change-password-btn') as HTMLButtonElement;
+        btn.disabled = true;
+        btn.textContent = 'Changing...';
+
+        try {
+          await apiPost('/api/auth/change-password', {
+            current_password: currentPassword,
+            new_password: newPassword,
+          }, true);
+
+          // Success
+          document.getElementById('password-success')!.classList.remove('hidden');
+          (document.getElementById('password-form') as HTMLFormElement).reset();
+
+          setTimeout(() => {
+            document.getElementById('password-success')!.classList.add('hidden');
+          }, 5000);
+        } catch (error: any) {
+          const errorDiv = document.getElementById('password-error')!;
+          errorDiv.querySelector('div')!.textContent = error.message || 'Failed to change password';
+          errorDiv.classList.remove('hidden');
+        } finally {
+          btn.disabled = false;
+          btn.textContent = 'Change Password';
+        }
+      });
+
+      // Generate API key
+      document.getElementById('generate-api-key-btn')!.addEventListener('click', async () => {
+        if (currentUser?.api_key) {
+          if (!confirm('This will replace your existing API key. Continue?')) {
+            return;
+          }
+        }
+
+        const btn = document.getElementById('generate-api-key-btn') as HTMLButtonElement;
+        btn.disabled = true;
+        const originalText = btn.textContent;
+        btn.textContent = 'Generating...';
+
+        try {
+          const response = await apiPost<{ api_key: string }>('/api/auth/api-key/generate', {}, true);
+
+          // Update display
+          document.getElementById('no-api-key')!.classList.add('hidden');
+          document.getElementById('has-api-key')!.classList.remove('hidden');
+          (document.getElementById('api-key-display') as HTMLInputElement).value = response.api_key;
+          document.getElementById('generate-btn-text')!.textContent = 'Regenerate API Key';
+          document.getElementById('revoke-api-key-btn')!.classList.remove('hidden');
+
+          // Show success message
+          const successDiv = document.getElementById('api-key-success')!;
+          successDiv.querySelector('div')!.textContent = 'API key generated successfully! Make sure to copy it now.';
+          successDiv.classList.remove('hidden');
+
+          setTimeout(() => {
+            successDiv.classList.add('hidden');
+          }, 10000);
+
+          // Update currentUser
+          if (currentUser) {
+            currentUser.api_key = response.api_key;
+          }
+        } catch (error: any) {
+          alert(error.message || 'Failed to generate API key');
+        } finally {
+          btn.disabled = false;
+          btn.textContent = originalText;
+        }
+      });
+
+      // Copy API key
+      document.getElementById('copy-api-key-btn')!.addEventListener('click', async () => {
+        const apiKey = (document.getElementById('api-key-display') as HTMLInputElement).value;
+        try {
+          await navigator.clipboard.writeText(apiKey);
+          const btn = document.getElementById('copy-api-key-btn')!;
+          btn.textContent = 'Copied!';
+          setTimeout(() => {
+            btn.textContent = 'Copy';
+          }, 2000);
+        } catch (error) {
+          alert('Failed to copy to clipboard');
+        }
+      });
+
+      // Revoke API key
+      document.getElementById('revoke-api-key-btn')!.addEventListener('click', async () => {
+        if (!confirm('Are you sure you want to revoke your API key? This action cannot be undone.')) {
+          return;
+        }
+
+        const btn = document.getElementById('revoke-api-key-btn') as HTMLButtonElement;
+        btn.disabled = true;
+        btn.textContent = 'Revoking...';
+
+        try {
+          await apiDelete('/api/auth/api-key', true);
+
+          // Update display
+          document.getElementById('no-api-key')!.classList.remove('hidden');
+          document.getElementById('has-api-key')!.classList.add('hidden');
+          document.getElementById('generate-btn-text')!.textContent = 'Generate API Key';
+          btn.classList.add('hidden');
+
+          // Show success message
+          const successDiv = document.getElementById('api-key-success')!;
+          successDiv.querySelector('div')!.textContent = 'API key revoked successfully';
+          successDiv.classList.remove('hidden');
+
+          setTimeout(() => {
+            successDiv.classList.add('hidden');
+          }, 5000);
+
+          // Update currentUser
+          if (currentUser) {
+            currentUser.api_key = null;
+          }
+        } catch (error: any) {
+          alert(error.message || 'Failed to revoke API key');
+        } finally {
+          btn.disabled = false;
+          btn.textContent = 'Revoke API Key';
+        }
+      });
+
+      // Load user info on page load
+      loadUserInfo();
+    </script>
+  </ProtectedRoute>
+</Layout>

@@ -5,6 +5,7 @@ export interface User {
   email: string;
   is_active: boolean;
   created_at: string;
+  api_key?: string | null;
 }
 
 export interface LoginResponse {

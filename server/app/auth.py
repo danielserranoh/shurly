@@ -1,5 +1,7 @@
 """Authentication endpoints."""
 
+import secrets
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
@@ -9,9 +11,17 @@ from server.core.auth import (
     create_access_token,
     get_current_user,
     hash_password,
+    verify_password,
 )
 from server.core.models import User
-from server.schemas.auth import Token, UserLogin, UserRegister, UserResponse
+from server.schemas.auth import (
+    APIKeyResponse,
+    ChangePasswordRequest,
+    Token,
+    UserLogin,
+    UserRegister,
+    UserResponse,
+)
 
 auth_router = APIRouter()
 
@@ -76,3 +86,62 @@ def get_current_user_info(current_user: User = Depends(get_current_user)):
     Requires authentication.
     """
     return current_user
+
+
+@auth_router.post("/change-password", status_code=status.HTTP_200_OK)
+def change_password(
+    password_data: ChangePasswordRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Change user password.
+
+    Requires current password verification.
+    """
+    # Verify current password
+    if not verify_password(password_data.current_password, current_user.password_hash):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Current password is incorrect",
+        )
+
+    # Update password
+    current_user.password_hash = hash_password(password_data.new_password)
+    db.commit()
+
+    return {"message": "Password changed successfully"}
+
+
+@auth_router.post("/api-key/generate", response_model=APIKeyResponse)
+def generate_api_key(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Generate a new API key for the current user.
+
+    This will replace any existing API key.
+    """
+    # Generate a secure random API key
+    api_key = secrets.token_urlsafe(32)
+
+    # Update user's API key
+    current_user.api_key = api_key
+    db.commit()
+
+    return {"api_key": api_key}
+
+
+@auth_router.delete("/api-key", status_code=status.HTTP_200_OK)
+def revoke_api_key(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Revoke the current user's API key.
+    """
+    current_user.api_key = None
+    db.commit()
+
+    return {"message": "API key revoked successfully"}
