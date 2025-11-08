@@ -33,7 +33,177 @@ The following changes have been made to make Shurly Lambda-compatible:
 3. **Database Configuration**: Updated for Lambda-optimized connection pooling
 4. **Environment Variables**: Added Lambda-specific settings
 
-## Deployment Steps
+## Deployment Options
+
+There are two ways to deploy Shurly to AWS:
+
+1. **AWS SAM (Recommended)** - Infrastructure as Code, automated deployment
+2. **Manual Deployment** - Step-by-step AWS CLI commands
+
+---
+
+## Option 1: Deploy with AWS SAM (Recommended)
+
+AWS SAM (Serverless Application Model) provides Infrastructure as Code for serverless applications.
+
+### Prerequisites
+
+- [AWS SAM CLI](https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/install-sam-cli.html) installed
+- [Docker](https://docs.docker.com/get-docker/) installed (for building)
+- AWS CLI configured with credentials
+- RDS PostgreSQL instance created (see manual steps below)
+
+### Quick Start
+
+1. **Install SAM CLI**:
+   ```bash
+   # macOS
+   brew install aws-sam-cli
+
+   # Linux
+   pip install aws-sam-cli
+
+   # Verify installation
+   sam --version
+   ```
+
+2. **Build the Lambda package**:
+   ```bash
+   # Automated build script
+   ./build_lambda.sh
+
+   # Or manually with SAM
+   sam build --use-container
+   ```
+
+3. **Deploy to AWS** (first time):
+   ```bash
+   sam deploy --guided
+   ```
+
+   You'll be prompted for:
+   - **Stack name**: `shurly-prod` (or `shurly-dev`)
+   - **AWS Region**: `us-east-1` (or your preferred region)
+   - **Parameter Environment**: `prod`, `staging`, or `dev`
+   - **Parameter DatabaseHost**: Your RDS endpoint (e.g., `xxx.rds.amazonaws.com`)
+   - **Parameter DatabaseName**: `shurly`
+   - **Parameter DatabaseUser**: `postgres`
+   - **Parameter DatabasePassword**: Your RDS password
+   - **Parameter JWTSecretKey**: Generate with `openssl rand -hex 32`
+   - **Parameter CorsOrigins**: `["https://shurl.griddo.io"]`
+
+4. **Subsequent Deployments**:
+   ```bash
+   # Build and deploy with saved config
+   sam build --use-container && sam deploy
+   ```
+
+### SAM Template Structure
+
+The `template.yaml` defines:
+- **Lambda Function** (`ShurlyFunction`): FastAPI app with Mangum
+- **API Gateway HTTP API** (`ShurlyHttpApi`): RESTful API endpoint
+- **CloudWatch Logs** (`ShurlyLogGroup`): 30-day retention
+- **IAM Roles**: Minimal permissions for Lambda execution
+
+### Local Testing with SAM
+
+Test the Lambda function locally before deploying:
+
+```bash
+# Start local API Gateway
+sam local start-api
+
+# API will be available at http://localhost:3000
+# Test endpoints:
+curl http://localhost:3000/api/auth/login
+
+# Invoke function directly with test event
+sam local invoke ShurlyFunction -e events/test-event.json
+```
+
+### Environment-Specific Deployments
+
+Deploy to different environments using profiles:
+
+```bash
+# Development
+sam deploy --config-env dev \
+  --parameter-overrides \
+    "Environment=dev \
+     DatabaseHost=dev-db.xxx.rds.amazonaws.com \
+     DatabasePassword=xxx \
+     JWTSecretKey=xxx"
+
+# Staging
+sam deploy --config-env staging \
+  --parameter-overrides \
+    "Environment=staging \
+     DatabaseHost=staging-db.xxx.rds.amazonaws.com \
+     DatabasePassword=xxx \
+     JWTSecretKey=xxx"
+
+# Production
+sam deploy --config-env prod \
+  --parameter-overrides \
+    "Environment=prod \
+     DatabaseHost=prod-db.xxx.rds.amazonaws.com \
+     DatabasePassword=xxx \
+     JWTSecretKey=xxx"
+```
+
+### SAM Commands Reference
+
+```bash
+# Validate template
+sam validate
+
+# Build function
+sam build --use-container
+
+# Deploy with guided prompts
+sam deploy --guided
+
+# Deploy with saved config
+sam deploy
+
+# View logs
+sam logs -n ShurlyFunction --stack-name shurly-prod --tail
+
+# Delete stack
+sam delete --stack-name shurly-prod
+
+# List stacks
+aws cloudformation list-stacks --stack-status-filter CREATE_COMPLETE UPDATE_COMPLETE
+```
+
+### Updating the Stack
+
+After making code changes:
+
+```bash
+# 1. Build new package
+sam build --use-container
+
+# 2. Deploy update
+sam deploy
+
+# 3. View deployment progress
+sam deploy --no-confirm-changeset --no-fail-on-empty-changeset
+```
+
+### Cost Estimation (with SAM)
+
+The SAM deployment creates:
+- Lambda Function: ~$0.20/month (5,000 requests)
+- API Gateway HTTP API: ~$0.50/month
+- CloudWatch Logs: ~$0.50/month (30-day retention)
+
+**Note**: RDS PostgreSQL (~$12-15/month) must be created separately.
+
+---
+
+## Option 2: Manual Deployment Steps
 
 ### Step 1: Create RDS PostgreSQL Database
 

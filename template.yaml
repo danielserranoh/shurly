@@ -1,0 +1,189 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Shurly - Modern URL Shortener with Campaign Management and Analytics
+
+# Global configuration for all functions
+Globals:
+  Function:
+    Timeout: 30
+    MemorySize: 512
+    Runtime: python3.10
+    Architectures:
+      - arm64  # Use ARM for cost savings with Graviton2
+    Environment:
+      Variables:
+        # API Configuration
+        API_TITLE: Shurly API
+        API_VERSION: 0.1.0
+        API_DESCRIPTION: A modern URL shortener API
+        # Lambda Settings
+        IS_LAMBDA: 'true'
+        DB_POOL_SIZE: '5'
+        DB_MAX_OVERFLOW: '10'
+        DB_POOL_RECYCLE: '3600'
+        DB_SSL_MODE: require
+        # JWT Configuration (override in parameter)
+        JWT_ALGORITHM: HS256
+        JWT_ACCESS_TOKEN_EXPIRE_MINUTES: '10080'
+
+# Stack parameters
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues:
+      - dev
+      - staging
+      - prod
+    Description: Deployment environment
+
+  DatabaseHost:
+    Type: String
+    Description: RDS PostgreSQL endpoint (without port)
+
+  DatabaseName:
+    Type: String
+    Default: shurly
+    Description: PostgreSQL database name
+
+  DatabaseUser:
+    Type: String
+    Default: postgres
+    Description: PostgreSQL master username
+
+  DatabasePassword:
+    Type: String
+    NoEcho: true
+    Description: PostgreSQL master password
+
+  JWTSecretKey:
+    Type: String
+    NoEcho: true
+    Description: JWT secret key for token generation (use openssl rand -hex 32)
+
+  CorsOrigins:
+    Type: String
+    Default: '["https://shurl.griddo.io"]'
+    Description: CORS allowed origins as JSON array string
+
+Resources:
+  # Lambda Function
+  ShurlyFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub shurly-api-${Environment}
+      Description: Shurly URL Shortener API
+      CodeUri: .
+      Handler: lambda_handler.lambda_handler
+      Environment:
+        Variables:
+          # Database Configuration
+          DB_HOST: !Ref DatabaseHost
+          DB_PORT: '5432'
+          DB_USER: !Ref DatabaseUser
+          DB_PASSWORD: !Ref DatabasePassword
+          DB_NAME: !Ref DatabaseName
+          # JWT Configuration
+          JWT_SECRET_KEY: !Ref JWTSecretKey
+          # CORS Configuration
+          CORS_ORIGINS: !Ref CorsOrigins
+      Events:
+        # API Gateway HTTP API Event
+        ApiEvent:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref ShurlyHttpApi
+            Path: /{proxy+}
+            Method: ANY
+        # Root path (for /{short_code} redirects)
+        RootEvent:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref ShurlyHttpApi
+            Path: /
+            Method: ANY
+      # VPC Configuration (if RDS is in VPC)
+      # Uncomment and configure if needed:
+      # VpcConfig:
+      #   SecurityGroupIds:
+      #     - !Ref LambdaSecurityGroup
+      #   SubnetIds:
+      #     - subnet-xxxxx
+      #     - subnet-yyyyy
+      Tags:
+        Project: Shurly
+        Environment: !Ref Environment
+
+  # API Gateway HTTP API
+  ShurlyHttpApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      StageName: !Ref Environment
+      Description: !Sub Shurly API - ${Environment}
+      CorsConfiguration:
+        AllowOrigins:
+          - "*"  # Will be handled by FastAPI CORS middleware
+        AllowMethods:
+          - GET
+          - POST
+          - PUT
+          - DELETE
+          - OPTIONS
+        AllowHeaders:
+          - "*"
+        MaxAge: 600
+      Tags:
+        Project: Shurly
+        Environment: !Ref Environment
+
+  # CloudWatch Log Group for Lambda
+  ShurlyLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/shurly-api-${Environment}
+      RetentionInDays: 30
+
+  # Lambda Execution Role (SAM auto-creates, but we can customize)
+  # Uncomment to customize permissions:
+  # ShurlyFunctionRole:
+  #   Type: AWS::IAM::Role
+  #   Properties:
+  #     AssumeRolePolicyDocument:
+  #       Version: '2012-10-17'
+  #       Statement:
+  #         - Effect: Allow
+  #           Principal:
+  #             Service: lambda.amazonaws.com
+  #           Action: sts:AssumeRole
+  #     ManagedPolicyArns:
+  #       - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+  #       - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
+  #     Tags:
+  #       - Key: Project
+  #         Value: Shurly
+
+# Stack outputs
+Outputs:
+  ApiEndpoint:
+    Description: API Gateway endpoint URL
+    Value: !Sub https://${ShurlyHttpApi}.execute-api.${AWS::Region}.amazonaws.com/${Environment}
+    Export:
+      Name: !Sub ${AWS::StackName}-ApiEndpoint
+
+  FunctionArn:
+    Description: Lambda Function ARN
+    Value: !GetAtt ShurlyFunction.Arn
+    Export:
+      Name: !Sub ${AWS::StackName}-FunctionArn
+
+  FunctionName:
+    Description: Lambda Function Name
+    Value: !Ref ShurlyFunction
+    Export:
+      Name: !Sub ${AWS::StackName}-FunctionName
+
+  ApiId:
+    Description: API Gateway HTTP API ID
+    Value: !Ref ShurlyHttpApi
+    Export:
+      Name: !Sub ${AWS::StackName}-ApiId
