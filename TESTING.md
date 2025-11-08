@@ -114,9 +114,9 @@ npm run dev
 ### 1. Authentication Flow
 
 **Registration:**
-- [ ] Navigate to http://localhost:4321/register
-- [ ] Try registering with invalid email → Should show error
-- [ ] Try password < 8 characters → Should show error
+- [x] Navigate to http://localhost:4232/register
+- [x] Try registering with invalid email → Should show error
+- [x] Try password < 8 characters → Should show error
 - [ ] Register with valid credentials (e.g., test@example.com / password123)
 - [ ] Verify successful registration redirects to login
 
