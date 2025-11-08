@@ -39,6 +39,29 @@ A modern, full-stack URL shortener with analytics and campaign management, built
 
 ## Getting Started
 
+### Quick Start with Docker (Recommended)
+
+The fastest way to test Shurly locally:
+
+```bash
+# Start the entire stack (PostgreSQL + FastAPI)
+docker-compose up -d
+
+# View logs
+docker-compose logs -f api
+
+# Stop when done
+docker-compose down
+```
+
+- **API**: http://localhost:8000
+- **API Docs**: http://localhost:8000/docs
+- **Frontend**: Start separately (see Frontend Setup below)
+
+For comprehensive testing instructions, see **[TESTING.md](TESTING.md)**.
+
+### Manual Setup
+
 ### 1. Clone the Repository
 
 ```bash
@@ -300,6 +323,8 @@ Shurly supports three types of URLs:
 
 ## Testing
 
+### Automated Tests
+
 The project includes a comprehensive test suite with 104+ tests:
 
 - **Unit Tests**: User agent parsing, utility functions
@@ -311,6 +336,20 @@ uv run pytest
 ```
 
 Tests use an in-memory SQLite database for fast execution and isolation.
+
+### Manual Testing
+
+For comprehensive functional and UX testing before deployment, see the complete testing guide:
+
+📋 **[TESTING.md](TESTING.md)** - Step-by-step instructions for:
+- Local setup (Docker or manual)
+- Functional testing checklist (all features)
+- UX testing scenarios (user journeys)
+- API testing with Swagger UI
+- Edge cases and error handling
+- Performance testing
+
+The testing guide includes sample data, test templates, and success criteria to ensure the application is production-ready.
 
 ## Docker Support
 
