@@ -34,10 +34,9 @@ node_modules/
 .git/
 .gitignore
 
-# Documentation
-*.md
+# Documentation (keep README.md as it's needed by pyproject.toml)
 ROADMAP.md
-README.md
+TESTING.md
 
 # Environment files
 .env
