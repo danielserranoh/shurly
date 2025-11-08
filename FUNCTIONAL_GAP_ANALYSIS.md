@@ -115,7 +115,27 @@ Shurly is a **modern, B2B-focused URL shortener** built with FastAPI and Astro, 
 
 ## Critical Gaps (High Priority)
 
-### 1. **QR Code Generation** 🔴 CRITICAL
+### 1. **Social Media Link Preview (Open Graph)** 🔴 CRITICAL
+**Gap:** No Open Graph metadata. Short links look suspicious on social media.
+
+**Business Impact:** ⚠️ **HIGHEST IMPACT**
+- 70-80% lower CTR on social media without rich previews
+- Links look like spam on Twitter/LinkedIn/WhatsApp
+- Cannot customize preview title/image/description
+- **Most short links are shared on social media** - this is mandatory
+
+**Recommendation:** **IMPLEMENT IN PHASE 6**
+- See detailed implementation in Gap #8 below
+- Add Open Graph metadata storage and fetching
+- Create preview endpoint with proper meta tags
+- Dashboard UI for customization
+
+**Effort:** Medium (8 days)
+**Priority:** 🔴 **CRITICAL #1**
+
+---
+
+### 2. **QR Code Generation** 🔴 CRITICAL
 **Gap:** Shurly has no QR code functionality. YOURLS has multiple plugins for this.
 
 **Business Impact:** QR codes are essential for:
@@ -125,18 +145,18 @@ Shurly is a **modern, B2B-focused URL shortener** built with FastAPI and Astro, 
 - Restaurant menus
 - Physical product packaging
 
-**Recommendation:** **IMPLEMENT IMMEDIATELY**
+**Recommendation:** **IMPLEMENT IN PHASE 6**
 - Add QR code generation endpoint
 - Display QR codes in dashboard
 - Allow download in PNG/SVG formats
 - Consider size/quality options
 
 **Effort:** Low (2-3 days)
-**Priority:** CRITICAL
+**Priority:** 🔴 **CRITICAL #2**
 
 ---
 
-### 2. **URL Editing** 🔴 HIGH
+### 3. **URL Editing** 🔴 HIGH
 **Gap:** Cannot modify existing URLs after creation. YOURLS allows editing destination URLs.
 
 **Business Impact:**
@@ -245,7 +265,60 @@ Shurly is a **modern, B2B-focused URL shortener** built with FastAPI and Astro, 
 
 ---
 
-### 8. **Bulk Operations** 🟡 LOW
+### 8. **Social Media Link Preview (Open Graph)** 🔴 CRITICAL
+**Gap:** No Open Graph metadata management. Rebrandly has this as core feature.
+
+**Business Impact:** ⚠️ **EXTREMELY HIGH**
+- Short links look **suspicious** on Twitter/LinkedIn/WhatsApp without preview cards
+- **70-80% lower click-through rates** without rich previews
+- Cannot customize title/description/image shown on social shares
+- Looks **unprofessional** for B2B marketing campaigns
+- Most shortened links are shared on social media - this is **table stakes**
+
+**User Story:**
+> "When I share `shurly.io/campaign2024` on LinkedIn, I want a beautiful preview card with my campaign image, title, and description - not a blank/generic preview that looks like spam."
+
+**Recommendation:** **PHASE 6 - CRITICAL PRIORITY**
+
+**Implementation:**
+1. **Open Graph Metadata Storage** (2 days)
+   - Add `og_title`, `og_description`, `og_image_url` fields to URL model
+   - Optional override per URL (defaults to fetching from destination)
+   - Store metadata in database
+
+2. **Metadata Fetching** (2 days)
+   - Fetch Open Graph tags from destination URL on creation
+   - Parse `<meta property="og:title">`, `og:description`, `og:image`
+   - Cache to avoid repeated fetches
+
+3. **Preview Page Endpoint** (2 days)
+   - Create `GET /{short_code}/preview` route
+   - Render HTML with proper Open Graph tags
+   - Show interstitial page with "Continue to destination" button
+   - Include meta tags for social media crawlers
+
+4. **Dashboard UI** (2 days)
+   - Show preview card in URL details
+   - Edit button to customize title/description/image
+   - Live preview of how it appears on Twitter/LinkedIn
+
+**Example:**
+```html
+<!-- When social media crawlers visit shurly.io/abc123 -->
+<meta property="og:title" content="Summer Sale 2024 - 50% Off" />
+<meta property="og:description" content="Limited time offer on all products" />
+<meta property="og:image" content="https://example.com/sale-banner.jpg" />
+<meta property="og:url" content="https://shurly.io/abc123" />
+```
+
+**Reference:** See `design/Rebrandly-*.png` for UI inspiration
+
+**Effort:** Medium (8 days / 1.5 weeks)
+**Priority:** 🔴 **CRITICAL** - Required for social media marketing
+
+---
+
+### 9. **Bulk Operations** 🟡 LOW
 **Gap:** No bulk delete, bulk import, or bulk edit. YOURLS has plugins.
 
 **Business Impact:**
@@ -259,23 +332,6 @@ Shurly is a **modern, B2B-focused URL shortener** built with FastAPI and Astro, 
 
 **Effort:** Medium (1 week)
 **Priority:** LOW
-
----
-
-### 9. **Link Preview/Thumbnails** 🟢 NICE-TO-HAVE
-**Gap:** No preview pages or thumbnails. YOURLS has plugins.
-
-**Business Impact:**
-- Users can't see destination before clicking
-- Reduces trust in unknown links
-
-**Recommendation:** **PHASE 9+**
-- Optional interstitial preview page
-- Fetch Open Graph images for thumbnails
-- Display preview in dashboard
-
-**Effort:** Medium (1 week)
-**Priority:** NICE-TO-HAVE
 
 ---
 
@@ -368,32 +424,47 @@ Shurly is a **modern, B2B-focused URL shortener** built with FastAPI and Astro, 
 ---
 
 ### **Phase 6: Critical Features** (RECOMMENDED NEXT)
-*Focus: Essential missing features*
+*Focus: Essential missing features for social media & marketing*
 
-**Duration:** 3-4 weeks
+**Duration:** 4-5 weeks
 
-**Features:**
-1. **QR Code Generation** (2-3 days) 🔴 CRITICAL
+**Features (in priority order):**
+
+1. **Social Media Link Preview (Open Graph)** (8 days) 🔴 CRITICAL #1
+   - Add `og_title`, `og_description`, `og_image_url` to URL model
+   - Fetch Open Graph metadata from destination URLs
+   - Create `GET /{code}/preview` endpoint with proper meta tags
+   - Dashboard UI to view/edit preview cards
+   - **Why First:** Most short links are shared on social media - 70-80% CTR impact
+
+2. **QR Code Generation** (2-3 days) 🔴 CRITICAL #2
    - Add `qrcode` Python library
    - Endpoint: `GET /api/urls/{code}/qr?size=300&format=png`
    - Display in dashboard with download button
+   - Customizable colors/sizes (see Rebrandly example)
+   - **Why Second:** Table stakes for any modern URL shortener
 
-2. **URL Editing** (1-2 days) 🔴 HIGH
+3. **URL Editing** (1-2 days) 🔴 HIGH
    - Endpoint: `PATCH /api/urls/{code}`
-   - Update destination URL only
+   - Update destination URL only (keep short code)
    - Add `updated_at` field tracking
+   - Track edit history for audit
 
-3. **Geo-location Integration** (4-5 days) 🟡 MEDIUM
+4. **Geo-location Integration** (4-5 days) 🟡 MEDIUM
    - Integrate IP geolocation API (MaxMind or ipapi.co)
    - Populate country/city on redirect
    - Add map visualization to analytics
 
-4. **Link Expiration** (3-4 days) 🟡 MEDIUM
+5. **Link Expiration** (3-4 days) 🟡 MEDIUM
    - Add `expires_at` optional field
    - Return 410 Gone for expired links
    - Dashboard expiration warnings
 
-**Test Coverage Goal:** Add 30+ tests, reach 70% total coverage
+**Reference Materials:**
+- See `design/Rebrandly-*.png` for Link Preview UI inspiration
+- Rebrandly's approach: customizable OG metadata with live preview
+
+**Test Coverage Goal:** Add 40+ tests, reach 75% total coverage
 
 ---
 
