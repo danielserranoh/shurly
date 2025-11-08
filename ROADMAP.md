@@ -203,10 +203,10 @@ System creates:
 - [ ] Date range selector (deferred - optional feature)
 - [x] Export analytics data (CSV)
 
-### 3.5 User Settings
-- [ ] Profile page (email, password change)
-- [ ] API key management
-- [ ] Account settings
+### 3.5 User Settings ✅
+- [x] Profile page (email, account creation date display)
+- [x] Password change functionality
+- [x] API key management (generate, revoke, copy)
 
 ---
 
@@ -310,7 +310,7 @@ System creates:
 
 ---
 
-## Current Status: Phase 3.4 Complete - Analytics Dashboard Live!
+## Current Status: Phase 3 Complete - Ready for AWS Deployment!
 
 **Last Updated**: 2025-11-08
 
@@ -326,6 +326,7 @@ System creates:
 - ✅ Phase 3.2: Frontend URL management (dashboard, create form, URL cards, details page, delete)
 - ✅ Phase 3.3: Campaign management UI (list, create wizard, details, export, delete)
 - ✅ Phase 3.4: Analytics dashboard UI (overview, charts, geo distribution, CSV export)
+- ✅ Phase 3.5: User settings (profile, password change, API key management)
 - ✅ Fixed critical database session management bug
 - ✅ Test-driven development approach with **104 tests passing (100%)**
 
@@ -363,13 +364,18 @@ System creates:
   * Interactive timeline chart (daily activity last 7 days)
   * Top 5 performing URLs with rankings
   * CSV export for all analytics data
+- User settings (/dashboard/settings):
+  * Profile information display (email, account creation date)
+  * Password change with current password verification
+  * API key generation, display, copy, and revocation
+  * Security warnings and confirmation dialogs
 - Responsive Tailwind design with protected routes
 - Consistent loading states and error handling
 
 **Next Steps**:
-1. User settings page (Phase 3.5) - Optional
-2. AWS deployment preparation (Phase 4)
-3. Testing & optimization (Phase 5)
+1. AWS deployment preparation (Phase 4)
+2. Testing & optimization (Phase 5)
+3. Documentation & handoff (Phase 6)
 
 ---
 
