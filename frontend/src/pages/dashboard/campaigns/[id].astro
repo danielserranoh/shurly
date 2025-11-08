@@ -87,6 +87,43 @@ const title = 'Campaign Details | Shurly';
             </div>
           </div>
 
+          <!-- Analytics Summary -->
+          <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+            <div class="bg-blue-50 border border-blue-200 rounded-lg p-6">
+              <div class="text-sm text-blue-600 mb-1 font-medium">Total Clicks</div>
+              <div id="analytics-clicks" class="text-3xl font-bold text-blue-900">-</div>
+            </div>
+            <div class="bg-green-50 border border-green-200 rounded-lg p-6">
+              <div class="text-sm text-green-600 mb-1 font-medium">Unique Visitors</div>
+              <div id="analytics-unique" class="text-3xl font-bold text-green-900">-</div>
+            </div>
+            <div class="bg-purple-50 border border-purple-200 rounded-lg p-6">
+              <div class="text-sm text-purple-600 mb-1 font-medium">Click-Through Rate</div>
+              <div id="analytics-ctr" class="text-3xl font-bold text-purple-900">-</div>
+            </div>
+            <div class="bg-orange-50 border border-orange-200 rounded-lg p-6">
+              <div class="text-sm text-orange-600 mb-1 font-medium">Avg Clicks/URL</div>
+              <div id="analytics-avg" class="text-3xl font-bold text-orange-900">-</div>
+            </div>
+          </div>
+
+          <!-- Analytics Charts -->
+          <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+            <!-- Daily Timeline Chart -->
+            <div class="bg-white border border-gray-200 rounded-lg p-6">
+              <h2 class="text-lg font-semibold text-gray-900 mb-4">Click Timeline (Last 7 Days)</h2>
+              <div id="timeline-chart" class="h-64"></div>
+            </div>
+
+            <!-- Top Performers -->
+            <div class="bg-white border border-gray-200 rounded-lg p-6">
+              <h2 class="text-lg font-semibold text-gray-900 mb-4">Top Performers</h2>
+              <div id="top-performers" class="space-y-3">
+                <div class="text-center text-gray-500 py-8">Loading...</div>
+              </div>
+            </div>
+          </div>
+
           <!-- CSV Columns -->
           <div class="bg-white border border-gray-200 rounded-lg p-6 mb-6">
             <h2 class="text-lg font-semibold text-gray-900 mb-3">CSV Columns</h2>
@@ -129,6 +166,117 @@ const title = 'Campaign Details | Shurly';
         const errorContainer = document.getElementById('error-container');
         const errorMessage = document.getElementById('error-message');
         const campaignContainer = document.getElementById('campaign-container');
+
+        interface DailyStat {
+          date: string;
+          clicks: number;
+        }
+
+        interface TopPerformer {
+          user_data: Record<string, string>;
+          short_code: string;
+          clicks: number;
+          unique_ips: number;
+          last_clicked: string | null;
+        }
+
+        interface CampaignAnalytics {
+          campaign_id: string;
+          campaign_name: string;
+          original_url: string;
+          total_urls: number;
+          total_clicks: number;
+          unique_ips: number;
+          click_through_rate: number;
+          top_performers: TopPerformer[];
+          daily_timeline: DailyStat[];
+        }
+
+        async function loadAnalytics() {
+          try {
+            const analytics = await apiGet<CampaignAnalytics>(`/api/analytics/campaigns/${campaignId}/summary`, true);
+
+            // Update analytics summary cards
+            document.getElementById('analytics-clicks')!.textContent = analytics.total_clicks.toLocaleString();
+            document.getElementById('analytics-unique')!.textContent = analytics.unique_ips.toLocaleString();
+            document.getElementById('analytics-ctr')!.textContent = `${analytics.click_through_rate}%`;
+
+            const avgClicks = analytics.total_urls > 0 ? (analytics.total_clicks / analytics.total_urls).toFixed(1) : '0';
+            document.getElementById('analytics-avg')!.textContent = avgClicks;
+
+            // Render timeline chart
+            renderTimelineChart(analytics.daily_timeline);
+
+            // Render top performers
+            renderTopPerformers(analytics.top_performers);
+          } catch (error) {
+            console.error('Failed to load analytics:', error);
+            // Don't block the page if analytics fail, just show defaults
+          }
+        }
+
+        function renderTimelineChart(timeline: DailyStat[]) {
+          const chartContainer = document.getElementById('timeline-chart');
+          if (!chartContainer) return;
+
+          const maxClicks = Math.max(...timeline.map(d => d.clicks), 1);
+
+          chartContainer.innerHTML = `
+            <div class="flex items-end justify-between h-full gap-2">
+              ${timeline.map(day => {
+                const height = (day.clicks / maxClicks) * 100;
+                const date = new Date(day.date);
+                const dayLabel = date.toLocaleDateString('en-US', { weekday: 'short' });
+
+                return `
+                  <div class="flex-1 flex flex-col items-center gap-2">
+                    <div class="w-full bg-blue-500 rounded-t hover:bg-blue-600 transition-colors relative group"
+                         style="height: ${height}%">
+                      <div class="absolute -top-8 left-1/2 transform -translate-x-1/2 bg-gray-900 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+                        ${day.clicks} clicks
+                      </div>
+                    </div>
+                    <div class="text-xs text-gray-600">${dayLabel}</div>
+                  </div>
+                `;
+              }).join('')}
+            </div>
+          `;
+        }
+
+        function renderTopPerformers(performers: TopPerformer[]) {
+          const container = document.getElementById('top-performers');
+          if (!container) return;
+
+          if (performers.length === 0) {
+            container.innerHTML = '<div class="text-center text-gray-500 py-8">No clicks yet</div>';
+            return;
+          }
+
+          container.innerHTML = performers.map((performer, index) => {
+            const userData = Object.entries(performer.user_data)
+              .map(([key, value]) => `<span class="text-gray-600">${key}:</span> ${value}`)
+              .join(' • ');
+
+            return `
+              <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                <div class="flex items-center gap-3 flex-1">
+                  <div class="flex items-center justify-center w-8 h-8 rounded-full bg-blue-100 text-blue-600 font-bold text-sm">
+                    ${index + 1}
+                  </div>
+                  <div class="flex-1">
+                    <div class="text-sm font-medium text-gray-900">${userData || 'No data'}</div>
+                    <div class="text-xs text-gray-500 font-mono">${performer.short_code}</div>
+                  </div>
+                </div>
+                <div class="text-right">
+                  <div class="text-lg font-bold text-gray-900">${performer.clicks}</div>
+                  <div class="text-xs text-gray-500">${performer.unique_ips} unique</div>
+                </div>
+              </div>
+            `;
+          }).join('');
+        }
 
         async function loadCampaign() {
           try {
@@ -252,7 +400,9 @@ const title = 'Campaign Details | Shurly';
           }
         });
 
+        // Load campaign and analytics
         loadCampaign();
+        loadAnalytics();
       </script>
     </body>
   </html>
