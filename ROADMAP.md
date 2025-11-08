@@ -212,12 +212,13 @@ System creates:
 
 ## Phase 4: AWS Deployment Preparation
 
-### 4.1 Lambda Adaptation
-- [ ] Install Mangum adapter
-- [ ] Create Lambda handler (`lambda_handler.py`)
-- [ ] Test locally with Lambda emulator (AWS SAM or LocalStack)
-- [ ] Environment variable configuration
-- [ ] Database connection pooling for Lambda
+### 4.1 Lambda Adaptation ✅
+- [x] Install Mangum adapter
+- [x] Create Lambda handler (`lambda_handler.py`)
+- [x] Environment variable configuration (Lambda-specific settings)
+- [x] Database connection pooling for Lambda (configurable pool sizes)
+- [x] Create deployment documentation (DEPLOYMENT.md)
+- [ ] Test locally with Lambda emulator (AWS SAM or LocalStack) - deferred to 4.2
 
 ### 4.2 Infrastructure as Code
 - [ ] Create AWS SAM template or CDK stack
