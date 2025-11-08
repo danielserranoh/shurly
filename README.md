@@ -118,7 +118,7 @@ API_VERSION=0.1.0
 API_DESCRIPTION=A modern URL shortener API
 
 # CORS Configuration (comma-separated list)
-CORS_ORIGINS=http://localhost:4321,http://localhost:3000
+CORS_ORIGINS=http://localhost:4323,http://localhost:3000
 ```
 
 #### Initialize the Database
@@ -151,7 +151,7 @@ npm install
 npm run dev
 ```
 
-The frontend will be available at `http://localhost:4321`
+The frontend will be available at `http://localhost:4323`
 
 ## Development
 
