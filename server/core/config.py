@@ -43,6 +43,13 @@ class Settings(BaseSettings):
     cors_allow_methods: list[str] = ["*"]
     cors_allow_headers: list[str] = ["*"]
 
+    # Lambda/AWS settings
+    is_lambda: bool = False  # Set to True when running in Lambda
+    db_pool_size: int = 10  # Smaller for Lambda (2-5), larger for local (10)
+    db_max_overflow: int = 20  # Smaller for Lambda (5), larger for local (20)
+    db_pool_recycle: int = 3600  # Recycle connections after 1 hour
+    db_ssl_mode: str = "prefer"  # Use "require" for RDS SSL
+
     @field_validator("cors_origins", mode="before")
     @classmethod
     def parse_cors_origins(cls, v: Any) -> list[str]:

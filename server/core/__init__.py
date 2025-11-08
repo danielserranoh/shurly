@@ -4,14 +4,18 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from server.core.config import settings
 
-# Create singleton engine
+# Create singleton engine with Lambda-aware configuration
+# When running in Lambda, use smaller connection pool to avoid overwhelming RDS
 engine = create_engine(
     settings.database_url,
-    pool_recycle=3600,
-    pool_size=10,
-    max_overflow=20,
-    pool_pre_ping=True,
+    pool_recycle=settings.db_pool_recycle,
+    pool_size=settings.db_pool_size,
+    max_overflow=settings.db_max_overflow,
+    pool_pre_ping=True,  # Verify connections before using (important for Lambda)
     echo=False,  # Set to True for SQL logging during development
+    connect_args={
+        "sslmode": settings.db_ssl_mode,  # SSL mode for RDS connections
+    } if settings.db_ssl_mode else {},
 )
 
 # Create SessionLocal class
