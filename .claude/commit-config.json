@@ -1,0 +1,118 @@
+{
+  "scopes": {
+    "tests/": "test",
+    "frontend/": "frontend",
+    "frontend/src/components/": "ui",
+    "frontend/src/pages/": "pages",
+    "frontend/src/utils/": "frontend-utils",
+    "frontend/src/layouts/": "layouts",
+    "server/": "backend",
+    "server/app/": "api",
+    "server/core/": "core",
+    "server/core/models/": "models",
+    "server/schemas/": "schemas",
+    "server/utils/": "utils",
+    "*.md": "docs",
+    "README.md": "docs",
+    "ROADMAP.md": "docs",
+    "TESTING.md": "docs",
+    ".env": "config",
+    "pyproject.toml": "deps",
+    "package.json": "deps",
+    "docker-compose.yml": "infra",
+    "Dockerfile": "infra",
+    ".dockerignore": "infra"
+  },
+  "domain": "Shurly URL Shortener",
+  "description": "Modern B2B URL shortener with campaign management and analytics. Built with FastAPI (backend), Astro (frontend), and PostgreSQL.",
+  "attribution": {
+    "enabled": true,
+    "style": "claude-code"
+  },
+  "architecture": {
+    "style": "Clean Architecture with API-first design",
+    "layers": [
+      "API Layer (FastAPI endpoints in server/app/)",
+      "Core Domain (models, auth, database in server/core/)",
+      "Utils Layer (helper functions in server/utils/)",
+      "Frontend (Astro SSG with client-side auth in frontend/)",
+      "Schemas (Pydantic models for validation in server/schemas/)"
+    ],
+    "notes": [
+      "Backend uses SQLAlchemy ORM with PostgreSQL",
+      "Frontend uses Astro with TypeScript",
+      "JWT authentication with HTTPBearer",
+      "All API endpoints prefixed with /api/",
+      "Tests use in-memory SQLite for isolation"
+    ]
+  },
+  "conventions": {
+    "commit_types": {
+      "feat": "New feature",
+      "fix": "Bug fix",
+      "test": "Add or update tests",
+      "refactor": "Code refactoring without changing behavior",
+      "docs": "Documentation changes",
+      "style": "Code style changes (formatting, whitespace)",
+      "perf": "Performance improvements",
+      "chore": "Build process or auxiliary tool changes",
+      "ci": "CI/CD configuration changes",
+      "build": "Build system or dependency changes",
+      "revert": "Revert a previous commit"
+    },
+    "scope_guidelines": {
+      "api": "Changes to API endpoints (server/app/)",
+      "core": "Changes to core business logic (server/core/)",
+      "models": "Database model changes",
+      "schemas": "Pydantic schema changes",
+      "ui": "Frontend component changes",
+      "pages": "Frontend page changes",
+      "test": "Test suite changes",
+      "docs": "Documentation updates",
+      "config": "Configuration file changes",
+      "deps": "Dependency updates",
+      "infra": "Infrastructure/deployment changes"
+    }
+  },
+  "project_context": {
+    "tech_stack": [
+      "Backend: FastAPI 0.109+, SQLAlchemy 2.0+, Python 3.10+",
+      "Frontend: Astro, TypeScript, Tailwind CSS",
+      "Database: PostgreSQL 14+",
+      "Auth: JWT with python-jose",
+      "Testing: pytest, httpx (132 tests total)"
+    ],
+    "key_features": [
+      "Standard URL shortening (6-char codes)",
+      "Custom URL codes",
+      "Campaign management with CSV imports",
+      "Analytics (daily/weekly stats, geo distribution)",
+      "User authentication and API keys",
+      "User agent detection"
+    ],
+    "development_phase": "Phase 3 complete (backend + frontend), Phase 5.1 in progress (testing)",
+    "testing_approach": "TDD - all 132 tests must pass before commits"
+  },
+  "commit_style": {
+    "message_style": "crisp",
+    "guidelines": [
+      "Keep subject line under 72 characters",
+      "Body should be 2-4 sentences max - focus on WHAT changed and WHY",
+      "Avoid redundant details that are obvious from the diff",
+      "Skip architectural explanations unless critical to understanding",
+      "No lists unless absolutely necessary (3 items max)",
+      "Commits are not documentation - be concise and actionable"
+    ],
+    "examples": {
+      "good": [
+        "feat(api): add campaign export endpoint\n\nEnables CSV export of campaign URLs with user data. Returns 404 if campaign not found.",
+        "fix(auth): handle expired JWT tokens correctly\n\nPreviously threw 500 error, now returns 401 with clear message.",
+        "test: add auth endpoint coverage\n\n28 new tests for registration, login, and API keys. Suite now at 132 tests."
+      ],
+      "bad": [
+        "feat(api): add comprehensive campaign export functionality\n\nThis commit adds a new FastAPI endpoint at /api/campaigns/{id}/export that allows users to export all campaign URLs along with their associated user data in CSV format. The endpoint uses the Campaign model from the Core Domain layer and follows our Clean Architecture pattern. It includes proper error handling for cases where the campaign doesn't exist (404) or the user doesn't have permission (403). The CSV export functionality leverages Python's built-in csv module and returns the data with appropriate headers...",
+        "fix(auth): improve JWT token handling\n\nPreviously, when a JWT token expired, the system would throw an internal server error (500) instead of properly handling the authentication failure. This was happening because the decode_access_token function in server/core/auth.py wasn't catching the JWTError exception properly. Now we catch the exception and return a proper 401 Unauthorized response with a clear error message telling the user their token has expired. This follows the HTTPBearer authentication pattern we use throughout the application..."
+      ]
+    }
+  }
+}
