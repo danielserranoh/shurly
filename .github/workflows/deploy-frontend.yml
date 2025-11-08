@@ -1,0 +1,94 @@
+name: Deploy Frontend to S3
+
+on:
+  push:
+    branches:
+      - main
+      - production
+    paths:
+      - 'frontend/**'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy to'
+        required: true
+        default: 'dev'
+        type: choice
+        options:
+          - dev
+          - staging
+          - prod
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: ${{ github.event.inputs.environment || 'dev' }}
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+        cache-dependency-path: frontend/package-lock.json
+
+    - name: Install frontend dependencies
+      working-directory: frontend
+      run: npm ci
+
+    - name: Build frontend
+      working-directory: frontend
+      env:
+        PUBLIC_API_URL: ${{ secrets.API_ENDPOINT }}
+      run: npm run build
+
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: eu-west-1
+
+    - name: Deploy to S3
+      env:
+        ENVIRONMENT: ${{ github.event.inputs.environment || 'dev' }}
+      run: |
+        BUCKET_NAME="shurly-frontend-$ENVIRONMENT"
+
+        # Sync built files to S3
+        aws s3 sync frontend/dist/ s3://$BUCKET_NAME \
+          --delete \
+          --cache-control "public, max-age=31536000, immutable" \
+          --exclude "*.html"
+
+        # Upload HTML files with different cache settings
+        aws s3 sync frontend/dist/ s3://$BUCKET_NAME \
+          --delete \
+          --cache-control "public, max-age=0, must-revalidate" \
+          --exclude "*" \
+          --include "*.html"
+
+        echo "✅ Frontend deployed to S3: s3://$BUCKET_NAME"
+
+    - name: Invalidate CloudFront cache
+      if: vars.CLOUDFRONT_DISTRIBUTION_ID != ''
+      run: |
+        aws cloudfront create-invalidation \
+          --distribution-id ${{ vars.CLOUDFRONT_DISTRIBUTION_ID }} \
+          --paths "/*"
+
+        echo "✅ CloudFront cache invalidated"
+
+    - name: Deployment summary
+      run: |
+        ENVIRONMENT=${{ github.event.inputs.environment || 'dev' }}
+        echo "🚀 Frontend deployed successfully!"
+        echo "Environment: $ENVIRONMENT"
+        echo "S3 Bucket: shurly-frontend-$ENVIRONMENT"
+        if [ -n "${{ vars.CLOUDFRONT_DISTRIBUTION_ID }}" ]; then
+          echo "CloudFront: Cache invalidated"
+        fi

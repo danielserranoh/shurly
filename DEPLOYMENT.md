@@ -321,6 +321,42 @@ If you prefer manual setup via AWS Console or CLI:
 
 ---
 
+## Phase 4.4: CI/CD Pipeline (Optional)
+
+For automated deployments with GitHub Actions, see the comprehensive guide:
+
+📋 **[CI/CD Setup Guide](CI_CD_SETUP.md)**
+
+The CI/CD pipeline provides:
+- ✅ **Automated testing** on every push/PR
+- ✅ **Automated backend deployment** to AWS Lambda
+- ✅ **Automated frontend deployment** to S3/CloudFront
+- ✅ **Environment-specific deployments** (dev, staging, prod)
+- ✅ **Manual deployment triggers** via GitHub UI
+
+### Quick Setup
+
+1. **Add GitHub Secrets**:
+   - Go to **Settings → Secrets and variables → Actions**
+   - Add: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `DB_HOST`, `DB_PASSWORD`, `JWT_SECRET_KEY`, `CORS_ORIGINS`
+
+2. **Trigger Deployment**:
+   ```bash
+   git push origin main  # Automatic deployment
+   ```
+
+   Or use manual trigger in GitHub Actions tab.
+
+### Workflows
+
+- **Test** (`.github/workflows/test.yml`): Runs tests and linting
+- **Deploy Backend** (`.github/workflows/deploy-backend.yml`): Deploys Lambda to AWS
+- **Deploy Frontend** (`.github/workflows/deploy-frontend.yml`): Deploys to S3
+
+See [CI_CD_SETUP.md](CI_CD_SETUP.md) for complete instructions.
+
+---
+
 ## Option 2: Manual Deployment Steps
 
 ### Step 1: Create RDS PostgreSQL Database (Manual)

@@ -1,0 +1,100 @@
+name: Deploy Backend to AWS
+
+on:
+  push:
+    branches:
+      - main
+      - production
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy to'
+        required: true
+        default: 'dev'
+        type: choice
+        options:
+          - dev
+          - staging
+          - prod
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: ${{ github.event.inputs.environment || 'dev' }}
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python 3.10
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.10'
+
+    - name: Install uv
+      run: |
+        curl -LsSf https://astral.sh/uv/install.sh | sh
+        echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+
+    - name: Install dependencies
+      run: |
+        uv sync
+
+    - name: Run tests
+      run: |
+        uv run pytest
+
+    - name: Lint with ruff
+      run: |
+        uv run ruff check .
+        uv run ruff format --check .
+
+    - name: Set up AWS SAM CLI
+      uses: aws-actions/setup-sam@v2
+      with:
+        use-installer: true
+
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: eu-west-1
+
+    - name: Build SAM application
+      run: |
+        sam build --use-container
+
+    - name: Deploy to AWS
+      env:
+        ENVIRONMENT: ${{ github.event.inputs.environment || 'dev' }}
+      run: |
+        sam deploy \
+          --config-env $ENVIRONMENT \
+          --no-confirm-changeset \
+          --no-fail-on-empty-changeset \
+          --parameter-overrides \
+            "Environment=$ENVIRONMENT \
+             DatabaseHost=${{ secrets.DB_HOST }} \
+             DatabasePassword=${{ secrets.DB_PASSWORD }} \
+             JWTSecretKey=${{ secrets.JWT_SECRET_KEY }} \
+             CorsOrigins=${{ secrets.CORS_ORIGINS }}"
+
+    - name: Get API endpoint
+      run: |
+        STACK_NAME="shurly-${{ github.event.inputs.environment || 'dev' }}"
+        API_ENDPOINT=$(aws cloudformation describe-stacks \
+          --stack-name $STACK_NAME \
+          --query "Stacks[0].Outputs[?OutputKey=='ApiEndpoint'].OutputValue" \
+          --output text)
+        echo "🚀 API deployed to: $API_ENDPOINT"
+        echo "API_ENDPOINT=$API_ENDPOINT" >> $GITHUB_ENV
+
+    - name: Test deployment
+      run: |
+        # Wait a few seconds for deployment to stabilize
+        sleep 10
+
+        # Test the API health
+        curl -f ${{ env.API_ENDPOINT }}/docs || echo "⚠️  API docs not responding yet"
