@@ -62,6 +62,31 @@ class Settings(BaseSettings):
                 return [v]
         return v
 
+    # Tags configuration
+    predefined_tags: dict[str, dict] = {
+        "channels": {
+            "color": "blue-500",
+            "tags": ["email", "social", "sms", "push", "direct-mail"]
+        },
+        "intent": {
+            "color": "green-500",
+            "tags": ["awareness", "consideration", "conversion", "retention"]
+        },
+        "content-type": {
+            "color": "purple-500",
+            "tags": ["blog", "landing-page", "product", "promotion", "event"]
+        },
+        "audience": {
+            "color": "orange-500",
+            "tags": ["b2b", "b2c", "enterprise", "smb", "consumer"]
+        },
+        "lifecycle": {
+            "color": "pink-500",
+            "tags": ["onboarding", "nurture", "upsell", "reactivation", "churn"]
+        }
+    }
+    user_tag_color: str = "gray-500"  # Default color for user-created tags
+
 
 # Global settings instance
 settings = Settings()

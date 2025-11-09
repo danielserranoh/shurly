@@ -1,12 +1,16 @@
 """Schemas for URL shortening."""
 
 from datetime import datetime
+from typing import TYPE_CHECKING
 from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator
 
 from server.core.models.url import URLType
 from server.utils.url import is_valid_url
+
+if TYPE_CHECKING:
+    from server.schemas.tag import TagResponse
 
 
 class URLCreate(BaseModel):
@@ -112,6 +116,9 @@ class URLResponse(BaseModel):
 
     # Analytics
     last_click_at: datetime | None = None
+
+    # Tags
+    tags: list["TagResponse"] = []
 
     # Audit fields
     created_at: datetime

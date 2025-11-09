@@ -1,11 +1,15 @@
 """Schemas for campaign management."""
 
 from datetime import datetime
+from typing import TYPE_CHECKING
 from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator
 
 from server.utils.url import is_valid_url
+
+if TYPE_CHECKING:
+    from server.schemas.tag import TagResponse
 
 
 class CampaignCreate(BaseModel):
@@ -51,6 +55,7 @@ class CampaignResponse(BaseModel):
     csv_columns: list[str]
     url_count: int
     created_at: datetime
+    tags: list["TagResponse"] = []
     urls: list[CampaignURLResponse] | None = None  # Only included in detail view
 
     model_config = {"from_attributes": True}

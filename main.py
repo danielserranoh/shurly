@@ -4,6 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from server.app import api_router
 from server.app.urls import redirect_router
+from server.core import get_db
 from server.core.config import settings
 
 
@@ -29,6 +30,17 @@ def create_app() -> FastAPI:
 
     # Include redirect endpoint at root level (/{short_code})
     app.include_router(redirect_router)
+
+    @app.on_event("startup")
+    async def startup_event():
+        """Initialize predefined tags on app startup."""
+        from server.utils.tags import initialize_predefined_tags
+
+        db = next(get_db())
+        try:
+            initialize_predefined_tags(db)
+        finally:
+            db.close()
 
     return app
 

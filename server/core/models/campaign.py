@@ -27,6 +27,7 @@ class Campaign(Base):
     # Relationships
     creator = relationship("User", back_populates="campaigns")
     urls = relationship("URL", back_populates="campaign", cascade="all, delete-orphan")
+    tags = relationship("Tag", secondary="campaign_tags", back_populates="campaigns")
 
     def __repr__(self):
         return f"<Campaign(id={self.id}, name={self.name})>"

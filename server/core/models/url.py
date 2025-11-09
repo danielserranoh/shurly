@@ -54,6 +54,7 @@ class URL(Base):
     creator = relationship("User", back_populates="urls")
     campaign = relationship("Campaign", back_populates="urls")
     visits = relationship("Visitor", back_populates="url", cascade="all, delete-orphan")
+    tags = relationship("Tag", secondary="url_tags", back_populates="urls")
 
     def __repr__(self):
         return f"<URL(short_code={self.short_code}, type={self.url_type})>"
