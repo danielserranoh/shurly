@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <!-- Open Graph Tags -->
+    <meta property="og:title" content="{{ og_title }}" />
+    <meta property="og:description" content="{{ og_description }}" />
+    {% if og_image_url %}
+    <meta property="og:image" content="{{ og_image_url }}" />
+    {% endif %}
+    <meta property="og:url" content="{{ short_url }}" />
+    <meta property="og:type" content="website" />
+
+    <!-- Twitter Card Tags -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="{{ og_title }}" />
+    <meta name="twitter:description" content="{{ og_description }}" />
+    {% if og_image_url %}
+    <meta name="twitter:image" content="{{ og_image_url }}" />
+    {% endif %}
+
+    <!-- Standard Meta Tags -->
+    <title>{{ og_title }}</title>
+    <meta name="description" content="{{ og_description }}" />
+
+    <!-- Auto-redirect after 2 seconds -->
+    <meta http-equiv="refresh" content="2;url={{ destination_url }}" />
+
+    <style>
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        .container {
+            background: white;
+            border-radius: 12px;
+            padding: 2rem;
+            max-width: 500px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            text-align: center;
+        }
+        .logo {
+            font-size: 2rem;
+            font-weight: bold;
+            color: #667eea;
+            margin-bottom: 1rem;
+        }
+        h1 {
+            font-size: 1.5rem;
+            color: #333;
+            margin-bottom: 0.5rem;
+        }
+        p {
+            color: #666;
+            margin-bottom: 1.5rem;
+        }
+        .btn {
+            display: inline-block;
+            background: #667eea;
+            color: white;
+            padding: 0.75rem 2rem;
+            border-radius: 6px;
+            text-decoration: none;
+            font-weight: 500;
+        }
+        .spinner {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(102, 126, 234, 0.3);
+            border-radius: 50%;
+            border-top-color: #667eea;
+            animation: spin 1s linear infinite;
+            margin-left: 10px;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="logo">shurl</div>
+        <h1>{{ og_title }}</h1>
+        <p>{{ og_description }}</p>
+        <a href="{{ destination_url }}" class="btn">
+            Continue to destination
+            <span class="spinner"></span>
+        </a>
+        <p style="font-size: 0.875rem; color: #999; margin-top: 1rem;">
+            Redirecting automatically in 2 seconds...
+        </p>
+    </div>
+</body>
+</html>
