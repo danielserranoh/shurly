@@ -199,13 +199,167 @@ The SAM deployment creates:
 - API Gateway HTTP API: ~$0.50/month
 - CloudWatch Logs: ~$0.50/month (30-day retention)
 
-**Note**: RDS PostgreSQL (~$12-15/month) must be created separately.
+**Note**: RDS PostgreSQL (~€10-12/month in eu-west-1) must be created separately.
+
+---
+
+## Phase 4.3: RDS PostgreSQL Database Setup
+
+Before deploying the Lambda function, you need to create an RDS PostgreSQL database. This section provides automated scripts and manual instructions.
+
+### Automated Setup (Recommended)
+
+We provide a script that automates the entire RDS creation process:
+
+```bash
+./scripts/create_rds.sh
+```
+
+This script will:
+1. ✅ Create RDS instance in **eu-west-1** (Ireland - cheapest EU region)
+2. ✅ Configure security group for PostgreSQL access
+3. ✅ Enable encryption at rest and SSL connections
+4. ✅ Set up automated backups (7-day retention)
+5. ✅ Wait for instance to become available
+6. ✅ Return the database endpoint
+
+**What you need**:
+- AWS CLI configured with credentials
+- A secure password (min 8 characters)
+- ~10 minutes for RDS to become available
+
+**Cost**: ~€10-12/month for db.t4g.micro
+
+### Step-by-Step: Automated RDS Creation
+
+1. **Run the creation script**:
+   ```bash
+   cd /path/to/shurly
+   ./scripts/create_rds.sh
+   ```
+
+2. **Enter PostgreSQL password** when prompted:
+   - Minimum 8 characters
+   - Mix of letters, numbers, and symbols recommended
+   - Save this password securely!
+
+3. **Wait for completion** (~5-10 minutes):
+   - The script will wait for the RDS instance to become available
+   - You'll see progress updates
+
+4. **Save the endpoint** from the output:
+   ```
+   Endpoint: shurly-dev-db.xxxxx.eu-west-1.rds.amazonaws.com
+   ```
+
+### Test Database Connection
+
+After RDS creation, test the connection:
+
+```bash
+./scripts/test_db_connection.sh shurly-dev-db.xxxxx.eu-west-1.rds.amazonaws.com
+```
+
+This will verify:
+- ✅ Network connectivity (port 5432)
+- ✅ PostgreSQL authentication
+- ✅ Database exists
+
+### Initialize Database Tables
+
+Option 1: **Automatic** (recommended):
+- Tables are auto-created when Lambda first runs
+- SQLAlchemy creates all tables on first database connection
+
+Option 2: **Manual initialization**:
+```bash
+python scripts/init_database.py shurly-dev-db.xxxxx.eu-west-1.rds.amazonaws.com <your-password>
+```
+
+This creates all tables (users, urls, campaigns, visitors) before deployment.
+
+### RDS Configuration Details
+
+The automated script creates:
+- **Instance**: db.t4g.micro (ARM-based, 2 vCPU, 1GB RAM)
+- **Storage**: 20GB gp3 SSD
+- **Engine**: PostgreSQL 14.10
+- **Backup**: 7-day automated backups
+- **Encryption**: At rest (default AWS encryption)
+- **SSL**: Required for all connections
+- **Performance Insights**: Enabled (7-day retention)
+- **Deletion Protection**: Enabled
+- **Public Access**: Yes (for dev - can be locked down later)
+
+### Security Group Rules
+
+The script creates a security group with:
+- **Inbound**: PostgreSQL (5432) from 0.0.0.0/0 (open for dev)
+- **Outbound**: All traffic
+
+**For production**: Lock down to Lambda security group only.
+
+### Troubleshooting RDS Setup
+
+**Issue**: Connection timeout
+- **Solution**: Wait 5-10 minutes after creation
+- RDS instances take time to fully initialize
+
+**Issue**: Authentication failed
+- **Solution**: Double-check password
+- Password is case-sensitive
+
+**Issue**: Database not found
+- **Solution**: The database name is `shurly` (created automatically)
+
+**Issue**: SSL error
+- **Solution**: Ensure `sslmode=require` in connection string
+
+### Manual RDS Creation (Alternative)
+
+If you prefer manual setup via AWS Console or CLI:
+
+---
+
+## Phase 4.4: CI/CD Pipeline (Optional)
+
+For automated deployments with GitHub Actions, see the comprehensive guide:
+
+📋 **[CI/CD Setup Guide](CI_CD_SETUP.md)**
+
+The CI/CD pipeline provides:
+- ✅ **Automated testing** on every push/PR
+- ✅ **Automated backend deployment** to AWS Lambda
+- ✅ **Automated frontend deployment** to S3/CloudFront
+- ✅ **Environment-specific deployments** (dev, staging, prod)
+- ✅ **Manual deployment triggers** via GitHub UI
+
+### Quick Setup
+
+1. **Add GitHub Secrets**:
+   - Go to **Settings → Secrets and variables → Actions**
+   - Add: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `DB_HOST`, `DB_PASSWORD`, `JWT_SECRET_KEY`, `CORS_ORIGINS`
+
+2. **Trigger Deployment**:
+   ```bash
+   git push origin main  # Automatic deployment
+   ```
+
+   Or use manual trigger in GitHub Actions tab.
+
+### Workflows
+
+- **Test** (`.github/workflows/test.yml`): Runs tests and linting
+- **Deploy Backend** (`.github/workflows/deploy-backend.yml`): Deploys Lambda to AWS
+- **Deploy Frontend** (`.github/workflows/deploy-frontend.yml`): Deploys to S3
+
+See [CI_CD_SETUP.md](CI_CD_SETUP.md) for complete instructions.
 
 ---
 
 ## Option 2: Manual Deployment Steps
 
-### Step 1: Create RDS PostgreSQL Database
+### Step 1: Create RDS PostgreSQL Database (Manual)
 
 1. **Create RDS Instance**:
    ```bash
