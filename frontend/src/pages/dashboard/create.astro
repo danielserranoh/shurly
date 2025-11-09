@@ -66,6 +66,109 @@ import ProtectedRoute from '@/components/ProtectedRoute.astro';
               />
             </div>
 
+            <!-- Title Field (Phase 3.6) -->
+            <div>
+              <label for="title" class="block text-sm font-medium text-gray-700 mb-2">
+                Title <span class="text-gray-400 text-xs">(optional)</span>
+              </label>
+              <input
+                type="text"
+                id="title"
+                name="title"
+                maxlength="255"
+                placeholder="My Marketing Campaign"
+                class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+              <p class="mt-1 text-xs text-gray-500">
+                A friendly name to help you identify this URL
+              </p>
+            </div>
+
+            <!-- Forward Parameters Toggle (Phase 3.6) -->
+            <div>
+              <label class="flex items-center justify-between p-4 border border-gray-300 rounded-lg hover:bg-gray-50 cursor-pointer">
+                <div>
+                  <span class="text-sm font-medium text-gray-700">Forward Query Parameters</span>
+                  <p class="text-xs text-gray-500 mt-1">
+                    Append UTM tags and other query parameters to the destination URL
+                  </p>
+                </div>
+                <input
+                  type="checkbox"
+                  id="forward-parameters"
+                  name="forward-parameters"
+                  checked
+                  class="h-5 w-5 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                />
+              </label>
+            </div>
+
+            <!-- Advanced: Open Graph Fields (Phase 3.7) -->
+            <div class="border-t border-gray-200 pt-6">
+              <button
+                type="button"
+                id="toggle-og-fields"
+                class="flex items-center gap-2 text-sm font-medium text-gray-700 hover:text-blue-600 transition-colors"
+              >
+                <svg class="w-4 h-4 transition-transform" id="og-chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+                </svg>
+                Social Media Preview (Advanced)
+              </button>
+
+              <div id="og-fields" class="hidden mt-4 space-y-4 pl-6 border-l-2 border-blue-200">
+                <p class="text-xs text-gray-500">
+                  Customize how your link appears when shared on social media. Leave blank to auto-fetch from the destination URL.
+                </p>
+
+                <!-- OG Title -->
+                <div>
+                  <label for="og-title" class="block text-sm font-medium text-gray-700 mb-2">
+                    Preview Title
+                  </label>
+                  <input
+                    type="text"
+                    id="og-title"
+                    name="og-title"
+                    maxlength="255"
+                    placeholder="Amazing Product - Limited Time Offer"
+                    class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                  />
+                </div>
+
+                <!-- OG Description -->
+                <div>
+                  <label for="og-description" class="block text-sm font-medium text-gray-700 mb-2">
+                    Preview Description
+                  </label>
+                  <textarea
+                    id="og-description"
+                    name="og-description"
+                    rows="2"
+                    placeholder="Get 50% off all products this week only! Free shipping on orders over $50."
+                    class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                  ></textarea>
+                </div>
+
+                <!-- OG Image URL -->
+                <div>
+                  <label for="og-image" class="block text-sm font-medium text-gray-700 mb-2">
+                    Preview Image URL
+                  </label>
+                  <input
+                    type="url"
+                    id="og-image"
+                    name="og-image"
+                    placeholder="https://example.com/images/product.jpg"
+                    class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                  />
+                  <p class="mt-1 text-xs text-gray-500">
+                    Recommended: 1200x630px for best results on all platforms
+                  </p>
+                </div>
+              </div>
+            </div>
+
             <!-- Custom Code Field (Hidden by default) -->
             <div id="custom-code-field" class="hidden">
               <label for="custom-code" class="block text-sm font-medium text-gray-700 mb-2">
@@ -193,6 +296,23 @@ import ProtectedRoute from '@/components/ProtectedRoute.astro';
     const dashboardNavbar = document.getElementById('dashboard-navbar') as HTMLDivElement;
 
     let isCustomMode = false;
+    let ogFieldsVisible = false;
+
+    // Toggle Open Graph fields
+    const toggleOgBtn = document.getElementById('toggle-og-fields') as HTMLButtonElement;
+    const ogFields = document.getElementById('og-fields') as HTMLDivElement;
+    const ogChevron = document.getElementById('og-chevron') as SVGElement;
+
+    toggleOgBtn.addEventListener('click', () => {
+      ogFieldsVisible = !ogFieldsVisible;
+      if (ogFieldsVisible) {
+        ogFields.classList.remove('hidden');
+        ogChevron.style.transform = 'rotate(180deg)';
+      } else {
+        ogFields.classList.add('hidden');
+        ogChevron.style.transform = 'rotate(0deg)';
+      }
+    });
 
     // Load user info and render navbar
     async function loadUserInfo() {
@@ -317,6 +437,11 @@ import ProtectedRoute from '@/components/ProtectedRoute.astro';
       const formData = new FormData(form);
       const url = formData.get('url') as string;
       const customCode = formData.get('custom-code') as string;
+      const title = formData.get('title') as string;
+      const forwardParameters = (document.getElementById('forward-parameters') as HTMLInputElement).checked;
+      const ogTitle = formData.get('og-title') as string;
+      const ogDescription = formData.get('og-description') as string;
+      const ogImage = formData.get('og-image') as string;
 
       if (!url) {
         showError('Please enter a URL');
@@ -328,16 +453,39 @@ import ProtectedRoute from '@/components/ProtectedRoute.astro';
       try {
         let response: CreateURLResponse;
 
+        // Build request payload with Phase 3.6 and 3.7 fields
+        const payload: any = {
+          url,
+          forward_parameters: forwardParameters,
+        };
+
+        // Add title if provided (Phase 3.6)
+        if (title) {
+          payload.title = title;
+        }
+
+        // Add Open Graph fields if provided (Phase 3.7)
+        if (ogTitle) {
+          payload.og_title = ogTitle;
+        }
+        if (ogDescription) {
+          payload.og_description = ogDescription;
+        }
+        if (ogImage) {
+          payload.og_image_url = ogImage;
+        }
+
         if (isCustomMode && customCode) {
+          payload.custom_code = customCode;
           response = await apiPost<CreateURLResponse>(
             '/api/urls/custom',
-            { url, custom_code: customCode },
+            payload,
             true
           );
         } else {
           response = await apiPost<CreateURLResponse>(
             '/api/urls',
-            { url },
+            payload,
             true
           );
         }
