@@ -961,6 +961,787 @@ After implementation:
 
 ---
 
+## Phase 3.7: Social Media Link Preview (Open Graph) 🔴 CRITICAL
+
+**Why This is Critical**: 70-80% lower CTR on social media without rich previews. Most shortened links are shared on social media - this is table stakes.
+
+**Estimated Time**: 8-10 days
+**Priority**: CRITICAL #1 for social media marketing
+**Reference**:
+- FUNCTIONAL_GAP_ANALYSIS.md Gap #1
+- design/Rebrandly-Dashboard.png (shows preview card UI)
+- design/Rebrandly-newlink.png (shows preview during creation)
+
+---
+
+### Task 1: Database Schema for Open Graph Metadata
+
+**Effort**: 1 hour
+
+#### Migration Script
+
+Create `migrations/add_opengraph_fields.sql`:
+
+```sql
+-- Add Open Graph metadata fields to urls table
+ALTER TABLE urls ADD COLUMN og_title VARCHAR(255);
+ALTER TABLE urls ADD COLUMN og_description TEXT;
+ALTER TABLE urls ADD COLUMN og_image_url TEXT;
+ALTER TABLE urls ADD COLUMN og_fetched_at TIMESTAMP;
+
+-- Add index for fetched_at to find stale metadata
+CREATE INDEX idx_urls_og_fetched_at ON urls(og_fetched_at)
+WHERE og_fetched_at IS NOT NULL;
+
+-- Add comment for documentation
+COMMENT ON COLUMN urls.og_title IS 'Open Graph title for social media previews';
+COMMENT ON COLUMN urls.og_description IS 'Open Graph description for social media';
+COMMENT ON COLUMN urls.og_image_url IS 'Open Graph image URL for social media cards';
+COMMENT ON COLUMN urls.og_fetched_at IS 'When metadata was last fetched from destination';
+```
+
+#### Model Update
+
+Update `server/core/models/url.py`:
+
+```python
+from datetime import datetime
+
+class URL(Base):
+    __tablename__ = "urls"
+
+    # ... existing fields ...
+    title = Column(String(255), nullable=True)
+
+    # Open Graph metadata for social media previews
+    og_title = Column(String(255), nullable=True)
+    og_description = Column(Text, nullable=True)
+    og_image_url = Column(Text, nullable=True)
+    og_fetched_at = Column(DateTime, nullable=True)
+
+    # ... rest of model ...
+```
+
+---
+
+### Task 2: Open Graph Metadata Fetcher Utility
+
+**Effort**: 4-5 hours (includes error handling and testing)
+
+#### Install Dependencies
+
+Add to `requirements.txt`:
+```
+beautifulsoup4==4.12.3
+httpx==0.27.0
+```
+
+#### Create Fetcher Utility
+
+Create `server/utils/opengraph.py`:
+
+```python
+"""Open Graph metadata fetching utilities."""
+
+import httpx
+from bs4 import BeautifulSoup
+from typing import Dict, Optional
+import logging
+
+logger = logging.getLogger(__name__)
+
+class OpenGraphMetadata:
+    """Open Graph metadata container."""
+
+    def __init__(
+        self,
+        title: Optional[str] = None,
+        description: Optional[str] = None,
+        image_url: Optional[str] = None,
+        url: Optional[str] = None,
+    ):
+        self.title = title
+        self.description = description
+        self.image_url = image_url
+        self.url = url
+
+    def to_dict(self) -> Dict[str, Optional[str]]:
+        return {
+            "og_title": self.title,
+            "og_description": self.description,
+            "og_image_url": self.image_url,
+            "og_url": self.url,
+        }
+
+    def has_metadata(self) -> bool:
+        """Check if any metadata was found."""
+        return any([self.title, self.description, self.image_url])
+
+
+async def fetch_opengraph_metadata(url: str, timeout: int = 5) -> OpenGraphMetadata:
+    """
+    Fetch Open Graph metadata from a URL.
+
+    Args:
+        url: Destination URL to fetch metadata from
+        timeout: Request timeout in seconds (default: 5)
+
+    Returns:
+        OpenGraphMetadata object with parsed data
+
+    Example:
+        >>> metadata = await fetch_opengraph_metadata("https://example.com")
+        >>> print(metadata.title)  # "Example Domain"
+    """
+    try:
+        async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
+            response = await client.get(url, headers={
+                "User-Agent": "Shurly/1.0 (+https://shurl.griddo.io; Link Preview Bot)"
+            })
+
+            # Only parse successful responses
+            if response.status_code != 200:
+                logger.warning(f"Failed to fetch {url}: HTTP {response.status_code}")
+                return OpenGraphMetadata()
+
+            # Only parse HTML content
+            content_type = response.headers.get("content-type", "")
+            if "text/html" not in content_type:
+                logger.info(f"Skipping non-HTML content: {content_type}")
+                return OpenGraphMetadata()
+
+            # Parse HTML
+            soup = BeautifulSoup(response.text, "html.parser")
+
+            # Extract Open Graph tags
+            og_title = _extract_og_tag(soup, "og:title")
+            og_description = _extract_og_tag(soup, "og:description")
+            og_image = _extract_og_tag(soup, "og:image")
+            og_url = _extract_og_tag(soup, "og:url")
+
+            # Fallback to standard meta tags if OG tags missing
+            if not og_title:
+                og_title = _extract_meta_tag(soup, "title") or _extract_title_tag(soup)
+
+            if not og_description:
+                og_description = _extract_meta_tag(soup, "description")
+
+            return OpenGraphMetadata(
+                title=og_title,
+                description=og_description,
+                image_url=og_image,
+                url=og_url or url,
+            )
+
+    except httpx.TimeoutException:
+        logger.warning(f"Timeout fetching metadata from {url}")
+        return OpenGraphMetadata()
+
+    except Exception as e:
+        logger.error(f"Error fetching metadata from {url}: {str(e)}")
+        return OpenGraphMetadata()
+
+
+def _extract_og_tag(soup: BeautifulSoup, property_name: str) -> Optional[str]:
+    """Extract Open Graph meta tag content."""
+    tag = soup.find("meta", property=property_name)
+    if tag and tag.get("content"):
+        return tag["content"].strip()
+    return None
+
+
+def _extract_meta_tag(soup: BeautifulSoup, name: str) -> Optional[str]:
+    """Extract standard meta tag content."""
+    tag = soup.find("meta", attrs={"name": name})
+    if tag and tag.get("content"):
+        return tag["content"].strip()
+    return None
+
+
+def _extract_title_tag(soup: BeautifulSoup) -> Optional[str]:
+    """Extract <title> tag content as fallback."""
+    title_tag = soup.find("title")
+    if title_tag and title_tag.string:
+        return title_tag.string.strip()
+    return None
+
+
+def is_social_media_crawler(user_agent: str) -> bool:
+    """
+    Detect if User-Agent is a social media crawler.
+
+    Social media crawlers need to see the preview page with OG tags,
+    while regular browsers should get direct redirects.
+
+    Args:
+        user_agent: User-Agent header string
+
+    Returns:
+        True if social media crawler, False otherwise
+    """
+    if not user_agent:
+        return False
+
+    ua_lower = user_agent.lower()
+
+    # Social media crawler identifiers
+    crawlers = [
+        "twitterbot",           # Twitter/X
+        "facebookexternalhit",  # Facebook
+        "linkedinbot",          # LinkedIn
+        "whatsapp",             # WhatsApp
+        "slackbot",             # Slack
+        "discordbot",           # Discord
+        "telegrambot",          # Telegram
+        "skypeuripreview",      # Skype
+        "pinterest",            # Pinterest
+        "redditbot",            # Reddit
+        "slurp",                # Yahoo (sometimes used by messaging apps)
+    ]
+
+    return any(crawler in ua_lower for crawler in crawlers)
+```
+
+#### Tests for Fetcher
+
+Add to `tests/test_opengraph.py` (new file):
+
+```python
+"""Tests for Open Graph metadata fetching."""
+
+import pytest
+from server.utils.opengraph import (
+    fetch_opengraph_metadata,
+    is_social_media_crawler,
+    OpenGraphMetadata,
+)
+
+
+class TestOpenGraphMetadata:
+    """Test OpenGraphMetadata class."""
+
+    def test_to_dict(self):
+        metadata = OpenGraphMetadata(
+            title="Test Title",
+            description="Test Description",
+            image_url="https://example.com/image.jpg",
+        )
+
+        result = metadata.to_dict()
+        assert result["og_title"] == "Test Title"
+        assert result["og_description"] == "Test Description"
+        assert result["og_image_url"] == "https://example.com/image.jpg"
+
+    def test_has_metadata_true(self):
+        metadata = OpenGraphMetadata(title="Test")
+        assert metadata.has_metadata() is True
+
+    def test_has_metadata_false(self):
+        metadata = OpenGraphMetadata()
+        assert metadata.has_metadata() is False
+
+
+class TestSocialMediaCrawlerDetection:
+    """Test social media crawler detection."""
+
+    @pytest.mark.parametrize("user_agent,expected", [
+        ("Mozilla/5.0 (compatible; Twitterbot/1.0)", True),
+        ("facebookexternalhit/1.1", True),
+        ("LinkedInBot/1.0", True),
+        ("WhatsApp/2.0", True),
+        ("Slackbot-LinkExpanding 1.0", True),
+        ("Mozilla/5.0 (Windows NT 10.0; Win64; x64)", False),
+        ("Mozilla/5.0 (iPhone; CPU iPhone OS 14_0)", False),
+        ("curl/7.68.0", False),
+        ("", False),
+    ])
+    def test_crawler_detection(self, user_agent, expected):
+        assert is_social_media_crawler(user_agent) == expected
+
+
+@pytest.mark.asyncio
+class TestFetchOpenGraphMetadata:
+    """Test metadata fetching (requires mocking)."""
+
+    async def test_fetch_timeout(self, monkeypatch):
+        """Test timeout handling."""
+        # Mock httpx to raise timeout
+        import httpx
+
+        async def mock_get(*args, **kwargs):
+            raise httpx.TimeoutException("Timeout")
+
+        monkeypatch.setattr(httpx.AsyncClient, "get", mock_get)
+
+        metadata = await fetch_opengraph_metadata("https://slow-site.com")
+        assert not metadata.has_metadata()
+
+    # Add more integration tests with mocked responses
+```
+
+---
+
+### Task 3: Preview Page Endpoint
+
+**Effort**: 3-4 hours
+
+#### Create Preview Template
+
+Create `server/templates/preview.html`:
+
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <!-- Open Graph Tags -->
+    <meta property="og:title" content="{{ og_title }}" />
+    <meta property="og:description" content="{{ og_description }}" />
+    {% if og_image_url %}
+    <meta property="og:image" content="{{ og_image_url }}" />
+    {% endif %}
+    <meta property="og:url" content="{{ short_url }}" />
+    <meta property="og:type" content="website" />
+
+    <!-- Twitter Card Tags -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="{{ og_title }}" />
+    <meta name="twitter:description" content="{{ og_description }}" />
+    {% if og_image_url %}
+    <meta name="twitter:image" content="{{ og_image_url }}" />
+    {% endif %}
+
+    <!-- Standard Meta Tags -->
+    <title>{{ og_title }}</title>
+    <meta name="description" content="{{ og_description }}" />
+
+    <!-- Auto-redirect after 2 seconds -->
+    <meta http-equiv="refresh" content="2;url={{ destination_url }}" />
+
+    <style>
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        .container {
+            background: white;
+            border-radius: 12px;
+            padding: 2rem;
+            max-width: 500px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            text-align: center;
+        }
+        .logo {
+            font-size: 2rem;
+            font-weight: bold;
+            color: #667eea;
+            margin-bottom: 1rem;
+        }
+        h1 {
+            font-size: 1.5rem;
+            color: #333;
+            margin-bottom: 0.5rem;
+        }
+        p {
+            color: #666;
+            margin-bottom: 1.5rem;
+        }
+        .btn {
+            display: inline-block;
+            background: #667eea;
+            color: white;
+            padding: 0.75rem 2rem;
+            border-radius: 6px;
+            text-decoration: none;
+            font-weight: 500;
+        }
+        .spinner {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(102, 126, 234, 0.3);
+            border-radius: 50%;
+            border-top-color: #667eea;
+            animation: spin 1s linear infinite;
+            margin-left: 10px;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="logo">shurl</div>
+        <h1>{{ og_title }}</h1>
+        <p>{{ og_description }}</p>
+        <a href="{{ destination_url }}" class="btn">
+            Continue to destination
+            <span class="spinner"></span>
+        </a>
+        <p style="font-size: 0.875rem; color: #999; margin-top: 1rem;">
+            Redirecting automatically in 2 seconds...
+        </p>
+    </div>
+</body>
+</html>
+```
+
+#### Update Main Router
+
+Update `main.py` to add template support:
+
+```python
+from fastapi import FastAPI, Request
+from fastapi.templating import Jinja2Templates
+from fastapi.responses import HTMLResponse
+
+app = FastAPI(title="Shurly API")
+
+# Add templates
+templates = Jinja2Templates(directory="server/templates")
+
+# ... existing routes ...
+```
+
+#### Add Preview Endpoint
+
+Update `main.py` redirect handler:
+
+```python
+from server.utils.opengraph import is_social_media_crawler
+
+@app.get("/{short_code}", include_in_schema=False)
+async def redirect_short_url(
+    short_code: str,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    """
+    Redirect short URL to destination.
+
+    - Social media crawlers: Show preview page with Open Graph tags
+    - Regular browsers: Direct redirect (302)
+    """
+    url = db.query(URL).filter(URL.short_code == short_code).first()
+
+    if not url:
+        raise HTTPException(status_code=404, detail="Short URL not found")
+
+    # Check User-Agent for social media crawlers
+    user_agent = request.headers.get("user-agent", "")
+
+    if is_social_media_crawler(user_agent):
+        # Serve preview page with Open Graph tags
+        return templates.TemplateResponse(
+            "preview.html",
+            {
+                "request": request,
+                "og_title": url.og_title or url.title or url.original_url,
+                "og_description": url.og_description or f"Visit {url.original_url}",
+                "og_image_url": url.og_image_url,
+                "short_url": f"{request.base_url}{short_code}",
+                "destination_url": url.original_url,
+            },
+            headers={"Cache-Control": "public, max-age=300"},  # Cache for 5 min
+        )
+
+    # Regular redirect for browsers
+    # ... existing redirect logic with visitor tracking ...
+```
+
+---
+
+### Task 4: API Endpoints for Preview Management
+
+**Effort**: 2-3 hours
+
+#### Update Schemas
+
+Update `server/schemas/urls.py`:
+
+```python
+class URLCreate(BaseModel):
+    original_url: HttpUrl
+    custom_code: str | None = None
+    title: str | None = None
+
+    # Open Graph fields (optional)
+    og_title: str | None = Field(None, max_length=255)
+    og_description: str | None = None
+    og_image_url: HttpUrl | None = None
+
+
+class URLUpdate(BaseModel):
+    title: str | None = Field(None, max_length=255)
+    original_url: HttpUrl | None = None
+    forward_parameters: bool | None = None
+
+    # Open Graph fields
+    og_title: str | None = Field(None, max_length=255)
+    og_description: str | None = None
+    og_image_url: HttpUrl | None = None
+
+
+class URLResponse(BaseModel):
+    id: int
+    short_code: str
+    original_url: str
+    title: str | None
+
+    # Open Graph fields
+    og_title: str | None
+    og_description: str | None
+    og_image_url: str | None
+    og_fetched_at: datetime | None
+
+    # ... rest
+
+
+class OpenGraphMetadataResponse(BaseModel):
+    """Response for preview endpoint."""
+    og_title: str | None
+    og_description: str | None
+    og_image_url: str | None
+    og_url: str
+    has_custom_preview: bool
+    fetched_at: datetime | None
+```
+
+#### Add Preview Endpoints
+
+Add to `server/app/urls.py`:
+
+```python
+from server.utils.opengraph import fetch_opengraph_metadata
+from datetime import datetime
+
+@router.get("/{short_code}/preview", response_model=OpenGraphMetadataResponse)
+async def get_url_preview(
+    short_code: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Get Open Graph preview metadata for a URL."""
+    url = db.query(URL).filter(
+        URL.short_code == short_code,
+        URL.created_by == current_user.id,
+    ).first()
+
+    if not url:
+        raise HTTPException(status_code=404, detail="URL not found")
+
+    has_custom = bool(url.og_title or url.og_description or url.og_image_url)
+
+    return {
+        "og_title": url.og_title or url.title,
+        "og_description": url.og_description,
+        "og_image_url": url.og_image_url,
+        "og_url": f"https://shurl.griddo.io/{short_code}",  # TODO: Get from config
+        "has_custom_preview": has_custom,
+        "fetched_at": url.og_fetched_at,
+    }
+
+
+@router.post("/{short_code}/refresh-preview", response_model=OpenGraphMetadataResponse)
+async def refresh_url_preview(
+    short_code: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Refresh Open Graph metadata by fetching from destination URL."""
+    url = db.query(URL).filter(
+        URL.short_code == short_code,
+        URL.created_by == current_user.id,
+    ).first()
+
+    if not url:
+        raise HTTPException(status_code=404, detail="URL not found")
+
+    # Fetch metadata from destination
+    metadata = await fetch_opengraph_metadata(str(url.original_url))
+
+    # Update URL with fetched metadata (don't override custom values)
+    if metadata.has_metadata():
+        if not url.og_title:  # Only update if not custom
+            url.og_title = metadata.title
+        if not url.og_description:
+            url.og_description = metadata.description
+        if not url.og_image_url:
+            url.og_image_url = metadata.image_url
+
+        url.og_fetched_at = datetime.utcnow()
+        db.commit()
+
+    return {
+        "og_title": url.og_title or url.title,
+        "og_description": url.og_description,
+        "og_image_url": url.og_image_url,
+        "og_url": f"https://shurl.griddo.io/{short_code}",
+        "has_custom_preview": bool(url.og_title or url.og_description or url.og_image_url),
+        "fetched_at": url.og_fetched_at,
+    }
+```
+
+---
+
+### Task 5: Frontend Preview Components
+
+**Effort**: 4-5 hours
+
+#### Preview Card Component
+
+Create `frontend/src/components/PreviewCard.astro`:
+
+```astro
+---
+interface Props {
+  title?: string;
+  description?: string;
+  imageUrl?: string;
+  url: string;
+}
+
+const { title, description, imageUrl, url } = Astro.props;
+---
+
+<div class="preview-card">
+  {imageUrl && (
+    <div class="preview-image">
+      <img src={imageUrl} alt={title || 'Preview'} />
+    </div>
+  )}
+
+  <div class="preview-content">
+    <h3 class="preview-title">{title || 'No title'}</h3>
+    {description && (
+      <p class="preview-description">{description}</p>
+    )}
+    <p class="preview-url">{url}</p>
+  </div>
+</div>
+
+<style>
+  .preview-card {
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    overflow: hidden;
+    max-width: 500px;
+    background: white;
+  }
+
+  .preview-image {
+    width: 100%;
+    height: 250px;
+    overflow: hidden;
+    background: #f3f4f6;
+  }
+
+  .preview-image img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  .preview-content {
+    padding: 1rem;
+  }
+
+  .preview-title {
+    font-size: 1.125rem;
+    font-weight: 600;
+    color: #111827;
+    margin-bottom: 0.5rem;
+  }
+
+  .preview-description {
+    font-size: 0.875rem;
+    color: #6b7280;
+    margin-bottom: 0.5rem;
+    line-height: 1.5;
+  }
+
+  .preview-url {
+    font-size: 0.75rem;
+    color: #9ca3af;
+    text-transform: uppercase;
+  }
+</style>
+```
+
+#### Add to URL Details Page
+
+Update `frontend/src/pages/dashboard/urls/[code].astro`:
+
+```astro
+---
+import PreviewCard from '@/components/PreviewCard.astro';
+
+// ... existing code to fetch URL ...
+
+const previewData = url.og_title || url.og_description || url.og_image_url
+  ? {
+      title: url.og_title || url.title,
+      description: url.og_description,
+      imageUrl: url.og_image_url,
+    }
+  : null;
+---
+
+<!-- Add preview section -->
+<div class="mt-8">
+  <div class="flex justify-between items-center mb-4">
+    <h2 class="text-xl font-semibold">Social Media Preview</h2>
+    <button id="refresh-preview" class="btn-secondary">
+      Refresh from destination
+    </button>
+  </div>
+
+  {previewData ? (
+    <PreviewCard {...previewData} url={url.short_url} />
+  ) : (
+    <div class="text-center py-8 bg-gray-50 rounded-lg">
+      <p class="text-gray-500 mb-4">No preview metadata available</p>
+      <button id="fetch-preview" class="btn-primary">
+        Fetch from destination
+      </button>
+    </div>
+  )}
+</div>
+
+<script>
+  // Handle refresh button
+  document.getElementById('refresh-preview')?.addEventListener('click', async () => {
+    const code = window.location.pathname.split('/').pop();
+    const response = await apiPost(`/api/urls/${code}/refresh-preview`, {});
+    if (response.ok) {
+      window.location.reload();
+    }
+  });
+</script>
+```
+
+---
+
+## Success Criteria
+
+✅ Social media crawlers see rich preview cards with title/image/description
+✅ Regular users get instant redirects (no delay)
+✅ Dashboard shows preview cards for all URLs
+✅ Users can customize preview metadata
+✅ Metadata auto-fetches from destination on URL creation
+✅ All tests pass (20+ new tests for OG functionality)
+✅ No breaking changes to existing URLs
+
+---
+
 ## Notes
 
 - **Backward Compatibility**: All new fields are optional/nullable to avoid breaking existing data

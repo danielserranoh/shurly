@@ -210,6 +210,133 @@ System creates:
 
 ---
 
+## Phase 3.6: Pre-AWS Quick Wins (Rebrandly Feature Parity)
+
+**Goal:** Add critical missing features identified in competitive analysis before AWS deployment.
+**Duration:** 2-3 hours total
+**Reference:** See IMPLEMENTATION_TASKS.md
+
+### 3.6.1 Database Schema Updates
+- [ ] Add `title` field to URL model (VARCHAR 255, nullable)
+- [ ] Add `last_click_at` field to URL model (TIMESTAMP, nullable)
+- [ ] Add `forward_parameters` field to URL model (BOOLEAN, default false)
+- [ ] Add `updated_at` field to URL model (TIMESTAMP, auto-update)
+- [ ] Create database migration script
+- [ ] Test migration on local PostgreSQL
+
+### 3.6.2 API Endpoint Updates
+- [ ] Update POST /api/urls to accept optional `title` field
+- [ ] Update POST /api/urls/custom to accept optional `title` field
+- [ ] Implement PATCH /api/urls/{code} endpoint
+  - [ ] Allow updating: title, original_url, forward_parameters
+  - [ ] Keep short_code immutable
+  - [ ] Update `updated_at` timestamp
+  - [ ] Return 404 if URL not found
+  - [ ] Verify ownership (current user)
+- [ ] Update redirect handler to use forward_parameters
+  - [ ] If enabled: append incoming query params to destination
+  - [ ] If disabled: ignore query params (current behavior)
+- [ ] Update visitor logging to set last_click_at timestamp
+
+### 3.6.3 Schema Updates
+- [ ] Create URLUpdate schema (title, original_url, forward_parameters)
+- [ ] Update URLResponse schema to include new fields
+- [ ] Add validation rules for title (max 255 chars)
+
+### 3.6.4 Testing
+- [ ] Write tests for title field storage and retrieval
+- [ ] Write tests for PATCH endpoint (update success, validation, 404)
+- [ ] Write tests for forward_parameters redirect behavior
+- [ ] Write tests for last_click_at timestamp updates
+- [ ] Verify all 132+ existing tests still pass
+
+### 3.6.5 Frontend Updates
+- [ ] Add title input field to URL creation forms
+- [ ] Add "Edit URL" button to URL details page
+- [ ] Create URL edit modal/page (title, destination, forward params toggle)
+- [ ] Display last_click_at timestamp in URL details
+- [ ] Show forward_parameters status in URL card
+- [ ] Update URL list to show titles (if present)
+
+---
+
+## Phase 3.7: Social Media Link Preview (Open Graph)
+
+**Goal:** Add Open Graph metadata support for rich social media previews
+**Duration:** 8-10 days
+**Priority:** 🔴 CRITICAL - Most short links are shared on social media
+**Reference:** See IMPLEMENTATION_TASKS.md Gap #1, design/Rebrandly-*.png
+
+### 3.7.1 Database Schema Updates
+- [ ] Add `og_title` field to URL model (VARCHAR 255, nullable)
+- [ ] Add `og_description` field to URL model (TEXT, nullable)
+- [ ] Add `og_image_url` field to URL model (TEXT, nullable)
+- [ ] Add `og_fetched_at` field to track metadata freshness (TIMESTAMP)
+- [ ] Create database migration script
+- [ ] Test migration on local PostgreSQL
+
+### 3.7.2 Open Graph Metadata Fetching
+- [ ] Install HTML parsing library (beautifulsoup4 or httpx)
+- [ ] Create metadata fetcher utility (`server/utils/opengraph.py`)
+  - [ ] Fetch destination URL HTML
+  - [ ] Parse og:title, og:description, og:image meta tags
+  - [ ] Handle missing/malformed metadata gracefully
+  - [ ] Set timeout (5 seconds max)
+  - [ ] Return structured metadata dict
+- [ ] Add async metadata fetching on URL creation (optional)
+- [ ] Add manual "Refresh Preview" endpoint
+
+### 3.7.3 Preview Endpoint
+- [ ] Create GET /{short_code}/preview endpoint
+  - [ ] Render HTML page with Open Graph meta tags
+  - [ ] Include og:url pointing to short URL
+  - [ ] Add "Continue to destination" button (2-second redirect)
+  - [ ] Handle missing metadata (fallback to defaults)
+  - [ ] Track preview page views separately
+- [ ] Update main redirect to check User-Agent
+  - [ ] Social media crawlers → serve preview page
+  - [ ] Regular browsers → direct redirect (current behavior)
+  - [ ] Detect: Twitterbot, facebookexternalhit, LinkedInBot, WhatsApp
+
+### 3.7.4 API Endpoint Updates
+- [ ] Update POST /api/urls to accept og_* fields
+- [ ] Update POST /api/urls/custom to accept og_* fields
+- [ ] Update PATCH /api/urls/{code} to allow editing og_* fields
+- [ ] Add GET /api/urls/{code}/preview endpoint (fetch current OG data)
+- [ ] Add POST /api/urls/{code}/refresh-preview (re-fetch from destination)
+
+### 3.7.5 Schema Updates
+- [ ] Update URLCreate schema (optional og_title, og_description, og_image_url)
+- [ ] Update URLUpdate schema (include og_* fields)
+- [ ] Update URLResponse schema to include og_* fields
+- [ ] Add OpenGraphMetadata schema for preview endpoint response
+- [ ] Add validation rules (og_title max 255, og_image_url valid URL)
+
+### 3.7.6 Testing
+- [ ] Write tests for metadata fetcher utility
+- [ ] Write tests for preview endpoint rendering
+- [ ] Write tests for User-Agent detection logic
+- [ ] Write tests for og_* field storage and retrieval
+- [ ] Write tests for metadata refresh endpoint
+- [ ] Test with real social media crawler User-Agents
+- [ ] Verify all existing tests still pass
+
+### 3.7.7 Frontend Updates
+- [ ] Add Open Graph fields to URL creation form (optional)
+- [ ] Create Preview Card component
+  - [ ] Display og:title, og:description, og:image
+  - [ ] Show fallback if metadata missing
+  - [ ] "Edit Preview" button
+- [ ] Add preview section to URL details page
+  - [ ] Visual preview card (how it appears on social media)
+  - [ ] "Refresh from destination" button
+  - [ ] Edit modal for custom og_* values
+- [ ] Add preview indicators to URL list
+  - [ ] Icon/badge if custom preview is set
+  - [ ] Preview thumbnail in expanded view
+
+---
+
 ## Phase 4: AWS Deployment Preparation
 
 ### 4.1 Lambda Adaptation ✅
@@ -323,74 +450,6 @@ System creates:
 - [ ] Backup and recovery procedures
 - [ ] Cost monitoring guide
 
----
-
-## Current Status: Phase 3 Complete - Ready for AWS Deployment!
-
-**Last Updated**: 2025-11-08
-
-**Completed**:
-- ✅ Phase 1.1: CAPTCHA removed, PostgreSQL migration complete
-- ✅ Phase 1.2: All data models created (User, URL, Campaign, Visitor)
-- ✅ Phase 1.3: Authentication system with JWT fully implemented
-- ✅ Phase 1.4: Core URL endpoints (standard, custom, redirect, list) - **13 integration tests passing**
-- ✅ Phase 1.5: Campaign system (create, list, details, export, delete) - **42 tests passing (15 unit + 27 integration)**
-- ✅ Phase 2.1: Analytics endpoints (URL stats, campaign stats, overview) - **12 integration tests passing**
-- ✅ Phase 2.2: User agent parsing utilities - **18 unit tests passing**
-- ✅ Phase 3.1: Frontend authentication UI (login, register, protected routes)
-- ✅ Phase 3.2: Frontend URL management (dashboard, create form, URL cards, details page, delete)
-- ✅ Phase 3.3: Campaign management UI (list, create wizard, details, export, delete)
-- ✅ Phase 3.4: Analytics dashboard UI (overview, charts, geo distribution, CSV export)
-- ✅ Phase 3.5: User settings (profile, password change, API key management)
-- ✅ Fixed critical database session management bug
-- ✅ Test-driven development approach with **104 tests passing (100%)**
-
-**Test Coverage**:
-- 13 unit tests for URL utilities (code generation, validation)
-- 19 integration tests for URL endpoints (added 6 delete tests)
-- 15 unit tests for campaign utilities (CSV parsing, validation)
-- 27 integration tests for campaign endpoints
-- 12 integration tests for analytics endpoints
-- 18 unit tests for user agent parsing
-- Total: **104 tests, 0 failures**
-
-**Backend Features**:
-- Complete URL shortening (standard, custom, campaign)
-- Full campaign system with CSV support
-- Comprehensive analytics API:
-  * Daily/weekly stats per URL
-  * Geographic distribution
-  * Campaign performance metrics
-  * User dashboard overview
-- User agent parsing (browser, OS, device detection)
-
-**Frontend Features**:
-- Complete authentication flow (register, login, logout)
-- URL management (create standard/custom URLs, list, copy to clipboard, details page with analytics, delete with confirmation)
-- Campaign management (create wizard with CSV upload, list, details table, export CSV, delete)
-- URL details page with:
-  * Statistics cards (total clicks, recent clicks, unique visitors)
-  * Bar chart visualization (last 7 days)
-  * Geographic distribution (country list with horizontal bars)
-  * Campaign info display with user data tags
-  * Copy and delete actions
-- Analytics dashboard (/dashboard/analytics):
-  * Overview stats (total URLs, campaigns, clicks, unique visitors)
-  * Interactive timeline chart (daily activity last 7 days)
-  * Top 5 performing URLs with rankings
-  * CSV export for all analytics data
-- User settings (/dashboard/settings):
-  * Profile information display (email, account creation date)
-  * Password change with current password verification
-  * API key generation, display, copy, and revocation
-  * Security warnings and confirmation dialogs
-- Responsive Tailwind design with protected routes
-- Consistent loading states and error handling
-
-**Next Steps**:
-1. AWS deployment preparation (Phase 4)
-2. Testing & optimization (Phase 5)
-3. Documentation & handoff (Phase 6)
 
 ---
 
