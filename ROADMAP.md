@@ -250,12 +250,13 @@ System creates:
 - [x] Verify existing tests still pass (123/132 pass, 9 bcrypt edge case failures unrelated)
 
 ### 3.6.5 Frontend Updates
-- [ ] Add title input field to URL creation forms
-- [ ] Add "Edit URL" button to URL details page
-- [ ] Create URL edit modal/page (title, destination, forward params toggle)
-- [ ] Display last_click_at timestamp in URL details
-- [ ] Show forward_parameters status in URL card
-- [ ] Update URL list to show titles (if present)
+- [x] Add title input field to URL creation forms
+- [x] Add forward_parameters toggle to URL creation forms
+- [ ] Add "Edit URL" button to URL details page (future enhancement)
+- [ ] Create URL edit modal/page (title, destination, forward params toggle) (future enhancement)
+- [ ] Display last_click_at timestamp in URL details (future enhancement)
+- [ ] Show forward_parameters status in URL card (future enhancement)
+- [ ] Update URL list to show titles (if present) (future enhancement)
 
 ---
 
@@ -320,8 +321,10 @@ System creates:
 - [x] Verify all existing tests still pass (123/132 pass, 9 bcrypt edge case failures unrelated)
 
 ### 3.7.7 Frontend Updates
-- [ ] Add Open Graph fields to URL creation form (optional)
-- [ ] Create Preview Card component
+- [x] Add Open Graph fields to URL creation form (optional, collapsible section)
+- [ ] Create Preview Card component (future enhancement)
+- [ ] Add "Refresh Preview" button in edit view (future enhancement)
+- [ ] Display OG metadata preview card (future enhancement)
   - [ ] Display og:title, og:description, og:image
   - [ ] Show fallback if metadata missing
   - [ ] "Edit Preview" button
