@@ -17,6 +17,7 @@ from server.schemas.campaign import (
     CampaignResponse,
     CampaignURLResponse,
 )
+from server.schemas.responses import get_responses
 from server.utils.campaign import generate_campaign_urls, parse_csv, validate_csv
 
 campaigns_router = APIRouter()
@@ -29,7 +30,15 @@ def build_short_url(short_code: str) -> str:
     return f"{base_url}/{short_code}"
 
 
-@campaigns_router.post("", response_model=CampaignResponse, status_code=status.HTTP_201_CREATED)
+@campaigns_router.post(
+    "",
+    response_model=CampaignResponse,
+    status_code=status.HTTP_201_CREATED,
+    responses={
+        201: {"description": "Campaign created successfully"},
+        **get_responses(400, 401, 422, 500),
+    },
+)
 def create_campaign(
     campaign_data: CampaignCreate,
     db: Session = Depends(get_db),
@@ -38,10 +47,16 @@ def create_campaign(
     """
     Create a campaign with bulk URL creation from CSV.
 
-    - **name**: Campaign name
-    - **original_url**: Base URL that all short URLs will redirect to
-    - **csv_data**: CSV string with header row and data rows
+    Generates multiple personalized short URLs from CSV data.
 
+    **Authentication:** Required (JWT Bearer token)
+
+    **Request Body:**
+    - **name**: Campaign name (required)
+    - **original_url**: Base URL that all short URLs will redirect to (required)
+    - **csv_data**: CSV string with header row and data rows (required)
+
+    **CSV Format:**
     The CSV should have a header row defining column names, followed by data rows.
     Each row will generate one short URL with the row data as query parameters.
 
@@ -53,6 +68,13 @@ def create_campaign(
     ```
 
     This creates 2 short URLs, each redirecting to original_url with the row's data as query params.
+
+    **Responses:**
+    - **201**: Campaign created successfully - Returns campaign details with URL count
+    - **400**: CSV parsing or validation error (empty CSV, inconsistent columns, etc.)
+    - **401**: Authentication required or invalid token
+    - **422**: Validation error (invalid URL format, missing fields, etc.)
+    - **500**: Failed to generate unique short codes for all URLs
     """
     # Parse CSV
     try:
@@ -116,7 +138,14 @@ def create_campaign(
     return response
 
 
-@campaigns_router.get("", response_model=CampaignListResponse)
+@campaigns_router.get(
+    "",
+    response_model=CampaignListResponse,
+    responses={
+        200: {"description": "List of campaigns retrieved successfully"},
+        **get_responses(401),
+    },
+)
 def list_campaigns(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -126,8 +155,17 @@ def list_campaigns(
     """
     List all campaigns created by the current user.
 
-    - **skip**: Number of records to skip (for pagination)
-    - **limit**: Maximum number of records to return
+    Returns a paginated list of all campaigns with their URL counts.
+
+    **Authentication:** Required (JWT Bearer token)
+
+    **Query Parameters:**
+    - **skip**: Number of records to skip for pagination (default: 0)
+    - **limit**: Maximum number of records to return (default: 100, max: 100)
+
+    **Responses:**
+    - **200**: List of campaigns retrieved successfully with pagination info
+    - **401**: Authentication required or invalid token
     """
     campaigns = (
         db.query(Campaign)
@@ -157,7 +195,14 @@ def list_campaigns(
     return CampaignListResponse(campaigns=campaign_responses, total=total)
 
 
-@campaigns_router.get("/{campaign_id}", response_model=CampaignResponse)
+@campaigns_router.get(
+    "/{campaign_id}",
+    response_model=CampaignResponse,
+    responses={
+        200: {"description": "Campaign details retrieved successfully"},
+        **get_responses(400, 401, 403, 404),
+    },
+)
 def get_campaign(
     campaign_id: str,
     db: Session = Depends(get_db),
@@ -166,7 +211,19 @@ def get_campaign(
     """
     Get campaign details with all associated URLs.
 
+    Returns complete campaign information including all generated short URLs.
+
+    **Authentication:** Required (JWT Bearer token)
+
+    **Path Parameters:**
     - **campaign_id**: UUID of the campaign
+
+    **Responses:**
+    - **200**: Campaign details retrieved successfully - Includes all URLs with user data
+    - **400**: Invalid campaign ID format (not a valid UUID)
+    - **401**: Authentication required or invalid token
+    - **403**: You don't have permission to access this campaign
+    - **404**: Campaign not found
     """
     # Convert string to UUID
     try:
@@ -216,7 +273,13 @@ def get_campaign(
     return response
 
 
-@campaigns_router.get("/{campaign_id}/export")
+@campaigns_router.get(
+    "/{campaign_id}/export",
+    responses={
+        200: {"description": "CSV file download", "content": {"text/csv": {}}},
+        **get_responses(400, 401, 403, 404),
+    },
+)
 def export_campaign(
     campaign_id: str,
     db: Session = Depends(get_db),
@@ -225,7 +288,21 @@ def export_campaign(
     """
     Export campaign URLs as CSV.
 
-    Returns a CSV file with columns: short_code, short_url, original_url, and all user_data columns.
+    Downloads a CSV file containing all campaign URLs and their associated user data.
+
+    **Authentication:** Required (JWT Bearer token)
+
+    **Path Parameters:**
+    - **campaign_id**: UUID of the campaign
+
+    **Responses:**
+    - **200**: CSV file download - Includes short_code, short_url, original_url, and all user data columns
+    - **400**: Invalid campaign ID format (not a valid UUID)
+    - **401**: Authentication required or invalid token
+    - **403**: You don't have permission to access this campaign
+    - **404**: Campaign not found or no URLs in campaign
+
+    **Note:** The CSV filename will be `campaign_{name}.csv`
     """
     # Convert string to UUID
     try:
@@ -292,7 +369,14 @@ def export_campaign(
     )
 
 
-@campaigns_router.delete("/{campaign_id}", status_code=status.HTTP_204_NO_CONTENT)
+@campaigns_router.delete(
+    "/{campaign_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={
+        204: {"description": "Campaign deleted successfully"},
+        **get_responses(400, 401, 403, 404),
+    },
+)
 def delete_campaign(
     campaign_id: str,
     db: Session = Depends(get_db),
@@ -301,9 +385,21 @@ def delete_campaign(
     """
     Delete a campaign and all associated URLs.
 
+    Removes the campaign and all its generated short URLs (cascade delete).
+
+    **Authentication:** Required (JWT Bearer token)
+
+    **Path Parameters:**
     - **campaign_id**: UUID of the campaign
 
-    This will cascade delete all URLs created as part of this campaign.
+    **Responses:**
+    - **204**: Campaign deleted successfully (no content returned)
+    - **400**: Invalid campaign ID format (not a valid UUID)
+    - **401**: Authentication required or invalid token
+    - **403**: You don't have permission to delete this campaign
+    - **404**: Campaign not found
+
+    **Warning:** This will cascade delete all URLs and analytics data for this campaign.
     """
     # Convert string to UUID
     try:

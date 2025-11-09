@@ -23,11 +23,19 @@ from server.schemas.analytics import (
     WeeklyStats,
     WeeklyStatsResponse,
 )
+from server.schemas.responses import get_responses
 
 analytics_router = APIRouter()
 
 
-@analytics_router.get("/urls/{short_code}/daily", response_model=DailyStatsResponse)
+@analytics_router.get(
+    "/urls/{short_code}/daily",
+    response_model=DailyStatsResponse,
+    responses={
+        200: {"description": "Daily statistics retrieved successfully"},
+        **get_responses(401, 404),
+    },
+)
 def get_url_daily_stats(
     short_code: str,
     db: Session = Depends(get_db),
@@ -35,6 +43,18 @@ def get_url_daily_stats(
 ):
     """
     Get daily click statistics for a URL (last 7 days).
+
+    Returns day-by-day click counts for the last 7 days.
+
+    **Authentication:** Required (JWT Bearer token)
+
+    **Path Parameters:**
+    - **short_code**: The short code to get statistics for
+
+    **Responses:**
+    - **200**: Daily statistics retrieved successfully - Returns 7 days of click data
+    - **401**: Authentication required or invalid token
+    - **404**: URL not found or doesn't belong to current user
     """
     # Verify URL exists and belongs to user
     url = db.query(URL).filter(URL.short_code == short_code, URL.created_by == current_user.id).first()
@@ -83,7 +103,14 @@ def get_url_daily_stats(
     )
 
 
-@analytics_router.get("/urls/{short_code}/weekly", response_model=WeeklyStatsResponse)
+@analytics_router.get(
+    "/urls/{short_code}/weekly",
+    response_model=WeeklyStatsResponse,
+    responses={
+        200: {"description": "Weekly statistics retrieved successfully"},
+        **get_responses(401, 404),
+    },
+)
 def get_url_weekly_stats(
     short_code: str,
     db: Session = Depends(get_db),
@@ -91,6 +118,18 @@ def get_url_weekly_stats(
 ):
     """
     Get weekly click statistics for a URL (last 8 weeks).
+
+    Returns week-by-week click counts for the last 8 weeks.
+
+    **Authentication:** Required (JWT Bearer token)
+
+    **Path Parameters:**
+    - **short_code**: The short code to get statistics for
+
+    **Responses:**
+    - **200**: Weekly statistics retrieved successfully - Returns 8 weeks of click data
+    - **401**: Authentication required or invalid token
+    - **404**: URL not found or doesn't belong to current user
     """
     # Verify URL exists and belongs to user
     url = db.query(URL).filter(URL.short_code == short_code, URL.created_by == current_user.id).first()
@@ -138,7 +177,14 @@ def get_url_weekly_stats(
     )
 
 
-@analytics_router.get("/urls/{short_code}/geo", response_model=GeoStatsResponse)
+@analytics_router.get(
+    "/urls/{short_code}/geo",
+    response_model=GeoStatsResponse,
+    responses={
+        200: {"description": "Geographic statistics retrieved successfully"},
+        **get_responses(401, 404),
+    },
+)
 def get_url_geo_stats(
     short_code: str,
     days: int = 30,
@@ -148,9 +194,20 @@ def get_url_geo_stats(
     """
     Get geographic distribution of clicks for a URL.
 
-    Args:
-        short_code: The short code to get stats for
-        days: Number of days to look back (default 30)
+    Returns click counts grouped by country for the specified time period.
+
+    **Authentication:** Required (JWT Bearer token)
+
+    **Path Parameters:**
+    - **short_code**: The short code to get statistics for
+
+    **Query Parameters:**
+    - **days**: Number of days to look back (default: 30)
+
+    **Responses:**
+    - **200**: Geographic statistics retrieved successfully - Returns clicks by country
+    - **401**: Authentication required or invalid token
+    - **404**: URL not found or doesn't belong to current user
     """
     # Verify URL exists and belongs to user
     url = db.query(URL).filter(URL.short_code == short_code, URL.created_by == current_user.id).first()
@@ -193,7 +250,14 @@ def get_url_geo_stats(
     )
 
 
-@analytics_router.get("/campaigns/{campaign_id}/summary", response_model=CampaignSummary)
+@analytics_router.get(
+    "/campaigns/{campaign_id}/summary",
+    response_model=CampaignSummary,
+    responses={
+        200: {"description": "Campaign summary retrieved successfully"},
+        **get_responses(400, 401, 404),
+    },
+)
 def get_campaign_summary(
     campaign_id: str,
     db: Session = Depends(get_db),
@@ -201,6 +265,19 @@ def get_campaign_summary(
 ):
     """
     Get summary statistics for a campaign including timeline and top performers.
+
+    Returns comprehensive campaign analytics with daily timeline and top-performing URLs.
+
+    **Authentication:** Required (JWT Bearer token)
+
+    **Path Parameters:**
+    - **campaign_id**: UUID of the campaign
+
+    **Responses:**
+    - **200**: Campaign summary retrieved successfully - Includes total clicks, unique IPs, CTR, daily timeline (7 days), and top 5 performers
+    - **400**: Invalid campaign ID format (not a valid UUID)
+    - **401**: Authentication required or invalid token
+    - **404**: Campaign not found or doesn't belong to current user
     """
     # Convert campaign_id string to UUID
     try:
@@ -318,7 +395,14 @@ def get_campaign_summary(
     )
 
 
-@analytics_router.get("/campaigns/{campaign_id}/users", response_model=CampaignUsersResponse)
+@analytics_router.get(
+    "/campaigns/{campaign_id}/users",
+    response_model=CampaignUsersResponse,
+    responses={
+        200: {"description": "Campaign user statistics retrieved successfully"},
+        **get_responses(400, 401, 404),
+    },
+)
 def get_campaign_users(
     campaign_id: str,
     db: Session = Depends(get_db),
@@ -326,6 +410,19 @@ def get_campaign_users(
 ):
     """
     Get detailed statistics for each user in a campaign.
+
+    Returns per-URL statistics for all users in the campaign, sorted by clicks.
+
+    **Authentication:** Required (JWT Bearer token)
+
+    **Path Parameters:**
+    - **campaign_id**: UUID of the campaign
+
+    **Responses:**
+    - **200**: Campaign user statistics retrieved successfully - Returns all users with their click stats, sorted by clicks descending
+    - **400**: Invalid campaign ID format (not a valid UUID)
+    - **401**: Authentication required or invalid token
+    - **404**: Campaign not found or doesn't belong to current user
     """
     # Convert campaign_id string to UUID
     try:
@@ -385,13 +482,30 @@ def get_campaign_users(
     )
 
 
-@analytics_router.get("/overview", response_model=OverviewStats)
+@analytics_router.get(
+    "/overview",
+    response_model=OverviewStats,
+    responses={
+        200: {"description": "Overview statistics retrieved successfully"},
+        **get_responses(401),
+    },
+)
 def get_overview_stats(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """
     Get overview statistics for the user's dashboard.
+
+    Returns high-level analytics across all user's URLs and campaigns.
+
+    **Authentication:** Required (JWT Bearer token)
+
+    **Responses:**
+    - **200**: Overview statistics retrieved successfully - Includes total URLs, campaigns, clicks, unique visitors, recent activity (7 days), and top 5 URLs
+    - **401**: Authentication required or invalid token
+
+    **Note:** Includes all-time totals and recent activity for the last 7 days.
     """
     # Total URLs
     total_urls = db.query(func.count(URL.id)).filter(URL.created_by == current_user.id).scalar() or 0
