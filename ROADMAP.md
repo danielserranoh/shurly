@@ -338,6 +338,66 @@ System creates:
 
 ---
 
+## Phase 3.8: Tags Feature
+
+**Goal:** Global tag system for organizing URLs and campaigns
+**Duration:** 5-7 days
+**Priority:** 🟡 MEDIUM - Organizational feature for growing teams
+**Reference:** See IMPLEMENTATION_TAGS.md for detailed plan
+
+### 3.8.1 Backend - Database & Models
+- [ ] Create Tag model (name, display_name, color, is_predefined)
+- [ ] Create url_tags association table (many-to-many)
+- [ ] Create campaign_tags association table
+- [ ] Add relationships to URL and Campaign models
+- [ ] Create database migration
+
+### 3.8.2 Backend - Configuration & Initialization
+- [ ] Add PREDEFINED_TAGS config (5 marketing categories)
+- [ ] Create tag initialization utility (server/utils/tags.py)
+- [ ] Add startup event to initialize predefined tags
+
+### 3.8.3 Backend - API Endpoints (TDD)
+- [ ] Tag Management
+  - [ ] GET /api/tags (list all with search/filter)
+  - [ ] POST /api/tags (create user tag)
+  - [ ] PATCH /api/tags/{id} (rename user tag)
+  - [ ] DELETE /api/tags/{id} (delete + cascade)
+- [ ] URL Tagging
+  - [ ] PATCH /api/urls/{code}/tags (update URL tags)
+  - [ ] POST /api/urls/bulk/tags (bulk tag multiple URLs)
+  - [ ] Update GET /api/urls to support tag filtering
+- [ ] Campaign Tagging
+  - [ ] PATCH /api/campaigns/{id}/tags (tag campaign)
+
+### 3.8.4 Backend - Schemas
+- [ ] Create server/schemas/tag.py (TagCreate, TagUpdate, TagResponse, etc.)
+- [ ] Update URLResponse to include tags list
+- [ ] Update CampaignResponse to include tags list
+
+### 3.8.5 Testing (TDD - Write First)
+- [ ] Tag CRUD tests (20+ test cases)
+- [ ] Tag initialization tests
+- [ ] URL tagging tests (single + bulk)
+- [ ] Tag filtering tests (AND/OR logic)
+- [ ] Campaign tagging tests
+- [ ] Verify all existing tests still pass
+
+### 3.8.6 Frontend Components (Pending UX Designs)
+- [ ] TagBadge component (color-coded display)
+- [ ] TagAutocomplete component (search + inline create)
+- [ ] TagFilter component (Pinterest-style multi-select)
+
+### 3.8.7 Frontend Integration (Pending UX Designs)
+- [ ] Add tags to Create URL form
+- [ ] Add tags to URL Card display
+- [ ] Add tags to URL Details page
+- [ ] Add tag filter to Dashboard
+- [ ] Add bulk tagging UI
+- [ ] Add tags to Campaign create/edit
+
+---
+
 ## Phase 4: AWS Deployment Preparation
 
 ### 4.1 Lambda Adaptation ✅
