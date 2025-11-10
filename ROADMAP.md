@@ -357,18 +357,18 @@ System creates:
 - [x] Create tag initialization utility (server/utils/tags.py)
 - [x] Add startup event to initialize predefined tags
 
-### 3.8.3 Backend - API Endpoints (TDD)
-- [ ] Tag Management
-  - [ ] GET /api/tags (list all with search/filter)
-  - [ ] POST /api/tags (create user tag)
-  - [ ] PATCH /api/tags/{id} (rename user tag)
-  - [ ] DELETE /api/tags/{id} (delete + cascade)
-- [ ] URL Tagging
-  - [ ] PATCH /api/urls/{code}/tags (update URL tags)
-  - [ ] POST /api/urls/bulk/tags (bulk tag multiple URLs)
-  - [ ] Update GET /api/urls to support tag filtering
-- [ ] Campaign Tagging
-  - [ ] PATCH /api/campaigns/{id}/tags (tag campaign)
+### 3.8.3 Backend - API Endpoints (TDD) ✅
+- [x] Tag Management
+  - [x] GET /api/tags (list all with search/filter)
+  - [x] POST /api/tags (create user tag)
+  - [x] PATCH /api/tags/{id} (rename user tag)
+  - [x] DELETE /api/tags/{id} (delete + cascade)
+- [x] URL Tagging
+  - [x] PATCH /api/urls/{code}/tags (update URL tags)
+  - [x] POST /api/urls/bulk/tags (bulk tag multiple URLs)
+  - [x] Update GET /api/urls to support tag filtering
+- [x] Campaign Tagging
+  - [x] PATCH /api/campaigns/{id}/tags (tag campaign)
 
 ### 3.8.4 Backend - Schemas ✅
 - [x] Create server/schemas/tag.py (TagCreate, TagUpdate, TagResponse, etc.)
