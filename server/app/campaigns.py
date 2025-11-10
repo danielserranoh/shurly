@@ -178,18 +178,21 @@ def list_campaigns(
 
     total = db.query(Campaign).filter(Campaign.created_by == current_user.id).count()
 
-    # Build responses with URL counts
+    # Build responses with URL counts and tags
     campaign_responses = []
     for campaign in campaigns:
         url_count = db.query(URL).filter(URL.campaign_id == campaign.id).count()
-        response = CampaignResponse(
-            id=campaign.id,
-            name=campaign.name,
-            original_url=campaign.original_url,
-            csv_columns=campaign.csv_columns,
-            url_count=url_count,
-            created_at=campaign.created_at,
-        )
+        # Convert to dict and add url_count
+        campaign_dict = {
+            "id": campaign.id,
+            "name": campaign.name,
+            "original_url": campaign.original_url,
+            "csv_columns": campaign.csv_columns,
+            "url_count": url_count,
+            "created_at": campaign.created_at,
+            "tags": campaign.tags,  # Include tags from relationship
+        }
+        response = CampaignResponse.model_validate(campaign_dict)
         campaign_responses.append(response)
 
     return CampaignListResponse(campaigns=campaign_responses, total=total)
@@ -430,3 +433,92 @@ def delete_campaign(
     db.commit()
 
     return None
+
+
+@campaigns_router.patch(
+    "/{campaign_id}/tags",
+    responses={
+        200: {"description": "Campaign tags updated successfully"},
+        **get_responses(400, 401, 403, 404),
+    },
+)
+def update_campaign_tags(
+    campaign_id: str,
+    tag_data: dict,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Update tags for a campaign.
+
+    Tags are applied to the campaign and all its URLs.
+
+    **Authentication:** Required (JWT Bearer token)
+
+    **Path Parameters:**
+    - **campaign_id**: UUID of the campaign
+
+    **Request Body:**
+    - **tag_ids**: List of tag IDs to apply
+
+    **Responses:**
+    - **200**: Tags updated successfully
+    - **400**: Invalid campaign ID or tag IDs not found
+    - **401**: Authentication required or invalid token
+    - **403**: You don't have permission to update this campaign
+    - **404**: Campaign not found
+    """
+    from server.core.models import Tag, URL
+    from server.schemas.tag import TagResponse
+
+    # Convert string to UUID
+    try:
+        uuid_id = UUID(campaign_id)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid campaign ID: {str(e)}",
+        )
+
+    campaign = db.query(Campaign).filter(Campaign.id == uuid_id).first()
+
+    if not campaign:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Campaign not found",
+        )
+
+    # Check ownership
+    if campaign.created_by != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You don't have permission to update this campaign",
+        )
+
+    tag_ids_str = tag_data.get("tag_ids", [])
+
+    # Convert string UUIDs to UUID objects
+    try:
+        tag_ids = [UUID(str(tid)) for tid in tag_ids_str]
+    except (ValueError, AttributeError) as e:
+        raise HTTPException(status_code=400, detail=f"Invalid tag ID format: {str(e)}") from e
+
+    # Validate tags
+    tags = db.query(Tag).filter(Tag.id.in_(tag_ids)).all()
+    if len(tags) != len(tag_ids):
+        raise HTTPException(status_code=400, detail="One or more tags not found")
+
+    # Update campaign tags
+    campaign.tags = tags
+
+    # Apply to all campaign URLs
+    campaign_urls = db.query(URL).filter(URL.campaign_id == campaign.id).all()
+    for url in campaign_urls:
+        url.tags = tags
+
+    db.commit()
+
+    return {
+        "campaign_id": str(campaign.id),
+        "tags": [TagResponse.model_validate(tag) for tag in campaign.tags]
+    }

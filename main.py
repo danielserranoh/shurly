@@ -34,6 +34,12 @@ def create_app() -> FastAPI:
     @app.on_event("startup")
     async def startup_event():
         """Initialize predefined tags on app startup."""
+        import os
+
+        # Skip during testing
+        if os.getenv("TESTING"):
+            return
+
         from server.utils.tags import initialize_predefined_tags
 
         db = next(get_db())

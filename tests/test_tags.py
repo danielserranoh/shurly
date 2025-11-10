@@ -10,7 +10,7 @@ from server.core.models import Tag, URL, URLType, Campaign
 class TestTagCRUD:
     """Test tag CRUD operations."""
 
-    def test_list_tags_includes_predefined(self, client: TestClient, auth_headers: dict):
+    def test_list_tags_includes_predefined(self, client: TestClient, auth_headers: dict, init_predefined_tags):
         """Predefined tags should be returned."""
         response = client.get("/api/tags", headers=auth_headers)
         assert response.status_code == 200
@@ -65,7 +65,7 @@ class TestTagCRUD:
         assert "marketing" in tag_names
         assert "sales" not in tag_names
 
-    def test_filter_tags_by_type(self, client: TestClient, auth_headers: dict):
+    def test_filter_tags_by_type(self, client: TestClient, auth_headers: dict, init_predefined_tags):
         """Can filter tags by predefined/user-created."""
         # Get predefined only
         response = client.get("/api/tags?is_predefined=true", headers=auth_headers)
@@ -181,7 +181,7 @@ class TestTagCRUD:
         assert response.status_code == 400
         assert "already exists" in response.json()["detail"].lower()
 
-    def test_update_predefined_tag_forbidden(self, client: TestClient, auth_headers: dict, db_session: Session):
+    def test_update_predefined_tag_forbidden(self, client: TestClient, auth_headers: dict, db_session: Session, init_predefined_tags):
         """Cannot update predefined tags."""
         # Get a predefined tag
         tag = db_session.query(Tag).filter(Tag.is_predefined == True).first()
@@ -248,7 +248,7 @@ class TestTagCRUD:
         db_session.refresh(url)
         assert len(url.tags) == 0
 
-    def test_delete_predefined_tag_forbidden(self, client: TestClient, auth_headers: dict, db_session: Session):
+    def test_delete_predefined_tag_forbidden(self, client: TestClient, auth_headers: dict, db_session: Session, init_predefined_tags):
         """Cannot delete predefined tags."""
         # Get a predefined tag
         tag = db_session.query(Tag).filter(Tag.is_predefined == True).first()

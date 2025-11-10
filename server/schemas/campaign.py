@@ -9,7 +9,10 @@ from pydantic import BaseModel, Field, field_validator
 from server.utils.url import is_valid_url
 
 if TYPE_CHECKING:
-    from server.schemas.tag import TagResponse
+    pass  # Keep for future type checking needs
+
+# Import for runtime use (model_rebuild needs it)
+from server.schemas.tag import TagResponse  # noqa: E402
 
 
 class CampaignCreate(BaseModel):
@@ -55,7 +58,7 @@ class CampaignResponse(BaseModel):
     csv_columns: list[str]
     url_count: int
     created_at: datetime
-    tags: list["TagResponse"] = []
+    tags: list[TagResponse] = []
     urls: list[CampaignURLResponse] | None = None  # Only included in detail view
 
     model_config = {"from_attributes": True}

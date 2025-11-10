@@ -3,7 +3,7 @@
 from datetime import datetime, timezone
 from urllib.parse import urlencode
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
@@ -236,6 +236,8 @@ async def create_custom_url(
     },
 )
 def list_urls(
+    tags: str | None = Query(None, description="Comma-separated tag IDs to filter by"),
+    tag_filter: str = Query("any", description="'all' (AND) or 'any' (OR) for multiple tags"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
     skip: int = 0,
@@ -251,21 +253,40 @@ def list_urls(
     **Query Parameters:**
     - **skip**: Number of records to skip for pagination (default: 0)
     - **limit**: Maximum number of records to return (default: 100, max: 100)
+    - **tags**: Comma-separated tag IDs to filter by
+    - **tag_filter**: 'all' (AND) or 'any' (OR) for multiple tags (default: 'any')
 
     **Responses:**
     - **200**: List of URLs retrieved successfully with pagination info
     - **401**: Authentication required or invalid token
     """
-    urls = (
-        db.query(URL)
-        .filter(URL.created_by == current_user.id)
-        .order_by(URL.created_at.desc())
-        .offset(skip)
-        .limit(limit)
-        .all()
-    )
+    from server.core.models import Tag
 
-    total = db.query(URL).filter(URL.created_by == current_user.id).count()
+    query = db.query(URL).filter(URL.created_by == current_user.id)
+
+    # Apply tag filtering
+    if tags:
+        from uuid import UUID
+
+        tag_ids_str = [t.strip() for t in tags.split(",")]
+
+        # Convert string UUIDs to UUID objects
+        try:
+            tag_ids = [UUID(tid) for tid in tag_ids_str]
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=f"Invalid tag ID format: {str(e)}") from e
+
+        if tag_filter == "all":
+            # AND logic: URL must have ALL tags
+            for tag_id in tag_ids:
+                query = query.filter(URL.tags.any(Tag.id == tag_id))
+        else:
+            # OR logic: URL must have ANY tag
+            query = query.filter(URL.tags.any(Tag.id.in_(tag_ids)))
+
+    urls = query.order_by(URL.created_at.desc()).offset(skip).limit(limit).all()
+
+    total = query.offset(0).limit(None).count()
 
     # Add short_url to each URL
     url_responses = []
@@ -404,6 +425,147 @@ def update_url(
     response.short_url = build_short_url(url.short_code)
 
     return response
+
+
+@urls_router.patch(
+    "/{short_code}/tags",
+    responses={
+        200: {"description": "URL tags updated successfully"},
+        **get_responses(400, 401, 404),
+    },
+)
+def update_url_tags(
+    short_code: str,
+    tag_data: dict,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Update tags for a URL.
+
+    Replaces all existing tags with the provided list.
+
+    **Authentication:** Required (JWT Bearer token)
+
+    **Path Parameters:**
+    - **short_code**: The short code of the URL
+
+    **Request Body:**
+    - **tag_ids**: List of tag IDs to apply
+
+    **Responses:**
+    - **200**: Tags updated successfully
+    - **400**: One or more tags not found
+    - **401**: Authentication required or invalid token
+    - **404**: URL not found or doesn't belong to current user
+    """
+    from server.core.models import Tag
+
+    url = db.query(URL).filter(
+        URL.short_code == short_code,
+        URL.created_by == current_user.id
+    ).first()
+
+    if not url:
+        raise HTTPException(status_code=404, detail="URL not found")
+
+    tag_ids_str = tag_data.get("tag_ids", [])
+
+    # Convert string UUIDs to UUID objects
+    from uuid import UUID
+    try:
+        tag_ids = [UUID(str(tid)) for tid in tag_ids_str]
+    except (ValueError, AttributeError) as e:
+        raise HTTPException(status_code=400, detail=f"Invalid tag ID format: {str(e)}") from e
+
+    # Validate tag IDs exist
+    tags = db.query(Tag).filter(Tag.id.in_(tag_ids)).all()
+    if len(tags) != len(tag_ids):
+        raise HTTPException(status_code=400, detail="One or more tags not found")
+
+    # Replace tags
+    url.tags = tags
+    db.commit()
+    db.refresh(url)
+
+    # Build response
+    from server.schemas.tag import TagResponse
+    return {
+        "short_code": url.short_code,
+        "tags": [TagResponse.model_validate(tag) for tag in url.tags]
+    }
+
+
+@urls_router.post(
+    "/bulk/tags",
+    responses={
+        200: {"description": "Bulk tagging completed"},
+        **get_responses(400, 401),
+    },
+)
+def bulk_tag_urls(
+    bulk_data: dict,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Apply tags to multiple URLs.
+
+    Adds tags to the specified URLs (doesn't replace existing tags).
+
+    **Authentication:** Required (JWT Bearer token)
+
+    **Request Body:**
+    - **short_codes**: List of short codes to tag
+    - **tag_ids**: List of tag IDs to apply
+
+    **Responses:**
+    - **200**: Bulk tagging completed with success count
+    - **400**: One or more tags not found
+    - **401**: Authentication required or invalid token
+    """
+    from server.core.models import Tag
+
+    short_codes = bulk_data.get("short_codes", [])
+    tag_ids_str = bulk_data.get("tag_ids", [])
+
+    # Convert string UUIDs to UUID objects
+    from uuid import UUID
+    try:
+        tag_ids = [UUID(str(tid)) for tid in tag_ids_str]
+    except (ValueError, AttributeError) as e:
+        raise HTTPException(status_code=400, detail=f"Invalid tag ID format: {str(e)}") from e
+
+    # Fetch URLs (only user's own URLs)
+    urls = db.query(URL).filter(
+        URL.short_code.in_(short_codes),
+        URL.created_by == current_user.id
+    ).all()
+
+    # Fetch tags
+    tags = db.query(Tag).filter(Tag.id.in_(tag_ids)).all()
+    if len(tags) != len(tag_ids):
+        raise HTTPException(status_code=400, detail="One or more tags not found")
+
+    updated = 0
+    failed = []
+
+    for url in urls:
+        try:
+            # Add tags (don't replace, add to existing)
+            for tag in tags:
+                if tag not in url.tags:
+                    url.tags.append(tag)
+            updated += 1
+        except Exception as e:
+            failed.append({"short_code": url.short_code, "error": str(e)})
+
+    db.commit()
+
+    return {
+        "updated": updated,
+        "failed": failed
+    }
 
 
 @urls_router.get(

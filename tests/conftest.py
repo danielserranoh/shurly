@@ -12,6 +12,7 @@ from server.core.auth import create_access_token
 from server.core.models import (  # noqa: F401 - Import all models for SQLAlchemy
     URL,
     Campaign,
+    Tag,
     User,
     Visitor,
 )
@@ -102,3 +103,11 @@ def auth_headers(test_user: User):
     """Create authentication headers for test user."""
     access_token = create_access_token(data={"sub": test_user.email})
     return {"Authorization": f"Bearer {access_token}"}
+
+
+@pytest.fixture(scope="function")
+def init_predefined_tags(db_session: Session):
+    """Initialize predefined tags for tests that need them."""
+    from server.utils.tags import initialize_predefined_tags
+
+    initialize_predefined_tags(db_session)

@@ -10,7 +10,10 @@ from server.core.models.url import URLType
 from server.utils.url import is_valid_url
 
 if TYPE_CHECKING:
-    from server.schemas.tag import TagResponse
+    pass  # Keep for future type checking needs
+
+# Import for runtime use (model_rebuild needs it)
+from server.schemas.tag import TagResponse  # noqa: E402
 
 
 class URLCreate(BaseModel):
@@ -118,7 +121,7 @@ class URLResponse(BaseModel):
     last_click_at: datetime | None = None
 
     # Tags
-    tags: list["TagResponse"] = []
+    tags: list[TagResponse] = []
 
     # Audit fields
     created_at: datetime
