@@ -702,5 +702,6 @@ aws lambda update-function-code \
 See [ROADMAP.md](ROADMAP.md) for:
 - Phase 4.2: Infrastructure as Code (AWS SAM/CDK)
 - Phase 4.3: CI/CD Pipeline
-- Phase 5: Testing & Optimization
-- Phase 6: Documentation & Handoff
+- **Phase 5: MCP Server over Streamable HTTP** (expose the API as a Model Context Protocol server for Claude Code / Claude Desktop; pilot for "MCP-as-product")
+- Phase 6: Testing & Optimization
+- Phase 7: Documentation & Handoff

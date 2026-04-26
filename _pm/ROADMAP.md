@@ -422,7 +422,7 @@ System creates:
 - [x] Expose fields in URLCreate / URLCustomCreate / URLUpdate / URLResponse schemas
 - [x] Tests for expiry edge cases (9 new tests covering boundary, nullable, validity window, quota consumption)
 - [x] Crawler preview hits do NOT consume quota (Visitor row only inserted on real human visits)
-- [ ] Future CLI / scheduled Lambda for `delete-expired` (deferred to Phase 5)
+- [ ] Future CLI / scheduled Lambda for `delete-expired` (deferred to Phase 6 — bundled with the post-launch optimization sweep)
 
 ### 3.9.3 Bot Detection in Analytics ✅
 - [x] Add `is_bot` (BOOLEAN, default false) to Visitor model
@@ -598,9 +598,77 @@ System creates:
 
 ---
 
-## Phase 5: Testing & Optimization
+## Phase 5: MCP Server over Streamable HTTP
 
-### 5.1 Testing
+**Goal:** Expose the existing API as an MCP server so internal users (and Claude Code / Claude Desktop) can drive Shurly without a frontend. Pilot for the broader "MCP-as-product" thesis: capture how people actually use the service via natural language, and use those signals to prioritize Phase 7 (frontend) features.
+**Duration:** ~1.5–2 weeks
+**Priority:** 🟡 MEDIUM — Runs after Phase 4 (deploy) and before Phase 7 (frontend). Backend-only stack already has 3.9 + 3.10 hardening, so this exposes a stable surface.
+**Reference:** [Model Context Protocol spec](https://modelcontextprotocol.io/), Anthropic Python SDK (`mcp`), FastMCP (https://github.com/jlowin/fastmcp). Decision rationale recorded in conversation thread (PR review).
+
+**Sequencing:**
+- Phase 4 (deploy) must complete first — MCP runs against the same backend; we don't want to debug Lambda cold starts and MCP transports simultaneously.
+- Internal dogfood window of ~2–4 weeks before Phase 7 starts. Findings feed the frontend prioritization.
+
+### 5.1 Foundation & framework choice
+- [ ] Decision recorded: start with **`fastmcp` standalone** for fast prototyping (auto-generates tools from FastAPI), reserve the option to migrate to `mcp.server.fastmcp` (official SDK) if upstream divergence becomes a real risk.
+- [ ] Add `fastmcp` to `pyproject.toml` `mcp` optional-extra group (so it doesn't bloat the Lambda bundle when not needed).
+- [ ] Create `mcp_server/` sub-package or sibling module — keep it isolated from `server/` so the API can run standalone.
+- [ ] Pick transport: **Streamable HTTP** (single endpoint, request/response, Lambda-friendly). Stdio for local dev only.
+- [ ] Document the chosen framework + transport in `mcp_server/README.md` with the 3-option comparison rationale (so a future maintainer doesn't relitigate the decision).
+
+### 5.2 Auto-generated tools from FastAPI
+- [ ] Bootstrap: `FastMCP.from_fastapi(app)` (or equivalent) — generate the first cut of tools automatically.
+- [ ] Audit the generated tool list: for each `/api/v1/...` endpoint, verify the tool name, description, schema, and return shape are LLM-friendly.
+- [ ] Filter out endpoints that should NOT be MCP tools: legacy `statistics.py`, internal-only routes, anything that handles file uploads (campaign CSV — see 5.3).
+- [ ] Verify the OG-preview, robots.txt, redirect path, and tracking pixel routes are excluded (they're public unversioned routes, not management API).
+- [ ] Tests: each auto-generated tool round-trips through the MCP server and produces the same output as the underlying endpoint.
+
+### 5.3 Hand-curated tools (where auto-gen is awkward)
+- [ ] **`create_campaign_from_rows`** — replaces the multipart CSV upload with a JSON tool: `{name, original_url, csv_columns, rows: [...]}`. The existing endpoint stays for browser uploads; the MCP variant reuses the same campaign generator.
+- [ ] **`get_url_analytics_summary`** — composes overview + daily + geo into one structured response so the LLM doesn't need 3 calls to answer "how is this URL doing".
+- [ ] **`add_redirect_rule`** — sugar over `POST /urls/{code}/rules` with named arguments per condition type (e.g. `device="ios"`, `language="en"`) instead of a raw conditions list.
+- [ ] **`list_orphan_visits_grouped`** — group by attempted_path so the LLM can spot typo patterns instead of paging through a flat list.
+- [ ] Tests for each curated tool covering the natural-language phrasings we expect.
+
+### 5.4 Authentication & per-user scoping
+- [ ] Map MCP requests to users via `Authorization: Bearer <api_key>` (reusing the existing `User.api_key` column).
+- [ ] Resolve `current_user` per-request from the bearer token (same code path as the existing JWT dependency, just a different lookup).
+- [ ] Honor the `User.api_key_scope` enum at request time — `FULL_ACCESS` allowed today; `READ_ONLY`/`CREATE_ONLY`/`DOMAIN_SPECIFIC` reserved.
+- [ ] Tests: bad token → 401; valid token → user-scoped queries (URLs / campaigns / rules belong to the caller).
+- [ ] Document the API key generation + rotation flow in `mcp_server/README.md` (rotation already exists via `POST /api/v1/auth/api-key/generate` which returns `{api_key, scope}`).
+
+### 5.5 Deploy & operational integration
+- [ ] Deploy MCP server alongside the API. Two viable shapes:
+  - **(a)** Same Lambda + same API Gateway, mounted on a different path (`/mcp`). Simpler, single artifact.
+  - **(b)** Separate Lambda + dedicated API Gateway endpoint. Cleaner blast radius if MCP traffic spikes.
+- [ ] Pick one (recommendation: (a) for the pilot) and document the choice.
+- [ ] Make the MCP endpoint reachable from Claude Code via per-user MCP config (`claude_code config add mcp shurly --url https://...`).
+- [ ] Verify the existing `RequestIdMiddleware` propagates through the MCP path so logs correlate.
+- [ ] CloudWatch alarms reuse the API alarms (latency, 5xx) — no new monitoring needed.
+
+### 5.6 Internal dogfood + signal capture
+- [ ] Roll out to the Griddo team: 3–5 internal users with API keys.
+- [ ] Capture for 2–4 weeks: tool invocation counts (which tools get used vs ignored), tool error rates, average call duration.
+- [ ] Capture qualitatively: which workflows feel smooth in chat, which feel awkward (e.g. CSV import, charts).
+- [ ] Output: a "frontend feature priority" list backed by real signal, fed into Phase 7.
+
+### 5.7 Verification
+- [ ] All auto-generated + curated tools have at least one happy-path test.
+- [ ] MCP endpoint responds within the same SLO as the regular API.
+- [ ] No regression in existing tests (backend behavior unchanged).
+- [ ] `mcp_server/README.md` exists and covers: architecture, framework choice, auth, deployment, how to add a new tool.
+- [ ] CHANGELOG.md entry under "Added" describing the MCP surface.
+
+### Open questions (resolve during 5.1)
+- Does `fastmcp.from_fastapi()` produce useful tool descriptions, or do we need to enrich them via Pydantic `Field(..., description=...)` everywhere first? (Likely yes — most of our schemas already have descriptions; sweep the gaps.)
+- Should pixel/redirect endpoints be exposed as tools at all? (Probably not — they're public-facing routes, not management surface.)
+- Per-user MCP config in Claude Code: how does the team add their personal API key without committing it? (Document the env-var pattern in `mcp_server/README.md`.)
+
+---
+
+## Phase 6: Testing & Optimization
+
+### 6.1 Testing
 - [ ] Unit tests (pytest)
   - [ ] URL shortening logic
   - [ ] Campaign CSV parsing
@@ -611,13 +679,13 @@ System creates:
 - [ ] E2E tests (optional)
   - [ ] Frontend flows
 
-### 5.2 Performance Optimization
+### 6.2 Performance Optimization
 - [ ] Database indexes review
 - [ ] Query optimization for analytics
 - [ ] CloudFront caching strategy
 - [ ] Lambda cold start optimization (provisioned concurrency if needed)
 
-### 5.3 Security Hardening
+### 6.3 Security Hardening
 - [ ] Rate limiting (API Gateway usage plans)
 - [ ] Input validation review
 - [ ] SQL injection prevention check
@@ -625,7 +693,7 @@ System creates:
 - [ ] CORS configuration review
 - [ ] Environment secrets audit
 
-### 5.4 Monitoring & Logging
+### 6.4 Monitoring & Logging
 - [ ] CloudWatch Logs setup
 - [ ] Error alerting (SNS/email)
 - [ ] Key metrics dashboard
@@ -636,9 +704,9 @@ System creates:
 
 ---
 
-## Phase 6: Documentation & Handoff
+## Phase 7: Documentation & Handoff
 
-### 6.1 Documentation
+### 7.1 Documentation
 - [ ] API documentation (OpenAPI/Swagger) - auto-generated by FastAPI
 - [ ] Deployment guide
 - [ ] User manual for dashboard
@@ -646,7 +714,7 @@ System creates:
 - [ ] Database schema diagram
 - [ ] Environment variables reference
 
-### 6.2 Operational Runbook
+### 7.2 Operational Runbook
 - [ ] How to add new users
 - [ ] How to investigate issues
 - [ ] How to scale if needed
