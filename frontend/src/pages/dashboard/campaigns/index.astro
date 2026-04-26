@@ -87,7 +87,7 @@ const title = 'My Campaigns | Shurly';
 
         async function loadCampaigns() {
           try {
-            const data = await apiGet<CampaignListResponse>('/api/campaigns', true);
+            const data = await apiGet<CampaignListResponse>('/api/v1/campaigns', true);
 
             if (data.campaigns.length === 0) {
               container?.classList.add('hidden');

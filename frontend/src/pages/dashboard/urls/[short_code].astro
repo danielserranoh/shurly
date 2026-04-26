@@ -1,4 +1,6 @@
 ---
+export const prerender = false;
+
 import ProtectedRoute from '@/components/ProtectedRoute.astro';
 import Navbar from '@/components/Navbar.astro';
 
@@ -204,7 +206,7 @@ const title = 'URL Details | Shurly';
         async function loadURLDetails() {
           try {
             // Fetch URL details from list endpoint
-            const listResponse = await apiGet<{ urls: URLType[]; total: number }>('/api/urls', true);
+            const listResponse = await apiGet<{ urls: URLType[]; total: number }>('/api/v1/urls', true);
             currentURL = listResponse.urls.find(url => url.short_code === shortCode) || null;
 
             if (!currentURL) {
@@ -242,7 +244,7 @@ const title = 'URL Details | Shurly';
 
             // Fetch analytics
             const analyticsData = await apiGet<DailyStatsResponse>(
-              `/api/analytics/urls/${shortCode}/daily`,
+              `/api/v1/analytics/urls/${shortCode}/daily`,
               true
             );
 
@@ -292,7 +294,7 @@ const title = 'URL Details | Shurly';
         async function loadGeoData() {
           try {
             const geoData = await apiGet<GeoStatsResponse>(
-              `/api/analytics/urls/${shortCode}/geo`,
+              `/api/v1/analytics/urls/${shortCode}/geo`,
               true
             );
 
@@ -403,7 +405,7 @@ const title = 'URL Details | Shurly';
             }
 
             // Delete the URL
-            await apiDelete(`/api/urls/${currentURL.short_code}`, true);
+            await apiDelete(`/api/v1/urls/${currentURL.short_code}`, true);
 
             // Redirect to dashboard
             window.location.href = '/dashboard';

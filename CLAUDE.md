@@ -38,10 +38,10 @@ Check [TESTING.md](TESTING.md) when you need to:
 
 ```
 Backend (FastAPI)          Frontend (Astro)
-├── /api/auth/*           ├── /login, /register
-├── /api/urls/*           ├── /dashboard (URL management)
-├── /api/campaigns/*      ├── /dashboard/campaigns/*
-└── /api/analytics/*      └── /dashboard/analytics
+├── /api/v1/auth/*           ├── /login, /register
+├── /api/v1/urls/*           ├── /dashboard (URL management)
+├── /api/v1/campaigns/*      ├── /dashboard/campaigns/*
+└── /api/v1/analytics/*      └── /dashboard/analytics
 ```
 
 **Database**: PostgreSQL with 4 models (User, URL, Campaign, Visitor)

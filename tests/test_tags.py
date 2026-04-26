@@ -12,7 +12,7 @@ class TestTagCRUD:
 
     def test_list_tags_includes_predefined(self, client: TestClient, auth_headers: dict, init_predefined_tags):
         """Predefined tags should be returned."""
-        response = client.get("/api/tags", headers=auth_headers)
+        response = client.get("/api/v1/tags", headers=auth_headers)
         assert response.status_code == 200
         data = response.json()
         assert data["total"] > 0
@@ -40,7 +40,7 @@ class TestTagCRUD:
         db_session.add(url)
         db_session.commit()
 
-        response = client.get("/api/tags", headers=auth_headers)
+        response = client.get("/api/v1/tags", headers=auth_headers)
         assert response.status_code == 200
         data = response.json()
 
@@ -57,7 +57,7 @@ class TestTagCRUD:
         db_session.add_all([tag1, tag2])
         db_session.commit()
 
-        response = client.get("/api/tags?search=mark", headers=auth_headers)
+        response = client.get("/api/v1/tags?search=mark", headers=auth_headers)
         assert response.status_code == 200
         data = response.json()
 
@@ -68,13 +68,13 @@ class TestTagCRUD:
     def test_filter_tags_by_type(self, client: TestClient, auth_headers: dict, init_predefined_tags):
         """Can filter tags by predefined/user-created."""
         # Get predefined only
-        response = client.get("/api/tags?is_predefined=true", headers=auth_headers)
+        response = client.get("/api/v1/tags?is_predefined=true", headers=auth_headers)
         assert response.status_code == 200
         data = response.json()
         assert all(tag["is_predefined"] for tag in data["tags"])
 
         # Get user tags only
-        response = client.get("/api/tags?is_predefined=false", headers=auth_headers)
+        response = client.get("/api/v1/tags?is_predefined=false", headers=auth_headers)
         assert response.status_code == 200
         data = response.json()
         assert all(not tag["is_predefined"] for tag in data["tags"])
@@ -82,7 +82,7 @@ class TestTagCRUD:
     def test_create_user_tag(self, client: TestClient, auth_headers: dict):
         """User can create custom tag."""
         response = client.post(
-            "/api/tags",
+            "/api/v1/tags",
             json={"name": "My Campaign"},
             headers=auth_headers
         )
@@ -96,9 +96,9 @@ class TestTagCRUD:
 
     def test_create_tag_case_insensitive_duplicate(self, client: TestClient, auth_headers: dict):
         """Creating tag with different case should fail."""
-        client.post("/api/tags", json={"name": "Test"}, headers=auth_headers)
+        client.post("/api/v1/tags", json={"name": "Test"}, headers=auth_headers)
         response = client.post(
-            "/api/tags",
+            "/api/v1/tags",
             json={"name": "test"},  # Same, different case
             headers=auth_headers
         )
@@ -109,7 +109,7 @@ class TestTagCRUD:
         """Tag name exceeding 30 chars should fail."""
         long_name = "a" * 31
         response = client.post(
-            "/api/tags",
+            "/api/v1/tags",
             json={"name": long_name},
             headers=auth_headers
         )
@@ -118,7 +118,7 @@ class TestTagCRUD:
     def test_create_tag_empty_name(self, client: TestClient, auth_headers: dict):
         """Tag name cannot be empty."""
         response = client.post(
-            "/api/tags",
+            "/api/v1/tags",
             json={"name": "   "},
             headers=auth_headers
         )
@@ -127,7 +127,7 @@ class TestTagCRUD:
     def test_create_tag_with_emoji(self, client: TestClient, auth_headers: dict):
         """Tags can contain emojis."""
         response = client.post(
-            "/api/tags",
+            "/api/v1/tags",
             json={"name": "🚀 Launch"},
             headers=auth_headers
         )
@@ -138,8 +138,8 @@ class TestTagCRUD:
 
     def test_create_tag_requires_auth(self, client: TestClient):
         """Creating tag requires authentication."""
-        response = client.post("/api/tags", json={"name": "Test"})
-        assert response.status_code == 403
+        response = client.post("/api/v1/tags", json={"name": "Test"})
+        assert response.status_code == 401
 
     def test_update_user_tag(self, client: TestClient, auth_headers: dict, db_session: Session, test_user):
         """User can rename their tag."""
@@ -155,7 +155,7 @@ class TestTagCRUD:
 
         # Update
         response = client.patch(
-            f"/api/tags/{tag.id}",
+            f"/api/v1/tags/{tag.id}",
             json={"name": "NewName"},
             headers=auth_headers
         )
@@ -174,7 +174,7 @@ class TestTagCRUD:
 
         # Try to rename tag1 to tag2
         response = client.patch(
-            f"/api/tags/{tag1.id}",
+            f"/api/v1/tags/{tag1.id}",
             json={"name": "Tag2"},
             headers=auth_headers
         )
@@ -188,7 +188,7 @@ class TestTagCRUD:
         assert tag is not None
 
         response = client.patch(
-            f"/api/tags/{tag.id}",
+            f"/api/v1/tags/{tag.id}",
             json={"name": "NewName"},
             headers=auth_headers
         )
@@ -200,7 +200,7 @@ class TestTagCRUD:
         import uuid
         fake_id = uuid.uuid4()
         response = client.patch(
-            f"/api/tags/{fake_id}",
+            f"/api/v1/tags/{fake_id}",
             json={"name": "Test"},
             headers=auth_headers
         )
@@ -218,7 +218,7 @@ class TestTagCRUD:
         db_session.commit()
         tag_id = tag.id
 
-        response = client.delete(f"/api/tags/{tag_id}", headers=auth_headers)
+        response = client.delete(f"/api/v1/tags/{tag_id}", headers=auth_headers)
         assert response.status_code == 204
 
         # Verify deleted
@@ -242,7 +242,7 @@ class TestTagCRUD:
         db_session.commit()
 
         # Delete tag
-        client.delete(f"/api/tags/{tag.id}", headers=auth_headers)
+        client.delete(f"/api/v1/tags/{tag.id}", headers=auth_headers)
 
         # Verify URL has no tags
         db_session.refresh(url)
@@ -254,7 +254,7 @@ class TestTagCRUD:
         tag = db_session.query(Tag).filter(Tag.is_predefined == True).first()
         assert tag is not None
 
-        response = client.delete(f"/api/tags/{tag.id}", headers=auth_headers)
+        response = client.delete(f"/api/v1/tags/{tag.id}", headers=auth_headers)
         assert response.status_code == 400
         assert "predefined" in response.json()["detail"].lower()
 
@@ -262,7 +262,7 @@ class TestTagCRUD:
         """Deleting non-existent tag returns 404."""
         import uuid
         fake_id = uuid.uuid4()
-        response = client.delete(f"/api/tags/{fake_id}", headers=auth_headers)
+        response = client.delete(f"/api/v1/tags/{fake_id}", headers=auth_headers)
         assert response.status_code == 404
 
 

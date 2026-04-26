@@ -9,7 +9,7 @@ from server.core.models import URL, Campaign
 
 @pytest.mark.integration
 class TestCreateCampaign:
-    """Test campaign creation (POST /api/campaigns)."""
+    """Test campaign creation (POST /api/v1/campaigns)."""
 
     def test_create_campaign_success(self, client: TestClient, auth_headers: dict):
         """Test successful campaign creation with CSV."""
@@ -18,7 +18,7 @@ John,Doe,Acme
 Jane,Smith,TechCorp"""
 
         response = client.post(
-            "/api/campaigns",
+            "/api/v1/campaigns",
             json={
                 "name": "Q4 Marketing Campaign",
                 "original_url": "https://example.com/landing",
@@ -48,7 +48,7 @@ test1@example.com,EMEA
 test2@example.com,APAC"""
 
         response = client.post(
-            "/api/campaigns",
+            "/api/v1/campaigns",
             json={
                 "name": "Test Campaign",
                 "original_url": "https://example.com",
@@ -73,7 +73,7 @@ test2@example.com,APAC"""
     def test_create_campaign_unauthorized(self, client: TestClient):
         """Test that campaign creation requires authentication."""
         response = client.post(
-            "/api/campaigns",
+            "/api/v1/campaigns",
             json={
                 "name": "Test",
                 "original_url": "https://example.com",
@@ -81,14 +81,14 @@ test2@example.com,APAC"""
             },
         )
 
-        assert response.status_code == 403
+        assert response.status_code == 401
 
     def test_create_campaign_invalid_url(self, client: TestClient, auth_headers: dict):
         """Test that invalid original URLs are rejected."""
         csv_data = """email\ntest@example.com"""
 
         response = client.post(
-            "/api/campaigns",
+            "/api/v1/campaigns",
             json={
                 "name": "Test",
                 "original_url": "not-a-valid-url",
@@ -102,7 +102,7 @@ test2@example.com,APAC"""
     def test_create_campaign_empty_csv(self, client: TestClient, auth_headers: dict):
         """Test that empty CSV data is rejected."""
         response = client.post(
-            "/api/campaigns",
+            "/api/v1/campaigns",
             json={
                 "name": "Test",
                 "original_url": "https://example.com",
@@ -118,7 +118,7 @@ test2@example.com,APAC"""
         csv_data = "firstName,lastName,company"
 
         response = client.post(
-            "/api/campaigns",
+            "/api/v1/campaigns",
             json={
                 "name": "Test",
                 "original_url": "https://example.com",
@@ -139,7 +139,7 @@ John,Doe,ExtraValue
 Jane,Smith"""
 
         response = client.post(
-            "/api/campaigns",
+            "/api/v1/campaigns",
             json={
                 "name": "Test",
                 "original_url": "https://example.com",
@@ -157,7 +157,7 @@ Jane,Smith"""
         csv_data = """email\ntest@example.com"""
 
         response = client.post(
-            "/api/campaigns",
+            "/api/v1/campaigns",
             json={
                 "name": "Single Row",
                 "original_url": "https://example.com",
@@ -176,7 +176,7 @@ val1,val2,val3,val4,val5
 val6,val7,val8,val9,val10"""
 
         response = client.post(
-            "/api/campaigns",
+            "/api/v1/campaigns",
             json={
                 "name": "Many Columns",
                 "original_url": "https://example.com",
@@ -192,11 +192,11 @@ val6,val7,val8,val9,val10"""
 
 @pytest.mark.integration
 class TestListCampaigns:
-    """Test listing campaigns (GET /api/campaigns)."""
+    """Test listing campaigns (GET /api/v1/campaigns)."""
 
     def test_list_campaigns_empty(self, client: TestClient, auth_headers: dict):
         """Test listing campaigns when user has none."""
-        response = client.get("/api/campaigns", headers=auth_headers)
+        response = client.get("/api/v1/campaigns", headers=auth_headers)
 
         assert response.status_code == 200
         data = response.json()
@@ -219,7 +219,7 @@ class TestListCampaigns:
             db_session.add(campaign)
         db_session.commit()
 
-        response = client.get("/api/campaigns", headers=auth_headers)
+        response = client.get("/api/v1/campaigns", headers=auth_headers)
 
         assert response.status_code == 200
         data = response.json()
@@ -243,26 +243,26 @@ class TestListCampaigns:
         db_session.commit()
 
         # Get first page
-        response = client.get("/api/campaigns?skip=0&limit=2", headers=auth_headers)
+        response = client.get("/api/v1/campaigns?skip=0&limit=2", headers=auth_headers)
         assert response.status_code == 200
         assert len(response.json()["campaigns"]) == 2
         assert response.json()["total"] == 5
 
         # Get second page
-        response = client.get("/api/campaigns?skip=2&limit=2", headers=auth_headers)
+        response = client.get("/api/v1/campaigns?skip=2&limit=2", headers=auth_headers)
         assert response.status_code == 200
         assert len(response.json()["campaigns"]) == 2
 
     def test_list_campaigns_unauthorized(self, client: TestClient):
         """Test that listing requires authentication."""
-        response = client.get("/api/campaigns")
+        response = client.get("/api/v1/campaigns")
 
-        assert response.status_code == 403
+        assert response.status_code == 401
 
 
 @pytest.mark.integration
 class TestGetCampaign:
-    """Test getting campaign details (GET /api/campaigns/{id})."""
+    """Test getting campaign details (GET /api/v1/campaigns/{id})."""
 
     def test_get_campaign_success(
         self, client: TestClient, auth_headers: dict, db_session: Session, test_user
@@ -291,7 +291,7 @@ class TestGetCampaign:
             db_session.add(url)
         db_session.commit()
 
-        response = client.get(f"/api/campaigns/{campaign.id}", headers=auth_headers)
+        response = client.get(f"/api/v1/campaigns/{campaign.id}", headers=auth_headers)
 
         assert response.status_code == 200
         data = response.json()
@@ -312,7 +312,7 @@ class TestGetCampaign:
         import uuid
 
         fake_id = uuid.uuid4()
-        response = client.get(f"/api/campaigns/{fake_id}", headers=auth_headers)
+        response = client.get(f"/api/v1/campaigns/{fake_id}", headers=auth_headers)
 
         assert response.status_code == 404
 
@@ -320,9 +320,9 @@ class TestGetCampaign:
         """Test that getting campaign requires authentication."""
         import uuid
 
-        response = client.get(f"/api/campaigns/{uuid.uuid4()}")
+        response = client.get(f"/api/v1/campaigns/{uuid.uuid4()}")
 
-        assert response.status_code == 403
+        assert response.status_code == 401
 
     def test_get_campaign_wrong_user(
         self, client: TestClient, auth_headers: dict, db_session: Session
@@ -350,14 +350,14 @@ class TestGetCampaign:
         db_session.commit()
 
         # Try to access with test_user's auth
-        response = client.get(f"/api/campaigns/{campaign.id}", headers=auth_headers)
+        response = client.get(f"/api/v1/campaigns/{campaign.id}", headers=auth_headers)
 
         assert response.status_code == 403
 
 
 @pytest.mark.integration
 class TestExportCampaign:
-    """Test exporting campaign URLs as CSV (GET /api/campaigns/{id}/export)."""
+    """Test exporting campaign URLs as CSV (GET /api/v1/campaigns/{id}/export)."""
 
     def test_export_campaign_success(
         self, client: TestClient, auth_headers: dict, db_session: Session, test_user
@@ -393,7 +393,7 @@ class TestExportCampaign:
         db_session.add_all([url1, url2])
         db_session.commit()
 
-        response = client.get(f"/api/campaigns/{campaign.id}/export", headers=auth_headers)
+        response = client.get(f"/api/v1/campaigns/{campaign.id}/export", headers=auth_headers)
 
         assert response.status_code == 200
         assert response.headers["content-type"] == "text/csv; charset=utf-8"
@@ -421,7 +421,7 @@ class TestExportCampaign:
         """Test exporting non-existent campaign."""
         import uuid
 
-        response = client.get(f"/api/campaigns/{uuid.uuid4()}/export", headers=auth_headers)
+        response = client.get(f"/api/v1/campaigns/{uuid.uuid4()}/export", headers=auth_headers)
 
         assert response.status_code == 404
 
@@ -438,7 +438,7 @@ class TestExportCampaign:
         db_session.add(campaign)
         db_session.commit()
 
-        response = client.get(f"/api/campaigns/{campaign.id}/export", headers=auth_headers)
+        response = client.get(f"/api/v1/campaigns/{campaign.id}/export", headers=auth_headers)
 
         assert response.status_code == 404
         assert "No URLs found" in response.json()["detail"]
@@ -447,14 +447,14 @@ class TestExportCampaign:
         """Test that export requires authentication."""
         import uuid
 
-        response = client.get(f"/api/campaigns/{uuid.uuid4()}/export")
+        response = client.get(f"/api/v1/campaigns/{uuid.uuid4()}/export")
 
-        assert response.status_code == 403
+        assert response.status_code == 401
 
 
 @pytest.mark.integration
 class TestDeleteCampaign:
-    """Test deleting campaigns (DELETE /api/campaigns/{id})."""
+    """Test deleting campaigns (DELETE /api/v1/campaigns/{id})."""
 
     def test_delete_campaign_success(
         self, client: TestClient, auth_headers: dict, db_session: Session, test_user
@@ -485,7 +485,7 @@ class TestDeleteCampaign:
         campaign_id = campaign.id
 
         # Delete campaign
-        response = client.delete(f"/api/campaigns/{campaign_id}", headers=auth_headers)
+        response = client.delete(f"/api/v1/campaigns/{campaign_id}", headers=auth_headers)
 
         assert response.status_code == 204
 
@@ -499,7 +499,7 @@ class TestDeleteCampaign:
         """Test deleting non-existent campaign."""
         import uuid
 
-        response = client.delete(f"/api/campaigns/{uuid.uuid4()}", headers=auth_headers)
+        response = client.delete(f"/api/v1/campaigns/{uuid.uuid4()}", headers=auth_headers)
 
         assert response.status_code == 404
 
@@ -507,9 +507,9 @@ class TestDeleteCampaign:
         """Test that deletion requires authentication."""
         import uuid
 
-        response = client.delete(f"/api/campaigns/{uuid.uuid4()}")
+        response = client.delete(f"/api/v1/campaigns/{uuid.uuid4()}")
 
-        assert response.status_code == 403
+        assert response.status_code == 401
 
     def test_delete_campaign_wrong_user(
         self, client: TestClient, auth_headers: dict, db_session: Session
@@ -537,7 +537,7 @@ class TestDeleteCampaign:
         db_session.commit()
 
         # Try to delete with test_user's auth
-        response = client.delete(f"/api/campaigns/{campaign.id}", headers=auth_headers)
+        response = client.delete(f"/api/v1/campaigns/{campaign.id}", headers=auth_headers)
 
         assert response.status_code == 403
 

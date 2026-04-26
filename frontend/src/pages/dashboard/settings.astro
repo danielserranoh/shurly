@@ -168,7 +168,7 @@ import ProtectedRoute from '../../components/ProtectedRoute.astro';
 
       async function loadUserInfo() {
         try {
-          const user = await apiGet<User>('/api/auth/me', true);
+          const user = await apiGet<User>('/api/v1/auth/me', true);
           currentUser = user;
 
           // Populate profile info
@@ -224,7 +224,7 @@ import ProtectedRoute from '../../components/ProtectedRoute.astro';
         btn.textContent = 'Changing...';
 
         try {
-          await apiPost('/api/auth/change-password', {
+          await apiPost('/api/v1/auth/change-password', {
             current_password: currentPassword,
             new_password: newPassword,
           }, true);
@@ -260,7 +260,7 @@ import ProtectedRoute from '../../components/ProtectedRoute.astro';
         btn.textContent = 'Generating...';
 
         try {
-          const response = await apiPost<{ api_key: string }>('/api/auth/api-key/generate', {}, true);
+          const response = await apiPost<{ api_key: string }>('/api/v1/auth/api-key/generate', {}, true);
 
           // Update display
           document.getElementById('no-api-key')!.classList.add('hidden');
@@ -316,7 +316,7 @@ import ProtectedRoute from '../../components/ProtectedRoute.astro';
         btn.textContent = 'Revoking...';
 
         try {
-          await apiDelete('/api/auth/api-key', true);
+          await apiDelete('/api/v1/auth/api-key', true);
 
           // Update display
           document.getElementById('no-api-key')!.classList.remove('hidden');

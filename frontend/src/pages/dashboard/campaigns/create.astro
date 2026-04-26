@@ -412,7 +412,7 @@ Jane,Smith,TechCorp,jane@techcorp.com"
             errorDiv?.classList.add('hidden');
 
             const campaign = await apiPost<Campaign>(
-              '/api/campaigns',
+              '/api/v1/campaigns',
               campaignData,
               true
             );

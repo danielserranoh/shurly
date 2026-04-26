@@ -28,6 +28,14 @@ class URLCreate(BaseModel):
     og_description: str | None = Field(None, description="Custom Open Graph description")
     og_image_url: str | None = Field(None, description="Custom Open Graph image URL")
 
+    # Phase 3.9.2 — validity window and visit cap (all optional, NULL = no constraint)
+    valid_since: datetime | None = Field(None, description="URL becomes active at this UTC timestamp")
+    valid_until: datetime | None = Field(None, description="URL stops being active at this UTC timestamp")
+    max_visits: int | None = Field(None, ge=1, description="Hard cap on real visits before returning 410 Gone")
+
+    # Phase 3.9.4 — default-deny crawlability
+    crawlable: bool = Field(False, description="Allow this short URL in robots.txt (default: deny)")
+
     @field_validator("url")
     @classmethod
     def validate_url(cls, v: str) -> str:
@@ -56,6 +64,14 @@ class URLCustomCreate(BaseModel):
     og_description: str | None = Field(None, description="Custom Open Graph description")
     og_image_url: str | None = Field(None, description="Custom Open Graph image URL")
 
+    # Phase 3.9.2 — validity window and visit cap
+    valid_since: datetime | None = Field(None, description="URL becomes active at this UTC timestamp")
+    valid_until: datetime | None = Field(None, description="URL stops being active at this UTC timestamp")
+    max_visits: int | None = Field(None, ge=1, description="Hard cap on real visits before returning 410 Gone")
+
+    # Phase 3.9.4 — default-deny crawlability
+    crawlable: bool = Field(False, description="Allow this short URL in robots.txt (default: deny)")
+
     @field_validator("url")
     @classmethod
     def validate_url(cls, v: str) -> str:
@@ -82,6 +98,14 @@ class URLUpdate(BaseModel):
     og_title: str | None = Field(None, max_length=255, description="Update Open Graph title")
     og_description: str | None = Field(None, description="Update Open Graph description")
     og_image_url: str | None = Field(None, description="Update Open Graph image URL")
+
+    # Phase 3.9.2 — validity window and visit cap (passing null clears the field)
+    valid_since: datetime | None = Field(None, description="Update activation timestamp (null clears)")
+    valid_until: datetime | None = Field(None, description="Update expiration timestamp (null clears)")
+    max_visits: int | None = Field(None, ge=1, description="Update visit cap (null clears)")
+
+    # Phase 3.9.4 — toggle crawlability
+    crawlable: bool | None = Field(None, description="Allow this short URL in robots.txt")
 
     @field_validator("original_url")
     @classmethod
@@ -119,6 +143,14 @@ class URLResponse(BaseModel):
 
     # Analytics
     last_click_at: datetime | None = None
+
+    # Phase 3.9.2 — validity window and visit cap
+    valid_since: datetime | None = None
+    valid_until: datetime | None = None
+    max_visits: int | None = None
+
+    # Phase 3.9.4 — crawlability flag
+    crawlable: bool = False
 
     # Tags
     tags: list[TagResponse] = []

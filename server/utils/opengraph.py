@@ -1,9 +1,10 @@
 """Open Graph metadata fetching utilities."""
 
+import logging
+import re
+
 import httpx
 from bs4 import BeautifulSoup
-from typing import Optional
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -13,17 +14,17 @@ class OpenGraphMetadata:
 
     def __init__(
         self,
-        title: Optional[str] = None,
-        description: Optional[str] = None,
-        image_url: Optional[str] = None,
-        url: Optional[str] = None,
+        title: str | None = None,
+        description: str | None = None,
+        image_url: str | None = None,
+        url: str | None = None,
     ):
         self.title = title
         self.description = description
         self.image_url = image_url
         self.url = url
 
-    def to_dict(self) -> dict[str, Optional[str]]:
+    def to_dict(self) -> dict[str, str | None]:
         return {
             "og_title": self.title,
             "og_description": self.description,
@@ -71,8 +72,18 @@ async def fetch_opengraph_metadata(url: str, timeout: int = 5) -> OpenGraphMetad
                 logger.info(f"Skipping non-HTML content: {content_type}")
                 return OpenGraphMetadata()
 
+            # Phase 3.9.6 (Shlink #2564) — charset fallback. response.text uses the
+            # Content-Type charset; if absent or wrong it produces mojibake. Decode
+            # explicitly via the meta-tag charset, falling back to utf-8 with errors
+            # ignored. We never raise from here — a bad charset must not break URL
+            # creation, so on irrecoverable decode errors we simply skip OG.
+            html_text = _decode_response_body(response)
+            if html_text is None:
+                logger.info(f"Could not decode OG body for {url}; skipping metadata")
+                return OpenGraphMetadata()
+
             # Parse HTML
-            soup = BeautifulSoup(response.text, "html.parser")
+            soup = BeautifulSoup(html_text, "html.parser")
 
             # Extract Open Graph tags
             og_title = _extract_og_tag(soup, "og:title")
@@ -103,7 +114,38 @@ async def fetch_opengraph_metadata(url: str, timeout: int = 5) -> OpenGraphMetad
         return OpenGraphMetadata()
 
 
-def _extract_og_tag(soup: BeautifulSoup, property_name: str) -> Optional[str]:
+_META_CHARSET_RE = re.compile(
+    rb"""<meta[^>]+charset\s*=\s*['"]?([\w\-]+)""",
+    re.IGNORECASE,
+)
+
+
+def _decode_response_body(response: httpx.Response) -> str | None:
+    """Best-effort decode that respects an HTML <meta charset>."""
+    raw = response.content
+    # Try the response's declared encoding first (from Content-Type)
+    encoding = response.encoding or response.charset_encoding
+    if encoding and encoding.lower() != "iso-8859-1":
+        try:
+            return raw.decode(encoding)
+        except (LookupError, UnicodeDecodeError):
+            pass
+    # Otherwise sniff <meta charset=...> from the head bytes
+    match = _META_CHARSET_RE.search(raw[:2048])
+    if match:
+        meta_enc = match.group(1).decode("ascii", errors="ignore")
+        try:
+            return raw.decode(meta_enc)
+        except (LookupError, UnicodeDecodeError):
+            pass
+    # Last resort: utf-8 with replacement so malformed pages still parse for OG tags
+    try:
+        return raw.decode("utf-8", errors="replace")
+    except Exception:
+        return None
+
+
+def _extract_og_tag(soup: BeautifulSoup, property_name: str) -> str | None:
     """Extract Open Graph meta tag content."""
     tag = soup.find("meta", property=property_name)
     if tag and tag.get("content"):
@@ -111,7 +153,7 @@ def _extract_og_tag(soup: BeautifulSoup, property_name: str) -> Optional[str]:
     return None
 
 
-def _extract_meta_tag(soup: BeautifulSoup, name: str) -> Optional[str]:
+def _extract_meta_tag(soup: BeautifulSoup, name: str) -> str | None:
     """Extract standard meta tag content."""
     tag = soup.find("meta", attrs={"name": name})
     if tag and tag.get("content"):
@@ -119,7 +161,7 @@ def _extract_meta_tag(soup: BeautifulSoup, name: str) -> Optional[str]:
     return None
 
 
-def _extract_title_tag(soup: BeautifulSoup) -> Optional[str]:
+def _extract_title_tag(soup: BeautifulSoup) -> str | None:
     """Extract <title> tag content as fallback."""
     title_tag = soup.find("title")
     if title_tag and title_tag.string:

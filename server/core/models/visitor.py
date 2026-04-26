@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Column, DateTime, ForeignKey, String, Text
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, String, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 
@@ -22,6 +22,10 @@ class Visitor(Base):
     country = Column(String(100), nullable=True)  # e.g., "United States"
     user_agent = Column(Text, nullable=True)
     referer = Column(Text, nullable=True)
+
+    # Phase 3.9.3 — Bot classification at log time. Used to default-filter analytics
+    # so headless crawlers, link previewers and scanners don't pollute click counts.
+    is_bot = Column(Boolean, default=False, nullable=False, index=True)
 
     visited_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
 

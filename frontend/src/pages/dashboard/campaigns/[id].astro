@@ -1,4 +1,6 @@
 ---
+export const prerender = false;
+
 import ProtectedRoute from '@/components/ProtectedRoute.astro';
 import Navbar from '@/components/Navbar.astro';
 
@@ -194,7 +196,7 @@ const title = 'Campaign Details | Shurly';
 
         async function loadAnalytics() {
           try {
-            const analytics = await apiGet<CampaignAnalytics>(`/api/analytics/campaigns/${campaignId}/summary`, true);
+            const analytics = await apiGet<CampaignAnalytics>(`/api/v1/analytics/campaigns/${campaignId}/summary`, true);
 
             // Update analytics summary cards
             document.getElementById('analytics-clicks')!.textContent = analytics.total_clicks.toLocaleString();
@@ -280,7 +282,7 @@ const title = 'Campaign Details | Shurly';
 
         async function loadCampaign() {
           try {
-            const campaign = await apiGet<Campaign>(`/api/campaigns/${campaignId}`, true);
+            const campaign = await apiGet<Campaign>(`/api/v1/campaigns/${campaignId}`, true);
 
             // Update header
             document.getElementById('campaign-name')!.textContent = campaign.name;
@@ -378,7 +380,7 @@ const title = 'Campaign Details | Shurly';
         // Export CSV
         document.getElementById('export-btn')?.addEventListener('click', async () => {
           try {
-            await apiDownload(`/api/campaigns/${campaignId}/export`, `campaign-${campaignId}.csv`, true);
+            await apiDownload(`/api/v1/campaigns/${campaignId}/export`, `campaign-${campaignId}.csv`, true);
           } catch (error) {
             console.error('Failed to export:', error);
             alert('Failed to export CSV');
@@ -392,7 +394,7 @@ const title = 'Campaign Details | Shurly';
           }
 
           try {
-            await apiDelete(`/api/campaigns/${campaignId}`, true);
+            await apiDelete(`/api/v1/campaigns/${campaignId}`, true);
             window.location.href = '/dashboard/campaigns';
           } catch (error) {
             console.error('Failed to delete campaign:', error);

@@ -4,12 +4,13 @@ from datetime import datetime, timezone
 from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
-from fastapi.responses import RedirectResponse
+from fastapi.responses import PlainTextResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
 from server.core import get_db
 from server.core.auth import get_current_user
+from server.core.config import settings
 from server.core.models import URL, URLType, User, Visitor
 from server.schemas.responses import get_responses
 from server.schemas.url import (
@@ -20,8 +21,15 @@ from server.schemas.url import (
     URLResponse,
     URLUpdate,
 )
+from server.utils.network import anonymize_ip, resolve_client_ip
 from server.utils.opengraph import fetch_opengraph_metadata, is_social_media_crawler
-from server.utils.url import generate_short_code, is_valid_custom_code, make_code_unique
+from server.utils.url import (
+    generate_short_code,
+    is_valid_custom_code,
+    make_code_unique,
+    normalize_short_code,
+)
+from server.utils.user_agent import is_bot as ua_is_bot
 
 urls_router = APIRouter()
 redirect_router = APIRouter()  # Separate router for redirect endpoint
@@ -116,6 +124,10 @@ async def create_short_url(
         og_description=og_description,
         og_image_url=og_image_url,
         og_fetched_at=og_fetched_at,
+        valid_since=url_data.valid_since,
+        valid_until=url_data.valid_until,
+        max_visits=url_data.max_visits,
+        crawlable=url_data.crawlable,
         created_by=current_user.id,
     )
 
@@ -176,7 +188,8 @@ async def create_custom_url(
             detail="Invalid custom code. Must be 3-20 characters (alphanumeric, hyphens, underscores only).",
         )
 
-    short_code = url_data.custom_code
+    # Phase 3.9.6 — apply SHORT_URL_MODE to user-supplied slugs.
+    short_code = normalize_short_code(url_data.custom_code)
     warning = None
 
     # Check if code is already taken
@@ -212,6 +225,10 @@ async def create_custom_url(
         og_description=og_description,
         og_image_url=og_image_url,
         og_fetched_at=og_fetched_at,
+        valid_since=url_data.valid_since,
+        valid_until=url_data.valid_until,
+        max_visits=url_data.max_visits,
+        crawlable=url_data.crawlable,
         created_by=current_user.id,
     )
 
@@ -687,11 +704,44 @@ async def refresh_url_preview(
     )
 
 
+def _as_utc(dt: datetime | None) -> datetime | None:
+    """Normalize a possibly-naive datetime to UTC (SQLite returns naive datetimes for TZ-aware columns)."""
+    if dt is None:
+        return None
+    return dt if dt.tzinfo is not None else dt.replace(tzinfo=timezone.utc)
+
+
+@redirect_router.get(
+    "/robots.txt",
+    response_class=PlainTextResponse,
+    responses={200: {"description": "robots.txt with default-deny short URLs policy"}},
+)
+def robots_txt(db: Session = Depends(get_db)) -> str:
+    """
+    Phase 3.9.4 — Default-deny robots.txt.
+
+    Short URLs are not crawler-indexable unless explicitly marked `crawlable=True`.
+    This protects user analytics from being polluted by indexed-page click-throughs and
+    keeps short URLs out of search engines by default.
+    """
+    crawlable = (
+        db.query(URL.short_code)
+        .filter(URL.crawlable.is_(True))
+        .order_by(URL.short_code)
+        .all()
+    )
+    lines = ["User-agent: *", "Disallow: /"]
+    for (code,) in crawlable:
+        lines.append(f"Allow: /{code}")
+    return "\n".join(lines) + "\n"
+
+
 @redirect_router.get(
     "/{short_code}",
     responses={
         302: {"description": "Redirect to original URL"},
         **get_responses(404),
+        410: {"description": "Short URL is expired or has reached its visit cap"},
     },
 )
 def redirect_short_url(short_code: str, request: Request, db: Session = Depends(get_db)):
@@ -707,12 +757,14 @@ def redirect_short_url(short_code: str, request: Request, db: Session = Depends(
     **Responses:**
     - **200**: Preview page for social media crawlers (with Open Graph meta tags)
     - **302**: Temporary redirect to original URL for regular browsers
-    - **404**: Short URL not found
+    - **404**: Short URL not found, or URL is not yet active (`valid_since` in the future)
+    - **410**: URL is expired (`valid_until` passed) or has reached its `max_visits` cap
 
     **Note:**
     - Campaign user data is ALWAYS appended as query parameters (for personalization)
     - Regular query params are only forwarded if `forward_parameters=true` (for attribution tracking)
     - Social media crawlers (Twitter, Facebook, LinkedIn, WhatsApp, etc.) see rich preview cards
+    - Crawler preview hits do NOT consume `max_visits` quota (no Visitor row inserted)
     """
     # Find the URL
     url = db.query(URL).filter(URL.short_code == short_code).first()
@@ -722,6 +774,31 @@ def redirect_short_url(short_code: str, request: Request, db: Session = Depends(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Short URL '{short_code}' not found",
         )
+
+    # Phase 3.9.2 — validity window and visit cap enforcement.
+    # Order matters: not-yet-valid returns 404 (don't reveal premature URLs);
+    # expired and quota-exhausted return 410 (the URL existed and is no longer active).
+    now = datetime.now(timezone.utc)
+
+    if url.valid_since is not None and now < _as_utc(url.valid_since):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Short URL '{short_code}' not found",
+        )
+
+    if url.valid_until is not None and now >= _as_utc(url.valid_until):
+        raise HTTPException(
+            status_code=status.HTTP_410_GONE,
+            detail="This short URL has expired",
+        )
+
+    if url.max_visits is not None:
+        visit_count = db.query(Visitor).filter(Visitor.url_id == url.id).count()
+        if visit_count >= url.max_visits:
+            raise HTTPException(
+                status_code=status.HTTP_410_GONE,
+                detail="This short URL has reached its visit limit",
+            )
 
     # Update last_click_at timestamp
     url.last_click_at = datetime.now(timezone.utc)
@@ -750,9 +827,9 @@ def redirect_short_url(short_code: str, request: Request, db: Session = Depends(
     if is_social_media_crawler(user_agent):
         # Serve preview page with Open Graph tags for social media
         return templates.TemplateResponse(
+            request,
             "preview.html",
             {
-                "request": request,
                 "og_title": url.og_title or url.title or url.original_url,
                 "og_description": url.og_description or f"Visit {url.original_url}",
                 "og_image_url": url.og_image_url,
@@ -762,13 +839,30 @@ def redirect_short_url(short_code: str, request: Request, db: Session = Depends(
             headers={"Cache-Control": "public, max-age=300"},  # Cache for 5 min
         )
 
-    # Log the visit (synchronously for now, could be background task)
+    # Phase 3.9.6 — DISABLE_TRACK_PARAM: a configurable query string ("nostat" by default)
+    # that suppresses Visitor logging. Used for QA / internal smoke tests so they don't
+    # pollute analytics. The redirect itself still happens.
+    if settings.disable_track_param in request.query_params:
+        return RedirectResponse(url=redirect_url, status_code=status.HTTP_302_FOUND)
+
+    # Log the visit (synchronously for now, could be background task).
+    # Phase 3.9.3: classify bots at log time so analytics can default-filter them.
+    # Phase 3.9.5: anonymize the IP before persisting (GDPR pseudonymization).
+    # Phase 3.9.6: only honor X-Forwarded-For from trusted proxies (CIDR allowlist).
+    visit_user_agent = request.headers.get("user-agent")
+    raw_ip = resolve_client_ip(
+        request.client.host if request.client else None,
+        request.headers.get("x-forwarded-for"),
+        settings.trusted_proxies,
+    )
+    stored_ip = anonymize_ip(raw_ip) if settings.anonymize_remote_addr else raw_ip
     visit = Visitor(
         url_id=url.id,
         short_code=short_code,
-        ip=request.client.host if request.client else "unknown",
-        user_agent=request.headers.get("user-agent"),
+        ip=stored_ip or "unknown",
+        user_agent=visit_user_agent,
         referer=request.headers.get("referer"),
+        is_bot=ua_is_bot(visit_user_agent),
     )
 
     db.add(visit)

@@ -14,6 +14,9 @@ dependencies = [
     "python-multipart>=0.0.6",
     "python-jose[cryptography]>=3.3.0",
     "passlib[bcrypt]>=1.7.4",
+    # bcrypt 5.0 removes the silent 72-byte truncation passlib relied on; pin to 4.x
+    # until passlib ships an upstream fix.
+    "bcrypt<5",
     "mangum>=0.17.0",
     "httpx>=0.26.0",
     "beautifulsoup4>=4.12.0",
@@ -72,6 +75,9 @@ addopts = [
     "--strict-markers",
     "--strict-config",
     "--tb=short",
+    # Skip macOS / iCloud sync conflict copies (e.g. "test_urls 2.py").
+    "--ignore-glob=*[0-9].py",
+    "--ignore-glob=tests/*backup*",
 ]
 markers = [
     "unit: Unit tests",

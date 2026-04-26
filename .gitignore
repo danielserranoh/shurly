@@ -26,6 +26,14 @@ env/
 *.log
 logs/
 
+# macOS / iCloud sync conflict copies (e.g. "test_urls 2.py")
+* [0-9].py
+* [0-9].toml
+* [0-9].astro
+* [0-9].md
+* [0-9].ts
+.DS_Store
+
 # Frontend
 frontend/node_modules/
 frontend/dist/

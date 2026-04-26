@@ -29,7 +29,7 @@ class TestURLTagging:
 
         # Add tags
         response = client.patch(
-            f"/api/urls/test123/tags",
+            f"/api/v1/urls/test123/tags",
             json={"tag_ids": [str(tag1.id), str(tag2.id)]},
             headers=auth_headers
         )
@@ -61,7 +61,7 @@ class TestURLTagging:
 
         # Replace with tag2 and tag3
         response = client.patch(
-            f"/api/urls/test123/tags",
+            f"/api/v1/urls/test123/tags",
             json={"tag_ids": [str(tag2.id), str(tag3.id)]},
             headers=auth_headers
         )
@@ -90,7 +90,7 @@ class TestURLTagging:
         # Try to add fake tag
         fake_id = uuid.uuid4()
         response = client.patch(
-            f"/api/urls/test123/tags",
+            f"/api/v1/urls/test123/tags",
             json={"tag_ids": [str(fake_id)]},
             headers=auth_headers
         )
@@ -104,7 +104,7 @@ class TestURLTagging:
         db_session.commit()
 
         response = client.patch(
-            f"/api/urls/nonexistent/tags",
+            f"/api/v1/urls/nonexistent/tags",
             json={"tag_ids": [str(tag.id)]},
             headers=auth_headers
         )
@@ -139,7 +139,7 @@ class TestURLTagging:
 
         # Try to tag with test_user's auth
         response = client.patch(
-            f"/api/urls/notmine/tags",
+            f"/api/v1/urls/notmine/tags",
             json={"tag_ids": [str(tag.id)]},
             headers=auth_headers
         )
@@ -159,7 +159,7 @@ class TestURLTagging:
 
         # Bulk tag
         response = client.post(
-            "/api/urls/bulk/tags",
+            "/api/v1/urls/bulk/tags",
             json={
                 "short_codes": ["url1", "url2"],
                 "tag_ids": [str(tag.id)]
@@ -190,7 +190,7 @@ class TestURLTagging:
 
         # Bulk add tag2
         response = client.post(
-            "/api/urls/bulk/tags",
+            "/api/v1/urls/bulk/tags",
             json={
                 "short_codes": ["url1"],
                 "tag_ids": [str(tag2.id)]
@@ -229,7 +229,7 @@ class TestURLTagging:
 
         # Try to bulk tag both
         response = client.post(
-            "/api/urls/bulk/tags",
+            "/api/v1/urls/bulk/tags",
             json={
                 "short_codes": ["mine", "theirs"],
                 "tag_ids": [str(tag.id)]
@@ -265,7 +265,7 @@ class TestURLFiltering:
         db_session.commit()
 
         # Filter
-        response = client.get(f"/api/urls?tags={tag.id}", headers=auth_headers)
+        response = client.get(f"/api/v1/urls?tags={tag.id}", headers=auth_headers)
         assert response.status_code == 200
         data = response.json()
         assert data["total"] == 1
@@ -292,7 +292,7 @@ class TestURLFiltering:
         db_session.commit()
 
         # Filter with OR (default)
-        response = client.get(f"/api/urls?tags={tag1.id},{tag2.id}", headers=auth_headers)
+        response = client.get(f"/api/v1/urls?tags={tag1.id},{tag2.id}", headers=auth_headers)
         assert response.status_code == 200
         data = response.json()
         assert data["total"] == 2
@@ -319,7 +319,7 @@ class TestURLFiltering:
         db_session.commit()
 
         # Filter with AND
-        response = client.get(f"/api/urls?tags={tag1.id},{tag2.id}&tag_filter=all", headers=auth_headers)
+        response = client.get(f"/api/v1/urls?tags={tag1.id},{tag2.id}&tag_filter=all", headers=auth_headers)
         assert response.status_code == 200
         data = response.json()
         assert data["total"] == 1
@@ -338,7 +338,7 @@ class TestURLFiltering:
         db_session.commit()
 
         # Get URL list
-        response = client.get("/api/urls", headers=auth_headers)
+        response = client.get("/api/v1/urls", headers=auth_headers)
         assert response.status_code == 200
         data = response.json()
 
@@ -373,7 +373,7 @@ class TestCampaignTagging:
 
         # Tag campaign
         response = client.patch(
-            f"/api/campaigns/{campaign.id}/tags",
+            f"/api/v1/campaigns/{campaign.id}/tags",
             json={"tag_ids": [str(tag.id)]},
             headers=auth_headers
         )
@@ -406,7 +406,7 @@ class TestCampaignTagging:
 
         # Tag campaign
         client.patch(
-            f"/api/campaigns/{campaign.id}/tags",
+            f"/api/v1/campaigns/{campaign.id}/tags",
             json={"tag_ids": [str(tag.id)]},
             headers=auth_headers
         )
@@ -435,7 +435,7 @@ class TestCampaignTagging:
         db_session.commit()
 
         # Get campaign list
-        response = client.get("/api/campaigns", headers=auth_headers)
+        response = client.get("/api/v1/campaigns", headers=auth_headers)
         assert response.status_code == 200
         data = response.json()
 

@@ -1,11 +1,31 @@
+import uuid
+
 import uvicorn
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
 
 from server.app import api_router
 from server.app.urls import redirect_router
 from server.core import get_db
 from server.core.config import settings
+
+
+class RequestIdMiddleware(BaseHTTPMiddleware):
+    """
+    Phase 3.9.6 — X-Request-Id middleware.
+
+    Generate a UUID per request unless the client supplied one; echo back in the
+    response header; stash on `request.state.request_id` so handlers/log lines can
+    correlate (CloudWatch picks up the value once we add the access log formatter).
+    """
+
+    async def dispatch(self, request: Request, call_next):
+        rid = request.headers.get("x-request-id") or uuid.uuid4().hex
+        request.state.request_id = rid
+        response = await call_next(request)
+        response.headers["x-request-id"] = rid
+        return response
 
 
 def create_app() -> FastAPI:
@@ -25,8 +45,12 @@ def create_app() -> FastAPI:
         allow_headers=settings.cors_allow_headers,
     )
 
-    # Include API routes with /api prefix
-    app.include_router(api_router, prefix="/api")
+    # Phase 3.9.6 — request-id correlation. Add after CORS so the header is on every
+    # response, including the OPTIONS preflight handled by CORSMiddleware.
+    app.add_middleware(RequestIdMiddleware)
+
+    # Include API routes under /api/v1 (versioned API)
+    app.include_router(api_router, prefix="/api/v1")
 
     # Include redirect endpoint at root level (/{short_code})
     app.include_router(redirect_router)

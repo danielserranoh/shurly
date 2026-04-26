@@ -162,13 +162,13 @@ import Navbar from '@/components/Navbar.astro';
       try {
         // Register the user
         await apiPost<RegisterResponse>(
-          '/api/auth/register',
+          '/api/v1/auth/register',
           { email, password }
         );
 
         // Auto-login after registration
         const loginResponse = await apiPost<LoginResponse>(
-          '/api/auth/login',
+          '/api/v1/auth/login',
           { email, password }
         );
 

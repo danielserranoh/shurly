@@ -1,15 +1,21 @@
 """Pytest configuration and fixtures."""
 
-import pytest
-from fastapi.testclient import TestClient
-from sqlalchemy import create_engine, event
-from sqlalchemy.orm import Session, sessionmaker
-from sqlalchemy.pool import StaticPool
+import os
 
-from main import app
-from server.core import Base, get_db
-from server.core.auth import create_access_token
-from server.core.models import (  # noqa: F401 - Import all models for SQLAlchemy
+# Skip the FastAPI startup event (which tries to connect to PostgreSQL) during tests.
+# Must be set before `from main import app` so the env var is read at app instantiation.
+os.environ["TESTING"] = "1"
+
+import pytest  # noqa: E402
+from fastapi.testclient import TestClient  # noqa: E402
+from sqlalchemy import create_engine, event  # noqa: E402
+from sqlalchemy.orm import Session, sessionmaker  # noqa: E402
+from sqlalchemy.pool import StaticPool  # noqa: E402
+
+from main import app  # noqa: E402
+from server.core import Base, get_db  # noqa: E402
+from server.core.auth import create_access_token  # noqa: E402
+from server.core.models import (  # noqa: E402, F401 - Import all models for SQLAlchemy
     URL,
     Campaign,
     Tag,
@@ -83,13 +89,11 @@ def client(db_session):
 @pytest.fixture
 def test_user(db_session: Session):
     """Create a test user."""
-    # Pre-generated bcrypt hash for password "test123" to avoid bcrypt version issues
-    # Generated with: passlib.hash.bcrypt.hash("test123")
-    test_password_hash = "$2b$12$KIXxkzJLQw2xGfmC4y4pEeN.uD1QQZvZxPzJ6wJx.d8RQkLfC6fBu"
+    from server.core.auth import hash_password
 
     user = User(
         email="test@example.com",
-        password_hash=test_password_hash,
+        password_hash=hash_password("test123"),
         is_active=True,
     )
     db_session.add(user)
