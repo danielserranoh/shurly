@@ -10,8 +10,9 @@ from sqlalchemy.orm import Session
 
 from server.core import get_db
 from server.core.auth import get_current_user
-from server.core.models import URL, Campaign, User, Visitor
+from server.core.models import URL, Campaign, OrphanVisit, User, Visitor
 from server.core.models.url import URLType
+from server.utils.csv_export import stream_csv
 from server.schemas.analytics import (
     CampaignSummary,
     CampaignUsersResponse,
@@ -28,8 +29,14 @@ from server.schemas.responses import get_responses
 
 
 def _exclude_bots(query: SAQuery, include_bots: bool) -> SAQuery:
-    """Phase 3.9.3 — analytics endpoints default to excluding bots."""
-    return query if include_bots else query.filter(Visitor.is_bot.is_(False))
+    """
+    Phase 3.9.3 — analytics endpoints default to excluding bots.
+    Phase 3.10.3 — also exclude email tracking pixel hits from click analytics
+    (pixels are opens, not clicks; they share the visits table for timeline
+    alignment but are conceptually a different metric).
+    """
+    q = query.filter(Visitor.is_pixel.is_(False))
+    return q if include_bots else q.filter(Visitor.is_bot.is_(False))
 
 
 analytics_router = APIRouter()
@@ -46,6 +53,7 @@ analytics_router = APIRouter()
 def get_url_daily_stats(
     short_code: str,
     include_bots: bool = Query(False, description="Include bot/crawler visits in counts"),
+    format: str = Query("json", pattern="^(json|csv)$", description="Response format"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -102,6 +110,13 @@ def get_url_daily_stats(
         total_clicks += clicks
         stats.append(DailyStats(date=day, clicks=clicks))
 
+    if format == "csv":
+        return stream_csv(
+            headers=["date", "clicks"],
+            rows=((s.date.isoformat(), s.clicks) for s in stats),
+            filename=f"{short_code}-daily.csv",
+        )
+
     return DailyStatsResponse(
         short_code=short_code,
         stats=stats,
@@ -120,6 +135,7 @@ def get_url_daily_stats(
 def get_url_weekly_stats(
     short_code: str,
     include_bots: bool = Query(False, description="Include bot/crawler visits in counts"),
+    format: str = Query("json", pattern="^(json|csv)$", description="Response format"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -173,6 +189,16 @@ def get_url_weekly_stats(
             )
         )
 
+    if format == "csv":
+        return stream_csv(
+            headers=["week_start", "week_end", "clicks"],
+            rows=(
+                (s.week_start.isoformat(), s.week_end.isoformat(), s.clicks)
+                for s in stats
+            ),
+            filename=f"{short_code}-weekly.csv",
+        )
+
     return WeeklyStatsResponse(
         short_code=short_code,
         stats=stats,
@@ -192,6 +218,7 @@ def get_url_geo_stats(
     short_code: str,
     days: int = 30,
     include_bots: bool = Query(False, description="Include bot/crawler visits in counts"),
+    format: str = Query("json", pattern="^(json|csv)$", description="Response format"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -245,6 +272,13 @@ def get_url_geo_stats(
     ]
 
     total_clicks = sum(stat.clicks for stat in stats)
+
+    if format == "csv":
+        return stream_csv(
+            headers=["country", "clicks"],
+            rows=((s.country, s.clicks) for s in stats),
+            filename=f"{short_code}-geo.csv",
+        )
 
     return GeoStatsResponse(
         short_code=short_code,
@@ -420,6 +454,7 @@ def get_campaign_summary(
 def get_campaign_users(
     campaign_id: str,
     include_bots: bool = Query(False, description="Include bot/crawler visits in counts"),
+    format: str = Query("json", pattern="^(json|csv)$", description="Response format"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -485,6 +520,32 @@ def get_campaign_users(
 
     # Sort by clicks descending
     users.sort(key=lambda x: x.clicks, reverse=True)
+
+    if format == "csv":
+        # Flatten user_data dict into the row for spreadsheet readability
+        all_keys: list[str] = []
+        for u in users:
+            for k in u.user_data.keys():
+                if k not in all_keys:
+                    all_keys.append(k)
+        headers = [*all_keys, "short_code", "clicks", "unique_ips", "last_clicked"]
+
+        def _rows():
+            for u in users:
+                row = [u.user_data.get(k, "") for k in all_keys]
+                row.extend([
+                    u.short_code,
+                    u.clicks,
+                    u.unique_ips,
+                    u.last_clicked.isoformat() if u.last_clicked else "",
+                ])
+                yield row
+
+        return stream_csv(
+            headers=headers,
+            rows=_rows(),
+            filename=f"campaign-{campaign.id}-users.csv",
+        )
 
     return CampaignUsersResponse(
         campaign_id=str(campaign.id),
@@ -627,3 +688,48 @@ def get_overview_stats(
         top_urls=top_urls,
         recent_activity=recent_activity,
     )
+
+
+@analytics_router.get(
+    "/orphan-visits",
+    responses={
+        200: {"description": "Orphan visits retrieved (typo'd / unknown short codes)"},
+        **get_responses(401),
+    },
+)
+def get_orphan_visits(
+    limit: int = Query(100, ge=1, le=500, description="Max number of rows"),
+    skip: int = Query(0, ge=0),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Phase 3.10.4 — List orphan visits.
+
+    Useful for catching typo'd codes leaked into print/QR campaigns. Authentication
+    is required because attempted paths and IPs may be sensitive; ownership scoping
+    is intentionally absent (orphan visits don't belong to any user — they're
+    tenant-wide signals at single-tenant launch).
+    """
+    rows = (
+        db.query(OrphanVisit)
+        .order_by(OrphanVisit.created_at.desc())
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )
+    return {
+        "total": db.query(func.count(OrphanVisit.id)).scalar() or 0,
+        "items": [
+            {
+                "id": str(r.id),
+                "type": r.type.value,
+                "attempted_path": r.attempted_path,
+                "ip": r.ip,
+                "user_agent": r.user_agent,
+                "referer": r.referer,
+                "created_at": r.created_at.isoformat() if r.created_at else None,
+            }
+            for r in rows
+        ],
+    }

@@ -540,6 +540,66 @@ See `.env.lambda.example` for all required Lambda environment variables.
 - `DB_SSL_MODE=require` - Force SSL for RDS connections
 - `CORS_ORIGINS` - Must be JSON array string
 
+### Phase 3.9 / 3.10 Settings
+
+These have safe defaults but should be reviewed before exposing to real users.
+
+| Setting | Default | When to override |
+|---|---|---|
+| `ANONYMIZE_REMOTE_ADDR` | `true` | **Keep ON** for GDPR. Visitor IPs are truncated to /24 (IPv4) or /64 (IPv6) **before** they hit Postgres — there is no second copy. Disable only if a legal review explicitly approves storing full addresses. |
+| `TRUSTED_PROXIES` | `[]` | **Required when behind a proxy.** Without it, `X-Forwarded-For` is ignored and every visit IP becomes the proxy's address. Set to a JSON array of CIDRs covering your edge: see [Trusted-Proxy Configuration](#trusted-proxy-configuration) below. |
+| `DISABLE_TRACK_PARAM` | `nostat` | The query string that suppresses visit logging while still redirecting. Useful for QA / synthetic monitoring without polluting analytics. Pick a token your real users won't generate. |
+| `SHORT_URL_MODE` | `loose` | `loose` lowercases generated codes and custom slugs at insert time (Shlink default — fewer collisions, less user surprise). Set to `strict` to keep mixed case (legacy behavior). |
+| `DEFAULT_DOMAIN` | `shurl.griddo.io` | Seeded as the default `Domain` row at startup. URLs without an explicit `domain_id` resolve here. **Set this to your real short-link host before launch.** |
+| `REDIRECT_STATUS_CODE` | `302` | `301` is SEO-friendly but cached aggressively — every browser/intermediary may reuse the cached redirect, dropping analytics fidelity. `302` keeps every hit reaching the backend. `307`/`308` preserve the request method (rare for short URLs). The setting is validated up-front; only `301/302/307/308` are accepted. |
+| `REDIRECT_CACHE_LIFETIME` | `0` | Seconds to cache the redirect at the edge. `0` emits `Cache-Control: private, max-age=0` (every hit logged). Positive values emit `Cache-Control: public, max-age=N` and trade analytics for latency. |
+
+### GDPR Posture
+
+Visitor logging is privacy-first by default:
+
+- **IPv4 → `/24`** (zero last octet) and **IPv6 → `/64`** at insert time. The
+  truncation happens in `server/utils/network.py::anonymize_ip` before the
+  `Visitor` row is committed — full addresses never reach Postgres.
+- Bots and email tracking pixels share the `visits` table but carry `is_bot`
+  and `is_pixel` flags so click analytics exclude them by default.
+- Tracking pixel responses are `Cache-Control: no-store` so HTML email clients
+  re-fetch on every open.
+- The `User.api_key_scope` enum is in place so post-launch role rollouts
+  (`READ_ONLY`, `CREATE_ONLY`, `DOMAIN_SPECIFIC`) ship without a destructive
+  migration; only `FULL_ACCESS` is enforced today.
+- `X-Request-Id` middleware echoes the header on every response (or generates a
+  UUID if absent), enabling log correlation in CloudWatch without leaking PII.
+
+If your privacy policy permits storing full IPs, set
+`ANONYMIZE_REMOTE_ADDR=false` — but keep this decision documented.
+
+### Trusted-Proxy Configuration
+
+`X-Forwarded-For` is **never** trusted by default — anyone can spoof it from
+the open internet. Once you put a proxy in front of the API (which you will:
+ALB / CloudFront / API Gateway / nginx), tell the app which source IPs are
+allowed to set the header.
+
+`TRUSTED_PROXIES` accepts a JSON array of CIDRs:
+
+```bash
+# Behind ALB inside a VPC
+TRUSTED_PROXIES='["10.0.0.0/16"]'
+
+# Behind CloudFront → API Gateway (CloudFront's published edge IP ranges)
+TRUSTED_PROXIES='["52.46.0.0/18","52.84.0.0/15","54.182.0.0/16","54.192.0.0/16","54.230.0.0/17","54.230.128.0/18","54.239.128.0/18","54.239.192.0/19","99.84.0.0/16","204.246.164.0/22","204.246.168.0/22","204.246.174.0/23","204.246.176.0/20","205.251.192.0/19","205.251.249.0/24","205.251.250.0/23","205.251.252.0/23","205.251.254.0/24","216.137.32.0/19"]'
+```
+
+The resolver (`server/utils/network.py::resolve_client_ip`) checks the
+request's source address against every CIDR; only when it matches does it
+honor the leftmost `X-Forwarded-For` entry. Outside the allowlist the socket
+address wins — a defense against header spoofing if the proxy is somehow
+bypassed.
+
+For AWS edges, refresh the CloudFront ranges from the official source:
+<https://ip-ranges.amazonaws.com/ip-ranges.json> (filter `service=CLOUDFRONT`).
+
 ## Testing the Deployment
 
 1. **Test API Gateway URL**:
@@ -642,5 +702,6 @@ aws lambda update-function-code \
 See [ROADMAP.md](ROADMAP.md) for:
 - Phase 4.2: Infrastructure as Code (AWS SAM/CDK)
 - Phase 4.3: CI/CD Pipeline
-- Phase 5: Testing & Optimization
-- Phase 6: Documentation & Handoff
+- **Phase 5: MCP Server over Streamable HTTP** (expose the API as a Model Context Protocol server for Claude Code / Claude Desktop; pilot for "MCP-as-product")
+- Phase 6: Testing & Optimization
+- Phase 7: Documentation & Handoff

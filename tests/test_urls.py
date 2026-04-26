@@ -88,9 +88,14 @@ class TestCustomURLShortening:
         self, client: TestClient, auth_headers: dict, db_session: Session, test_user
     ):
         """Test that taken custom codes get random characters appended."""
-        # Create a URL with the desired code
+        from server.utils.domain import get_or_create_default_domain
+
+        # Create a URL with the desired code on the default domain so the
+        # per-domain UNIQUE collision (Phase 3.10.1) is triggered.
+        domain = get_or_create_default_domain(db_session)
         existing_url = URL(
             short_code="taken",
+            domain_id=domain.id,
             original_url="https://first.com",
             url_type=URLType.CUSTOM,
             created_by=test_user.id,

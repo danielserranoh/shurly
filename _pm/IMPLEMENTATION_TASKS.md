@@ -1745,7 +1745,7 @@ const previewData = url.og_title || url.og_description || url.og_image_url
 ## Notes
 
 - **Backward Compatibility**: All new fields are optional/nullable to avoid breaking existing data
-- **Performance**: Cursor pagination (Phase 5) can wait until user base grows
+- **Performance**: Cursor pagination (Phase 6 optimization sweep) can wait until user base grows
 - **Security**: Rate limiting is critical - prioritize before public deployment
 - **UX**: Title field has highest user-visible impact - implement first
 

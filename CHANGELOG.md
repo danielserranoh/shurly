@@ -88,6 +88,41 @@ implementation lifecycle and is independent of the URL version segment.
 - Test-suite assertions updated for FastAPI's switch from `403` to `401` when
   `HTTPBearer` credentials are missing.
 
+### Added (Phase 3.10 — Shlink Lessons, Medium Priority)
+- **Multi-domain foundation** (3.10.1). New `Domain` model (`hostname`,
+  `is_default`); `URL.domain_id` FK; UNIQUE constraint moved from
+  `short_code` to `(domain_id, short_code)` so the same code may exist on
+  different hosts. The redirect resolver picks the domain from the request
+  `Host` header, falling back to the seeded default domain. Default domain
+  is configurable via `DEFAULT_DOMAIN` (default `shurl.griddo.io`) and is
+  seeded at app startup. Domain management UI is intentionally deferred —
+  single-domain at launch.
+- **Dynamic redirect rules** (3.10.2). New `RedirectRule` model with a
+  JSONB `conditions` column evaluated in priority order (first match wins).
+  Supported condition types: `device` (ios/android/desktop/linux/windows/macos),
+  `language` (Accept-Language primary subtag), `query_param`, `before_date`,
+  `after_date`, `browser`. Conditions inside a single rule AND together;
+  unknown types fail closed. CRUD endpoints under `/api/v1/urls/{code}/rules`.
+  Rules evaluate before campaign param injection so personalization still
+  applies on top of the chosen target.
+- **Email tracking pixel** (3.10.3). `GET /{code}/track` returns the canonical
+  43-byte 1×1 transparent GIF with `Cache-Control: no-store`. Pixel hits land
+  in the existing `visits` table with `is_pixel=true` (timeline-aligned with
+  clicks) and are excluded from click analytics by default.
+- **Orphan visits** (3.10.4). New `OrphanVisit` model captures requests that
+  hit the redirect path but don't resolve. Type enum: `base_url`,
+  `invalid_short_url`, `regular_404` (reserved). Listed via
+  `GET /api/v1/analytics/orphan-visits` (auth required).
+- **CSV export** (3.10.5). Streaming CSV via `csv.writer` + Starlette
+  `StreamingResponse`. Available on URL daily/weekly stats, geo distribution
+  and campaign users (`user_data` flattened into columns) using
+  `?format=csv`. Default response remains JSON.
+- **Configurable redirect behavior** (3.10.6). `REDIRECT_STATUS_CODE`
+  (default `302`, accepts `301/302/307/308`) and `REDIRECT_CACHE_LIFETIME`
+  (default `0`, emits `private, max-age=0`; positive values emit
+  `public, max-age=N`). Settings validate up-front so a typo at deploy time
+  fails fast.
+
 ### Frontend
 - Astro 4 → 6 upgrade. `@astrojs/tailwind` (deprecated for Astro ≥ 5)
   replaced with `@tailwindcss/vite` + Tailwind 4 (CSS-first config in
