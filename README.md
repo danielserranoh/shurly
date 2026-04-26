@@ -4,36 +4,36 @@ A modern, full-stack URL shortener with analytics and campaign management, built
 
 ## Features
 
-- **URL Shortening**: Create short, shareable links with auto-generated or custom codes
-- **User Authentication**: Secure JWT-based authentication with session management
-- **Campaign Management**: Create personalized URL campaigns with CSV imports
-- **Analytics Dashboard**: Track clicks, geographic distribution, and user engagement
-- **User Agent Detection**: Automatic browser, OS, and device type detection
-- **Visitor Tracking**: Monitor URL performance with detailed visit logs
+- **URL Shortening**: Auto-generated 6-char codes, custom slugs, or campaign bulk
+- **Validity windows & visit caps**: `valid_since`, `valid_until`, `max_visits` per URL
+- **Dynamic redirect rules**: device / language / query-param / date / browser conditions, priority-ordered
+- **Multi-domain ready**: same code can live on multiple hosts (`(domain_id, short_code)` UNIQUE)
+- **Email tracking pixel**: `GET /{code}/track` — 1×1 GIF logged with `is_pixel=true`
+- **Analytics**: daily/weekly/geo stats, top performers, campaign timelines — bots filtered by default
+- **GDPR by default**: visitor IPs truncated to /24 (IPv4) or /64 (IPv6) at insert time
+- **CSV export**: `?format=csv` on most analytics endpoints (streamed)
+- **Orphan visit tracking**: catches typo'd codes leaked into print/QR campaigns
+- **Open Graph previews**: social-media crawlers see rich preview pages with og:tags
+- **Versioned API**: stable contract under `/api/v1/`; root path serves redirects
 
 ## Tech Stack
 
 ### Backend
-- **FastAPI** - Modern, fast web framework for building APIs
-- **Pydantic v2** - Data validation using Python type annotations
-- **SQLAlchemy 2.0** - SQL toolkit and ORM
-- **PostgreSQL** - Robust relational database with psycopg2-binary driver
-- **python-jose** - JWT token generation and validation
-- **passlib** - Secure password hashing with bcrypt
-- **uv** - Fast Python package installer and resolver
-- **ruff** - Fast Python linter and formatter
-- **pytest** - Testing framework with 104+ passing tests
+- **FastAPI** — async web framework with OpenAPI/Swagger out of the box
+- **Pydantic v2** — schema validation
+- **SQLAlchemy 2.0 + PostgreSQL** — `psycopg2-binary` driver
+- **python-jose** + **passlib (bcrypt<5)** — JWT + password hashing
+- **uv** + **ruff** + **pytest** — packaging, linting, testing (285 tests)
 
 ### Frontend
-- **Astro** - Modern static site builder with server-side rendering
-- **Tailwind CSS** - Utility-first CSS framework
-- **TypeScript** - Type-safe JavaScript
-- **Vite** - Next generation frontend tooling (bundled with Astro)
+- **Astro 6** with the **`@astrojs/node`** adapter (three dashboard routes are SSR)
+- **Tailwind CSS 4** via **`@tailwindcss/vite`** (CSS-first config in `src/styles/global.css`)
+- **TypeScript** + **Vite 7**
 
 ## Prerequisites
 
 - Python 3.10 or higher
-- Node.js 18 or higher
+- Node.js 20.19+ or 22.12+ (Astro 6 requirement)
 - PostgreSQL database (14 or higher recommended)
 - [uv](https://github.com/astral-sh/uv) (Python package installer)
 
@@ -117,8 +117,17 @@ API_TITLE=Shurly API
 API_VERSION=0.1.0
 API_DESCRIPTION=A modern URL shortener API
 
-# CORS Configuration (comma-separated list)
-CORS_ORIGINS=http://localhost:4323,http://localhost:3000
+# CORS Configuration (JSON array string or single origin)
+CORS_ORIGINS=["http://localhost:4232","http://localhost:3000"]
+
+# Phase 3.9 / 3.10 settings (all optional, sensible defaults shown)
+ANONYMIZE_REMOTE_ADDR=true                 # Truncate IPv4→/24, IPv6→/64
+TRUSTED_PROXIES=[]                         # CIDR allowlist for X-Forwarded-For
+DISABLE_TRACK_PARAM=nostat                 # Query string that suppresses logging
+SHORT_URL_MODE=loose                       # "loose" lowercases codes/slugs
+DEFAULT_DOMAIN=shurl.griddo.io             # Seeded at startup
+REDIRECT_STATUS_CODE=302                   # 301 / 302 / 307 / 308
+REDIRECT_CACHE_LIFETIME=0                  # Seconds; 0 = no-cache
 ```
 
 #### Initialize the Database
@@ -151,7 +160,7 @@ npm install
 npm run dev
 ```
 
-The frontend will be available at `http://localhost:4323`
+The frontend will be available at `http://localhost:4232`
 
 ## Development
 
@@ -222,96 +231,138 @@ npm run astro check
 
 ```
 shurly/
-├── server/                    # Backend application
-│   ├── app/                   # API routes and endpoints
-│   │   ├── __init__.py       # Router aggregation
-│   │   ├── auth.py           # Authentication endpoints (login, register)
-│   │   ├── urls.py           # URL shortening endpoints (CRUD)
-│   │   ├── campaigns.py      # Campaign management endpoints
-│   │   ├── analytics.py      # Analytics and statistics endpoints
-│   │   └── statistics.py     # Legacy statistics (deprecated)
-│   ├── core/                  # Core functionality
-│   │   ├── models/           # SQLAlchemy models
-│   │   │   ├── user.py      # User model
-│   │   │   ├── url.py       # URL model (standard, custom, campaign)
-│   │   │   ├── visitor.py   # Visitor tracking model
-│   │   │   └── campaign.py  # Campaign model
-│   │   ├── __init__.py      # Database session management
-│   │   ├── config.py        # Application configuration
-│   │   └── auth.py          # Authentication utilities (JWT, passwords)
-│   ├── schemas/              # Pydantic schemas
-│   │   ├── auth.py          # Auth request/response schemas
-│   │   ├── urls.py          # URL request/response schemas
-│   │   ├── campaigns.py     # Campaign schemas
-│   │   └── analytics.py     # Analytics response schemas
-│   └── utils/                # Utility functions
-│       ├── url.py           # URL validation and generation
-│       └── user_agent.py    # User agent parsing utilities
-├── frontend/                  # Astro frontend application
+├── server/
+│   ├── app/                       # FastAPI routers (one per domain)
+│   │   ├── auth.py                # Register / login / API keys
+│   │   ├── urls.py                # URL CRUD + redirect + /robots.txt + tracking pixel
+│   │   ├── campaigns.py           # Campaign CRUD + CSV upload
+│   │   ├── analytics.py           # Stats endpoints (daily / weekly / geo / overview / orphans)
+│   │   ├── tags.py                # Tag CRUD + URL tagging
+│   │   └── statistics.py          # Legacy (deprecated)
+│   ├── core/
+│   │   ├── auth.py                # JWT + bcrypt helpers (with 72-byte truncation shim)
+│   │   ├── config.py              # Settings: CORS, GDPR, redirect, multi-domain, …
+│   │   └── models/                # SQLAlchemy models
+│   │       ├── user.py            # User + ApiKeyScope enum
+│   │       ├── url.py             # URL (standard/custom/campaign) + composite UNIQUE
+│   │       ├── visitor.py         # Visitor (with is_bot, is_pixel)
+│   │       ├── campaign.py        # Campaign with CSV column metadata
+│   │       ├── domain.py          # Phase 3.10.1 multi-domain
+│   │       ├── redirect_rule.py   # Phase 3.10.2 conditional redirects
+│   │       ├── orphan_visit.py    # Phase 3.10.4 typo'd / unknown codes
+│   │       └── tag.py             # Tag + URL_tags association
+│   ├── schemas/                   # Pydantic request/response schemas
+│   ├── templates/preview.html     # OG preview page for social crawlers
+│   └── utils/
+│       ├── url.py                 # Code generation, slug normalization, URL validation
+│       ├── user_agent.py          # Browser/OS/device + bot classification
+│       ├── opengraph.py           # OG fetcher with charset fallback
+│       ├── network.py             # IP anonymization + trusted-proxy resolution
+│       ├── domain.py              # Default-domain seeding + Host header → Domain
+│       ├── redirect_rules.py      # Conditional redirect evaluator
+│       ├── csv_export.py          # Streaming CSV writer
+│       └── tags.py                # Predefined tag seeding
+├── frontend/                      # Astro 6 + Tailwind 4
 │   ├── src/
-│   │   ├── layouts/          # Astro layouts
-│   │   │   └── Layout.astro # Main layout
-│   │   ├── pages/            # Astro pages (routes)
-│   │   │   ├── index.astro  # Landing page
-│   │   │   ├── login.astro  # Login page
-│   │   │   ├── register.astro # Registration page
-│   │   │   └── dashboard/   # Protected dashboard pages
-│   │   │       ├── index.astro        # Dashboard home
-│   │   │       ├── campaigns/         # Campaign management
-│   │   │       └── urls/              # URL management
-│   │   ├── components/       # Reusable components
-│   │   │   ├── ProtectedRoute.astro # Auth guard
-│   │   │   ├── Navbar.astro         # Navigation bar
-│   │   │   └── URLCard.astro        # URL display card
-│   │   └── utils/           # Frontend utilities
-│   │       ├── api.ts       # API client functions
-│   │       ├── auth.ts      # Auth token management
-│   │       └── types.ts     # TypeScript type definitions
-│   ├── public/              # Static assets
-│   └── astro.config.mjs     # Astro configuration
-├── tests/                    # Test suite (104+ tests)
-│   ├── conftest.py          # Pytest fixtures and configuration
-│   ├── test_auth.py         # Authentication tests
-│   ├── test_urls.py         # URL shortening tests
-│   ├── test_campaigns.py    # Campaign tests
-│   ├── test_analytics.py    # Analytics tests
-│   └── test_user_agent.py   # User agent parsing tests
-├── main.py                   # FastAPI application entry point
-├── pyproject.toml            # Python project configuration
-├── dockerfile                # Docker configuration
-├── .env.example              # Environment variables template
-└── README.md                 # This file
+│   │   ├── styles/global.css      # @import "tailwindcss"
+│   │   ├── layouts/Layout.astro
+│   │   ├── pages/
+│   │   │   ├── index.astro
+│   │   │   ├── login.astro
+│   │   │   ├── register.astro
+│   │   │   └── dashboard/
+│   │   │       ├── index.astro            # Dashboard home (static)
+│   │   │       ├── analytics.astro        # Analytics view
+│   │   │       ├── create.astro           # Create URL
+│   │   │       ├── settings.astro
+│   │   │       ├── campaigns/
+│   │   │       │   ├── index.astro
+│   │   │       │   ├── create.astro
+│   │   │       │   └── [id].astro         # SSR (prerender = false)
+│   │   │       └── urls/
+│   │   │           └── [short_code].astro # SSR (prerender = false)
+│   │   ├── components/
+│   │   └── utils/                 # api.ts, auth.ts, types.ts
+│   └── astro.config.mjs           # Includes @astrojs/node adapter
+├── tests/                         # 285 passing
+│   ├── conftest.py                # In-memory SQLite fixtures
+│   ├── test_auth.py / _urls.py / _campaigns.py / _analytics.py / _tags.py
+│   ├── test_user_agent.py / _utils.py / _network.py
+│   ├── test_phase396_free_wins.py     # X-Request-Id / SHORT_URL_MODE / OG charset / API key scope
+│   ├── test_phase310_multidomain.py   # Phase 3.10.1
+│   ├── test_phase3102_redirect_rules.py
+│   ├── test_phase3103_pixel.py
+│   ├── test_phase3104_orphan_visits.py
+│   ├── test_phase3105_csv.py
+│   └── test_phase3106_redirect_config.py
+├── main.py                        # FastAPI app + RequestIdMiddleware + startup seeding
+├── pyproject.toml
+├── docker-compose.yml / dockerfile
+└── README.md / CHANGELOG.md / DEPLOYMENT.md / CLAUDE.md
 ```
 
 ## API Endpoints
 
+The HTTP API is versioned under `/api/v1/`. The redirect path (`/{short_code}`),
+`/{short_code}/track` and `/robots.txt` are deliberately unversioned — they're
+public-facing and must remain stable. See [CHANGELOG.md](CHANGELOG.md) for the
+full versioning policy.
+
 ### Authentication
-- `POST /api/v1/auth/register` - Register a new user
-- `POST /api/v1/auth/login` - Login and receive JWT token
-- `GET /api/v1/auth/me` - Get current user information
+- `POST /api/v1/auth/register`
+- `POST /api/v1/auth/login`
+- `GET /api/v1/auth/me`
+- `POST /api/v1/auth/change-password`
+- `POST /api/v1/auth/api-key/generate` — returns `{api_key, scope}` (Phase 3.9.6)
+- `DELETE /api/v1/auth/api-key`
 
 ### URL Shortening
-- `POST /api/v1/urls` - Create a new shortened URL (auto-generated code)
-- `POST /api/v1/urls/custom` - Create a custom shortened URL
-- `GET /api/v1/urls` - List all user's URLs
-- `GET /api/v1/urls/{short_code}` - Get URL details
-- `DELETE /api/v1/urls/{short_code}` - Delete a URL
-- `GET /{short_code}` - Redirect to original URL (tracks visit)
+- `POST /api/v1/urls` — auto-generated 6-char code
+- `POST /api/v1/urls/custom` — user-supplied slug
+- `GET /api/v1/urls` — list (supports `tags=`, `tag_filter=any|all`, pagination)
+- `PATCH /api/v1/urls/{short_code}`
+- `DELETE /api/v1/urls/{short_code}`
+- `GET /api/v1/urls/{short_code}/preview` — OG metadata
+- `POST /api/v1/urls/{short_code}/refresh-preview`
+- `PATCH /api/v1/urls/{short_code}/tags`
+- `POST /api/v1/urls/bulk/tags`
+
+### Redirect Rules (Phase 3.10.2)
+- `GET /api/v1/urls/{short_code}/rules`
+- `POST /api/v1/urls/{short_code}/rules` — `{priority, conditions, target_url}`
+- `PATCH /api/v1/urls/{short_code}/rules/{rule_id}`
+- `DELETE /api/v1/urls/{short_code}/rules/{rule_id}`
 
 ### Campaigns
-- `POST /api/v1/campaigns` - Create a new campaign
-- `GET /api/v1/campaigns` - List all user's campaigns
-- `GET /api/v1/campaigns/{campaign_id}` - Get campaign details
-- `POST /api/v1/campaigns/{campaign_id}/upload` - Upload CSV to generate campaign URLs
-- `DELETE /api/v1/campaigns/{campaign_id}` - Delete a campaign (cascades to URLs)
+- `POST /api/v1/campaigns`
+- `GET /api/v1/campaigns`
+- `GET /api/v1/campaigns/{campaign_id}`
+- `GET /api/v1/campaigns/{campaign_id}/export` — CSV of generated URLs
+- `POST /api/v1/campaigns/{campaign_id}/upload` — CSV → personalized URLs
+- `DELETE /api/v1/campaigns/{campaign_id}` — cascades
+
+### Tags
+- `GET /api/v1/tags` — predefined + user-created
+- `POST /api/v1/tags`
+- `PATCH /api/v1/tags/{id}`
+- `DELETE /api/v1/tags/{id}`
 
 ### Analytics
-- `GET /api/v1/analytics/overview` - Dashboard overview statistics
-- `GET /api/v1/analytics/urls/{short_code}/daily` - Daily stats for a URL (last 7 days)
-- `GET /api/v1/analytics/urls/{short_code}/weekly` - Weekly stats for a URL (last 8 weeks)
-- `GET /api/v1/analytics/urls/{short_code}/geo` - Geographic distribution of clicks
-- `GET /api/v1/analytics/campaigns/{campaign_id}/summary` - Campaign summary with top performers
-- `GET /api/v1/analytics/campaigns/{campaign_id}/users` - Detailed user statistics for a campaign
+All analytics endpoints exclude bot and pixel hits by default. Pass
+`?include_bots=true` to count bot visits; pass `?format=csv` for a streamed CSV.
+
+- `GET /api/v1/analytics/overview` — totals + 7-day timeline + top URLs
+- `GET /api/v1/analytics/urls/{short_code}/daily` — last 7 days
+- `GET /api/v1/analytics/urls/{short_code}/weekly` — last 8 weeks
+- `GET /api/v1/analytics/urls/{short_code}/geo` — by country
+- `GET /api/v1/analytics/campaigns/{campaign_id}/summary` — totals + top performers
+- `GET /api/v1/analytics/campaigns/{campaign_id}/users` — per-URL stats (CSV-friendly)
+- `GET /api/v1/analytics/orphan-visits` — typo'd / unknown codes (Phase 3.10.4)
+
+### Public / unversioned
+- `GET /{short_code}` — Redirect (302 by default; honors validity window, max-visits, redirect rules)
+- `GET /{short_code}/track` — Email tracking pixel (43-byte transparent GIF, `Cache-Control: no-store`)
+- `GET /robots.txt` — Default-deny short URLs; `Allow: /<code>` per `crawlable=true` URL
 
 ## URL Types
 
@@ -321,14 +372,18 @@ Shurly supports three types of URLs:
 2. **Custom**: User-defined short codes (3-20 alphanumeric characters and hyphens)
 3. **Campaign**: Generated from CSV imports with personalized user data
 
+Each URL can also carry: validity window (`valid_since`/`valid_until`), visit cap
+(`max_visits`), crawlability flag (`crawlable`), Open Graph metadata, tags, and
+zero or more priority-ordered redirect rules.
+
 ## Testing
 
 ### Automated Tests
 
-The project includes a comprehensive test suite with 104+ tests:
+The project includes a comprehensive test suite with **285 passing tests**:
 
-- **Unit Tests**: User agent parsing, utility functions
-- **Integration Tests**: API endpoints, database operations, authentication flow
+- **Unit tests**: UA parsing, IP anonymization, redirect-rule evaluator, OG charset decoding
+- **Integration tests**: API contracts, redirect path, multi-domain, bot filtering, CSV export, orphan visits, redirect rules, tracking pixel
 
 Run the full test suite:
 ```bash
@@ -362,26 +417,35 @@ docker run -p 8000:8000 shurly
 
 Note: Update the Docker configuration with environment variables for production deployment.
 
-## Security Features
+## Security & Privacy
 
-- **Password Hashing**: bcrypt with automatic salt generation
-- **JWT Tokens**: Secure token-based authentication
-- **CORS Protection**: Configurable allowed origins
-- **SQL Injection Protection**: SQLAlchemy ORM with parameterized queries
-- **Authorization**: User-scoped resources (users can only access their own data)
-- **Campaign URL Protection**: Campaign URLs must be deleted through campaign (cascade)
+- **Password hashing**: bcrypt (4.x; 72-byte input shim for forward-compat with bcrypt 5)
+- **JWT tokens**: HS256, 7-day default lifetime, configurable
+- **CORS protection**: configurable allowed origins (JSON array string)
+- **SQL injection**: SQLAlchemy ORM, parameterized queries throughout
+- **Authorization**: user-scoped resources for URLs / campaigns / tags
+- **GDPR by default**: visitor IPs anonymized at insert (`/24` IPv4, `/64` IPv6); toggle with `ANONYMIZE_REMOTE_ADDR`
+- **Trusted-proxy allowlist**: `X-Forwarded-For` is **never** trusted unless the request source is in `TRUSTED_PROXIES` (CIDRs)
+- **Default-deny crawlability**: short URLs are excluded from `/robots.txt` unless explicitly marked `crawlable=true`
+- **Bot-aware analytics**: visits classified at log time; bots excluded from click counts
+- **X-Request-Id correlation**: every response carries a request id (echoed if supplied) for log tracing
 
 ## Production Deployment
 
-For production deployment:
+See [DEPLOYMENT.md](DEPLOYMENT.md) for the full AWS Lambda + RDS guide. Pre-flight
+checklist:
 
-1. Set a strong `JWT_SECRET_KEY` (use `openssl rand -hex 32`)
-2. Configure proper CORS origins
-3. Set up PostgreSQL with proper user permissions
-4. Use a production WSGI server (uvicorn with workers)
-5. Configure HTTPS/TLS
-6. Set up database backups
-7. Configure logging and monitoring
+1. Set a strong `JWT_SECRET_KEY` (`openssl rand -hex 32`)
+2. Configure CORS origins as a JSON array string
+3. **Configure `TRUSTED_PROXIES`** with your ALB / CloudFront / API Gateway source CIDRs — without it, `X-Forwarded-For` is ignored and visit IPs will be the proxy's
+4. Confirm `ANONYMIZE_REMOTE_ADDR=true` matches your privacy policy (default ON)
+5. Pick `REDIRECT_STATUS_CODE` (302 = analytics-friendly; 301 = SEO-friendly but cached)
+6. Pick `REDIRECT_CACHE_LIFETIME` (0 = every hit reaches backend; >0 = `Cache-Control: public, max-age=N`)
+7. Set `DEFAULT_DOMAIN` to your real short-link host
+8. Set up PostgreSQL with restricted user permissions
+9. Configure HTTPS/TLS at the edge
+10. Configure log aggregation (CloudWatch picks up the `X-Request-Id` header automatically)
+11. Set up automated database backups
 
 ## Contributing
 
