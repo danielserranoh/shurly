@@ -3,7 +3,7 @@
 from datetime import datetime, timezone
 from urllib.parse import urlencode
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from fastapi.responses import PlainTextResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
@@ -11,7 +11,20 @@ from sqlalchemy.orm import Session
 from server.core import get_db
 from server.core.auth import get_current_user
 from server.core.config import settings
-from server.core.models import URL, URLType, User, Visitor
+from server.core.models import (
+    URL,
+    OrphanVisit,
+    OrphanVisitType,
+    RedirectRule,
+    URLType,
+    User,
+    Visitor,
+)
+from server.schemas.redirect_rule import (
+    RedirectRuleCreate,
+    RedirectRuleResponse,
+    RedirectRuleUpdate,
+)
 from server.schemas.responses import get_responses
 from server.schemas.url import (
     OpenGraphMetadataResponse,
@@ -21,8 +34,10 @@ from server.schemas.url import (
     URLResponse,
     URLUpdate,
 )
+from server.utils.domain import get_or_create_default_domain, resolve_domain_for_host
 from server.utils.network import anonymize_ip, resolve_client_ip
 from server.utils.opengraph import fetch_opengraph_metadata, is_social_media_crawler
+from server.utils.redirect_rules import pick_target
 from server.utils.url import (
     generate_short_code,
     is_valid_custom_code,
@@ -81,13 +96,22 @@ async def create_short_url(
     - **422**: Validation error (invalid URL format)
     - **500**: Failed to generate unique short code (very rare)
     """
-    # Generate a unique short code
+    # Phase 3.10.1 — bind every URL to a domain. New URLs default to the default
+    # domain; multi-tenant API support comes when we expose domain selection.
+    domain = get_or_create_default_domain(db)
+
+    # Generate a unique short code (per-domain uniqueness — same code may exist
+    # on a different domain row).
     max_attempts = 10
     short_code = None
 
     for _ in range(max_attempts):
         candidate = generate_short_code(length=6)
-        existing = db.query(URL).filter(URL.short_code == candidate).first()
+        existing = (
+            db.query(URL)
+            .filter(URL.domain_id == domain.id, URL.short_code == candidate)
+            .first()
+        )
         if not existing:
             short_code = candidate
             break
@@ -116,6 +140,7 @@ async def create_short_url(
     # Create the URL
     url = URL(
         short_code=short_code,
+        domain_id=domain.id,
         original_url=url_data.url,
         url_type=URLType.STANDARD,
         title=url_data.title,
@@ -192,8 +217,13 @@ async def create_custom_url(
     short_code = normalize_short_code(url_data.custom_code)
     warning = None
 
-    # Check if code is already taken
-    existing = db.query(URL).filter(URL.short_code == short_code).first()
+    # Phase 3.10.1 — uniqueness is per-domain; check inside the default domain.
+    domain = get_or_create_default_domain(db)
+    existing = (
+        db.query(URL)
+        .filter(URL.domain_id == domain.id, URL.short_code == short_code)
+        .first()
+    )
     if existing:
         # Append random characters to make it unique
         short_code = make_code_unique(url_data.custom_code, append_length=3)
@@ -217,6 +247,7 @@ async def create_custom_url(
     # Create the URL
     url = URL(
         short_code=short_code,
+        domain_id=domain.id,
         original_url=url_data.url,
         url_type=URLType.CUSTOM,
         title=url_data.title,
@@ -711,6 +742,226 @@ def _as_utc(dt: datetime | None) -> datetime | None:
     return dt if dt.tzinfo is not None else dt.replace(tzinfo=timezone.utc)
 
 
+# Phase 3.10.2 — RedirectRule CRUD scoped to the URL's owner.
+
+def _get_owned_url(db: Session, short_code: str, user: User) -> URL:
+    url = (
+        db.query(URL)
+        .filter(URL.short_code == short_code, URL.created_by == user.id)
+        .first()
+    )
+    if not url:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="URL not found",
+        )
+    return url
+
+
+@urls_router.get(
+    "/{short_code}/rules",
+    response_model=list[RedirectRuleResponse],
+    responses={200: {"description": "Rules listed"}, **get_responses(401, 404)},
+)
+def list_redirect_rules(
+    short_code: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    url = _get_owned_url(db, short_code, current_user)
+    rules = (
+        db.query(RedirectRule)
+        .filter(RedirectRule.url_id == url.id)
+        .order_by(RedirectRule.priority)
+        .all()
+    )
+    return [RedirectRuleResponse.model_validate(r) for r in rules]
+
+
+@urls_router.post(
+    "/{short_code}/rules",
+    response_model=RedirectRuleResponse,
+    status_code=status.HTTP_201_CREATED,
+    responses={201: {"description": "Rule created"}, **get_responses(401, 404, 422)},
+)
+def create_redirect_rule(
+    short_code: str,
+    rule_data: RedirectRuleCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    url = _get_owned_url(db, short_code, current_user)
+    rule = RedirectRule(
+        url_id=url.id,
+        priority=rule_data.priority,
+        conditions=rule_data.conditions,
+        target_url=rule_data.target_url,
+    )
+    db.add(rule)
+    db.commit()
+    db.refresh(rule)
+    return RedirectRuleResponse.model_validate(rule)
+
+
+@urls_router.patch(
+    "/{short_code}/rules/{rule_id}",
+    response_model=RedirectRuleResponse,
+    responses={200: {"description": "Rule updated"}, **get_responses(401, 404, 422)},
+)
+def update_redirect_rule(
+    short_code: str,
+    rule_id: str,
+    rule_update: RedirectRuleUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    url = _get_owned_url(db, short_code, current_user)
+    from uuid import UUID as _UUID
+
+    try:
+        rule_uuid = _UUID(rule_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail="Rule not found") from exc
+    rule = (
+        db.query(RedirectRule)
+        .filter(RedirectRule.id == rule_uuid, RedirectRule.url_id == url.id)
+        .first()
+    )
+    if not rule:
+        raise HTTPException(status_code=404, detail="Rule not found")
+    for field, value in rule_update.model_dump(exclude_unset=True).items():
+        setattr(rule, field, value)
+    db.commit()
+    db.refresh(rule)
+    return RedirectRuleResponse.model_validate(rule)
+
+
+@urls_router.delete(
+    "/{short_code}/rules/{rule_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={204: {"description": "Rule deleted"}, **get_responses(401, 404)},
+)
+def delete_redirect_rule(
+    short_code: str,
+    rule_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    url = _get_owned_url(db, short_code, current_user)
+    from uuid import UUID as _UUID
+
+    try:
+        rule_uuid = _UUID(rule_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail="Rule not found") from exc
+    rule = (
+        db.query(RedirectRule)
+        .filter(RedirectRule.id == rule_uuid, RedirectRule.url_id == url.id)
+        .first()
+    )
+    if not rule:
+        raise HTTPException(status_code=404, detail="Rule not found")
+    db.delete(rule)
+    db.commit()
+    return None
+
+
+# Phase 3.10.3 — 1×1 transparent GIF used as the email-open tracking pixel.
+# This is the canonical 43-byte single-pixel GIF89a; embedding it in HTML emails
+# triggers a GET request which we log as a Visitor row with `is_pixel=True`.
+_TRANSPARENT_GIF = (
+    b"GIF89a\x01\x00\x01\x00\x80\x00\x00\xff\xff\xff\x00\x00\x00"
+    b"!\xf9\x04\x01\x00\x00\x00\x00,\x00\x00\x00\x00\x01\x00\x01"
+    b"\x00\x00\x02\x02D\x01\x00;"
+)
+
+
+@redirect_router.get(
+    "/",
+    responses={404: {"description": "Base URL has no landing page"}},
+)
+def base_url_landing(request: Request, db: Session = Depends(get_db)):
+    """
+    Phase 3.10.4 — Log direct hits to the bare base URL as orphan visits.
+
+    Someone typed `https://shurl.griddo.io` with no code. We don't have a
+    marketing landing page here (that lives on the main app), so we log the
+    hit (helpful to spot leaked-without-the-code campaigns) and return 404.
+    """
+    db.add(
+        OrphanVisit(
+            type=OrphanVisitType.BASE_URL,
+            attempted_path="/",
+            ip=request.client.host if request.client else None,
+            user_agent=request.headers.get("user-agent"),
+            referer=request.headers.get("referer"),
+        )
+    )
+    db.commit()
+    raise HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail="No short code provided",
+    )
+
+
+@redirect_router.get(
+    "/{short_code}/track",
+    responses={
+        200: {"description": "1x1 transparent GIF; visit logged as is_pixel=true"},
+        **get_responses(404),
+    },
+)
+def tracking_pixel(short_code: str, request: Request, db: Session = Depends(get_db)):
+    """
+    Phase 3.10.3 — Email open tracking pixel.
+
+    Emits the canonical 1×1 transparent GIF with `Cache-Control: no-store` so
+    every open is registered (HTML-email clients cache aggressively otherwise).
+    Pixel hits are recorded on the same `visits` table with `is_pixel=True`,
+    keeping the opens timeline aligned with the click timeline while letting
+    analytics endpoints continue to count clicks separately.
+    """
+    domain = resolve_domain_for_host(db, request.headers.get("host"))
+    url = (
+        db.query(URL)
+        .filter(URL.domain_id == domain.id, URL.short_code == short_code)
+        .first()
+    )
+    if not url:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Short URL '{short_code}' not found",
+        )
+
+    # Pixel hits never consume max_visits quota and are always logged (even
+    # under DISABLE_TRACK_PARAM, since the whole point of the endpoint is to log).
+    visit_user_agent = request.headers.get("user-agent")
+    raw_ip = resolve_client_ip(
+        request.client.host if request.client else None,
+        request.headers.get("x-forwarded-for"),
+        settings.trusted_proxies,
+    )
+    stored_ip = anonymize_ip(raw_ip) if settings.anonymize_remote_addr else raw_ip
+    db.add(
+        Visitor(
+            url_id=url.id,
+            short_code=short_code,
+            ip=stored_ip or "unknown",
+            user_agent=visit_user_agent,
+            referer=request.headers.get("referer"),
+            is_bot=ua_is_bot(visit_user_agent),
+            is_pixel=True,
+        )
+    )
+    db.commit()
+
+    return Response(
+        content=_TRANSPARENT_GIF,
+        media_type="image/gif",
+        headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0"},
+    )
+
+
 @redirect_router.get(
     "/robots.txt",
     response_class=PlainTextResponse,
@@ -766,10 +1017,48 @@ def redirect_short_url(short_code: str, request: Request, db: Session = Depends(
     - Social media crawlers (Twitter, Facebook, LinkedIn, WhatsApp, etc.) see rich preview cards
     - Crawler preview hits do NOT consume `max_visits` quota (no Visitor row inserted)
     """
-    # Find the URL
-    url = db.query(URL).filter(URL.short_code == short_code).first()
+    # Phase 3.10.1 — resolve the URL by (Host header → domain) + short_code so
+    # the same code can live on multiple hostnames. Unknown hosts fall back to
+    # the default domain (single-domain at launch, but this lets new vanity
+    # hosts piggyback on the same backend without a code change).
+    domain = resolve_domain_for_host(db, request.headers.get("host"))
+    url = (
+        db.query(URL)
+        .filter(URL.domain_id == domain.id, URL.short_code == short_code)
+        .first()
+    )
 
     if not url:
+        # Fallback: legacy rows that pre-date Phase 3.10.1 may have NULL domain_id
+        url = (
+            db.query(URL)
+            .filter(URL.domain_id.is_(None), URL.short_code == short_code)
+            .first()
+        )
+
+    if not url:
+        # Phase 3.10.4 — log the orphan before returning 404. Useful for catching
+        # typo'd codes leaked into print/QR campaigns. Anonymize IP same as for
+        # regular visits so GDPR posture is consistent.
+        orphan_ip = anonymize_ip(
+            resolve_client_ip(
+                request.client.host if request.client else None,
+                request.headers.get("x-forwarded-for"),
+                settings.trusted_proxies,
+            )
+        ) if settings.anonymize_remote_addr else (
+            request.client.host if request.client else None
+        )
+        db.add(
+            OrphanVisit(
+                type=OrphanVisitType.INVALID_SHORT_URL,
+                attempted_path=str(request.url.path)[:2048],
+                ip=orphan_ip,
+                user_agent=request.headers.get("user-agent"),
+                referer=request.headers.get("referer"),
+            )
+        )
+        db.commit()
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Short URL '{short_code}' not found",
@@ -803,8 +1092,16 @@ def redirect_short_url(short_code: str, request: Request, db: Session = Depends(
     # Update last_click_at timestamp
     url.last_click_at = datetime.now(timezone.utc)
 
-    # Build redirect URL
-    redirect_url = url.original_url
+    # Phase 3.10.2 — let conditional rules override the destination before we
+    # append campaign params or forwarded query params. First-match wins by
+    # priority; if no rule matches, fall through to the URL's original_url.
+    redirect_url = pick_target(
+        list(url.redirect_rules),
+        url.original_url,
+        user_agent=request.headers.get("user-agent"),
+        accept_language=request.headers.get("accept-language"),
+        query_params=dict(request.query_params),
+    )
     query_params = {}
 
     # For campaign URLs, ALWAYS append user data (personalization)
@@ -839,11 +1136,22 @@ def redirect_short_url(short_code: str, request: Request, db: Session = Depends(
             headers={"Cache-Control": "public, max-age=300"},  # Cache for 5 min
         )
 
+    # Phase 3.10.6 — pull configured status + cache header for each redirect path.
+    cache_header = (
+        f"public, max-age={settings.redirect_cache_lifetime}"
+        if settings.redirect_cache_lifetime > 0
+        else "private, max-age=0"
+    )
+
     # Phase 3.9.6 — DISABLE_TRACK_PARAM: a configurable query string ("nostat" by default)
     # that suppresses Visitor logging. Used for QA / internal smoke tests so they don't
     # pollute analytics. The redirect itself still happens.
     if settings.disable_track_param in request.query_params:
-        return RedirectResponse(url=redirect_url, status_code=status.HTTP_302_FOUND)
+        return RedirectResponse(
+            url=redirect_url,
+            status_code=settings.redirect_status_code,
+            headers={"Cache-Control": cache_header},
+        )
 
     # Log the visit (synchronously for now, could be background task).
     # Phase 3.9.3: classify bots at log time so analytics can default-filter them.
@@ -868,5 +1176,9 @@ def redirect_short_url(short_code: str, request: Request, db: Session = Depends(
     db.add(visit)
     db.commit()
 
-    # Redirect (302 = temporary redirect) for regular browsers
-    return RedirectResponse(url=redirect_url, status_code=status.HTTP_302_FOUND)
+    # Phase 3.10.6 — honor REDIRECT_STATUS_CODE + REDIRECT_CACHE_LIFETIME.
+    return RedirectResponse(
+        url=redirect_url,
+        status_code=settings.redirect_status_code,
+        headers={"Cache-Control": cache_header},
+    )

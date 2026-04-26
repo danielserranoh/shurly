@@ -422,7 +422,7 @@ System creates:
 - [x] Expose fields in URLCreate / URLCustomCreate / URLUpdate / URLResponse schemas
 - [x] Tests for expiry edge cases (9 new tests covering boundary, nullable, validity window, quota consumption)
 - [x] Crawler preview hits do NOT consume quota (Visitor row only inserted on real human visits)
-- [ ] Future CLI / scheduled Lambda for `delete-expired` (deferred to Phase 5)
+- [ ] Future CLI / scheduled Lambda for `delete-expired` (deferred to Phase 6 — bundled with the post-launch optimization sweep)
 
 ### 3.9.3 Bot Detection in Analytics ✅
 - [x] Add `is_bot` (BOOLEAN, default false) to Visitor model
@@ -490,53 +490,53 @@ System creates:
 **Priority:** 🟡 MEDIUM - Schedule after 3.9 / 3.8, before or in parallel with Phase 4.5
 **Reference:** Shlink analysis (gaps marked Medium); some items are model-only at this stage to avoid future migrations
 
-### 3.10.1 Multi-Domain Foundation (model-only at launch)
-- [ ] Create Domain model (id, hostname, is_default, created_at)
-- [ ] Add `domain_id` (FK, nullable) to URL model
-- [ ] Replace UNIQUE constraint on `short_code` with UNIQUE `(domain_id, short_code)`
-- [ ] Seed default domain row at startup (e.g. `shurl.griddo.io`)
-- [ ] Update redirect resolver to match by `(host header → domain_id, code)`
-- [ ] Frontend / domain management UI deferred (single-domain at launch)
-- [ ] Tests verifying same code can exist on different domains
+### 3.10.1 Multi-Domain Foundation (model-only at launch) ✅
+- [x] Create Domain model (id, hostname, is_default, created_at)
+- [x] Add `domain_id` (FK, nullable) to URL model
+- [x] Replace UNIQUE constraint on `short_code` with UNIQUE `(domain_id, short_code)`
+- [x] Seed default domain row at startup (`shurl.griddo.io` from `default_domain` setting)
+- [x] Update redirect resolver to match by `(host header → domain_id, code)`
+- [ ] Frontend / domain management UI deferred (single-domain at launch — model-only)
+- [x] Tests verifying same code can exist on different domains (`tests/test_phase310_multidomain.py`)
 
-### 3.10.2 Dynamic Redirect Rules
-- [ ] Create RedirectRule model (id, url_id, priority, conditions JSONB, target_url, created_at)
-- [ ] Condition types: `device` (ios/android/desktop/linux/windows/macos), `language`, `query_param`, `before_date`, `after_date`, `browser`
-- [ ] Ordered evaluation by priority (first match wins)
-- [ ] Endpoints: GET/POST/PATCH/DELETE `/api/v1/urls/{code}/rules`
-- [ ] Update redirect handler to evaluate rules before default URL
-- [ ] Compatible with existing campaign personalization (rules evaluated first, then params injected)
-- [ ] Tests for each condition type + priority ordering
+### 3.10.2 Dynamic Redirect Rules ✅
+- [x] Create RedirectRule model (id, url_id, priority, conditions JSONB, target_url, created_at)
+- [x] Condition types: `device` (ios/android/desktop/linux/windows/macos), `language`, `query_param`, `before_date`, `after_date`, `browser`
+- [x] Ordered evaluation by priority (first match wins)
+- [x] Endpoints: GET/POST/PATCH/DELETE `/api/v1/urls/{code}/rules`
+- [x] Update redirect handler to evaluate rules before default URL
+- [x] Compatible with existing campaign personalization (rules evaluated first, then params injected)
+- [x] Tests for each condition type + priority ordering (`tests/test_phase3102_redirect_rules.py`)
 
-### 3.10.3 Email Tracking Pixel
-- [ ] Endpoint GET `/{code}/track` returning 1×1 transparent GIF (Cache-Control: no-store)
-- [ ] Logs as Visitor row with `is_pixel=true` flag
-- [ ] Suitable for embedding in HTML emails for open tracking
-- [ ] Tests for pixel response (correct content-type, byte length, visit logged)
+### 3.10.3 Email Tracking Pixel ✅
+- [x] Endpoint GET `/{code}/track` returning 1×1 transparent GIF (Cache-Control: no-store)
+- [x] Logs as Visitor row with `is_pixel=true` flag
+- [x] Pixel hits excluded from click analytics by default
+- [x] Tests for pixel response (correct content-type, 43-byte GIF89a, visit logged) (`tests/test_phase3103_pixel.py`)
 
-### 3.10.4 Orphan Visits Tracking
-- [ ] Add OrphanVisit model (id, type enum, attempted_path, ip, ua, referer, created_at)
-- [ ] Type enum: `base_url`, `invalid_short_url`, `regular_404`
-- [ ] Catch-all handler logs orphan visits before returning 404
-- [ ] Endpoint GET `/api/v1/analytics/orphan-visits`
-- [ ] Useful for catching typo'd codes leaked into print/QR campaigns
+### 3.10.4 Orphan Visits Tracking ✅
+- [x] Add OrphanVisit model (id, type enum, attempted_path, ip, ua, referer, created_at)
+- [x] Type enum: `base_url`, `invalid_short_url`, `regular_404` (`regular_404` reserved for future global 404 handler)
+- [x] Catch-all handler logs orphan visits before returning 404
+- [x] Endpoint GET `/api/v1/analytics/orphan-visits`
+- [x] Tests for orphan logging + listing endpoint (`tests/test_phase3104_orphan_visits.py`)
 
-### 3.10.5 CSV Export for Analytics
-- [ ] Add `?format=csv` to visit / analytics endpoints
-- [ ] Use FastAPI `StreamingResponse` + `csv.writer`
-- [ ] Apply to: campaign visits, URL visits, overview activity, geo distribution
-- [ ] Tests verifying CSV structure and headers
+### 3.10.5 CSV Export for Analytics ✅
+- [x] Add `?format=csv` to visit / analytics endpoints
+- [x] Use FastAPI `StreamingResponse` + `csv.writer`
+- [x] Applied to: URL daily/weekly stats, geo distribution, campaign users (with flattened `user_data`)
+- [x] Tests verifying CSV structure and headers (`tests/test_phase3105_csv.py`)
 
-### 3.10.6 Configurable Redirect Behavior
-- [ ] Add `REDIRECT_STATUS_CODE` config (302 default; supports 301/307/308)
-- [ ] Add `REDIRECT_CACHE_LIFETIME` config + `Cache-Control` header (default `private, max-age=0`)
-- [ ] Document tradeoff: 301 = SEO-friendly but cached; 302 = uncached, every hit logged
-- [ ] Tests for each status code + cache header
+### 3.10.6 Configurable Redirect Behavior ✅
+- [x] `REDIRECT_STATUS_CODE` config (302 default; supports 301/307/308) with validation
+- [x] `REDIRECT_CACHE_LIFETIME` config + `Cache-Control` header (default `private, max-age=0`)
+- [x] Tradeoff documented in `server/core/config.py` comment block
+- [x] Tests for each status code + cache header (`tests/test_phase3106_redirect_config.py`)
 
-### 3.10.7 Verification
-- [ ] All existing tests still pass
-- [ ] Redirect path performance not regressed (rules eval is O(n) per URL but n is small)
-- [ ] Frontend remains compatible (no UI changes required for 3.10.1–3.10.4)
+### 3.10.7 Verification ✅
+- [x] All existing tests still pass — **285 passing**
+- [x] Redirect path performance: rules eval is O(n) per URL with n typically <10
+- [x] Frontend remains compatible (no UI changes required for 3.10.1–3.10.4)
 
 ---
 
@@ -598,9 +598,77 @@ System creates:
 
 ---
 
-## Phase 5: Testing & Optimization
+## Phase 5: MCP Server over Streamable HTTP
 
-### 5.1 Testing
+**Goal:** Expose the existing API as an MCP server so internal users (and Claude Code / Claude Desktop) can drive Shurly without a frontend. Pilot for the broader "MCP-as-product" thesis: capture how people actually use the service via natural language, and use those signals to prioritize Phase 7 (frontend) features.
+**Duration:** ~1.5–2 weeks
+**Priority:** 🟡 MEDIUM — Runs after Phase 4 (deploy) and before Phase 7 (frontend). Backend-only stack already has 3.9 + 3.10 hardening, so this exposes a stable surface.
+**Reference:** [Model Context Protocol spec](https://modelcontextprotocol.io/), Anthropic Python SDK (`mcp`), FastMCP (https://github.com/jlowin/fastmcp). Decision rationale recorded in conversation thread (PR review).
+
+**Sequencing:**
+- Phase 4 (deploy) must complete first — MCP runs against the same backend; we don't want to debug Lambda cold starts and MCP transports simultaneously.
+- Internal dogfood window of ~2–4 weeks before Phase 7 starts. Findings feed the frontend prioritization.
+
+### 5.1 Foundation & framework choice
+- [ ] Decision recorded: start with **`fastmcp` standalone** for fast prototyping (auto-generates tools from FastAPI), reserve the option to migrate to `mcp.server.fastmcp` (official SDK) if upstream divergence becomes a real risk.
+- [ ] Add `fastmcp` to `pyproject.toml` `mcp` optional-extra group (so it doesn't bloat the Lambda bundle when not needed).
+- [ ] Create `mcp_server/` sub-package or sibling module — keep it isolated from `server/` so the API can run standalone.
+- [ ] Pick transport: **Streamable HTTP** (single endpoint, request/response, Lambda-friendly). Stdio for local dev only.
+- [ ] Document the chosen framework + transport in `mcp_server/README.md` with the 3-option comparison rationale (so a future maintainer doesn't relitigate the decision).
+
+### 5.2 Auto-generated tools from FastAPI
+- [ ] Bootstrap: `FastMCP.from_fastapi(app)` (or equivalent) — generate the first cut of tools automatically.
+- [ ] Audit the generated tool list: for each `/api/v1/...` endpoint, verify the tool name, description, schema, and return shape are LLM-friendly.
+- [ ] Filter out endpoints that should NOT be MCP tools: legacy `statistics.py`, internal-only routes, anything that handles file uploads (campaign CSV — see 5.3).
+- [ ] Verify the OG-preview, robots.txt, redirect path, and tracking pixel routes are excluded (they're public unversioned routes, not management API).
+- [ ] Tests: each auto-generated tool round-trips through the MCP server and produces the same output as the underlying endpoint.
+
+### 5.3 Hand-curated tools (where auto-gen is awkward)
+- [ ] **`create_campaign_from_rows`** — replaces the multipart CSV upload with a JSON tool: `{name, original_url, csv_columns, rows: [...]}`. The existing endpoint stays for browser uploads; the MCP variant reuses the same campaign generator.
+- [ ] **`get_url_analytics_summary`** — composes overview + daily + geo into one structured response so the LLM doesn't need 3 calls to answer "how is this URL doing".
+- [ ] **`add_redirect_rule`** — sugar over `POST /urls/{code}/rules` with named arguments per condition type (e.g. `device="ios"`, `language="en"`) instead of a raw conditions list.
+- [ ] **`list_orphan_visits_grouped`** — group by attempted_path so the LLM can spot typo patterns instead of paging through a flat list.
+- [ ] Tests for each curated tool covering the natural-language phrasings we expect.
+
+### 5.4 Authentication & per-user scoping
+- [ ] Map MCP requests to users via `Authorization: Bearer <api_key>` (reusing the existing `User.api_key` column).
+- [ ] Resolve `current_user` per-request from the bearer token (same code path as the existing JWT dependency, just a different lookup).
+- [ ] Honor the `User.api_key_scope` enum at request time — `FULL_ACCESS` allowed today; `READ_ONLY`/`CREATE_ONLY`/`DOMAIN_SPECIFIC` reserved.
+- [ ] Tests: bad token → 401; valid token → user-scoped queries (URLs / campaigns / rules belong to the caller).
+- [ ] Document the API key generation + rotation flow in `mcp_server/README.md` (rotation already exists via `POST /api/v1/auth/api-key/generate` which returns `{api_key, scope}`).
+
+### 5.5 Deploy & operational integration
+- [ ] Deploy MCP server alongside the API. Two viable shapes:
+  - **(a)** Same Lambda + same API Gateway, mounted on a different path (`/mcp`). Simpler, single artifact.
+  - **(b)** Separate Lambda + dedicated API Gateway endpoint. Cleaner blast radius if MCP traffic spikes.
+- [ ] Pick one (recommendation: (a) for the pilot) and document the choice.
+- [ ] Make the MCP endpoint reachable from Claude Code via per-user MCP config (`claude_code config add mcp shurly --url https://...`).
+- [ ] Verify the existing `RequestIdMiddleware` propagates through the MCP path so logs correlate.
+- [ ] CloudWatch alarms reuse the API alarms (latency, 5xx) — no new monitoring needed.
+
+### 5.6 Internal dogfood + signal capture
+- [ ] Roll out to the Griddo team: 3–5 internal users with API keys.
+- [ ] Capture for 2–4 weeks: tool invocation counts (which tools get used vs ignored), tool error rates, average call duration.
+- [ ] Capture qualitatively: which workflows feel smooth in chat, which feel awkward (e.g. CSV import, charts).
+- [ ] Output: a "frontend feature priority" list backed by real signal, fed into Phase 7.
+
+### 5.7 Verification
+- [ ] All auto-generated + curated tools have at least one happy-path test.
+- [ ] MCP endpoint responds within the same SLO as the regular API.
+- [ ] No regression in existing tests (backend behavior unchanged).
+- [ ] `mcp_server/README.md` exists and covers: architecture, framework choice, auth, deployment, how to add a new tool.
+- [ ] CHANGELOG.md entry under "Added" describing the MCP surface.
+
+### Open questions (resolve during 5.1)
+- Does `fastmcp.from_fastapi()` produce useful tool descriptions, or do we need to enrich them via Pydantic `Field(..., description=...)` everywhere first? (Likely yes — most of our schemas already have descriptions; sweep the gaps.)
+- Should pixel/redirect endpoints be exposed as tools at all? (Probably not — they're public-facing routes, not management surface.)
+- Per-user MCP config in Claude Code: how does the team add their personal API key without committing it? (Document the env-var pattern in `mcp_server/README.md`.)
+
+---
+
+## Phase 6: Testing & Optimization
+
+### 6.1 Testing
 - [ ] Unit tests (pytest)
   - [ ] URL shortening logic
   - [ ] Campaign CSV parsing
@@ -611,13 +679,13 @@ System creates:
 - [ ] E2E tests (optional)
   - [ ] Frontend flows
 
-### 5.2 Performance Optimization
+### 6.2 Performance Optimization
 - [ ] Database indexes review
 - [ ] Query optimization for analytics
 - [ ] CloudFront caching strategy
 - [ ] Lambda cold start optimization (provisioned concurrency if needed)
 
-### 5.3 Security Hardening
+### 6.3 Security Hardening
 - [ ] Rate limiting (API Gateway usage plans)
 - [ ] Input validation review
 - [ ] SQL injection prevention check
@@ -625,7 +693,7 @@ System creates:
 - [ ] CORS configuration review
 - [ ] Environment secrets audit
 
-### 5.4 Monitoring & Logging
+### 6.4 Monitoring & Logging
 - [ ] CloudWatch Logs setup
 - [ ] Error alerting (SNS/email)
 - [ ] Key metrics dashboard
@@ -636,9 +704,9 @@ System creates:
 
 ---
 
-## Phase 6: Documentation & Handoff
+## Phase 7: Documentation & Handoff
 
-### 6.1 Documentation
+### 7.1 Documentation
 - [ ] API documentation (OpenAPI/Swagger) - auto-generated by FastAPI
 - [ ] Deployment guide
 - [ ] User manual for dashboard
@@ -646,7 +714,7 @@ System creates:
 - [ ] Database schema diagram
 - [ ] Environment variables reference
 
-### 6.2 Operational Runbook
+### 7.2 Operational Runbook
 - [ ] How to add new users
 - [ ] How to investigate issues
 - [ ] How to scale if needed
