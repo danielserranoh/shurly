@@ -23,9 +23,9 @@ export async function apiFetch<T>(
     ? endpoint
     : `${API_BASE_URL}${endpoint}`;
 
-  const requestHeaders: HeadersInit = {
+  const requestHeaders: Record<string, string> = {
     'Content-Type': 'application/json',
-    ...headers,
+    ...(headers as Record<string, string>),
   };
 
   // Add authentication token if required
@@ -136,7 +136,7 @@ export async function apiDownload(
     ? endpoint
     : `${API_BASE_URL}${endpoint}`;
 
-  const headers: HeadersInit = {};
+  const headers: Record<string, string> = {};
   if (requiresAuth && token) {
     headers['Authorization'] = `Bearer ${token}`;
   }

@@ -51,3 +51,4 @@ class APIKeyResponse(BaseModel):
     """Schema for API key response."""
 
     api_key: str
+    scope: str = "full_access"  # Phase 3.9.6 — only enforced value at launch

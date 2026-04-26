@@ -130,7 +130,7 @@ class TestGetCurrentUser:
     def test_get_current_user_no_token(self, client: TestClient):
         """Test getting current user without authentication."""
         response = client.get("/api/v1/auth/me")
-        assert response.status_code == 403  # HTTPBearer returns 403 when no credentials
+        assert response.status_code == 401  # HTTPBearer returns 401 when no credentials
 
     def test_get_current_user_invalid_token(self, client: TestClient):
         """Test getting current user with invalid token."""
@@ -146,7 +146,7 @@ class TestGetCurrentUser:
             "/api/v1/auth/me",
             headers={"Authorization": "NotBearer token123"},
         )
-        assert response.status_code == 403  # HTTPBearer returns 403 for malformed header
+        assert response.status_code == 401  # HTTPBearer returns 401 for malformed header
 
 
 class TestChangePassword:
@@ -201,7 +201,7 @@ class TestChangePassword:
                 "new_password": "newpassword123",
             },
         )
-        assert response.status_code == 403  # HTTPBearer returns 403 when no credentials
+        assert response.status_code == 401  # HTTPBearer returns 401 when no credentials
 
     def test_change_password_short_new_password(self, client: TestClient, auth_headers: dict):
         """Test password change with new password < 8 characters."""
@@ -253,7 +253,7 @@ class TestAPIKeyManagement:
     def test_generate_api_key_unauthorized(self, client: TestClient):
         """Test API key generation without authentication."""
         response = client.post("/api/v1/auth/api-key/generate")
-        assert response.status_code == 403  # HTTPBearer returns 403 when no credentials
+        assert response.status_code == 401  # HTTPBearer returns 401 when no credentials
 
     def test_revoke_api_key_success(self, client: TestClient, auth_headers: dict, db_session: Session, test_user: User):
         """Test successful API key revocation."""
@@ -284,7 +284,7 @@ class TestAPIKeyManagement:
     def test_revoke_api_key_unauthorized(self, client: TestClient):
         """Test API key revocation without authentication."""
         response = client.delete("/api/v1/auth/api-key")
-        assert response.status_code == 403  # HTTPBearer returns 403 when no credentials
+        assert response.status_code == 401  # HTTPBearer returns 401 when no credentials
 
 
 class TestAuthenticationEdgeCases:
@@ -310,14 +310,14 @@ class TestAuthenticationEdgeCases:
         # Using a shorter unicode password that stays under 72 bytes
         response = client.post(
             "/api/v1/auth/register",
-            json={"email": "test@example.com", "password": "пароль1"},  # Russian + number
+            json={"email": "test@example.com", "password": "пароль123"},  # Russian + number
         )
         assert response.status_code == 201
 
         # Verify can login
         login_response = client.post(
             "/api/v1/auth/login",
-            json={"email": "test@example.com", "password": "пароль1"},
+            json={"email": "test@example.com", "password": "пароль123"},
         )
         assert login_response.status_code == 200
 

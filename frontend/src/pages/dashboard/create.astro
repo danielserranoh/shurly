@@ -301,7 +301,7 @@ import ProtectedRoute from '@/components/ProtectedRoute.astro';
     // Toggle Open Graph fields
     const toggleOgBtn = document.getElementById('toggle-og-fields') as HTMLButtonElement;
     const ogFields = document.getElementById('og-fields') as HTMLDivElement;
-    const ogChevron = document.getElementById('og-chevron') as SVGElement;
+    const ogChevron = document.getElementById('og-chevron') as unknown as SVGElement;
 
     toggleOgBtn.addEventListener('click', () => {
       ogFieldsVisible = !ogFieldsVisible;

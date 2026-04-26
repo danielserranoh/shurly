@@ -5,19 +5,27 @@ import re
 import string
 from urllib.parse import urlparse
 
+from server.core.config import settings
+
 
 def generate_short_code(length: int = 6) -> str:
     """
     Generate a random alphanumeric short code.
 
-    Args:
-        length: Length of the code to generate (default: 6)
-
-    Returns:
-        Random alphanumeric string
+    In `loose` mode (default, Phase 3.9.6) only lowercase + digits are used so that
+    `Abc` and `abc` cannot collide and so users do not get bitten by case-sensitive
+    URL handling on copy/paste. `strict` mode preserves the original mixed case.
     """
-    characters = string.ascii_letters + string.digits
+    if settings.short_url_mode == "loose":
+        characters = string.ascii_lowercase + string.digits
+    else:
+        characters = string.ascii_letters + string.digits
     return "".join(random.choices(characters, k=length))
+
+
+def normalize_short_code(code: str) -> str:
+    """Normalize a user-supplied custom slug according to SHORT_URL_MODE."""
+    return code.lower() if settings.short_url_mode == "loose" else code
 
 
 def make_code_unique(code: str, append_length: int = 3) -> str:

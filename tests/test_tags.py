@@ -139,7 +139,7 @@ class TestTagCRUD:
     def test_create_tag_requires_auth(self, client: TestClient):
         """Creating tag requires authentication."""
         response = client.post("/api/v1/tags", json={"name": "Test"})
-        assert response.status_code == 403
+        assert response.status_code == 401
 
     def test_update_user_tag(self, client: TestClient, auth_headers: dict, db_session: Session, test_user):
         """User can rename their tag."""

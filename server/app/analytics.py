@@ -3,8 +3,9 @@
 from datetime import datetime, timedelta
 from uuid import UUID as UUIDType
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func
+from sqlalchemy.orm import Query as SAQuery
 from sqlalchemy.orm import Session
 
 from server.core import get_db
@@ -13,8 +14,8 @@ from server.core.models import URL, Campaign, User, Visitor
 from server.core.models.url import URLType
 from server.schemas.analytics import (
     CampaignSummary,
-    CampaignUserStat,
     CampaignUsersResponse,
+    CampaignUserStat,
     DailyStats,
     DailyStatsResponse,
     GeoStats,
@@ -24,6 +25,12 @@ from server.schemas.analytics import (
     WeeklyStatsResponse,
 )
 from server.schemas.responses import get_responses
+
+
+def _exclude_bots(query: SAQuery, include_bots: bool) -> SAQuery:
+    """Phase 3.9.3 — analytics endpoints default to excluding bots."""
+    return query if include_bots else query.filter(Visitor.is_bot.is_(False))
+
 
 analytics_router = APIRouter()
 
@@ -38,6 +45,7 @@ analytics_router = APIRouter()
 )
 def get_url_daily_stats(
     short_code: str,
+    include_bots: bool = Query(False, description="Include bot/crawler visits in counts"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -71,17 +79,15 @@ def get_url_daily_stats(
     seven_days_ago_dt = datetime.combine(seven_days_ago, datetime.min.time())
 
     # Query visits grouped by date
+    base_q = db.query(
+        func.date(Visitor.visited_at).label("visit_date"),
+        func.count(Visitor.id).label("click_count"),
+    ).filter(
+        Visitor.short_code == short_code,
+        Visitor.visited_at >= seven_days_ago_dt,
+    )
     visits_by_date = (
-        db.query(
-            func.date(Visitor.visited_at).label("visit_date"),
-            func.count(Visitor.id).label("click_count"),
-        )
-        .filter(
-            Visitor.short_code == short_code,
-            Visitor.visited_at >= seven_days_ago_dt,
-        )
-        .group_by(func.date(Visitor.visited_at))
-        .all()
+        _exclude_bots(base_q, include_bots).group_by(func.date(Visitor.visited_at)).all()
     )
 
     # Create dict for easy lookup
@@ -113,6 +119,7 @@ def get_url_daily_stats(
 )
 def get_url_weekly_stats(
     short_code: str,
+    include_bots: bool = Query(False, description="Include bot/crawler visits in counts"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -150,16 +157,12 @@ def get_url_weekly_stats(
         week_end = week_start + timedelta(days=6)
 
         # Count visits in this week
-        click_count = (
-            db.query(func.count(Visitor.id))
-            .filter(
-                Visitor.short_code == short_code,
-                func.date(Visitor.visited_at) >= week_start,
-                func.date(Visitor.visited_at) <= week_end,
-            )
-            .scalar()
-            or 0
+        wq = db.query(func.count(Visitor.id)).filter(
+            Visitor.short_code == short_code,
+            func.date(Visitor.visited_at) >= week_start,
+            func.date(Visitor.visited_at) <= week_end,
         )
+        click_count = _exclude_bots(wq, include_bots).scalar() or 0
 
         total_clicks += click_count
         stats.append(
@@ -188,6 +191,7 @@ def get_url_weekly_stats(
 def get_url_geo_stats(
     short_code: str,
     days: int = 30,
+    include_bots: bool = Query(False, description="Include bot/crawler visits in counts"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -220,16 +224,16 @@ def get_url_geo_stats(
     cutoff_date = datetime.utcnow() - timedelta(days=days)
 
     # Query visits grouped by country
+    geo_q = db.query(
+        Visitor.country,
+        func.count(Visitor.id).label("click_count"),
+    ).filter(
+        Visitor.short_code == short_code,
+        Visitor.visited_at >= cutoff_date,
+        Visitor.country.isnot(None),
+    )
     geo_stats = (
-        db.query(
-            Visitor.country,
-            func.count(Visitor.id).label("click_count"),
-        )
-        .filter(
-            Visitor.short_code == short_code,
-            Visitor.visited_at >= cutoff_date,
-            Visitor.country.isnot(None),
-        )
+        _exclude_bots(geo_q, include_bots)
         .group_by(Visitor.country)
         .order_by(func.count(Visitor.id).desc())
         .all()
@@ -260,6 +264,7 @@ def get_url_geo_stats(
 )
 def get_campaign_summary(
     campaign_id: str,
+    include_bots: bool = Query(False, description="Include bot/crawler visits in counts"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -307,31 +312,39 @@ def get_campaign_summary(
 
     # Total clicks
     total_clicks = (
-        db.query(func.count(Visitor.id))
-        .filter(Visitor.url_id.in_(url_ids))
+        _exclude_bots(
+            db.query(func.count(Visitor.id)).filter(Visitor.url_id.in_(url_ids)),
+            include_bots,
+        )
         .scalar()
         or 0
     )
 
     # Unique IPs
     unique_ips = (
-        db.query(func.count(func.distinct(Visitor.ip)))
-        .filter(Visitor.url_id.in_(url_ids))
+        _exclude_bots(
+            db.query(func.count(func.distinct(Visitor.ip))).filter(Visitor.url_id.in_(url_ids)),
+            include_bots,
+        )
         .scalar()
         or 0
     )
 
     # Click-through rate (percentage of URLs that have at least one click)
     urls_with_clicks = (
-        db.query(func.count(func.distinct(Visitor.url_id)))
-        .filter(Visitor.url_id.in_(url_ids))
+        _exclude_bots(
+            db.query(func.count(func.distinct(Visitor.url_id))).filter(
+                Visitor.url_id.in_(url_ids)
+            ),
+            include_bots,
+        )
         .scalar()
         or 0
     )
     click_through_rate = (urls_with_clicks / len(campaign_urls) * 100) if campaign_urls else 0.0
 
     # Top performers (top 5 URLs by click count)
-    top_performers_data = (
+    top_q = (
         db.query(
             URL.short_code,
             URL.user_data,
@@ -341,6 +354,9 @@ def get_campaign_summary(
         )
         .join(Visitor, URL.id == Visitor.url_id)
         .filter(URL.campaign_id == campaign_uuid)
+    )
+    top_performers_data = (
+        _exclude_bots(top_q, include_bots)
         .group_by(URL.id, URL.short_code, URL.user_data)
         .order_by(func.count(Visitor.id).desc())
         .limit(5)
@@ -362,17 +378,15 @@ def get_campaign_summary(
     today = datetime.utcnow().date()
     seven_days_ago = today - timedelta(days=6)
 
+    daily_q = db.query(
+        func.date(Visitor.visited_at).label("visit_date"),
+        func.count(Visitor.id).label("click_count"),
+    ).filter(
+        Visitor.short_code.in_(short_codes),
+        func.date(Visitor.visited_at) >= seven_days_ago,
+    )
     daily_data = (
-        db.query(
-            func.date(Visitor.visited_at).label("visit_date"),
-            func.count(Visitor.id).label("click_count"),
-        )
-        .filter(
-            Visitor.short_code.in_(short_codes),
-            func.date(Visitor.visited_at) >= seven_days_ago,
-        )
-        .group_by(func.date(Visitor.visited_at))
-        .all()
+        _exclude_bots(daily_q, include_bots).group_by(func.date(Visitor.visited_at)).all()
     )
 
     daily_dict = {day.visit_date: day.click_count for day in daily_data}
@@ -405,6 +419,7 @@ def get_campaign_summary(
 )
 def get_campaign_users(
     campaign_id: str,
+    include_bots: bool = Query(False, description="Include bot/crawler visits in counts"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -451,15 +466,12 @@ def get_campaign_users(
     users = []
     for url in campaign_urls:
         # Get stats for this URL
-        stats = (
-            db.query(
-                func.count(Visitor.id).label("click_count"),
-                func.count(func.distinct(Visitor.ip)).label("unique_ips"),
-                func.max(Visitor.visited_at).label("last_clicked"),
-            )
-            .filter(Visitor.url_id == url.id)
-            .first()
-        )
+        stats_q = db.query(
+            func.count(Visitor.id).label("click_count"),
+            func.count(func.distinct(Visitor.ip)).label("unique_ips"),
+            func.max(Visitor.visited_at).label("last_clicked"),
+        ).filter(Visitor.url_id == url.id)
+        stats = _exclude_bots(stats_q, include_bots).first()
 
         users.append(
             CampaignUserStat(
@@ -491,6 +503,7 @@ def get_campaign_users(
     },
 )
 def get_overview_stats(
+    include_bots: bool = Query(False, description="Include bot/crawler visits in counts"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -521,13 +534,20 @@ def get_overview_stats(
 
     # Total clicks (all time)
     total_clicks = (
-        db.query(func.count(Visitor.id)).filter(Visitor.url_id.in_(url_ids)).scalar() or 0
+        _exclude_bots(
+            db.query(func.count(Visitor.id)).filter(Visitor.url_id.in_(url_ids)),
+            include_bots,
+        )
+        .scalar()
+        or 0
     )
 
     # Unique visitors (all time)
     total_unique_visitors = (
-        db.query(func.count(func.distinct(Visitor.ip)))
-        .filter(Visitor.url_id.in_(url_ids))
+        _exclude_bots(
+            db.query(func.count(func.distinct(Visitor.ip))).filter(Visitor.url_id.in_(url_ids)),
+            include_bots,
+        )
         .scalar()
         or 0
     )
@@ -535,13 +555,22 @@ def get_overview_stats(
     # Recent clicks (last 7 days)
     seven_days_ago = datetime.utcnow() - timedelta(days=7)
     recent_clicks_7d = (
-        db.query(func.count(Visitor.id))
-        .filter(Visitor.url_id.in_(url_ids), Visitor.visited_at >= seven_days_ago)
+        _exclude_bots(
+            db.query(func.count(Visitor.id)).filter(
+                Visitor.url_id.in_(url_ids), Visitor.visited_at >= seven_days_ago
+            ),
+            include_bots,
+        )
         .scalar()
         or 0
     )
 
-    # Top 5 URLs by click count
+    # Top 5 URLs by click count.
+    # outer-join keeps URLs with zero visits; bot filter must be expressed on the join
+    # condition (not as a where) so the LEFT JOIN still emits those URL rows.
+    visitor_join = URL.id == Visitor.url_id
+    if not include_bots:
+        visitor_join = visitor_join & (Visitor.is_bot.is_(False))
     top_urls_data = (
         db.query(
             URL.short_code,
@@ -549,7 +578,7 @@ def get_overview_stats(
             URL.url_type,
             func.count(Visitor.id).label("click_count"),
         )
-        .join(Visitor, URL.id == Visitor.url_id, isouter=True)
+        .join(Visitor, visitor_join, isouter=True)
         .filter(URL.created_by == current_user.id)
         .group_by(URL.id, URL.short_code, URL.original_url, URL.url_type)
         .order_by(func.count(Visitor.id).desc())
@@ -571,17 +600,15 @@ def get_overview_stats(
     today = datetime.utcnow().date()
     seven_days_ago_date = today - timedelta(days=6)
 
+    daily_q = db.query(
+        func.date(Visitor.visited_at).label("visit_date"),
+        func.count(Visitor.id).label("click_count"),
+    ).filter(
+        Visitor.url_id.in_(url_ids),
+        func.date(Visitor.visited_at) >= seven_days_ago_date,
+    )
     daily_data = (
-        db.query(
-            func.date(Visitor.visited_at).label("visit_date"),
-            func.count(Visitor.id).label("click_count"),
-        )
-        .filter(
-            Visitor.url_id.in_(url_ids),
-            func.date(Visitor.visited_at) >= seven_days_ago_date,
-        )
-        .group_by(func.date(Visitor.visited_at))
-        .all()
+        _exclude_bots(daily_q, include_bots).group_by(func.date(Visitor.visited_at)).all()
     )
 
     daily_dict = {day.visit_date: day.click_count for day in daily_data}

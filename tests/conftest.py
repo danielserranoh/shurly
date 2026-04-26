@@ -89,13 +89,11 @@ def client(db_session):
 @pytest.fixture
 def test_user(db_session: Session):
     """Create a test user."""
-    # Pre-generated bcrypt hash for password "test123" to avoid bcrypt version issues
-    # Generated with: passlib.hash.bcrypt.hash("test123")
-    test_password_hash = "$2b$12$KIXxkzJLQw2xGfmC4y4pEeN.uD1QQZvZxPzJ6wJx.d8RQkLfC6fBu"
+    from server.core.auth import hash_password
 
     user = User(
         email="test@example.com",
-        password_hash=test_password_hash,
+        password_hash=hash_password("test123"),
         is_active=True,
     )
     db_session.add(user)

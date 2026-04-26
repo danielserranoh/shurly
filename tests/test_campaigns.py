@@ -81,7 +81,7 @@ test2@example.com,APAC"""
             },
         )
 
-        assert response.status_code == 403
+        assert response.status_code == 401
 
     def test_create_campaign_invalid_url(self, client: TestClient, auth_headers: dict):
         """Test that invalid original URLs are rejected."""
@@ -257,7 +257,7 @@ class TestListCampaigns:
         """Test that listing requires authentication."""
         response = client.get("/api/v1/campaigns")
 
-        assert response.status_code == 403
+        assert response.status_code == 401
 
 
 @pytest.mark.integration
@@ -322,7 +322,7 @@ class TestGetCampaign:
 
         response = client.get(f"/api/v1/campaigns/{uuid.uuid4()}")
 
-        assert response.status_code == 403
+        assert response.status_code == 401
 
     def test_get_campaign_wrong_user(
         self, client: TestClient, auth_headers: dict, db_session: Session
@@ -449,7 +449,7 @@ class TestExportCampaign:
 
         response = client.get(f"/api/v1/campaigns/{uuid.uuid4()}/export")
 
-        assert response.status_code == 403
+        assert response.status_code == 401
 
 
 @pytest.mark.integration
@@ -509,7 +509,7 @@ class TestDeleteCampaign:
 
         response = client.delete(f"/api/v1/campaigns/{uuid.uuid4()}")
 
-        assert response.status_code == 403
+        assert response.status_code == 401
 
     def test_delete_campaign_wrong_user(
         self, client: TestClient, auth_headers: dict, db_session: Session

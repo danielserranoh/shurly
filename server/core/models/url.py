@@ -52,6 +52,10 @@ class URL(Base):
     valid_until = Column(DateTime(timezone=True), nullable=True)
     max_visits = Column(Integer, nullable=True)
 
+    # Phase 3.9.4 — Default-deny crawlability. Short URLs are not crawler-indexable
+    # by default; flip to True per-URL to allow inclusion in /robots.txt.
+    crawlable = Column(Boolean, default=False, nullable=False)
+
     # Audit fields
     created_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
