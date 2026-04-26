@@ -1,15 +1,21 @@
 """Pytest configuration and fixtures."""
 
-import pytest
-from fastapi.testclient import TestClient
-from sqlalchemy import create_engine, event
-from sqlalchemy.orm import Session, sessionmaker
-from sqlalchemy.pool import StaticPool
+import os
 
-from main import app
-from server.core import Base, get_db
-from server.core.auth import create_access_token
-from server.core.models import (  # noqa: F401 - Import all models for SQLAlchemy
+# Skip the FastAPI startup event (which tries to connect to PostgreSQL) during tests.
+# Must be set before `from main import app` so the env var is read at app instantiation.
+os.environ["TESTING"] = "1"
+
+import pytest  # noqa: E402
+from fastapi.testclient import TestClient  # noqa: E402
+from sqlalchemy import create_engine, event  # noqa: E402
+from sqlalchemy.orm import Session, sessionmaker  # noqa: E402
+from sqlalchemy.pool import StaticPool  # noqa: E402
+
+from main import app  # noqa: E402
+from server.core import Base, get_db  # noqa: E402
+from server.core.auth import create_access_token  # noqa: E402
+from server.core.models import (  # noqa: E402, F401 - Import all models for SQLAlchemy
     URL,
     Campaign,
     Tag,

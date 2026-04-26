@@ -406,12 +406,13 @@ System creates:
 **Reference:** Shlink analysis (https://github.com/shlinkio/shlink) — CHANGELOG 4.0–5.0.2, docs at shlink.io/documentation/
 **Rationale:** Items here are either bloqueantes (API versioning), GDPR-relevant (IP anonymization), or so cheap that skipping them is irrational (X-Request-Id, charset fallback)
 
-### 3.9.1 API Versioning (BLOCKING)
-- [ ] Mount all routes under `/api/v1/` prefix
-- [ ] Update frontend `apiGet/apiPost` base path
-- [ ] Update Lambda + SAM template if any hardcoded paths
-- [ ] Document versioning policy (Keep-a-Changelog format)
-- [ ] Update CORS / docs / OpenAPI title accordingly
+### 3.9.1 API Versioning (BLOCKING) ✅
+- [x] Mount all routes under `/api/v1/` prefix
+- [x] Update frontend `apiGet/apiPost` base path (all dashboard pages)
+- [x] Update Lambda + SAM template if any hardcoded paths (none required — `/{proxy+}` catch-all)
+- [x] Document versioning policy (Keep-a-Changelog format) — see `CHANGELOG.md`
+- [x] Update CORS / docs / OpenAPI title accordingly (CORS unchanged; README.md and CLAUDE.md endpoint references updated)
+- [x] Fix `tests/conftest.py` to set `TESTING=1` so startup event is skipped (was failing to honor the gate)
 
 ### 3.9.2 URL Expiration & Visit Caps
 - [ ] Add `valid_until` (TIMESTAMP, nullable) to URL model

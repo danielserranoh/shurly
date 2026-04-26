@@ -317,7 +317,7 @@ import ProtectedRoute from '@/components/ProtectedRoute.astro';
     // Load user info and render navbar
     async function loadUserInfo() {
       try {
-        const user = await apiGet<User>('/api/auth/me', true);
+        const user = await apiGet<User>('/api/v1/auth/me', true);
         const navbarHTML = `
           <nav class="bg-white shadow-sm border-b border-gray-200">
             <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -478,13 +478,13 @@ import ProtectedRoute from '@/components/ProtectedRoute.astro';
         if (isCustomMode && customCode) {
           payload.custom_code = customCode;
           response = await apiPost<CreateURLResponse>(
-            '/api/urls/custom',
+            '/api/v1/urls/custom',
             payload,
             true
           );
         } else {
           response = await apiPost<CreateURLResponse>(
-            '/api/urls',
+            '/api/v1/urls',
             payload,
             true
           );

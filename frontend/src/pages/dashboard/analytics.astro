@@ -152,7 +152,7 @@ import ProtectedRoute from '../../components/ProtectedRoute.astro';
 
       async function loadAnalytics() {
         try {
-          const data = await apiGet<OverviewStats>('/api/analytics/overview', true);
+          const data = await apiGet<OverviewStats>('/api/v1/analytics/overview', true);
           overviewData = data;
 
           // Update summary cards

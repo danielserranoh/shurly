@@ -11,12 +11,12 @@ from server.core.models import URL, URLType
 
 @pytest.mark.integration
 class TestStandardURLShortening:
-    """Test standard URL shortening (POST /api/urls)."""
+    """Test standard URL shortening (POST /api/v1/urls)."""
 
     def test_shorten_url_success(self, client: TestClient, auth_headers: dict):
         """Test successful URL shortening."""
         response = client.post(
-            "/api/urls",
+            "/api/v1/urls",
             json={"url": "https://example.com/very/long/path"},
             headers=auth_headers,
         )
@@ -33,7 +33,7 @@ class TestStandardURLShortening:
     def test_shorten_url_unauthorized(self, client: TestClient):
         """Test that shortening requires authentication."""
         response = client.post(
-            "/api/urls",
+            "/api/v1/urls",
             json={"url": "https://example.com"},
         )
 
@@ -42,7 +42,7 @@ class TestStandardURLShortening:
     def test_shorten_url_invalid_url(self, client: TestClient, auth_headers: dict):
         """Test that invalid URLs are rejected."""
         response = client.post(
-            "/api/urls",
+            "/api/v1/urls",
             json={"url": "not-a-valid-url"},
             headers=auth_headers,
         )
@@ -56,8 +56,8 @@ class TestStandardURLShortening:
         """Test that shortening the same URL twice creates different codes."""
         url = "https://example.com/test"
 
-        response1 = client.post("/api/urls", json={"url": url}, headers=auth_headers)
-        response2 = client.post("/api/urls", json={"url": url}, headers=auth_headers)
+        response1 = client.post("/api/v1/urls", json={"url": url}, headers=auth_headers)
+        response2 = client.post("/api/v1/urls", json={"url": url}, headers=auth_headers)
 
         assert response1.status_code == 201
         assert response2.status_code == 201
@@ -68,12 +68,12 @@ class TestStandardURLShortening:
 
 @pytest.mark.integration
 class TestCustomURLShortening:
-    """Test custom URL shortening (POST /api/urls/custom)."""
+    """Test custom URL shortening (POST /api/v1/urls/custom)."""
 
     def test_custom_url_success(self, client: TestClient, auth_headers: dict):
         """Test successful custom URL creation."""
         response = client.post(
-            "/api/urls/custom",
+            "/api/v1/urls/custom",
             json={"url": "https://example.com", "custom_code": "my-link"},
             headers=auth_headers,
         )
@@ -100,7 +100,7 @@ class TestCustomURLShortening:
 
         # Try to create another with the same code
         response = client.post(
-            "/api/urls/custom",
+            "/api/v1/urls/custom",
             json={"url": "https://second.com", "custom_code": "taken"},
             headers=auth_headers,
         )
@@ -119,7 +119,7 @@ class TestCustomURLShortening:
 
         for code in invalid_codes:
             response = client.post(
-                "/api/urls/custom",
+                "/api/v1/urls/custom",
                 json={"url": "https://example.com", "custom_code": code},
                 headers=auth_headers,
             )
@@ -209,7 +209,7 @@ class TestURLRedirect:
 
 @pytest.mark.integration
 class TestURLList:
-    """Test listing user's URLs (GET /api/urls)."""
+    """Test listing user's URLs (GET /api/v1/urls)."""
 
     def test_list_urls_success(
         self, client: TestClient, auth_headers: dict, db_session: Session, test_user
@@ -226,7 +226,7 @@ class TestURLList:
             db_session.add(url)
         db_session.commit()
 
-        response = client.get("/api/urls", headers=auth_headers)
+        response = client.get("/api/v1/urls", headers=auth_headers)
 
         assert response.status_code == 200
         data = response.json()
@@ -236,14 +236,14 @@ class TestURLList:
 
     def test_list_urls_unauthorized(self, client: TestClient):
         """Test that listing URLs requires authentication."""
-        response = client.get("/api/urls")
+        response = client.get("/api/v1/urls")
 
         assert response.status_code == 403  # FastAPI returns 403 when auth is missing
 
 
 @pytest.mark.integration
 class TestURLDelete:
-    """Tests for DELETE /api/urls/{short_code}"""
+    """Tests for DELETE /api/v1/urls/{short_code}"""
 
     def test_delete_standard_url_success(
         self, client: TestClient, db_session: Session, test_user, auth_headers: dict
@@ -258,7 +258,7 @@ class TestURLDelete:
         db_session.add(url)
         db_session.commit()
 
-        response = client.delete("/api/urls/deleteme", headers=auth_headers)
+        response = client.delete("/api/v1/urls/deleteme", headers=auth_headers)
 
         assert response.status_code == 204
         # Verify URL is deleted
@@ -277,7 +277,7 @@ class TestURLDelete:
         db_session.add(url)
         db_session.commit()
 
-        response = client.delete("/api/urls/customdelete", headers=auth_headers)
+        response = client.delete("/api/v1/urls/customdelete", headers=auth_headers)
 
         assert response.status_code == 204
         assert db_session.query(URL).filter(URL.short_code == "customdelete").first() is None
@@ -307,7 +307,7 @@ class TestURLDelete:
         db_session.add(url)
         db_session.commit()
 
-        response = client.delete("/api/urls/campaignurl", headers=auth_headers)
+        response = client.delete("/api/v1/urls/campaignurl", headers=auth_headers)
 
         assert response.status_code == 400
         assert "campaign" in response.json()["detail"].lower()
@@ -316,7 +316,7 @@ class TestURLDelete:
 
     def test_delete_url_not_found(self, client: TestClient, auth_headers: dict):
         """Test deleting a non-existent URL."""
-        response = client.delete("/api/urls/nonexistent", headers=auth_headers)
+        response = client.delete("/api/v1/urls/nonexistent", headers=auth_headers)
         assert response.status_code == 404
 
     def test_delete_url_unauthorized(self, client: TestClient, db_session: Session, test_user):
@@ -330,7 +330,7 @@ class TestURLDelete:
         db_session.add(url)
         db_session.commit()
 
-        response = client.delete("/api/urls/noperm")
+        response = client.delete("/api/v1/urls/noperm")
         assert response.status_code == 403
 
     def test_delete_url_wrong_user(
@@ -359,7 +359,7 @@ class TestURLDelete:
         db_session.commit()
 
         # Try to delete with test_user's auth
-        response = client.delete("/api/urls/notmine", headers=auth_headers)
+        response = client.delete("/api/v1/urls/notmine", headers=auth_headers)
         assert response.status_code == 404  # Returns 404 for security (not revealing URL exists)
 
 
@@ -370,7 +370,7 @@ class TestPhase36Features:
     def test_create_url_with_title(self, client: TestClient, auth_headers: dict):
         """Test creating URL with optional title field."""
         response = client.post(
-            "/api/urls",
+            "/api/v1/urls",
             json={
                 "url": "https://example.com/page",
                 "title": "My Test Campaign",
@@ -386,7 +386,7 @@ class TestPhase36Features:
     def test_create_url_without_title(self, client: TestClient, auth_headers: dict):
         """Test creating URL without title (should be None)."""
         response = client.post(
-            "/api/urls",
+            "/api/v1/urls",
             json={"url": "https://example.com"},
             headers=auth_headers,
         )
@@ -399,7 +399,7 @@ class TestPhase36Features:
         """Test that title exceeding 255 chars is rejected."""
         long_title = "A" * 256
         response = client.post(
-            "/api/urls",
+            "/api/v1/urls",
             json={
                 "url": "https://example.com",
                 "title": long_title,
@@ -413,7 +413,7 @@ class TestPhase36Features:
     def test_create_url_with_forward_parameters(self, client: TestClient, auth_headers: dict):
         """Test creating URL with forward_parameters flag."""
         response = client.post(
-            "/api/urls",
+            "/api/v1/urls",
             json={
                 "url": "https://example.com",
                 "forward_parameters": False,
@@ -428,7 +428,7 @@ class TestPhase36Features:
     def test_forward_parameters_default_true(self, client: TestClient, auth_headers: dict):
         """Test that forward_parameters defaults to True."""
         response = client.post(
-            "/api/urls",
+            "/api/v1/urls",
             json={"url": "https://example.com"},
             headers=auth_headers,
         )
@@ -440,7 +440,7 @@ class TestPhase36Features:
     def test_patch_url_update_title(self, client: TestClient, auth_headers: dict, db_session: Session):
         """Test updating URL title via PATCH."""
         # Get user ID
-        user_response = client.get("/api/auth/me", headers=auth_headers)
+        user_response = client.get("/api/v1/auth/me", headers=auth_headers)
         user_id = uuid.UUID(user_response.json()["id"])
 
         # Create URL
@@ -455,7 +455,7 @@ class TestPhase36Features:
 
         # Update title
         response = client.patch(
-            "/api/urls/test123",
+            "/api/v1/urls/test123",
             json={"title": "Updated Title"},
             headers=auth_headers,
         )
@@ -468,7 +468,7 @@ class TestPhase36Features:
     def test_patch_url_update_destination(self, client: TestClient, auth_headers: dict, db_session: Session):
         """Test updating destination URL via PATCH."""
         # Get user ID
-        user_response = client.get("/api/auth/me", headers=auth_headers)
+        user_response = client.get("/api/v1/auth/me", headers=auth_headers)
         user_id = uuid.UUID(user_response.json()["id"])
 
         # Create URL
@@ -483,7 +483,7 @@ class TestPhase36Features:
 
         # Update destination
         response = client.patch(
-            "/api/urls/test456",
+            "/api/v1/urls/test456",
             json={"original_url": "https://new-url.com"},
             headers=auth_headers,
         )
@@ -495,7 +495,7 @@ class TestPhase36Features:
     def test_patch_url_update_forward_parameters(self, client: TestClient, auth_headers: dict, db_session: Session):
         """Test updating forward_parameters via PATCH."""
         # Get user ID
-        user_response = client.get("/api/auth/me", headers=auth_headers)
+        user_response = client.get("/api/v1/auth/me", headers=auth_headers)
         user_id = uuid.UUID(user_response.json()["id"])
 
         # Create URL
@@ -511,7 +511,7 @@ class TestPhase36Features:
 
         # Update forward_parameters
         response = client.patch(
-            "/api/urls/test789",
+            "/api/v1/urls/test789",
             json={"forward_parameters": False},
             headers=auth_headers,
         )
@@ -523,7 +523,7 @@ class TestPhase36Features:
     def test_patch_url_not_found(self, client: TestClient, auth_headers: dict):
         """Test PATCH returns 404 for non-existent URL."""
         response = client.patch(
-            "/api/urls/nonexistent",
+            "/api/v1/urls/nonexistent",
             json={"title": "Test"},
             headers=auth_headers,
         )
@@ -533,7 +533,7 @@ class TestPhase36Features:
     def test_patch_url_unauthorized(self, client: TestClient):
         """Test PATCH requires authentication."""
         response = client.patch(
-            "/api/urls/test123",
+            "/api/v1/urls/test123",
             json={"title": "Test"},
         )
 
@@ -542,7 +542,7 @@ class TestPhase36Features:
     def test_patch_url_campaign_blocked(self, client: TestClient, auth_headers: dict, db_session: Session):
         """Test that campaign URLs cannot be updated via PATCH."""
         # Get user ID
-        user_response = client.get("/api/auth/me", headers=auth_headers)
+        user_response = client.get("/api/v1/auth/me", headers=auth_headers)
         user_id = uuid.UUID(user_response.json()["id"])
 
         # Create campaign URL
@@ -557,7 +557,7 @@ class TestPhase36Features:
 
         # Try to update
         response = client.patch(
-            "/api/urls/camp123",
+            "/api/v1/urls/camp123",
             json={"title": "Updated"},
             headers=auth_headers,
         )
@@ -670,7 +670,7 @@ class TestPhase37OpenGraphFeatures:
     def test_create_url_with_custom_og_fields(self, client: TestClient, auth_headers: dict):
         """Test creating URL with custom Open Graph metadata."""
         response = client.post(
-            "/api/urls",
+            "/api/v1/urls",
             json={
                 "url": "https://example.com/page",
                 "title": "My URL",
@@ -692,7 +692,7 @@ class TestPhase37OpenGraphFeatures:
     def test_create_url_without_og_fields(self, client: TestClient, auth_headers: dict):
         """Test creating URL without OG fields (should be None)."""
         response = client.post(
-            "/api/urls",
+            "/api/v1/urls",
             json={"url": "https://example.com"},
             headers=auth_headers,
         )
@@ -707,7 +707,7 @@ class TestPhase37OpenGraphFeatures:
     def test_get_preview_metadata(self, client: TestClient, auth_headers: dict, db_session: Session):
         """Test GET /{short_code}/preview endpoint."""
         # Get user ID
-        user_response = client.get("/api/auth/me", headers=auth_headers)
+        user_response = client.get("/api/v1/auth/me", headers=auth_headers)
         user_id = uuid.UUID(user_response.json()["id"])
 
         # Create URL with OG metadata
@@ -724,7 +724,7 @@ class TestPhase37OpenGraphFeatures:
         db_session.commit()
 
         # Get preview
-        response = client.get("/api/urls/prev123/preview", headers=auth_headers)
+        response = client.get("/api/v1/urls/prev123/preview", headers=auth_headers)
 
         assert response.status_code == 200
         data = response.json()
@@ -737,13 +737,13 @@ class TestPhase37OpenGraphFeatures:
 
     def test_get_preview_metadata_not_found(self, client: TestClient, auth_headers: dict):
         """Test GET /preview returns 404 for non-existent URL."""
-        response = client.get("/api/urls/nonexistent/preview", headers=auth_headers)
+        response = client.get("/api/v1/urls/nonexistent/preview", headers=auth_headers)
         assert response.status_code == 404
 
     def test_refresh_preview_metadata_success(self, client: TestClient, auth_headers: dict, db_session: Session):
         """Test POST /{short_code}/refresh-preview endpoint."""
         # Get user ID
-        user_response = client.get("/api/auth/me", headers=auth_headers)
+        user_response = client.get("/api/v1/auth/me", headers=auth_headers)
         user_id = uuid.UUID(user_response.json()["id"])
 
         # Create URL without OG metadata
@@ -757,7 +757,7 @@ class TestPhase37OpenGraphFeatures:
         db_session.commit()
 
         # Refresh preview (will attempt to fetch, may timeout or fail)
-        response = client.post("/api/urls/refresh123/refresh-preview", headers=auth_headers)
+        response = client.post("/api/v1/urls/refresh123/refresh-preview", headers=auth_headers)
 
         # Should return 200 even if fetch fails (returns empty metadata)
         assert response.status_code == 200
@@ -769,12 +769,12 @@ class TestPhase37OpenGraphFeatures:
 
     def test_refresh_preview_unauthorized(self, client: TestClient):
         """Test POST /refresh-preview requires authentication."""
-        response = client.post("/api/urls/test123/refresh-preview")
+        response = client.post("/api/v1/urls/test123/refresh-preview")
         assert response.status_code == 403
 
     def test_refresh_preview_not_found(self, client: TestClient, auth_headers: dict):
         """Test POST /refresh-preview returns 404 for non-existent URL."""
-        response = client.post("/api/urls/nonexistent/refresh-preview", headers=auth_headers)
+        response = client.post("/api/v1/urls/nonexistent/refresh-preview", headers=auth_headers)
         assert response.status_code == 404
 
     def test_refresh_preview_wrong_user(self, client: TestClient, auth_headers: dict, db_session: Session):
@@ -801,13 +801,13 @@ class TestPhase37OpenGraphFeatures:
         db_session.commit()
 
         # Try to refresh with test_user's auth
-        response = client.post("/api/urls/notmine/refresh-preview", headers=auth_headers)
+        response = client.post("/api/v1/urls/notmine/refresh-preview", headers=auth_headers)
         assert response.status_code == 404
 
     def test_patch_url_update_og_fields(self, client: TestClient, auth_headers: dict, db_session: Session):
         """Test updating Open Graph fields via PATCH."""
         # Get user ID
-        user_response = client.get("/api/auth/me", headers=auth_headers)
+        user_response = client.get("/api/v1/auth/me", headers=auth_headers)
         user_id = uuid.UUID(user_response.json()["id"])
 
         # Create URL
@@ -823,7 +823,7 @@ class TestPhase37OpenGraphFeatures:
 
         # Update OG fields
         response = client.patch(
-            "/api/urls/ogpatch",
+            "/api/v1/urls/ogpatch",
             json={
                 "og_title": "New OG Title",
                 "og_description": "New Description",

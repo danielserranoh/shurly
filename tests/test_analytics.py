@@ -13,7 +13,7 @@ from server.core.models.url import URLType
 
 @pytest.mark.integration
 class TestURLDailyAnalytics:
-    """Tests for GET /api/analytics/urls/{short_code}/daily"""
+    """Tests for GET /api/v1/analytics/urls/{short_code}/daily"""
 
     def test_daily_stats_success(self, client: TestClient, db_session: Session, test_user: User, auth_headers: dict):
         """Test getting daily stats for a URL."""
@@ -45,7 +45,7 @@ class TestURLDailyAnalytics:
         visit_count = db_session.query(Visitor).filter(Visitor.short_code == "testdaily").count()
         assert visit_count == 15  # 1+2+3+4+5
 
-        response = client.get("/api/analytics/urls/testdaily/daily", headers=auth_headers)
+        response = client.get("/api/v1/analytics/urls/testdaily/daily", headers=auth_headers)
 
         assert response.status_code == 200
         data = response.json()
@@ -74,7 +74,7 @@ class TestURLDailyAnalytics:
         db_session.add(url)
         db_session.commit()
 
-        response = client.get("/api/analytics/urls/novisits/daily", headers=auth_headers)
+        response = client.get("/api/v1/analytics/urls/novisits/daily", headers=auth_headers)
 
         assert response.status_code == 200
         data = response.json()
@@ -84,18 +84,18 @@ class TestURLDailyAnalytics:
 
     def test_daily_stats_not_found(self, client: TestClient, auth_headers: dict):
         """Test daily stats for non-existent URL."""
-        response = client.get("/api/analytics/urls/nonexistent/daily", headers=auth_headers)
+        response = client.get("/api/v1/analytics/urls/nonexistent/daily", headers=auth_headers)
         assert response.status_code == 404
 
     def test_daily_stats_unauthorized(self, client: TestClient):
         """Test daily stats without authentication."""
-        response = client.get("/api/analytics/urls/test/daily")
+        response = client.get("/api/v1/analytics/urls/test/daily")
         assert response.status_code == 403
 
 
 @pytest.mark.integration
 class TestURLWeeklyAnalytics:
-    """Tests for GET /api/analytics/urls/{short_code}/weekly"""
+    """Tests for GET /api/v1/analytics/urls/{short_code}/weekly"""
 
     def test_weekly_stats_success(self, client: TestClient, db_session: Session, test_user: User, auth_headers: dict):
         """Test getting weekly stats for a URL."""
@@ -122,7 +122,7 @@ class TestURLWeeklyAnalytics:
                 db_session.add(visit)
         db_session.commit()
 
-        response = client.get("/api/analytics/urls/testweekly/weekly", headers=auth_headers)
+        response = client.get("/api/v1/analytics/urls/testweekly/weekly", headers=auth_headers)
 
         assert response.status_code == 200
         data = response.json()
@@ -137,7 +137,7 @@ class TestURLWeeklyAnalytics:
 
 @pytest.mark.integration
 class TestURLGeoAnalytics:
-    """Tests for GET /api/analytics/urls/{short_code}/geo"""
+    """Tests for GET /api/v1/analytics/urls/{short_code}/geo"""
 
     def test_geo_stats_success(self, client: TestClient, db_session: Session, test_user: User, auth_headers: dict):
         """Test getting geographic stats for a URL."""
@@ -162,7 +162,7 @@ class TestURLGeoAnalytics:
             db_session.add(visit)
         db_session.commit()
 
-        response = client.get("/api/analytics/urls/testgeo/geo", headers=auth_headers)
+        response = client.get("/api/v1/analytics/urls/testgeo/geo", headers=auth_headers)
 
         assert response.status_code == 200
         data = response.json()
@@ -184,7 +184,7 @@ class TestURLGeoAnalytics:
         db_session.add(url)
         db_session.commit()
 
-        response = client.get("/api/analytics/urls/testgeo2/geo?days=7", headers=auth_headers)
+        response = client.get("/api/v1/analytics/urls/testgeo2/geo?days=7", headers=auth_headers)
 
         assert response.status_code == 200
         data = response.json()
@@ -233,7 +233,7 @@ class TestCampaignAnalytics:
                 db_session.add(visit)
         db_session.commit()
 
-        response = client.get(f"/api/analytics/campaigns/{campaign.id}/summary", headers=auth_headers)
+        response = client.get(f"/api/v1/analytics/campaigns/{campaign.id}/summary", headers=auth_headers)
 
         assert response.status_code == 200
         data = response.json()
@@ -269,7 +269,7 @@ class TestCampaignAnalytics:
             db_session.add(url)
         db_session.commit()
 
-        response = client.get(f"/api/analytics/campaigns/{campaign.id}/users", headers=auth_headers)
+        response = client.get(f"/api/v1/analytics/campaigns/{campaign.id}/users", headers=auth_headers)
 
         assert response.status_code == 200
         data = response.json()
@@ -283,13 +283,13 @@ class TestCampaignAnalytics:
     def test_campaign_not_found(self, client: TestClient, auth_headers: dict):
         """Test campaign analytics for non-existent campaign."""
         fake_id = str(uuid4())
-        response = client.get(f"/api/analytics/campaigns/{fake_id}/summary", headers=auth_headers)
+        response = client.get(f"/api/v1/analytics/campaigns/{fake_id}/summary", headers=auth_headers)
         assert response.status_code == 404
 
 
 @pytest.mark.integration
 class TestOverviewAnalytics:
-    """Tests for GET /api/analytics/overview"""
+    """Tests for GET /api/v1/analytics/overview"""
 
     def test_overview_stats(self, client: TestClient, db_session: Session, test_user: User, auth_headers: dict):
         """Test getting overview statistics."""
@@ -314,7 +314,7 @@ class TestOverviewAnalytics:
         db_session.add(campaign)
         db_session.commit()
 
-        response = client.get("/api/analytics/overview", headers=auth_headers)
+        response = client.get("/api/v1/analytics/overview", headers=auth_headers)
 
         assert response.status_code == 200
         data = response.json()
@@ -331,5 +331,5 @@ class TestOverviewAnalytics:
 
     def test_overview_unauthorized(self, client: TestClient):
         """Test overview stats without authentication."""
-        response = client.get("/api/analytics/overview")
+        response = client.get("/api/v1/analytics/overview")
         assert response.status_code == 403

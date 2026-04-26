@@ -25,8 +25,8 @@ def create_app() -> FastAPI:
         allow_headers=settings.cors_allow_headers,
     )
 
-    # Include API routes with /api prefix
-    app.include_router(api_router, prefix="/api")
+    # Include API routes under /api/v1 (versioned API)
+    app.include_router(api_router, prefix="/api/v1")
 
     # Include redirect endpoint at root level (/{short_code})
     app.include_router(redirect_router)

@@ -129,7 +129,7 @@ import Navbar from '@/components/Navbar.astro';
 
       try {
         const response = await apiPost<LoginResponse>(
-          '/api/auth/login',
+          '/api/v1/auth/login',
           { email, password }
         );
 

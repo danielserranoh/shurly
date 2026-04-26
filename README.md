@@ -286,32 +286,32 @@ shurly/
 ## API Endpoints
 
 ### Authentication
-- `POST /api/auth/register` - Register a new user
-- `POST /api/auth/login` - Login and receive JWT token
-- `GET /api/auth/me` - Get current user information
+- `POST /api/v1/auth/register` - Register a new user
+- `POST /api/v1/auth/login` - Login and receive JWT token
+- `GET /api/v1/auth/me` - Get current user information
 
 ### URL Shortening
-- `POST /api/urls` - Create a new shortened URL (auto-generated code)
-- `POST /api/urls/custom` - Create a custom shortened URL
-- `GET /api/urls` - List all user's URLs
-- `GET /api/urls/{short_code}` - Get URL details
-- `DELETE /api/urls/{short_code}` - Delete a URL
+- `POST /api/v1/urls` - Create a new shortened URL (auto-generated code)
+- `POST /api/v1/urls/custom` - Create a custom shortened URL
+- `GET /api/v1/urls` - List all user's URLs
+- `GET /api/v1/urls/{short_code}` - Get URL details
+- `DELETE /api/v1/urls/{short_code}` - Delete a URL
 - `GET /{short_code}` - Redirect to original URL (tracks visit)
 
 ### Campaigns
-- `POST /api/campaigns` - Create a new campaign
-- `GET /api/campaigns` - List all user's campaigns
-- `GET /api/campaigns/{campaign_id}` - Get campaign details
-- `POST /api/campaigns/{campaign_id}/upload` - Upload CSV to generate campaign URLs
-- `DELETE /api/campaigns/{campaign_id}` - Delete a campaign (cascades to URLs)
+- `POST /api/v1/campaigns` - Create a new campaign
+- `GET /api/v1/campaigns` - List all user's campaigns
+- `GET /api/v1/campaigns/{campaign_id}` - Get campaign details
+- `POST /api/v1/campaigns/{campaign_id}/upload` - Upload CSV to generate campaign URLs
+- `DELETE /api/v1/campaigns/{campaign_id}` - Delete a campaign (cascades to URLs)
 
 ### Analytics
-- `GET /api/analytics/overview` - Dashboard overview statistics
-- `GET /api/analytics/urls/{short_code}/daily` - Daily stats for a URL (last 7 days)
-- `GET /api/analytics/urls/{short_code}/weekly` - Weekly stats for a URL (last 8 weeks)
-- `GET /api/analytics/urls/{short_code}/geo` - Geographic distribution of clicks
-- `GET /api/analytics/campaigns/{campaign_id}/summary` - Campaign summary with top performers
-- `GET /api/analytics/campaigns/{campaign_id}/users` - Detailed user statistics for a campaign
+- `GET /api/v1/analytics/overview` - Dashboard overview statistics
+- `GET /api/v1/analytics/urls/{short_code}/daily` - Daily stats for a URL (last 7 days)
+- `GET /api/v1/analytics/urls/{short_code}/weekly` - Weekly stats for a URL (last 8 weeks)
+- `GET /api/v1/analytics/urls/{short_code}/geo` - Geographic distribution of clicks
+- `GET /api/v1/analytics/campaigns/{campaign_id}/summary` - Campaign summary with top performers
+- `GET /api/v1/analytics/campaigns/{campaign_id}/users` - Detailed user statistics for a campaign
 
 ## URL Types
 
