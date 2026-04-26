@@ -1,48 +1,66 @@
-# Multi-stage build for optimized production image
-FROM python:3.11-slim as builder
+# syntax=docker/dockerfile:1.7
+# Multi-stage build for a small production image. Built for linux/arm64 in the
+# deploy pipeline (Fargate ARM64 is ~20% cheaper than x86) but the Dockerfile
+# itself stays platform-agnostic so it also runs on developer Macs (arm64) and
+# Linux x86 hosts.
 
-# Install uv for fast dependency management
+FROM python:3.11-slim AS builder
+
+# uv for fast, deterministic installs from the lockfile.
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
-# Set working directory
 WORKDIR /app
 
-# Copy dependency files and README (needed by pyproject.toml)
+# Copy only the files needed to resolve and install deps. Keeping these in a
+# separate layer lets Docker reuse the install layer when only application code
+# changes.
 COPY pyproject.toml uv.lock README.md ./
 
-# Install dependencies using uv
+# `--no-dev` skips the [dev] extra (ruff, pytest); `--frozen` enforces uv.lock.
 RUN uv sync --no-dev --frozen
 
-# Production stage
+# ─── Runtime image ──────────────────────────────────────────────────────────
+
 FROM python:3.11-slim
 
-# Install runtime dependencies for PostgreSQL
+# libpq5 is required by psycopg2-binary at runtime. ca-certificates ensures
+# httpx's OG fetcher can validate TLS for upstream targets. curl is included so
+# the Docker HEALTHCHECK has a tiny dependency-free way to probe the app.
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-    libpq5 \
+        libpq5 \
+        ca-certificates \
+        curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Set working directory
 WORKDIR /app
 
-# Copy virtual environment from builder
+# Bring the prebuilt virtualenv from the builder stage.
 COPY --from=builder /app/.venv /app/.venv
 
-# Copy application code
+# Application code. `server/` includes templates/preview.html (used by the
+# social-media crawler preview path) and all the SQLAlchemy models registered
+# in server/core/models/__init__.py.
 COPY server ./server
 COPY main.py ./
 
-# Set environment variables
 ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1
 
-# Expose port
 EXPOSE 8000
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD python -c "import requests; requests.get('http://localhost:8000/docs', timeout=5)"
+# Container healthcheck (used by `docker ps` and local orchestration). ECS uses
+# the ALB target group health check separately, configured to hit /api/v1/health.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD curl --fail --silent --show-error http://localhost:8000/api/v1/health || exit 1
 
-# Run the application with uvicorn
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Single uvicorn worker is plenty for the per-task concurrency we need; ECS
+# Express scales horizontally by adding tasks, not by adding workers per task.
+# `--proxy-headers` lets uvicorn honor X-Forwarded-* set by the ALB; the actual
+# trust decision still goes through TRUSTED_PROXIES in server/utils/network.py.
+CMD ["uvicorn", "main:app", \
+     "--host", "0.0.0.0", \
+     "--port", "8000", \
+     "--proxy-headers", \
+     "--forwarded-allow-ips", "*"]
