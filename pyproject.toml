@@ -72,6 +72,9 @@ addopts = [
     "--strict-markers",
     "--strict-config",
     "--tb=short",
+    # Skip macOS / iCloud sync conflict copies (e.g. "test_urls 2.py").
+    "--ignore-glob=*[0-9].py",
+    "--ignore-glob=tests/*backup*",
 ]
 markers = [
     "unit: Unit tests",

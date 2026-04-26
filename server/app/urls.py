@@ -116,6 +116,9 @@ async def create_short_url(
         og_description=og_description,
         og_image_url=og_image_url,
         og_fetched_at=og_fetched_at,
+        valid_since=url_data.valid_since,
+        valid_until=url_data.valid_until,
+        max_visits=url_data.max_visits,
         created_by=current_user.id,
     )
 
@@ -212,6 +215,9 @@ async def create_custom_url(
         og_description=og_description,
         og_image_url=og_image_url,
         og_fetched_at=og_fetched_at,
+        valid_since=url_data.valid_since,
+        valid_until=url_data.valid_until,
+        max_visits=url_data.max_visits,
         created_by=current_user.id,
     )
 
@@ -687,11 +693,19 @@ async def refresh_url_preview(
     )
 
 
+def _as_utc(dt: datetime | None) -> datetime | None:
+    """Normalize a possibly-naive datetime to UTC (SQLite returns naive datetimes for TZ-aware columns)."""
+    if dt is None:
+        return None
+    return dt if dt.tzinfo is not None else dt.replace(tzinfo=timezone.utc)
+
+
 @redirect_router.get(
     "/{short_code}",
     responses={
         302: {"description": "Redirect to original URL"},
         **get_responses(404),
+        410: {"description": "Short URL is expired or has reached its visit cap"},
     },
 )
 def redirect_short_url(short_code: str, request: Request, db: Session = Depends(get_db)):
@@ -707,12 +721,14 @@ def redirect_short_url(short_code: str, request: Request, db: Session = Depends(
     **Responses:**
     - **200**: Preview page for social media crawlers (with Open Graph meta tags)
     - **302**: Temporary redirect to original URL for regular browsers
-    - **404**: Short URL not found
+    - **404**: Short URL not found, or URL is not yet active (`valid_since` in the future)
+    - **410**: URL is expired (`valid_until` passed) or has reached its `max_visits` cap
 
     **Note:**
     - Campaign user data is ALWAYS appended as query parameters (for personalization)
     - Regular query params are only forwarded if `forward_parameters=true` (for attribution tracking)
     - Social media crawlers (Twitter, Facebook, LinkedIn, WhatsApp, etc.) see rich preview cards
+    - Crawler preview hits do NOT consume `max_visits` quota (no Visitor row inserted)
     """
     # Find the URL
     url = db.query(URL).filter(URL.short_code == short_code).first()
@@ -722,6 +738,31 @@ def redirect_short_url(short_code: str, request: Request, db: Session = Depends(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Short URL '{short_code}' not found",
         )
+
+    # Phase 3.9.2 — validity window and visit cap enforcement.
+    # Order matters: not-yet-valid returns 404 (don't reveal premature URLs);
+    # expired and quota-exhausted return 410 (the URL existed and is no longer active).
+    now = datetime.now(timezone.utc)
+
+    if url.valid_since is not None and now < _as_utc(url.valid_since):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Short URL '{short_code}' not found",
+        )
+
+    if url.valid_until is not None and now >= _as_utc(url.valid_until):
+        raise HTTPException(
+            status_code=status.HTTP_410_GONE,
+            detail="This short URL has expired",
+        )
+
+    if url.max_visits is not None:
+        visit_count = db.query(Visitor).filter(Visitor.url_id == url.id).count()
+        if visit_count >= url.max_visits:
+            raise HTTPException(
+                status_code=status.HTTP_410_GONE,
+                detail="This short URL has reached its visit limit",
+            )
 
     # Update last_click_at timestamp
     url.last_click_at = datetime.now(timezone.utc)

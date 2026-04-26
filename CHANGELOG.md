@@ -36,6 +36,18 @@ implementation lifecycle and is independent of the URL version segment.
 
 ### Added
 - `CHANGELOG.md` with explicit API versioning policy.
+- **URL validity window and visit cap** (Phase 3.9.2). Three new optional fields
+  on the URL model and create/update schemas:
+  - `valid_since` (timestamp): URL becomes active at this UTC time. Requests
+    before this point return `404 Not Found` (we do not reveal premature URLs).
+  - `valid_until` (timestamp): URL stops being active at this UTC time. Requests
+    after this point return `410 Gone`.
+  - `max_visits` (integer ≥ 1): Hard cap on real human visits. Once the count
+    of `Visitor` rows for the URL reaches this value, further requests return
+    `410 Gone`. Social-media crawler previews do not consume the quota because
+    they don't insert into the `Visitor` table.
+  All three fields default to `NULL` (no constraint). Setting any of them in a
+  `PATCH /api/v1/urls/{code}` request to `null` clears the constraint.
 
 ### Notes
 - The redirect endpoint at root level (`/{short_code}`) is intentionally

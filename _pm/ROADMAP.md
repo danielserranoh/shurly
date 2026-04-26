@@ -414,13 +414,14 @@ System creates:
 - [x] Update CORS / docs / OpenAPI title accordingly (CORS unchanged; README.md and CLAUDE.md endpoint references updated)
 - [x] Fix `tests/conftest.py` to set `TESTING=1` so startup event is skipped (was failing to honor the gate)
 
-### 3.9.2 URL Expiration & Visit Caps
-- [ ] Add `valid_until` (TIMESTAMP, nullable) to URL model
-- [ ] Add `valid_since` (TIMESTAMP, nullable) to URL model
-- [ ] Add `max_visits` (INTEGER, nullable) to URL model
-- [ ] Enforce in redirect handler: 410 Gone if expired, 410 Gone if max_visits reached
-- [ ] Expose fields in URLCreate / URLUpdate / URLResponse schemas
-- [ ] Tests for expiry edge cases (boundary, nullable, campaign URLs)
+### 3.9.2 URL Expiration & Visit Caps ✅
+- [x] Add `valid_until` (TIMESTAMP timezone-aware, nullable) to URL model
+- [x] Add `valid_since` (TIMESTAMP timezone-aware, nullable) to URL model
+- [x] Add `max_visits` (INTEGER, nullable, ge=1) to URL model
+- [x] Enforce in redirect handler: 410 Gone if expired, 410 Gone if max_visits reached, 404 if not yet valid
+- [x] Expose fields in URLCreate / URLCustomCreate / URLUpdate / URLResponse schemas
+- [x] Tests for expiry edge cases (9 new tests covering boundary, nullable, validity window, quota consumption)
+- [x] Crawler preview hits do NOT consume quota (Visitor row only inserted on real human visits)
 - [ ] Future CLI / scheduled Lambda for `delete-expired` (deferred to Phase 5)
 
 ### 3.9.3 Bot Detection in Analytics

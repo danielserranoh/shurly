@@ -955,3 +955,213 @@ class TestPhase37OpenGraphFeatures:
         # Should get redirect (302) not preview page (200)
         assert response.status_code == 302
         assert response.headers["location"] == "https://example.com"
+
+
+@pytest.mark.integration
+class TestPhase392ExpirationAndQuota:
+    """Phase 3.9.2 — URL expiration (valid_since / valid_until) and visit caps (max_visits).
+
+    The redirect handler must:
+    - Return 404 if the URL exists but `valid_since` is in the future (don't reveal premature URLs).
+    - Return 410 Gone if `valid_until` has passed (the link existed and is now retired).
+    - Return 410 Gone if `max_visits` has been reached (quota consumed).
+    - Behave normally when these fields are NULL (default — no constraints).
+    - Count only real human visits against `max_visits`. Crawler preview hits don't consume quota
+      because they don't insert into the Visitor table.
+    """
+
+    def test_redirect_within_validity_window_succeeds(
+        self, client: TestClient, db_session: Session, test_user
+    ):
+        from datetime import datetime, timedelta, timezone
+
+        url = URL(
+            short_code="active1",
+            original_url="https://example.com",
+            url_type=URLType.STANDARD,
+            created_by=test_user.id,
+            valid_since=datetime.now(timezone.utc) - timedelta(days=1),
+            valid_until=datetime.now(timezone.utc) + timedelta(days=1),
+        )
+        db_session.add(url)
+        db_session.commit()
+
+        response = client.get("/active1", follow_redirects=False)
+        assert response.status_code == 302
+        assert response.headers["location"] == "https://example.com"
+
+    def test_redirect_expired_returns_410(
+        self, client: TestClient, db_session: Session, test_user
+    ):
+        from datetime import datetime, timedelta, timezone
+
+        url = URL(
+            short_code="expired1",
+            original_url="https://example.com",
+            url_type=URLType.STANDARD,
+            created_by=test_user.id,
+            valid_until=datetime.now(timezone.utc) - timedelta(seconds=1),
+        )
+        db_session.add(url)
+        db_session.commit()
+
+        response = client.get("/expired1", follow_redirects=False)
+        assert response.status_code == 410
+        assert "expired" in response.json()["detail"].lower()
+
+    def test_redirect_not_yet_valid_returns_404(
+        self, client: TestClient, db_session: Session, test_user
+    ):
+        from datetime import datetime, timedelta, timezone
+
+        url = URL(
+            short_code="future1",
+            original_url="https://example.com",
+            url_type=URLType.STANDARD,
+            created_by=test_user.id,
+            valid_since=datetime.now(timezone.utc) + timedelta(days=1),
+        )
+        db_session.add(url)
+        db_session.commit()
+
+        response = client.get("/future1", follow_redirects=False)
+        # 404 (not 410) — don't reveal that a not-yet-active URL exists
+        assert response.status_code == 404
+
+    def test_redirect_max_visits_reached_returns_410(
+        self, client: TestClient, db_session: Session, test_user
+    ):
+        from server.core.models import Visitor
+
+        url = URL(
+            short_code="quota1",
+            original_url="https://example.com",
+            url_type=URLType.STANDARD,
+            created_by=test_user.id,
+            max_visits=2,
+        )
+        db_session.add(url)
+        db_session.flush()
+
+        # Pre-populate 2 visits (quota reached)
+        for _ in range(2):
+            db_session.add(Visitor(url_id=url.id, short_code="quota1", ip="1.2.3.4"))
+        db_session.commit()
+
+        response = client.get("/quota1", follow_redirects=False)
+        assert response.status_code == 410
+        assert "limit" in response.json()["detail"].lower() or "max" in response.json()["detail"].lower()
+
+    def test_redirect_max_visits_consumes_one_per_hit(
+        self, client: TestClient, db_session: Session, test_user
+    ):
+        url = URL(
+            short_code="quota2",
+            original_url="https://example.com",
+            url_type=URLType.STANDARD,
+            created_by=test_user.id,
+            max_visits=3,
+        )
+        db_session.add(url)
+        db_session.commit()
+
+        # First 3 hits succeed
+        for _ in range(3):
+            response = client.get("/quota2", follow_redirects=False)
+            assert response.status_code == 302
+
+        # Fourth hit hits the cap
+        response = client.get("/quota2", follow_redirects=False)
+        assert response.status_code == 410
+
+    def test_redirect_no_constraints_works_normally(
+        self, client: TestClient, db_session: Session, test_user
+    ):
+        url = URL(
+            short_code="vanilla",
+            original_url="https://example.com",
+            url_type=URLType.STANDARD,
+            created_by=test_user.id,
+        )
+        db_session.add(url)
+        db_session.commit()
+
+        response = client.get("/vanilla", follow_redirects=False)
+        assert response.status_code == 302
+
+    def test_create_url_accepts_validity_fields(
+        self, client: TestClient, auth_headers: dict
+    ):
+        from datetime import datetime, timedelta, timezone
+
+        valid_until = (datetime.now(timezone.utc) + timedelta(days=30)).isoformat()
+        response = client.post(
+            "/api/v1/urls",
+            json={
+                "url": "https://example.com",
+                "valid_until": valid_until,
+                "max_visits": 100,
+            },
+            headers=auth_headers,
+        )
+        assert response.status_code == 201
+        data = response.json()
+        assert data["max_visits"] == 100
+        assert data["valid_until"] is not None
+
+    def test_patch_url_can_set_and_clear_validity(
+        self, client: TestClient, auth_headers: dict, db_session: Session, test_user
+    ):
+        from datetime import datetime, timedelta, timezone
+
+        url = URL(
+            short_code="patchme",
+            original_url="https://example.com",
+            url_type=URLType.STANDARD,
+            created_by=test_user.id,
+        )
+        db_session.add(url)
+        db_session.commit()
+
+        # Set
+        valid_until = (datetime.now(timezone.utc) + timedelta(days=7)).isoformat()
+        r1 = client.patch(
+            "/api/v1/urls/patchme",
+            json={"valid_until": valid_until, "max_visits": 50},
+            headers=auth_headers,
+        )
+        assert r1.status_code == 200
+        assert r1.json()["max_visits"] == 50
+
+        # Clear (set to null)
+        r2 = client.patch(
+            "/api/v1/urls/patchme",
+            json={"valid_until": None, "max_visits": None},
+            headers=auth_headers,
+        )
+        assert r2.status_code == 200
+        assert r2.json()["valid_until"] is None
+        assert r2.json()["max_visits"] is None
+
+    def test_url_response_includes_validity_fields(
+        self, client: TestClient, auth_headers: dict, db_session: Session, test_user
+    ):
+        from datetime import datetime, timedelta, timezone
+
+        url = URL(
+            short_code="listme",
+            original_url="https://example.com",
+            url_type=URLType.STANDARD,
+            created_by=test_user.id,
+            valid_until=datetime.now(timezone.utc) + timedelta(days=10),
+            max_visits=42,
+        )
+        db_session.add(url)
+        db_session.commit()
+
+        r = client.get("/api/v1/urls", headers=auth_headers)
+        assert r.status_code == 200
+        item = next((u for u in r.json()["urls"] if u["short_code"] == "listme"), None)
+        assert item is not None
+        assert item["max_visits"] == 42
+        assert item["valid_until"] is not None
