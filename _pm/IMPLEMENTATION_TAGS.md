@@ -1240,46 +1240,46 @@ def test_predefined_tags_idempotent(db_session):
 
 ## 9. Implementation Checklist
 
-### Phase 1: Backend Core (TDD)
-- [ ] **Database Schema**
-  - [ ] Create Tag model (`server/core/models/tag.py`)
-  - [ ] Create url_tags association table
-  - [ ] Create campaign_tags association table
-  - [ ] Add relationships to URL model
-  - [ ] Add relationships to Campaign model
-  - [ ] Create migration script
+### Phase 1: Backend Core (TDD) ✅
+- [x] **Database Schema**
+  - [x] Create Tag model (`server/core/models/tag.py`)
+  - [x] Create url_tags association table
+  - [x] Create campaign_tags association table
+  - [x] Add relationships to URL model
+  - [x] Add relationships to Campaign model
+  - [x] Create migration script
 
-- [ ] **Configuration**
-  - [ ] Add PREDEFINED_TAGS to settings
-  - [ ] Create tag initialization utility (`server/utils/tags.py`)
-  - [ ] Add startup event to main.py
+- [x] **Configuration**
+  - [x] Add PREDEFINED_TAGS to settings
+  - [x] Create tag initialization utility (`server/utils/tags.py`)
+  - [x] Add startup event to main.py
 
-- [ ] **Schemas**
-  - [ ] Create `server/schemas/tag.py` (TagCreate, TagUpdate, TagResponse, etc.)
-  - [ ] Update URLResponse to include tags
-  - [ ] Update CampaignResponse to include tags
+- [x] **Schemas**
+  - [x] Create `server/schemas/tag.py` (TagCreate, TagUpdate, TagResponse, etc.)
+  - [x] Update URLResponse to include tags
+  - [x] Update CampaignResponse to include tags
 
-- [ ] **API Endpoints - Tags**
-  - [ ] GET /api/tags (list with filtering)
-  - [ ] POST /api/tags (create user tag)
-  - [ ] PATCH /api/tags/{id} (rename user tag)
-  - [ ] DELETE /api/tags/{id} (delete user tag)
+- [x] **API Endpoints - Tags**
+  - [x] GET /api/tags (list with filtering)
+  - [x] POST /api/tags (create user tag)
+  - [x] PATCH /api/tags/{id} (rename user tag)
+  - [x] DELETE /api/tags/{id} (delete user tag)
 
-- [ ] **API Endpoints - URL Tagging**
-  - [ ] PATCH /api/urls/{code}/tags (update URL tags)
-  - [ ] POST /api/urls/bulk/tags (bulk tag URLs)
-  - [ ] Update GET /api/urls to support tag filtering
+- [x] **API Endpoints - URL Tagging**
+  - [x] PATCH /api/urls/{code}/tags (update URL tags)
+  - [x] POST /api/urls/bulk/tags (bulk tag URLs)
+  - [x] Update GET /api/urls to support tag filtering
 
-- [ ] **API Endpoints - Campaign Tagging**
-  - [ ] PATCH /api/campaigns/{id}/tags (update campaign tags)
-  - [ ] Update POST /api/campaigns to accept tags
+- [x] **API Endpoints - Campaign Tagging**
+  - [x] PATCH /api/campaigns/{id}/tags (update campaign tags)
+  - [x] Update POST /api/campaigns to accept tags
 
-- [ ] **Tests** (Write FIRST, TDD)
-  - [ ] test_tags.py - CRUD operations (20+ tests)
-  - [ ] test_tag_initialization.py - Startup tests
-  - [ ] test_url_tagging.py - URL tagging tests
-  - [ ] test_tag_filtering.py - Filter tests
-  - [ ] Verify all 130+ existing tests still pass
+- [x] **Tests** (Write FIRST, TDD)
+  - [x] test_tags.py - CRUD operations (20+ tests)
+  - [x] test_tag_initialization.py - Startup tests
+  - [x] test_url_tagging.py - URL tagging tests
+  - [x] test_tag_filtering.py - Filter tests
+  - [x] Verify all 130+ existing tests still pass
 
 ### Phase 2: Frontend (After UX Designs)
 - [ ] **Components**
