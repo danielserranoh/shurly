@@ -4,24 +4,71 @@ This guide covers deploying Shurly to AWS Lambda with API Gateway and RDS Postgr
 
 ## Prerequisites
 
-- AWS Account with appropriate permissions
-- AWS CLI configured
+- AWS CLI configured with two named profiles (see [AWS Account Layout](#aws-account-layout)):
+  - `griddo-main` — service account where Lambda / API Gateway / RDS / S3 / CloudFront live.
+  - `griddo-production` — domain-management account that owns the `griddo.io` Route 53 hosted zone.
 - Python 3.10+ locally
 - `uv` installed
-- Docker (for building Lambda deployment package)
+- Node.js 20.19+ or 22.12+ (Astro 6 requirement, used by the frontend deploy)
+- Docker (for building Lambda deployment package via `sam build --use-container`)
+- `sam` CLI (AWS SAM) installed
+
+## AWS Account Layout
+
+Shurly's AWS deployment uses **two accounts** — separation between service runtime and DNS keeps the blast radius small and lets the platform team rotate credentials in either account without touching the other.
+
+| Account | AWS profile | Region | Owns |
+|---|---|---|---|
+| Service | `griddo-main` | `eu-south-2` (Madrid) | Lambda, API Gateway, RDS PostgreSQL, S3 (frontend), CloudFront, ACM regional certs, Secrets Manager |
+| Domain | `griddo-production` | global / `us-east-1` for ACM-CloudFront | Route 53 hosted zone for `griddo.io`, ACM certs for CloudFront (must be `us-east-1`) |
+
+**Region note**: `eu-south-2` (Madrid, launched Nov 2022) supports every regional service in our stack: Lambda, API Gateway HTTP API, RDS PostgreSQL, ACM (regional), S3, Secrets Manager, CloudWatch Logs. CloudFront and Route 53 are global, not regional. The single asterisk: ACM certificates **for CloudFront** must always live in `us-east-1` regardless of where the rest of the stack runs — that affects the cert for the frontend custom domain (e.g. `app.shurl.griddo.io`) but not the cert for the API Gateway custom domain (`shurl.griddo.io`), which can sit in `eu-south-2`.
+
+### Cross-Account DNS: Subdomain Delegation
+
+We delegate the entire `shurl.griddo.io` subdomain from `griddo-production` to `griddo-main`:
+
+1. In `griddo-main`, create a public hosted zone for `shurl.griddo.io`. Note its four `NS` records.
+2. In `griddo-production`'s `griddo.io` zone, add a single `NS` record set for `shurl.griddo.io` pointing to those four name servers.
+3. From this point on, all DNS records for `shurl.griddo.io` (apex, `api.shurl.griddo.io`, `app.shurl.griddo.io`, etc.) are managed inside `griddo-main` next to the resources they point at.
+
+This avoids cross-account IAM roles for routine record updates. The only cross-account activity is the one-time NS record write in `griddo-production`.
+
+```bash
+# 1. In griddo-main: create the subdomain hosted zone and capture its NS records
+aws --profile griddo-main route53 create-hosted-zone \
+  --name shurl.griddo.io \
+  --caller-reference "shurl-$(date +%s)"
+
+aws --profile griddo-main route53 list-resource-record-sets \
+  --hosted-zone-id <NEW_ZONE_ID> \
+  --query "ResourceRecordSets[?Type=='NS'].ResourceRecords[].Value" \
+  --output text
+
+# 2. In griddo-production: add the NS record set delegating shurl.griddo.io
+#    (paste the four name servers from step 1)
+aws --profile griddo-production route53 change-resource-record-sets \
+  --hosted-zone-id <GRIDDO_IO_ZONE_ID> \
+  --change-batch file://delegation.json
+```
 
 ## Architecture Overview
 
 ```
 Internet
    ↓
-CloudFront (CDN) → S3 (Frontend static files)
-   ↓
-API Gateway (HTTP API)
-   ↓
-Lambda Function (FastAPI + Mangum)
-   ↓
-RDS PostgreSQL (Database)
+CloudFront (CDN) → S3 (Frontend static files)        ─┐
+   ↓                                                   │  griddo-main
+API Gateway HTTP API (eu-south-2)                      │  AWS profile
+   ↓                                                   │
+Lambda (FastAPI + Mangum, ARM64)                       │
+   ↓                                                   │
+RDS PostgreSQL (eu-south-2, t4g.micro)                ─┘
+
+Route 53 hosted zone for griddo.io     ── griddo-production AWS profile
+   delegates shurl.griddo.io           ─┐
+                                         ↓
+Route 53 hosted zone for shurl.griddo.io ── griddo-main AWS profile
 ```
 
 ## Phase 4.1: Lambda Adaptation ✅

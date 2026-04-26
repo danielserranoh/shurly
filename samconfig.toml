@@ -15,7 +15,7 @@ lint = true
 capabilities = "CAPABILITY_IAM"
 confirm_changeset = true
 resolve_s3 = true
-region = "us-east-1"
+region = "eu-south-2"
 parameter_overrides = "Environment=dev"
 # Add your parameter overrides here:
 # parameter_overrides = "Environment=dev DatabaseHost=xxx.rds.amazonaws.com DatabasePassword=xxx JWTSecretKey=xxx"
@@ -39,7 +39,7 @@ stack_name = "shurly-dev"
 capabilities = "CAPABILITY_IAM"
 confirm_changeset = true
 resolve_s3 = true
-region = "us-east-1"
+region = "eu-south-2"
 parameter_overrides = "Environment=dev"
 tags = "Project=Shurly Environment=dev"
 
@@ -50,7 +50,7 @@ stack_name = "shurly-staging"
 capabilities = "CAPABILITY_IAM"
 confirm_changeset = true
 resolve_s3 = true
-region = "us-east-1"
+region = "eu-south-2"
 parameter_overrides = "Environment=staging"
 tags = "Project=Shurly Environment=staging"
 
@@ -61,6 +61,6 @@ stack_name = "shurly-prod"
 capabilities = "CAPABILITY_IAM"
 confirm_changeset = true
 resolve_s3 = true
-region = "us-east-1"
+region = "eu-south-2"
 parameter_overrides = "Environment=prod"
 tags = "Project=Shurly Environment=prod"

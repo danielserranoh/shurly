@@ -1,10 +1,11 @@
 name: Deploy Backend to AWS
 
+# Phase 4 prep: auto-deploy on push is intentionally OFF until the AWS
+# infrastructure exists and the secrets (AWS credentials, DB host/password,
+# JWT key, CORS origins) are wired up. Once the first manual deploy succeeds
+# and the team is comfortable with the pipeline, re-enable the `push` trigger
+# for `main` to get continuous delivery to prod.
 on:
-  push:
-    branches:
-      - main
-      - production
   workflow_dispatch:
     inputs:
       environment:
@@ -56,11 +57,16 @@ jobs:
         use-installer: true
 
     - name: Configure AWS credentials
+      # Phase 4: target region is eu-south-2 (Madrid). The service account is
+      # `griddo-main`; DNS lives in `griddo-production` and is touched separately.
+      # Switch to OIDC + role assumption (aws-actions/configure-aws-credentials
+      # supports `role-to-assume`) when the IAM role is provisioned to avoid
+      # long-lived access keys in GitHub secrets.
       uses: aws-actions/configure-aws-credentials@v4
       with:
         aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        aws-region: eu-west-1
+        aws-region: eu-south-2
 
     - name: Build SAM application
       run: |

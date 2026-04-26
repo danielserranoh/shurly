@@ -1,12 +1,10 @@
 name: Deploy Frontend to S3
 
+# Phase 4 prep: auto-deploy on push is OFF until the S3 bucket and
+# CloudFront distribution exist (Phase 4.5/4.6) and AWS secrets are wired up.
+# Once the first manual deploy succeeds, re-enable the `push` trigger scoped
+# to `frontend/**` so frontend-only changes ship without backend redeploys.
 on:
-  push:
-    branches:
-      - main
-      - production
-    paths:
-      - 'frontend/**'
   workflow_dispatch:
     inputs:
       environment:
@@ -32,7 +30,8 @@ jobs:
     - name: Set up Node.js
       uses: actions/setup-node@v4
       with:
-        node-version: '18'
+        # Astro 6 requires Node 20.19+ or 22.12+
+        node-version: '22'
         cache: 'npm'
         cache-dependency-path: frontend/package-lock.json
 
@@ -47,11 +46,12 @@ jobs:
       run: npm run build
 
     - name: Configure AWS credentials
+      # Phase 4: service account is `griddo-main`, region eu-south-2 (Madrid).
       uses: aws-actions/configure-aws-credentials@v4
       with:
         aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        aws-region: eu-west-1
+        aws-region: eu-south-2
 
     - name: Deploy to S3
       env:

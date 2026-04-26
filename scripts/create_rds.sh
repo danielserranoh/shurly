@@ -1,11 +1,14 @@
 #!/bin/bash
-# Create RDS PostgreSQL instance for Shurly in eu-west-1
-# Simple setup with default VPC and public accessibility
+# Create RDS PostgreSQL instance for Shurly in eu-south-2 (Madrid).
+# Simple setup with default VPC and public accessibility.
+#
+# Override the region via env: REGION=eu-west-1 ./scripts/create_rds.sh
+# Override the AWS profile (Phase 4 setup uses griddo-main): AWS_PROFILE=griddo-main ./scripts/create_rds.sh
 
 set -e  # Exit on error
 
 # Configuration
-REGION="eu-west-1"
+REGION="${REGION:-eu-south-2}"
 DB_INSTANCE_ID="shurly-dev-db"
 DB_INSTANCE_CLASS="db.t4g.micro"  # ARM-based, cost-effective
 DB_ENGINE="postgres"
