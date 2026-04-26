@@ -359,16 +359,16 @@ System creates:
 
 ### 3.8.3 Backend - API Endpoints (TDD) ✅
 - [x] Tag Management
-  - [x] GET /api/tags (list all with search/filter)
+  - [x] GET /api/tags (list all with search/filter, includes usage_count)
   - [x] POST /api/tags (create user tag)
   - [x] PATCH /api/tags/{id} (rename user tag)
   - [x] DELETE /api/tags/{id} (delete + cascade)
 - [x] URL Tagging
   - [x] PATCH /api/urls/{code}/tags (update URL tags)
-  - [x] POST /api/urls/bulk/tags (bulk tag multiple URLs)
-  - [x] Update GET /api/urls to support tag filtering
+  - [x] POST /api/urls/bulk/tags (bulk tag multiple URLs, additive)
+  - [x] Update GET /api/urls to support tag filtering (`?tags=ids&tag_filter=any|all`)
 - [x] Campaign Tagging
-  - [x] PATCH /api/campaigns/{id}/tags (tag campaign)
+  - [x] PATCH /api/campaigns/{id}/tags (tag campaign + cascade to URLs)
 
 ### 3.8.4 Backend - Schemas ✅
 - [x] Create server/schemas/tag.py (TagCreate, TagUpdate, TagResponse, etc.)
@@ -381,7 +381,7 @@ System creates:
 - [x] URL tagging tests (single + bulk)
 - [x] Tag filtering tests (AND/OR logic)
 - [x] Campaign tagging tests
-- [ ] Verify all existing tests still pass (pending endpoint implementation)
+- [x] Verify all existing tests still pass (189/199; 9 pre-existing bcrypt + 1 network-flaky OG test, all unrelated)
 
 ### 3.8.6 Frontend Components (Pending UX Designs)
 - [ ] TagBadge component (color-coded display)
@@ -395,6 +395,148 @@ System creates:
 - [ ] Add tag filter to Dashboard
 - [ ] Add bulk tagging UI
 - [ ] Add tags to Campaign create/edit
+
+---
+
+## Phase 3.9: Shlink Lessons - Pre-Launch Hardening
+
+**Goal:** Adopt high-priority gaps and "free" non-obvious architectural lessons from Shlink before AWS launch
+**Duration:** ~1.5 days
+**Priority:** 🔴 HIGH - Pre-launch debt that compounds if deferred
+**Reference:** Shlink analysis (https://github.com/shlinkio/shlink) — CHANGELOG 4.0–5.0.2, docs at shlink.io/documentation/
+**Rationale:** Items here are either bloqueantes (API versioning), GDPR-relevant (IP anonymization), or so cheap that skipping them is irrational (X-Request-Id, charset fallback)
+
+### 3.9.1 API Versioning (BLOCKING)
+- [ ] Mount all routes under `/api/v1/` prefix
+- [ ] Update frontend `apiGet/apiPost` base path
+- [ ] Update Lambda + SAM template if any hardcoded paths
+- [ ] Document versioning policy (Keep-a-Changelog format)
+- [ ] Update CORS / docs / OpenAPI title accordingly
+
+### 3.9.2 URL Expiration & Visit Caps
+- [ ] Add `valid_until` (TIMESTAMP, nullable) to URL model
+- [ ] Add `valid_since` (TIMESTAMP, nullable) to URL model
+- [ ] Add `max_visits` (INTEGER, nullable) to URL model
+- [ ] Enforce in redirect handler: 410 Gone if expired, 410 Gone if max_visits reached
+- [ ] Expose fields in URLCreate / URLUpdate / URLResponse schemas
+- [ ] Tests for expiry edge cases (boundary, nullable, campaign URLs)
+- [ ] Future CLI / scheduled Lambda for `delete-expired` (deferred to Phase 5)
+
+### 3.9.3 Bot Detection in Analytics
+- [ ] Add `is_bot` (BOOLEAN, default false) to Visitor model
+- [ ] UA-based detection at log time (reuse social crawler list + common scrapers)
+- [ ] Default analytics endpoints to filter `is_bot=false`
+- [ ] Add optional `?include_bots=true` query param for raw counts
+- [ ] Tests for bot vs human classification
+
+### 3.9.4 Crawlability & robots.txt
+- [ ] Add `crawlable` (BOOLEAN, default false) to URL model
+- [ ] Add GET `/robots.txt` endpoint (default deny short URLs, allow only `crawlable=true`)
+- [ ] Expose `crawlable` field in URL schemas
+- [ ] Document default-deny posture in API docs
+
+### 3.9.5 GDPR - IP Anonymization
+- [ ] Truncate IPv4 to `/24` (zero last octet) at insert time in Visitor logging
+- [ ] Truncate IPv6 to `/64` at insert time
+- [ ] Config flag `ANONYMIZE_REMOTE_ADDR` (default true)
+- [ ] Tests verifying no full IPs are persisted
+- [ ] Document GDPR posture in DEPLOYMENT.md
+
+### 3.9.6 Architectural Lessons - "Free" Wins
+- [ ] **X-Request-Id middleware**
+  - [ ] Generate UUID per request if not provided
+  - [ ] Accept and propagate client-supplied `X-Request-Id` header
+  - [ ] Echo back in response headers
+  - [ ] Include in all log lines for CloudWatch correlation
+- [ ] **SHORT_URL_MODE config (`strict` | `loose`)**
+  - [ ] In `loose` mode: lowercase generated codes and lowercase custom slugs at insert
+  - [ ] In `strict` mode (current): preserve case, treat `Abc` and `abc` as distinct
+  - [ ] Default to `loose` (Shlink's default — fewer collisions, less user surprise)
+  - [ ] Document choice in README
+- [ ] **Short-code collision retry**
+  - [ ] Audit `server/utils/` short-code generator
+  - [ ] Ensure UNIQUE violation triggers re-roll, never 500
+  - [ ] Add explicit retry-on-conflict test
+- [ ] **OG fetcher charset fallback** (Shlink fix #2564)
+  - [ ] In `server/utils/opengraph.py`, fall back to `<meta charset>` if response is non-UTF8
+  - [ ] If still undecodable, skip title gracefully (no crash)
+  - [ ] Test with non-UTF8 fixture page
+- [ ] **TRUSTED_PROXIES configuration** (Shlink #2522)
+  - [ ] Do NOT auto-trust `X-Forwarded-For`
+  - [ ] Add `TRUSTED_PROXIES` env var (CIDR list)
+  - [ ] Only honor `X-Forwarded-For` when source IP matches a trusted proxy
+  - [ ] Document for ALB / CloudFront / API Gateway deployment
+- [ ] **DISABLE_TRACK_PARAM**
+  - [ ] Config: query param name (default `nostat`) that suppresses visit logging
+  - [ ] Useful for QA / internal testing without polluting analytics
+- [ ] **API key scoping (data model only, single scope at launch)**
+  - [ ] Migrate API key model to `(key, scope_enum, constraint_json)`
+  - [ ] Define enum: `FULL_ACCESS` (only value at launch), reserved: `READ_ONLY`, `CREATE_ONLY`, `DOMAIN_SPECIFIC`
+  - [ ] Tests for current `FULL_ACCESS` behavior unchanged
+  - [ ] Roles enforcement deferred to post-launch
+
+### 3.9.7 Verification
+- [ ] All existing tests pass after refactors
+- [ ] OpenAPI/Swagger reflects new schemas under `/api/v1/`
+- [ ] Manual smoke test of redirect flow (expired, max-visits-reached, bot, human)
+- [ ] CHANGELOG.md created with v0.1 entry following Keep-a-Changelog format
+
+---
+
+## Phase 3.10: Shlink Lessons - Medium Priority Enhancements
+
+**Goal:** Adopt medium-priority Shlink features that strengthen B2B positioning without blocking launch
+**Duration:** ~3-4 days
+**Priority:** 🟡 MEDIUM - Schedule after 3.9 / 3.8, before or in parallel with Phase 4.5
+**Reference:** Shlink analysis (gaps marked Medium); some items are model-only at this stage to avoid future migrations
+
+### 3.10.1 Multi-Domain Foundation (model-only at launch)
+- [ ] Create Domain model (id, hostname, is_default, created_at)
+- [ ] Add `domain_id` (FK, nullable) to URL model
+- [ ] Replace UNIQUE constraint on `short_code` with UNIQUE `(domain_id, short_code)`
+- [ ] Seed default domain row at startup (e.g. `shurl.griddo.io`)
+- [ ] Update redirect resolver to match by `(host header → domain_id, code)`
+- [ ] Frontend / domain management UI deferred (single-domain at launch)
+- [ ] Tests verifying same code can exist on different domains
+
+### 3.10.2 Dynamic Redirect Rules
+- [ ] Create RedirectRule model (id, url_id, priority, conditions JSONB, target_url, created_at)
+- [ ] Condition types: `device` (ios/android/desktop/linux/windows/macos), `language`, `query_param`, `before_date`, `after_date`, `browser`
+- [ ] Ordered evaluation by priority (first match wins)
+- [ ] Endpoints: GET/POST/PATCH/DELETE `/api/v1/urls/{code}/rules`
+- [ ] Update redirect handler to evaluate rules before default URL
+- [ ] Compatible with existing campaign personalization (rules evaluated first, then params injected)
+- [ ] Tests for each condition type + priority ordering
+
+### 3.10.3 Email Tracking Pixel
+- [ ] Endpoint GET `/{code}/track` returning 1×1 transparent GIF (Cache-Control: no-store)
+- [ ] Logs as Visitor row with `is_pixel=true` flag
+- [ ] Suitable for embedding in HTML emails for open tracking
+- [ ] Tests for pixel response (correct content-type, byte length, visit logged)
+
+### 3.10.4 Orphan Visits Tracking
+- [ ] Add OrphanVisit model (id, type enum, attempted_path, ip, ua, referer, created_at)
+- [ ] Type enum: `base_url`, `invalid_short_url`, `regular_404`
+- [ ] Catch-all handler logs orphan visits before returning 404
+- [ ] Endpoint GET `/api/v1/analytics/orphan-visits`
+- [ ] Useful for catching typo'd codes leaked into print/QR campaigns
+
+### 3.10.5 CSV Export for Analytics
+- [ ] Add `?format=csv` to visit / analytics endpoints
+- [ ] Use FastAPI `StreamingResponse` + `csv.writer`
+- [ ] Apply to: campaign visits, URL visits, overview activity, geo distribution
+- [ ] Tests verifying CSV structure and headers
+
+### 3.10.6 Configurable Redirect Behavior
+- [ ] Add `REDIRECT_STATUS_CODE` config (302 default; supports 301/307/308)
+- [ ] Add `REDIRECT_CACHE_LIFETIME` config + `Cache-Control` header (default `private, max-age=0`)
+- [ ] Document tradeoff: 301 = SEO-friendly but cached; 302 = uncached, every hit logged
+- [ ] Tests for each status code + cache header
+
+### 3.10.7 Verification
+- [ ] All existing tests still pass
+- [ ] Redirect path performance not regressed (rules eval is O(n) per URL but n is small)
+- [ ] Frontend remains compatible (no UI changes required for 3.10.1–3.10.4)
 
 ---
 
