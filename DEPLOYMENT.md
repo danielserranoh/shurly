@@ -91,6 +91,10 @@ AWS SAM (Serverless Application Model) provides Infrastructure as Code for serve
    - **Parameter DatabasePassword**: Your RDS password
    - **Parameter JWTSecretKey**: Generate with `openssl rand -hex 32`
    - **Parameter CorsOrigins**: `["https://shurl.griddo.io"]`
+   - **Parameter TrustedProxies**: JSON array of CIDRs that may set `X-Forwarded-For`. **Required in production** — without it, the Lambda records the API Gateway IP for every visit. See [Trusted-Proxy Configuration](#trusted-proxy-configuration) below for ALB / CloudFront ranges. Example: `["10.0.0.0/16"]` or `[]` if you front the Lambda with API Gateway only and accept losing real client IPs.
+   - **Parameter DefaultDomain**: Hostname this Lambda serves; seeded as the default Domain row at startup (default `shurl.griddo.io`).
+   - **Parameter RedirectStatusCode**: `301`/`302`/`307`/`308` (default `302`). 302 keeps every hit reaching the backend; 301 is SEO-friendly but cached aggressively.
+   - **Parameter RedirectCacheLifetime**: Seconds the redirect may be cached at the edge. `0` (default) emits `Cache-Control: private, max-age=0`. Positive values trade analytics fidelity for latency.
 
 4. **Subsequent Deployments**:
    ```bash
@@ -144,12 +148,17 @@ sam deploy --config-env staging \
      JWTSecretKey=xxx"
 
 # Production
+# In prod you almost always want to set TrustedProxies so client IPs are real.
 sam deploy --config-env prod \
   --parameter-overrides \
     "Environment=prod \
      DatabaseHost=prod-db.xxx.rds.amazonaws.com \
      DatabasePassword=xxx \
-     JWTSecretKey=xxx"
+     JWTSecretKey=xxx \
+     TrustedProxies='[\"<your-edge-CIDRs>\"]' \
+     DefaultDomain=shurl.griddo.io \
+     RedirectStatusCode=302 \
+     CorsOrigins='[\"https://shurl.griddo.io\"]'"
 ```
 
 ### SAM Commands Reference
