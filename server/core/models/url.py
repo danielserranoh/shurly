@@ -2,7 +2,18 @@ import enum
 import uuid
 from datetime import datetime
 
-from sqlalchemy import JSON, Boolean, Column, DateTime, Enum, ForeignKey, Integer, String, Text
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    Column,
+    DateTime,
+    Enum,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
@@ -24,7 +35,11 @@ class URL(Base):
     __tablename__ = "urls"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    short_code = Column(String(20), unique=True, nullable=False, index=True)
+    # Phase 3.10.1 — Composite uniqueness with `domain_id` so the same code can
+    # exist on different domains. Index kept on short_code alone for the existing
+    # single-domain lookup path; the composite UNIQUE is what enforces correctness.
+    short_code = Column(String(20), nullable=False, index=True)
+    domain_id = Column(UUID(as_uuid=True), ForeignKey("domains.id"), nullable=True, index=True)
     original_url = Column(Text, nullable=False)
     url_type = Column(Enum(URLType), nullable=False, default=URLType.STANDARD)
     title = Column(String(255), nullable=True)  # User-friendly title for the URL
@@ -66,6 +81,21 @@ class URL(Base):
     campaign = relationship("Campaign", back_populates="urls")
     visits = relationship("Visitor", back_populates="url", cascade="all, delete-orphan")
     tags = relationship("Tag", secondary="url_tags", back_populates="urls")
+    domain = relationship("Domain")
+    redirect_rules = relationship(
+        "RedirectRule",
+        back_populates="url",
+        cascade="all, delete-orphan",
+        order_by="RedirectRule.priority",
+    )
+
+    __table_args__ = (
+        # Phase 3.10.1 — composite uniqueness. NULL domain_id is treated as the
+        # default domain by the resolver; PostgreSQL allows multiple NULL pairs in
+        # this constraint, but we always backfill domain_id at create time so the
+        # constraint is meaningful in practice.
+        UniqueConstraint("domain_id", "short_code", name="uq_urls_domain_code"),
+    )
 
     def __repr__(self):
         return f"<URL(short_code={self.short_code}, type={self.url_type})>"

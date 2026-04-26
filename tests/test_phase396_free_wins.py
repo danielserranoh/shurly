@@ -93,11 +93,17 @@ class TestShortCodeCollisionRetry:
 
         monkeypatch.setattr(urls_module, "fetch_opengraph_metadata", _empty_og)
 
-        # Pre-seed two URLs whose codes will be returned by our patched generator first
+        # Pre-seed two URLs whose codes will be returned by our patched generator
+        # first. They must live on the default domain so the per-domain UNIQUE
+        # check (Phase 3.10.1) sees them as collisions.
+        from server.utils.domain import get_or_create_default_domain
+
+        domain = get_or_create_default_domain(db_session)
         for taken in ["aaaaaa", "bbbbbb"]:
             db_session.add(
                 URL(
                     short_code=taken,
+                    domain_id=domain.id,
                     original_url="https://x",
                     url_type=URLType.STANDARD,
                     created_by=test_user.id,
@@ -136,9 +142,13 @@ class TestShortCodeCollisionRetry:
 
         monkeypatch.setattr(urls_module, "fetch_opengraph_metadata", _empty_og)
 
+        from server.utils.domain import get_or_create_default_domain
+
+        domain = get_or_create_default_domain(db_session)
         db_session.add(
             URL(
                 short_code="zzzzzz",
+                domain_id=domain.id,
                 original_url="https://x",
                 url_type=URLType.STANDARD,
                 created_by=test_user.id,

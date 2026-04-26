@@ -57,18 +57,21 @@ def create_app() -> FastAPI:
 
     @app.on_event("startup")
     async def startup_event():
-        """Initialize predefined tags on app startup."""
+        """Initialize predefined tags and the default domain on app startup."""
         import os
 
         # Skip during testing
         if os.getenv("TESTING"):
             return
 
+        from server.utils.domain import get_or_create_default_domain
         from server.utils.tags import initialize_predefined_tags
 
         db = next(get_db())
         try:
             initialize_predefined_tags(db)
+            # Phase 3.10.1 — seed default domain so URLs always have a host.
+            get_or_create_default_domain(db)
         finally:
             db.close()
 
