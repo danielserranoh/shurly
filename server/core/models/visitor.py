@@ -27,6 +27,11 @@ class Visitor(Base):
     # so headless crawlers, link previewers and scanners don't pollute click counts.
     is_bot = Column(Boolean, default=False, nullable=False, index=True)
 
+    # Phase 3.10.3 — Email tracking pixel hits. Stored on the same table so the
+    # opens timeline naturally lines up with click analytics, but is_pixel=True
+    # rows are excluded from "clicks" counts by default.
+    is_pixel = Column(Boolean, default=False, nullable=False, index=True)
+
     visited_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
 
     # Relationships

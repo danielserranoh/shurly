@@ -60,6 +60,30 @@ class Settings(BaseSettings):
     # generated codes and custom slugs at insert; "strict" preserves case.
     short_url_mode: str = "loose"
 
+    # Phase 3.10.1 — Default short-link host. Seeded on startup; URLs without an
+    # explicit domain_id are bound to this row so the composite UNIQUE works.
+    default_domain: str = "shurl.griddo.io"
+
+    # Phase 3.10.6 — Configurable redirect behavior.
+    # `redirect_status_code`: 302 (default) keeps every hit hitting the backend so
+    # analytics stay accurate. 301 is SEO-friendly but cached aggressively by
+    # browsers and intermediaries — use only when SEO outweighs analytics fidelity.
+    # 307 / 308 preserve the request method (POST stays POST), useful for API
+    # gateways but rare for short URLs.
+    redirect_status_code: int = 302
+    # `redirect_cache_lifetime`: seconds to allow caching the redirect response.
+    # 0 (default) → `Cache-Control: private, max-age=0` so analytics see every hit.
+    redirect_cache_lifetime: int = 0
+
+    @field_validator("redirect_status_code")
+    @classmethod
+    def _validate_redirect_status(cls, v: int) -> int:
+        if v not in (301, 302, 307, 308):
+            raise ValueError(
+                "redirect_status_code must be one of 301, 302, 307, 308"
+            )
+        return v
+
     # Lambda/AWS settings
     is_lambda: bool = False  # Set to True when running in Lambda
     db_pool_size: int = 10  # Smaller for Lambda (2-5), larger for local (10)
