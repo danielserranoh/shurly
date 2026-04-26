@@ -33,6 +33,9 @@ class URLCreate(BaseModel):
     valid_until: datetime | None = Field(None, description="URL stops being active at this UTC timestamp")
     max_visits: int | None = Field(None, ge=1, description="Hard cap on real visits before returning 410 Gone")
 
+    # Phase 3.9.4 — default-deny crawlability
+    crawlable: bool = Field(False, description="Allow this short URL in robots.txt (default: deny)")
+
     @field_validator("url")
     @classmethod
     def validate_url(cls, v: str) -> str:
@@ -66,6 +69,9 @@ class URLCustomCreate(BaseModel):
     valid_until: datetime | None = Field(None, description="URL stops being active at this UTC timestamp")
     max_visits: int | None = Field(None, ge=1, description="Hard cap on real visits before returning 410 Gone")
 
+    # Phase 3.9.4 — default-deny crawlability
+    crawlable: bool = Field(False, description="Allow this short URL in robots.txt (default: deny)")
+
     @field_validator("url")
     @classmethod
     def validate_url(cls, v: str) -> str:
@@ -97,6 +103,9 @@ class URLUpdate(BaseModel):
     valid_since: datetime | None = Field(None, description="Update activation timestamp (null clears)")
     valid_until: datetime | None = Field(None, description="Update expiration timestamp (null clears)")
     max_visits: int | None = Field(None, ge=1, description="Update visit cap (null clears)")
+
+    # Phase 3.9.4 — toggle crawlability
+    crawlable: bool | None = Field(None, description="Allow this short URL in robots.txt")
 
     @field_validator("original_url")
     @classmethod
@@ -139,6 +148,9 @@ class URLResponse(BaseModel):
     valid_since: datetime | None = None
     valid_until: datetime | None = None
     max_visits: int | None = None
+
+    # Phase 3.9.4 — crawlability flag
+    crawlable: bool = False
 
     # Tags
     tags: list[TagResponse] = []

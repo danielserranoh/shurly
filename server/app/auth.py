@@ -207,11 +207,16 @@ def generate_api_key(
     # Generate a secure random API key
     api_key = secrets.token_urlsafe(32)
 
-    # Update user's API key
+    # Phase 3.9.6 — set scope explicitly. Only FULL_ACCESS is enforced today; other
+    # scope values are reserved so we can roll out roles without a destructive migration.
+    from server.core.models import ApiKeyScope
+
     current_user.api_key = api_key
+    current_user.api_key_scope = ApiKeyScope.FULL_ACCESS
+    current_user.api_key_constraints = None
     db.commit()
 
-    return {"api_key": api_key}
+    return {"api_key": api_key, "scope": ApiKeyScope.FULL_ACCESS.value}
 
 
 @auth_router.delete(

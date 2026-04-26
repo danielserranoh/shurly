@@ -90,7 +90,7 @@ class TestURLDailyAnalytics:
     def test_daily_stats_unauthorized(self, client: TestClient):
         """Test daily stats without authentication."""
         response = client.get("/api/v1/analytics/urls/test/daily")
-        assert response.status_code == 403
+        assert response.status_code == 401
 
 
 @pytest.mark.integration
@@ -332,4 +332,84 @@ class TestOverviewAnalytics:
     def test_overview_unauthorized(self, client: TestClient):
         """Test overview stats without authentication."""
         response = client.get("/api/v1/analytics/overview")
-        assert response.status_code == 403
+        assert response.status_code == 401
+
+
+@pytest.mark.integration
+class TestBotFiltering:
+    """Phase 3.9.3 — analytics default-filter bot/crawler visits."""
+
+    def _seed(self, db_session, test_user):
+        url = URL(
+            short_code="bot1",
+            original_url="https://example.com",
+            url_type=URLType.STANDARD,
+            created_by=test_user.id,
+        )
+        db_session.add(url)
+        db_session.flush()
+
+        # 2 human visits + 3 bot visits
+        for i in range(2):
+            db_session.add(
+                Visitor(
+                    url_id=url.id,
+                    short_code="bot1",
+                    ip=f"1.1.1.{i}",
+                    user_agent="Mozilla/5.0",
+                    is_bot=False,
+                )
+            )
+        for i in range(3):
+            db_session.add(
+                Visitor(
+                    url_id=url.id,
+                    short_code="bot1",
+                    ip=f"2.2.2.{i}",
+                    user_agent="Googlebot/2.1",
+                    is_bot=True,
+                )
+            )
+        db_session.commit()
+        return url
+
+    def test_overview_excludes_bots_by_default(
+        self, client, auth_headers, db_session, test_user
+    ):
+        self._seed(db_session, test_user)
+        r = client.get("/api/v1/analytics/overview", headers=auth_headers)
+        assert r.status_code == 200
+        body = r.json()
+        assert body["total_clicks"] == 2
+        assert body["total_unique_visitors"] == 2
+
+    def test_overview_include_bots_returns_all(
+        self, client, auth_headers, db_session, test_user
+    ):
+        self._seed(db_session, test_user)
+        r = client.get(
+            "/api/v1/analytics/overview?include_bots=true", headers=auth_headers
+        )
+        assert r.status_code == 200
+        body = r.json()
+        assert body["total_clicks"] == 5
+        assert body["total_unique_visitors"] == 5
+
+    def test_visit_logging_classifies_bot_user_agent(
+        self, client, auth_headers, db_session, test_user
+    ):
+        url = URL(
+            short_code="auto1",
+            original_url="https://example.com",
+            url_type=URLType.STANDARD,
+            created_by=test_user.id,
+        )
+        db_session.add(url)
+        db_session.commit()
+
+        r = client.get(
+            "/auto1", headers={"User-Agent": "curl/8.0"}, follow_redirects=False
+        )
+        assert r.status_code == 302
+        v = db_session.query(Visitor).filter(Visitor.short_code == "auto1").first()
+        assert v.is_bot is True

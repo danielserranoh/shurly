@@ -350,7 +350,7 @@ import URLCard from '@/components/URLCard.astro';
     // Delete modal handlers
     const deleteModal = document.getElementById('delete-modal')!;
     const cancelDeleteBtn = document.getElementById('cancel-delete')!;
-    const confirmDeleteBtn = document.getElementById('confirm-delete')!;
+    const confirmDeleteBtn = document.getElementById('confirm-delete') as HTMLButtonElement;
 
     cancelDeleteBtn.addEventListener('click', () => {
       deleteModal.classList.add('hidden');

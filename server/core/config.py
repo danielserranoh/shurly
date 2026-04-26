@@ -43,6 +43,23 @@ class Settings(BaseSettings):
     cors_allow_methods: list[str] = ["*"]
     cors_allow_headers: list[str] = ["*"]
 
+    # Phase 3.9.5 — GDPR. Truncate visitor IPs at insert time:
+    # IPv4 → /24 (zero last octet), IPv6 → /64. Default ON; disable explicitly via env
+    # only if a downstream legal review approves storing full addresses.
+    anonymize_remote_addr: bool = True
+
+    # Phase 3.9.6 — Trust boundaries for X-Forwarded-For. Empty list (default) = never
+    # trust X-F-F. Set this to your ALB/CloudFront/API-GW source CIDR list in prod.
+    trusted_proxies: list[str] = []
+
+    # Phase 3.9.6 — Visit-suppression query param ("nostat" by default). When the
+    # redirect handler sees this param it skips Visitor logging entirely. Useful for QA.
+    disable_track_param: str = "nostat"
+
+    # Phase 3.9.6 — Short-code casing mode. "loose" (default, Shlink behavior) lowercases
+    # generated codes and custom slugs at insert; "strict" preserves case.
+    short_url_mode: str = "loose"
+
     # Lambda/AWS settings
     is_lambda: bool = False  # Set to True when running in Lambda
     db_pool_size: int = 10  # Smaller for Lambda (2-5), larger for local (10)
@@ -50,15 +67,19 @@ class Settings(BaseSettings):
     db_pool_recycle: int = 3600  # Recycle connections after 1 hour
     db_ssl_mode: str = "prefer"  # Use "require" for RDS SSL
 
-    @field_validator("cors_origins", mode="before")
+    @field_validator("cors_origins", "trusted_proxies", mode="before")
     @classmethod
-    def parse_cors_origins(cls, v: Any) -> list[str]:
-        """Parse CORS origins from JSON string or list."""
+    def parse_string_list(cls, v: Any) -> list[str]:
+        """Parse a list-typed setting from a JSON string, comma-separated string, or list."""
+        if v is None or v == "":
+            return []
         if isinstance(v, str):
             try:
                 return json.loads(v)
             except json.JSONDecodeError:
-                # If it's a single origin, return as list
+                # Fall back to comma-separated for trusted_proxies; single item for origins
+                if "," in v:
+                    return [item.strip() for item in v.split(",") if item.strip()]
                 return [v]
         return v
 
