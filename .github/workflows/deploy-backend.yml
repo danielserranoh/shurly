@@ -1,10 +1,7 @@
-name: Deploy Backend to AWS
+name: Deploy Backend to ECS
 
-# Phase 4 prep: auto-deploy on push is intentionally OFF until the AWS
-# infrastructure exists and the secrets (AWS credentials, DB host/password,
-# JWT key, CORS origins) are wired up. Once the first manual deploy succeeds
-# and the team is comfortable with the pipeline, re-enable the `push` trigger
-# for `main` to get continuous delivery to prod.
+# Phase 4.8 — manual-only trigger until the first deploy succeeds. Re-enable
+# `push: branches: [main]` once we're confident in the pipeline.
 on:
   workflow_dispatch:
     inputs:
@@ -18,6 +15,18 @@ on:
           - staging
           - prod
 
+# OIDC needs id-token: write so the runner can assume the IAM role in AWS
+# without long-lived access keys. We use SSO locally and OIDC in CI; access
+# keys never enter the picture.
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: eu-south-2
+  ECR_REPOSITORY: shurly-api
+  ECS_SERVICE_NAME: shurly-api
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -25,82 +34,115 @@ jobs:
       name: ${{ github.event.inputs.environment || 'dev' }}
 
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-    - name: Set up Python 3.10
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.10'
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
 
-    - name: Install uv
-      run: |
-        curl -LsSf https://astral.sh/uv/install.sh | sh
-        echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+      - name: Install uv
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
 
-    - name: Install dependencies
-      run: |
-        uv sync
+      # Run the test suite before pushing anything to AWS. If tests fail, no
+      # bad image lands in ECR and the running service stays untouched.
+      - name: Install deps + run tests
+        run: |
+          uv sync --extra dev
+          uv run pytest -q
 
-    - name: Run tests
-      run: |
-        uv run pytest
+      - name: Configure AWS credentials (OIDC)
+        # The role lives in griddo-main and is created one-time via the
+        # commands documented in DEPLOYMENT.md ("CI/CD with OIDC"). Trust
+        # policy scopes assumption to this exact repo + branch pattern.
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: gh-actions-shurly-deploy
 
-    - name: Lint with ruff
-      run: |
-        uv run ruff check .
-        uv run ruff format --check .
+      - name: Login to ECR
+        id: ecr-login
+        uses: aws-actions/amazon-ecr-login@v2
 
-    - name: Set up AWS SAM CLI
-      uses: aws-actions/setup-sam@v2
-      with:
-        use-installer: true
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
-    - name: Configure AWS credentials
-      # Phase 4: target region is eu-south-2 (Madrid). The service account is
-      # `griddo-main`; DNS lives in `griddo-production` and is touched separately.
-      # Switch to OIDC + role assumption (aws-actions/configure-aws-credentials
-      # supports `role-to-assume`) when the IAM role is provisioned to avoid
-      # long-lived access keys in GitHub secrets.
-      uses: aws-actions/configure-aws-credentials@v4
-      with:
-        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        aws-region: eu-south-2
+      - name: Build and push image (linux/arm64)
+        env:
+          REGISTRY: ${{ steps.ecr-login.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          IMAGE_URI="${REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG}"
+          docker buildx build \
+            --platform linux/arm64 \
+            --tag "$IMAGE_URI" \
+            --push \
+            .
+          echo "IMAGE_URI=$IMAGE_URI" >> "$GITHUB_ENV"
 
-    - name: Build SAM application
-      run: |
-        sam build --use-container
+      - name: Roll out new image to ECS Express
+        # update-express-gateway-service triggers Express Mode's blue/green
+        # deploy. The ecs-alb-rule-sync Lambda (Phase 4.7) follows the active
+        # target group automatically — no manual intervention needed.
+        run: |
+          SERVICE_ARN=$(aws ecs list-services --cluster default \
+            --query "serviceArns[?contains(@, '${ECS_SERVICE_NAME}')] | [0]" \
+            --output text)
 
-    - name: Deploy to AWS
-      env:
-        ENVIRONMENT: ${{ github.event.inputs.environment || 'dev' }}
-      run: |
-        sam deploy \
-          --config-env $ENVIRONMENT \
-          --no-confirm-changeset \
-          --no-fail-on-empty-changeset \
-          --parameter-overrides \
-            "Environment=$ENVIRONMENT \
-             DatabaseHost=${{ secrets.DB_HOST }} \
-             DatabasePassword=${{ secrets.DB_PASSWORD }} \
-             JWTSecretKey=${{ secrets.JWT_SECRET_KEY }} \
-             CorsOrigins=${{ secrets.CORS_ORIGINS }}"
+          if [ -z "$SERVICE_ARN" ] || [ "$SERVICE_ARN" = "None" ]; then
+            echo "::error::Service ${ECS_SERVICE_NAME} not found. Run scripts/deploy_ecs.sh manually for the first-time create."
+            exit 1
+          fi
 
-    - name: Get API endpoint
-      run: |
-        STACK_NAME="shurly-${{ github.event.inputs.environment || 'dev' }}"
-        API_ENDPOINT=$(aws cloudformation describe-stacks \
-          --stack-name $STACK_NAME \
-          --query "Stacks[0].Outputs[?OutputKey=='ApiEndpoint'].OutputValue" \
-          --output text)
-        echo "🚀 API deployed to: $API_ENDPOINT"
-        echo "API_ENDPOINT=$API_ENDPOINT" >> $GITHUB_ENV
+          # Pull the existing primary container, mutate only the image, and
+          # send it back. Avoids overwriting any env-var changes someone may
+          # have applied via the console.
+          CURRENT_CONTAINER=$(aws ecs describe-express-gateway-service \
+            --service-arn "$SERVICE_ARN" \
+            --query "service.primaryContainer" --output json)
 
-    - name: Test deployment
-      run: |
-        # Wait a few seconds for deployment to stabilize
-        sleep 10
+          UPDATED_CONTAINER=$(echo "$CURRENT_CONTAINER" | \
+            jq --arg img "$IMAGE_URI" '.image = $img')
 
-        # Test the API health
-        curl -f ${{ env.API_ENDPOINT }}/docs || echo "⚠️  API docs not responding yet"
+          aws ecs update-express-gateway-service \
+            --service-arn "$SERVICE_ARN" \
+            --primary-container "$UPDATED_CONTAINER"
+
+          echo "Deploy initiated for $IMAGE_URI"
+
+      - name: Wait for service to stabilize
+        run: |
+          # ECS Express's deployment-state events fire through EventBridge.
+          # Here we just poll for ~3 minutes; the existing alb-rule-sync
+          # Lambda will pick up TG changes when the deploy completes.
+          for i in $(seq 1 18); do
+            STATUS=$(aws ecs describe-express-gateway-service \
+              --service-arn "$SERVICE_ARN" \
+              --query "service.status" --output text 2>/dev/null || echo "unknown")
+            echo "[$i/18] status=$STATUS"
+            if [ "$STATUS" = "ACTIVE" ]; then
+              echo "✓ Service is ACTIVE"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "::warning::Service did not reach ACTIVE within ~3 min. Check the console."
+
+      - name: Smoke test the auto-generated host
+        run: |
+          AUTO_HOST="${ECS_SERVICE_NAME}.ecs.${AWS_REGION}.on.aws"
+          echo "Probing https://${AUTO_HOST}/api/v1/health"
+          for i in $(seq 1 6); do
+            if curl -fsS "https://${AUTO_HOST}/api/v1/health" > /dev/null; then
+              echo "✓ Health endpoint responding"
+              exit 0
+            fi
+            echo "[$i/6] not ready, retrying in 10s"
+            sleep 10
+          done
+          echo "::error::Health endpoint did not respond after rollout"
+          exit 1

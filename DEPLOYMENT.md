@@ -1,763 +1,497 @@
-# Shurly AWS Lambda Deployment Guide
+# Shurly AWS Deployment Guide (ECS Express on griddo-main)
 
-This guide covers deploying Shurly to AWS Lambda with API Gateway and RDS PostgreSQL.
+This guide walks the operator through deploying Shurly to AWS ECS Express
+Mode in `eu-south-2`, with DNS in the separate `griddo-production` account.
 
-## Prerequisites
+It is structured to mirror — and reuse — the patterns established by the
+sibling Shlink deploy in the same account. For shared concepts (IAM roles,
+shared ALB, ALB rule-sync Lambda, default VPC) the canonical reference is:
 
-- AWS CLI configured with two named profiles (see [AWS Account Layout](#aws-account-layout)):
-  - `griddo-main` — service account where Lambda / API Gateway / RDS / S3 / CloudFront live.
-  - `griddo-production` — domain-management account that owns the `griddo.io` Route 53 hosted zone.
-- Python 3.10+ locally
-- `uv` installed
-- Node.js 20.19+ or 22.12+ (Astro 6 requirement, used by the frontend deploy)
-- Docker (for building Lambda deployment package via `sam build --use-container`)
-- `sam` CLI (AWS SAM) installed
+> `~/Documents/Cowork/Griddo/Marketing & Comms/WebAnalytics/shlink-deploy-guide.md`
 
-## AWS Account Layout
-
-Shurly's AWS deployment uses **two accounts** — separation between service runtime and DNS keeps the blast radius small and lets the platform team rotate credentials in either account without touching the other.
-
-| Account | AWS profile | Region | Owns |
-|---|---|---|---|
-| Service | `griddo-main` | `eu-south-2` (Madrid) | Lambda, API Gateway, RDS PostgreSQL, S3 (frontend), CloudFront, ACM regional certs, Secrets Manager |
-| Domain | `griddo-production` | global / `us-east-1` for ACM-CloudFront | Route 53 hosted zone for `griddo.io`, ACM certs for CloudFront (must be `us-east-1`) |
-
-**Region note**: `eu-south-2` (Madrid, launched Nov 2022) supports every regional service in our stack: Lambda, API Gateway HTTP API, RDS PostgreSQL, ACM (regional), S3, Secrets Manager, CloudWatch Logs. CloudFront and Route 53 are global, not regional. The single asterisk: ACM certificates **for CloudFront** must always live in `us-east-1` regardless of where the rest of the stack runs — that affects the cert for the frontend custom domain (e.g. `app.shurl.griddo.io`) but not the cert for the API Gateway custom domain (`shurl.griddo.io`), which can sit in `eu-south-2`.
-
-### Cross-Account DNS: Subdomain Delegation
-
-We delegate the entire `shurl.griddo.io` subdomain from `griddo-production` to `griddo-main`:
-
-1. In `griddo-main`, create a public hosted zone for `shurl.griddo.io`. Note its four `NS` records.
-2. In `griddo-production`'s `griddo.io` zone, add a single `NS` record set for `shurl.griddo.io` pointing to those four name servers.
-3. From this point on, all DNS records for `shurl.griddo.io` (apex, `api.shurl.griddo.io`, `app.shurl.griddo.io`, etc.) are managed inside `griddo-main` next to the resources they point at.
-
-This avoids cross-account IAM roles for routine record updates. The only cross-account activity is the one-time NS record write in `griddo-production`.
-
-```bash
-# 1. In griddo-main: create the subdomain hosted zone and capture its NS records
-aws --profile griddo-main route53 create-hosted-zone \
-  --name shurl.griddo.io \
-  --caller-reference "shurl-$(date +%s)"
-
-aws --profile griddo-main route53 list-resource-record-sets \
-  --hosted-zone-id <NEW_ZONE_ID> \
-  --query "ResourceRecordSets[?Type=='NS'].ResourceRecords[].Value" \
-  --output text
-
-# 2. In griddo-production: add the NS record set delegating shurl.griddo.io
-#    (paste the four name servers from step 1)
-aws --profile griddo-production route53 change-resource-record-sets \
-  --hosted-zone-id <GRIDDO_IO_ZONE_ID> \
-  --change-batch file://delegation.json
-```
-
-## Architecture Overview
+## Architecture
 
 ```
 Internet
    ↓
-CloudFront (CDN) → S3 (Frontend static files)        ─┐
-   ↓                                                   │  griddo-main
-API Gateway HTTP API (eu-south-2)                      │  AWS profile
-   ↓                                                   │
-Lambda (FastAPI + Mangum, ARM64)                       │
-   ↓                                                   │
-RDS PostgreSQL (eu-south-2, t4g.micro)                ─┘
-
-Route 53 hosted zone for griddo.io     ── griddo-production AWS profile
-   delegates shurl.griddo.io           ─┐
-                                         ↓
-Route 53 hosted zone for shurl.griddo.io ── griddo-main AWS profile
+shared ALB (eu-south-2) — created by ECS Express for Shlink, reused for Shurly
+   ↓
+   ├─ priority 10 → shlink-api      → go.griddo.io
+   ├─ priority 11 → shlink-web      → links.griddo.io
+   └─ priority 12 → shurly-api      → s.griddo.io
+        ↓
+        Fargate task (ARM64, 0.25 vCPU / 0.5 GB)
+        FastAPI + uvicorn  ⇄  RDS PostgreSQL t4g.micro
+                                 (private inside the default VPC)
 ```
 
-## Phase 4.1: Lambda Adaptation ✅
+Two AWS accounts:
 
-The following changes have been made to make Shurly Lambda-compatible:
+| Account | ID | SSO profile | Owns |
+|---|---|---|---|
+| Griddo Main | 686255983646 | `griddo-main` | ECS, RDS, ECR, ACM, ALB, IAM |
+| Griddo Production | 253490783612 | `griddo-production` | Route 53 zone for `griddo.io` |
 
-1. **Mangum Adapter**: Added to `pyproject.toml` to wrap FastAPI for Lambda
-2. **Lambda Handler**: Created `lambda_handler.py` as the entry point
-3. **Database Configuration**: Updated for Lambda-optimized connection pooling
-4. **Environment Variables**: Added Lambda-specific settings
+Hostnames:
 
-## Deployment Options
-
-There are two ways to deploy Shurly to AWS:
-
-1. **AWS SAM (Recommended)** - Infrastructure as Code, automated deployment
-2. **Manual Deployment** - Step-by-step AWS CLI commands
-
----
-
-## Option 1: Deploy with AWS SAM (Recommended)
-
-AWS SAM (Serverless Application Model) provides Infrastructure as Code for serverless applications.
-
-### Prerequisites
-
-- [AWS SAM CLI](https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/install-sam-cli.html) installed
-- [Docker](https://docs.docker.com/get-docker/) installed (for building)
-- AWS CLI configured with credentials
-- RDS PostgreSQL instance created (see manual steps below)
-
-### Quick Start
-
-1. **Install SAM CLI**:
-   ```bash
-   # macOS
-   brew install aws-sam-cli
-
-   # Linux
-   pip install aws-sam-cli
-
-   # Verify installation
-   sam --version
-   ```
-
-2. **Build the Lambda package**:
-   ```bash
-   # Automated build script
-   ./build_lambda.sh
-
-   # Or manually with SAM
-   sam build --use-container
-   ```
-
-3. **Deploy to AWS** (first time):
-   ```bash
-   sam deploy --guided
-   ```
-
-   You'll be prompted for:
-   - **Stack name**: `shurly-prod` (or `shurly-dev`)
-   - **AWS Region**: `us-east-1` (or your preferred region)
-   - **Parameter Environment**: `prod`, `staging`, or `dev`
-   - **Parameter DatabaseHost**: Your RDS endpoint (e.g., `xxx.rds.amazonaws.com`)
-   - **Parameter DatabaseName**: `shurly`
-   - **Parameter DatabaseUser**: `postgres`
-   - **Parameter DatabasePassword**: Your RDS password
-   - **Parameter JWTSecretKey**: Generate with `openssl rand -hex 32`
-   - **Parameter CorsOrigins**: `["https://shurl.griddo.io"]`
-   - **Parameter TrustedProxies**: JSON array of CIDRs that may set `X-Forwarded-For`. **Required in production** — without it, the Lambda records the API Gateway IP for every visit. See [Trusted-Proxy Configuration](#trusted-proxy-configuration) below for ALB / CloudFront ranges. Example: `["10.0.0.0/16"]` or `[]` if you front the Lambda with API Gateway only and accept losing real client IPs.
-   - **Parameter DefaultDomain**: Hostname this Lambda serves; seeded as the default Domain row at startup (default `shurl.griddo.io`).
-   - **Parameter RedirectStatusCode**: `301`/`302`/`307`/`308` (default `302`). 302 keeps every hit reaching the backend; 301 is SEO-friendly but cached aggressively.
-   - **Parameter RedirectCacheLifetime**: Seconds the redirect may be cached at the edge. `0` (default) emits `Cache-Control: private, max-age=0`. Positive values trade analytics fidelity for latency.
-
-4. **Subsequent Deployments**:
-   ```bash
-   # Build and deploy with saved config
-   sam build --use-container && sam deploy
-   ```
-
-### SAM Template Structure
-
-The `template.yaml` defines:
-- **Lambda Function** (`ShurlyFunction`): FastAPI app with Mangum
-- **API Gateway HTTP API** (`ShurlyHttpApi`): RESTful API endpoint
-- **CloudWatch Logs** (`ShurlyLogGroup`): 30-day retention
-- **IAM Roles**: Minimal permissions for Lambda execution
-
-### Local Testing with SAM
-
-Test the Lambda function locally before deploying:
-
-```bash
-# Start local API Gateway
-sam local start-api
-
-# API will be available at http://localhost:3000
-# Test endpoints:
-curl http://localhost:3000/api/auth/login
-
-# Invoke function directly with test event
-sam local invoke ShurlyFunction -e events/test-event.json
-```
-
-### Environment-Specific Deployments
-
-Deploy to different environments using profiles:
-
-```bash
-# Development
-sam deploy --config-env dev \
-  --parameter-overrides \
-    "Environment=dev \
-     DatabaseHost=dev-db.xxx.rds.amazonaws.com \
-     DatabasePassword=xxx \
-     JWTSecretKey=xxx"
-
-# Staging
-sam deploy --config-env staging \
-  --parameter-overrides \
-    "Environment=staging \
-     DatabaseHost=staging-db.xxx.rds.amazonaws.com \
-     DatabasePassword=xxx \
-     JWTSecretKey=xxx"
-
-# Production
-# In prod you almost always want to set TrustedProxies so client IPs are real.
-sam deploy --config-env prod \
-  --parameter-overrides \
-    "Environment=prod \
-     DatabaseHost=prod-db.xxx.rds.amazonaws.com \
-     DatabasePassword=xxx \
-     JWTSecretKey=xxx \
-     TrustedProxies='[\"<your-edge-CIDRs>\"]' \
-     DefaultDomain=shurl.griddo.io \
-     RedirectStatusCode=302 \
-     CorsOrigins='[\"https://shurl.griddo.io\"]'"
-```
-
-### SAM Commands Reference
-
-```bash
-# Validate template
-sam validate
-
-# Build function
-sam build --use-container
-
-# Deploy with guided prompts
-sam deploy --guided
-
-# Deploy with saved config
-sam deploy
-
-# View logs
-sam logs -n ShurlyFunction --stack-name shurly-prod --tail
-
-# Delete stack
-sam delete --stack-name shurly-prod
-
-# List stacks
-aws cloudformation list-stacks --stack-status-filter CREATE_COMPLETE UPDATE_COMPLETE
-```
-
-### Updating the Stack
-
-After making code changes:
-
-```bash
-# 1. Build new package
-sam build --use-container
-
-# 2. Deploy update
-sam deploy
-
-# 3. View deployment progress
-sam deploy --no-confirm-changeset --no-fail-on-empty-changeset
-```
-
-### Cost Estimation (with SAM)
-
-The SAM deployment creates:
-- Lambda Function: ~$0.20/month (5,000 requests)
-- API Gateway HTTP API: ~$0.50/month
-- CloudWatch Logs: ~$0.50/month (30-day retention)
-
-**Note**: RDS PostgreSQL (~€10-12/month in eu-west-1) must be created separately.
-
----
-
-## Phase 4.3: RDS PostgreSQL Database Setup
-
-Before deploying the Lambda function, you need to create an RDS PostgreSQL database. This section provides automated scripts and manual instructions.
-
-### Automated Setup (Recommended)
-
-We provide a script that automates the entire RDS creation process:
-
-```bash
-./scripts/create_rds.sh
-```
-
-This script will:
-1. ✅ Create RDS instance in **eu-west-1** (Ireland - cheapest EU region)
-2. ✅ Configure security group for PostgreSQL access
-3. ✅ Enable encryption at rest and SSL connections
-4. ✅ Set up automated backups (7-day retention)
-5. ✅ Wait for instance to become available
-6. ✅ Return the database endpoint
-
-**What you need**:
-- AWS CLI configured with credentials
-- A secure password (min 8 characters)
-- ~10 minutes for RDS to become available
-
-**Cost**: ~€10-12/month for db.t4g.micro
-
-### Step-by-Step: Automated RDS Creation
-
-1. **Run the creation script**:
-   ```bash
-   cd /path/to/shurly
-   ./scripts/create_rds.sh
-   ```
-
-2. **Enter PostgreSQL password** when prompted:
-   - Minimum 8 characters
-   - Mix of letters, numbers, and symbols recommended
-   - Save this password securely!
-
-3. **Wait for completion** (~5-10 minutes):
-   - The script will wait for the RDS instance to become available
-   - You'll see progress updates
-
-4. **Save the endpoint** from the output:
-   ```
-   Endpoint: shurly-dev-db.xxxxx.eu-west-1.rds.amazonaws.com
-   ```
-
-### Test Database Connection
-
-After RDS creation, test the connection:
-
-```bash
-./scripts/test_db_connection.sh shurly-dev-db.xxxxx.eu-west-1.rds.amazonaws.com
-```
-
-This will verify:
-- ✅ Network connectivity (port 5432)
-- ✅ PostgreSQL authentication
-- ✅ Database exists
-
-### Initialize Database Tables
-
-Option 1: **Automatic** (recommended):
-- Tables are auto-created when Lambda first runs
-- SQLAlchemy creates all tables on first database connection
-
-Option 2: **Manual initialization**:
-```bash
-python scripts/init_database.py shurly-dev-db.xxxxx.eu-west-1.rds.amazonaws.com <your-password>
-```
-
-This creates all tables (users, urls, campaigns, visitors) before deployment.
-
-### RDS Configuration Details
-
-The automated script creates:
-- **Instance**: db.t4g.micro (ARM-based, 2 vCPU, 1GB RAM)
-- **Storage**: 20GB gp3 SSD
-- **Engine**: PostgreSQL 14.10
-- **Backup**: 7-day automated backups
-- **Encryption**: At rest (default AWS encryption)
-- **SSL**: Required for all connections
-- **Performance Insights**: Enabled (7-day retention)
-- **Deletion Protection**: Enabled
-- **Public Access**: Yes (for dev - can be locked down later)
-
-### Security Group Rules
-
-The script creates a security group with:
-- **Inbound**: PostgreSQL (5432) from 0.0.0.0/0 (open for dev)
-- **Outbound**: All traffic
-
-**For production**: Lock down to Lambda security group only.
-
-### Troubleshooting RDS Setup
-
-**Issue**: Connection timeout
-- **Solution**: Wait 5-10 minutes after creation
-- RDS instances take time to fully initialize
-
-**Issue**: Authentication failed
-- **Solution**: Double-check password
-- Password is case-sensitive
-
-**Issue**: Database not found
-- **Solution**: The database name is `shurly` (created automatically)
-
-**Issue**: SSL error
-- **Solution**: Ensure `sslmode=require` in connection string
-
-### Manual RDS Creation (Alternative)
-
-If you prefer manual setup via AWS Console or CLI:
-
----
-
-## Phase 4.4: CI/CD Pipeline (Optional)
-
-For automated deployments with GitHub Actions, see the comprehensive guide:
-
-📋 **[CI/CD Setup Guide](CI_CD_SETUP.md)**
-
-The CI/CD pipeline provides:
-- ✅ **Automated testing** on every push/PR
-- ✅ **Automated backend deployment** to AWS Lambda
-- ✅ **Automated frontend deployment** to S3/CloudFront
-- ✅ **Environment-specific deployments** (dev, staging, prod)
-- ✅ **Manual deployment triggers** via GitHub UI
-
-### Quick Setup
-
-1. **Add GitHub Secrets**:
-   - Go to **Settings → Secrets and variables → Actions**
-   - Add: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `DB_HOST`, `DB_PASSWORD`, `JWT_SECRET_KEY`, `CORS_ORIGINS`
-
-2. **Trigger Deployment**:
-   ```bash
-   git push origin main  # Automatic deployment
-   ```
-
-   Or use manual trigger in GitHub Actions tab.
-
-### Workflows
-
-- **Test** (`.github/workflows/test.yml`): Runs tests and linting
-- **Deploy Backend** (`.github/workflows/deploy-backend.yml`): Deploys Lambda to AWS
-- **Deploy Frontend** (`.github/workflows/deploy-frontend.yml`): Deploys to S3
-
-See [CI_CD_SETUP.md](CI_CD_SETUP.md) for complete instructions.
-
----
-
-## Option 2: Manual Deployment Steps
-
-### Step 1: Create RDS PostgreSQL Database (Manual)
-
-1. **Create RDS Instance**:
-   ```bash
-   # Using AWS CLI
-   aws rds create-db-instance \
-     --db-instance-identifier shurly-db \
-     --db-instance-class db.t4g.micro \
-     --engine postgres \
-     --engine-version 14.9 \
-     --master-username postgres \
-     --master-user-password <YOUR_SECURE_PASSWORD> \
-     --allocated-storage 20 \
-     --vpc-security-group-ids <YOUR_SECURITY_GROUP> \
-     --db-name shurly \
-     --backup-retention-period 7 \
-     --publicly-accessible false
-   ```
-
-2. **Configure Security Group**:
-   - Allow inbound PostgreSQL (port 5432) from Lambda security group
-   - Ensure Lambda and RDS are in the same VPC
-
-3. **Initialize Database**:
-   ```bash
-   # Connect to RDS using psql or a database client
-   # Tables will be auto-created by SQLAlchemy on first run
-   ```
-
-### Step 2: Build Lambda Deployment Package
-
-Create a deployment package with all dependencies:
-
-```bash
-# Install dependencies in a temporary directory
-mkdir -p lambda_package
-uv pip install --target lambda_package -r <(uv pip freeze)
-
-# Copy application code
-cp -r server lambda_package/
-cp main.py lambda_package/
-cp lambda_handler.py lambda_package/
-
-# Create ZIP file
-cd lambda_package
-zip -r ../shurly-lambda.zip .
-cd ..
-```
-
-### Step 3: Create Lambda Function
-
-1. **Create IAM Role**:
-   ```bash
-   # Create execution role with permissions for:
-   # - CloudWatch Logs (AWSLambdaVPCAccessExecutionRole)
-   # - VPC access (if RDS is in VPC)
-   ```
-
-2. **Create Lambda Function**:
-   ```bash
-   aws lambda create-function \
-     --function-name shurly-api \
-     --runtime python3.10 \
-     --role arn:aws:iam::ACCOUNT_ID:role/shurly-lambda-role \
-     --handler lambda_handler.lambda_handler \
-     --zip-file fileb://shurly-lambda.zip \
-     --timeout 30 \
-     --memory-size 512 \
-     --environment Variables="{
-       DB_HOST=your-rds-endpoint.region.rds.amazonaws.com,
-       DB_PORT=5432,
-       DB_USER=postgres,
-       DB_PASSWORD=<YOUR_PASSWORD>,
-       DB_NAME=shurly,
-       JWT_SECRET_KEY=<YOUR_JWT_SECRET>,
-       IS_LAMBDA=true,
-       DB_POOL_SIZE=5,
-       DB_MAX_OVERFLOW=10,
-       DB_SSL_MODE=require,
-       CORS_ORIGINS='[\"https://shurl.griddo.io\"]'
-     }"
-   ```
-
-3. **Configure VPC** (if RDS is in VPC):
-   ```bash
-   aws lambda update-function-configuration \
-     --function-name shurly-api \
-     --vpc-config SubnetIds=subnet-xxx,subnet-yyy,SecurityGroupIds=sg-xxx
-   ```
-
-### Step 4: Create API Gateway
-
-1. **Create HTTP API**:
-   ```bash
-   aws apigatewayv2 create-api \
-     --name shurly-api \
-     --protocol-type HTTP \
-     --target arn:aws:lambda:region:ACCOUNT_ID:function:shurly-api
-   ```
-
-2. **Create Integration**:
-   ```bash
-   aws apigatewayv2 create-integration \
-     --api-id <API_ID> \
-     --integration-type AWS_PROXY \
-     --integration-uri arn:aws:lambda:region:ACCOUNT_ID:function:shurly-api \
-     --payload-format-version 2.0
-   ```
-
-3. **Create Routes**:
-   ```bash
-   # Create catch-all route
-   aws apigatewayv2 create-route \
-     --api-id <API_ID> \
-     --route-key '$default' \
-     --target integrations/<INTEGRATION_ID>
-   ```
-
-4. **Deploy API**:
-   ```bash
-   aws apigatewayv2 create-stage \
-     --api-id <API_ID> \
-     --stage-name prod \
-     --auto-deploy
-   ```
-
-### Step 5: Configure Custom Domain (Optional)
-
-1. **Request SSL Certificate** (ACM):
-   ```bash
-   aws acm request-certificate \
-     --domain-name shurl.griddo.io \
-     --validation-method DNS
-   ```
-
-2. **Create Custom Domain**:
-   ```bash
-   aws apigatewayv2 create-domain-name \
-     --domain-name shurl.griddo.io \
-     --domain-name-configurations CertificateArn=arn:aws:acm:...
-   ```
-
-3. **Update Route 53**:
-   - Create CNAME record pointing to API Gateway domain
-
-### Step 6: Deploy Frontend to S3 + CloudFront
-
-1. **Build Frontend**:
-   ```bash
-   cd frontend
-   npm run build
-   ```
-
-2. **Create S3 Bucket**:
-   ```bash
-   aws s3 mb s3://shurl-griddo-io-frontend
-   aws s3 website s3://shurl-griddo-io-frontend \
-     --index-document index.html
-   ```
-
-3. **Upload Files**:
-   ```bash
-   aws s3 sync dist/ s3://shurl-griddo-io-frontend --acl public-read
-   ```
-
-4. **Create CloudFront Distribution**:
-   - Origin: S3 bucket
-   - SSL Certificate: Use ACM certificate
-   - CNAME: shurl.griddo.io
-
-## Environment Variables
-
-See `.env.lambda.example` for all required Lambda environment variables.
-
-**Critical Settings for Lambda**:
-- `IS_LAMBDA=true` - Enables Lambda-specific optimizations
-- `DB_POOL_SIZE=5` - Smaller pool for Lambda (vs 10 for local)
-- `DB_MAX_OVERFLOW=10` - Reduced overflow
-- `DB_SSL_MODE=require` - Force SSL for RDS connections
-- `CORS_ORIGINS` - Must be JSON array string
-
-### Phase 3.9 / 3.10 Settings
-
-These have safe defaults but should be reviewed before exposing to real users.
-
-| Setting | Default | When to override |
+| Host | Service | Phase |
 |---|---|---|
-| `ANONYMIZE_REMOTE_ADDR` | `true` | **Keep ON** for GDPR. Visitor IPs are truncated to /24 (IPv4) or /64 (IPv6) **before** they hit Postgres — there is no second copy. Disable only if a legal review explicitly approves storing full addresses. |
-| `TRUSTED_PROXIES` | `[]` | **Required when behind a proxy.** Without it, `X-Forwarded-For` is ignored and every visit IP becomes the proxy's address. Set to a JSON array of CIDRs covering your edge: see [Trusted-Proxy Configuration](#trusted-proxy-configuration) below. |
-| `DISABLE_TRACK_PARAM` | `nostat` | The query string that suppresses visit logging while still redirecting. Useful for QA / synthetic monitoring without polluting analytics. Pick a token your real users won't generate. |
-| `SHORT_URL_MODE` | `loose` | `loose` lowercases generated codes and custom slugs at insert time (Shlink default — fewer collisions, less user surprise). Set to `strict` to keep mixed case (legacy behavior). |
-| `DEFAULT_DOMAIN` | `shurl.griddo.io` | Seeded as the default `Domain` row at startup. URLs without an explicit `domain_id` resolve here. **Set this to your real short-link host before launch.** |
-| `REDIRECT_STATUS_CODE` | `302` | `301` is SEO-friendly but cached aggressively — every browser/intermediary may reuse the cached redirect, dropping analytics fidelity. `302` keeps every hit reaching the backend. `307`/`308` preserve the request method (rare for short URLs). The setting is validated up-front; only `301/302/307/308` are accepted. |
-| `REDIRECT_CACHE_LIFETIME` | `0` | Seconds to cache the redirect at the edge. `0` emits `Cache-Control: private, max-age=0` (every hit logged). Positive values emit `Cache-Control: public, max-age=N` and trade analytics for latency. |
+| `s.griddo.io` | Shurly API + redirect path | 4 (this guide) |
+| `shurl.griddo.io` (or `shurly.griddo.io`) | Future frontend | 7 |
 
-### GDPR Posture
+## Prerequisites
 
-Visitor logging is privacy-first by default:
+- AWS CLI configured with two SSO profiles (`griddo-main`, `griddo-production`).
+- Docker (BuildKit + buildx). On Apple Silicon, `linux/arm64` builds are native; on x86_64 hosts buildx falls back to QEMU emulation, which works but is slower.
+- Python 3.10+, `uv`, and the project deps installed locally for the test step inside `scripts/deploy_ecs.sh`.
+- Existing infrastructure already provisioned in `griddo-main` for the Shlink deploy (we reuse it):
+  - Default VPC `vpc-01b31e19aa032bcff`
+  - IAM roles `ecsTaskExecutionRole` and `ecsInfrastructureRoleForExpressServices`
+  - Shared Express Mode ALB (located by name pattern; the script reads its DNS / zone / listener at runtime)
+  - Lambda `ecs-alb-rule-sync` + EventBridge rule
 
-- **IPv4 → `/24`** (zero last octet) and **IPv6 → `/64`** at insert time. The
-  truncation happens in `server/utils/network.py::anonymize_ip` before the
-  `Visitor` row is committed — full addresses never reach Postgres.
-- Bots and email tracking pixels share the `visits` table but carry `is_bot`
-  and `is_pixel` flags so click analytics exclude them by default.
-- Tracking pixel responses are `Cache-Control: no-store` so HTML email clients
-  re-fetch on every open.
-- The `User.api_key_scope` enum is in place so post-launch role rollouts
-  (`READ_ONLY`, `CREATE_ONLY`, `DOMAIN_SPECIFIC`) ship without a destructive
-  migration; only `FULL_ACCESS` is enforced today.
-- `X-Request-Id` middleware echoes the header on every response (or generates a
-  UUID if absent), enabling log correlation in CloudWatch without leaking PII.
+If any of those are missing, run the corresponding section of the Shlink deploy guide first — they're tenant-wide infrastructure shared across services.
 
-If your privacy policy permits storing full IPs, set
-`ANONYMIZE_REMOTE_ADDR=false` — but keep this decision documented.
+---
 
-### Trusted-Proxy Configuration
+## End-to-end deploy walkthrough
 
-`X-Forwarded-For` is **never** trusted by default — anyone can spoof it from
-the open internet. Once you put a proxy in front of the API (which you will:
-ALB / CloudFront / API Gateway / nginx), tell the app which source IPs are
-allowed to set the header.
+The full first-deploy sequence, top to bottom:
 
-`TRUSTED_PROXIES` accepts a JSON array of CIDRs:
+### 1. RDS PostgreSQL
 
 ```bash
-# Behind ALB inside a VPC
-TRUSTED_PROXIES='["10.0.0.0/16"]'
-
-# Behind CloudFront → API Gateway (CloudFront's published edge IP ranges)
-TRUSTED_PROXIES='["52.46.0.0/18","52.84.0.0/15","54.182.0.0/16","54.192.0.0/16","54.230.0.0/17","54.230.128.0/18","54.239.128.0/18","54.239.192.0/19","99.84.0.0/16","204.246.164.0/22","204.246.168.0/22","204.246.174.0/23","204.246.176.0/20","205.251.192.0/19","205.251.249.0/24","205.251.250.0/23","205.251.252.0/23","205.251.254.0/24","216.137.32.0/19"]'
+AWS_PROFILE=griddo-main ./scripts/create_rds.sh
 ```
 
-The resolver (`server/utils/network.py::resolve_client_ip`) checks the
-request's source address against every CIDR; only when it matches does it
-honor the leftmost `X-Forwarded-For` entry. Outside the allowlist the socket
-address wins — a defense against header spoofing if the proxy is somehow
-bypassed.
+The script:
+- Locates the default VPC.
+- Reuses the `shlink-db-subnets` subnet group when present (same VPC, fewer moving parts) or creates `shurly-db-subnets`.
+- Creates `shurly-db-sg` with VPC-only ingress on 5432.
+- Creates `shurly-db` (db.t4g.micro, gp3, 20 GB, encrypted, no public access, no multi-AZ for dev cost).
+- Generates a random master password and prints it once. Save it to AWS Secrets Manager and your password manager.
 
-For AWS edges, refresh the CloudFront ranges from the official source:
-<https://ip-ranges.amazonaws.com/ip-ranges.json> (filter `service=CLOUDFRONT`).
+The instance takes ~5–10 minutes to become available. The script blocks until it does.
 
-## Testing the Deployment
+### 2. ACM certificate for `s.griddo.io`
 
-1. **Test API Gateway URL**:
-   ```bash
-   curl https://YOUR_API_ID.execute-api.region.amazonaws.com/api/auth/me
-   ```
-
-2. **Test Custom Domain** (if configured):
-   ```bash
-   curl https://shurl.griddo.io/api/auth/me
-   ```
-
-3. **Test URL Redirect**:
-   ```bash
-   curl -I https://shurl.griddo.io/<short_code>
-   ```
-
-## Monitoring & Logs
-
-### CloudWatch Logs
-
-View Lambda logs:
 ```bash
-aws logs tail /aws/lambda/shurly-api --follow
+# 2.1 Request the cert from griddo-main
+aws acm request-certificate --region eu-south-2 --profile griddo-main \
+    --domain-name s.griddo.io \
+    --validation-method DNS
+
+# Capture its ARN
+CERT_ARN=$(aws acm list-certificates --region eu-south-2 --profile griddo-main \
+    --query "CertificateSummaryList[?DomainName=='s.griddo.io'].CertificateArn" \
+    --output text)
+
+# 2.2 Inspect the validation CNAME
+aws acm describe-certificate --region eu-south-2 --profile griddo-main \
+    --certificate-arn "$CERT_ARN" \
+    --query "Certificate.DomainValidationOptions[0].ResourceRecord"
 ```
 
-### Key Metrics to Monitor
+Take the `Name` and `Value` from the previous output and write them to Route 53 **from the `griddo-production` profile** (zone `Z0999097TJGECCBKJOY1`):
 
-- **Lambda Invocations**: Track API requests
-- **Lambda Duration**: Monitor cold start times
-- **Lambda Errors**: Track 4xx/5xx responses
-- **RDS Connections**: Monitor database connection pool
-- **API Gateway 4xx/5xx**: Track client/server errors
+```bash
+aws route53 change-resource-record-sets --profile griddo-production \
+    --hosted-zone-id Z0999097TJGECCBKJOY1 \
+    --change-batch '{
+        "Changes": [{
+            "Action": "UPSERT",
+            "ResourceRecordSet": {
+                "Name": "<validation-name-from-above>",
+                "Type": "CNAME",
+                "TTL": 300,
+                "ResourceRecords": [{"Value": "<validation-value-from-above>"}]
+            }
+        }]
+    }'
 
-## Cost Estimation
+aws acm wait certificate-validated --region eu-south-2 --profile griddo-main \
+    --certificate-arn "$CERT_ARN"
+```
 
-Based on 100-150 URLs/month (~5,000 requests/month):
+### 3. JWT secret
 
-- **Lambda**: ~$0.20/month (first 1M requests free)
-- **API Gateway**: ~$0.50/month (first 1M requests $1.00)
-- **RDS t4g.micro**: ~$12-15/month
-- **S3 + CloudFront**: ~$1-2/month
-- **Route 53**: ~$1/month (hosted zone)
+```bash
+JWT_SECRET_KEY=$(openssl rand -hex 32)
+echo "JWT_SECRET_KEY=$JWT_SECRET_KEY"
+# Save it. You'll feed it into deploy_ecs.sh on first run.
+```
 
-**Total**: ~$15-20/month
+### 4. ECS Express service
+
+Create a `.env` file in the project root with the credentials gathered above:
+
+```bash
+cat > .env <<EOF
+DB_HOST=<from create_rds.sh output>
+DB_PASSWORD=<from create_rds.sh output>
+JWT_SECRET_KEY=<from step 3>
+CORS_ORIGINS=["https://shurl.griddo.io"]
+EOF
+chmod 600 .env  # avoid accidental git add
+```
+
+Then deploy:
+
+```bash
+AWS_PROFILE=griddo-main ./scripts/deploy_ecs.sh
+```
+
+The script:
+- Creates the ECR repository `shurly-api` if needed (with image scanning + immutable tags).
+- Builds the container for `linux/arm64` and pushes by SHA.
+- Calls `aws ecs create-express-gateway-service` with all Phase 3.9/3.10 settings as env vars, `--cpu 256 --memory 512`, healthcheck `/api/v1/health`, scaling 1–2 tasks, and Shlink's existing IAM roles.
+- Tolerates the documented `--monitor-resources` timeout (Shlink lesson #2) and verifies via `describe-express-gateway-service`.
+- On subsequent runs, the script detects the service exists and calls `update-express-gateway-service` instead — Express Mode handles the blue/green target group rotation.
+
+Smoke the auto-generated host:
+
+```bash
+curl https://shurly-api.ecs.eu-south-2.on.aws/api/v1/health
+# {"status":"ok"}
+```
+
+### 5. Custom domain `s.griddo.io`
+
+```bash
+AWS_PROFILE=griddo-main ./scripts/setup_custom_domain.sh
+```
+
+This wires the three things ECS Express does NOT handle for custom domains:
+
+1. Adds the validated ACM cert to the shared ALB's HTTPS listener.
+2. Creates a routing rule at priority **12** (next free after Shlink's 10 / 11) that matches `host-header=s.griddo.io` and forwards to Shurly's currently-active target group.
+3. Writes the Route 53 A-alias from `griddo-production` (cross-account boundary).
+
+The script prints the **Express Mode rule priority** that points at Shurly's auto-generated host. **Note that priority** — you need it for the next step.
+
+### 6. Extend the ALB rule-sync Lambda
+
+Express Mode flips traffic between two target groups for blue/green deploys. Manual rules (priority 12) need to follow the active TG; otherwise, after each rollout, `s.griddo.io` would point at an inactive TG and 503.
+
+The `ecs-alb-rule-sync` Lambda (created during the Shlink deploy, see Shlink Phase 10) already handles this for Shlink. To extend it for Shurly, edit its `RULE_SYNC_MAP`:
+
+```python
+# In the Lambda code (deployed in griddo-main):
+RULE_SYNC_MAP = {
+    "1": "10",   # shlink-api  → go.griddo.io
+    "3": "11",   # shlink-web  → links.griddo.io
+    "<N>": "12", # shurly-api  → s.griddo.io   ← NEW (use the priority printed by setup_custom_domain.sh)
+}
+```
+
+Repackage and update:
+
+```bash
+zip alb-rule-sync.zip alb-rule-sync.py
+aws lambda update-function-code --region eu-south-2 --profile griddo-main \
+    --function-name ecs-alb-rule-sync \
+    --zip-file fileb://alb-rule-sync.zip
+```
+
+Verify:
+
+```bash
+aws lambda invoke --region eu-south-2 --profile griddo-main \
+    --function-name ecs-alb-rule-sync \
+    --payload '{}' \
+    /dev/stdout
+# Expect ["No changes needed"] or a "Synced priority 12 with N" entry.
+```
+
+Force a redeploy and confirm `s.griddo.io` stays up:
+
+```bash
+SERVICE_ARN=$(aws ecs list-services --region eu-south-2 --profile griddo-main \
+    --cluster default \
+    --query "serviceArns[?contains(@, 'shurly-api')] | [0]" --output text)
+
+aws ecs update-express-gateway-service --region eu-south-2 --profile griddo-main \
+    --service-arn "$SERVICE_ARN" --force-new-deployment
+
+# Wait ~2 min, then:
+curl https://s.griddo.io/api/v1/health
+```
+
+### 7. Smoke checklist
+
+```bash
+# Liveness
+curl https://s.griddo.io/api/v1/health
+# Readiness (DB connectivity)
+curl https://s.griddo.io/api/v1/health/db
+
+# Register a test user
+curl -X POST https://s.griddo.io/api/v1/auth/register \
+    -H "Content-Type: application/json" \
+    -d '{"email":"smoke@griddo.io","password":"smoke-test-1234"}'
+
+# Login → JWT
+TOKEN=$(curl -s -X POST https://s.griddo.io/api/v1/auth/login \
+    -H "Content-Type: application/json" \
+    -d '{"email":"smoke@griddo.io","password":"smoke-test-1234"}' | jq -r .access_token)
+
+# Create a short URL
+curl -X POST https://s.griddo.io/api/v1/urls \
+    -H "Authorization: Bearer $TOKEN" \
+    -H "Content-Type: application/json" \
+    -d '{"url":"https://griddo.io"}'
+
+# Redirect (302)
+curl -I https://s.griddo.io/<short-code-from-above>
+
+# Tracking pixel (43-byte GIF, no-store)
+curl -I https://s.griddo.io/<short-code>/track
+
+# robots.txt (default-deny)
+curl https://s.griddo.io/robots.txt
+
+# Orphan visit logging
+curl https://s.griddo.io/typoXYZ
+curl -H "Authorization: Bearer $TOKEN" \
+    https://s.griddo.io/api/v1/analytics/orphan-visits
+```
+
+---
+
+## CI/CD with OIDC
+
+GitHub Actions deploys via OIDC, not access keys. SSO-managed accounts don't issue long-lived access keys, so OIDC is the right fit anyway: GitHub presents an identity token to AWS STS, AWS lets the workflow assume an IAM role.
+
+### One-time setup in `griddo-main`
+
+```bash
+# 1. Register GitHub as an OIDC provider (skip if it already exists for Shlink)
+aws iam create-open-id-connect-provider --profile griddo-main \
+    --url https://token.actions.githubusercontent.com \
+    --client-id-list sts.amazonaws.com \
+    --thumbprint-list 6938fd4d98bab03faadb97b34396831e3780aea1
+
+# 2. Trust policy that scopes assumption to this exact repo + branch pattern
+cat > trust-policy.json <<'EOF'
+{
+  "Version": "2012-10-17",
+  "Statement": [{
+    "Effect": "Allow",
+    "Principal": {
+      "Federated": "arn:aws:iam::686255983646:oidc-provider/token.actions.githubusercontent.com"
+    },
+    "Action": "sts:AssumeRoleWithWebIdentity",
+    "Condition": {
+      "StringEquals": {
+        "token.actions.githubusercontent.com:aud": "sts.amazonaws.com"
+      },
+      "StringLike": {
+        "token.actions.githubusercontent.com:sub": "repo:danielserranoh/shurly:*"
+      }
+    }
+  }]
+}
+EOF
+
+aws iam create-role --profile griddo-main \
+    --role-name github-actions-shurly-deploy \
+    --assume-role-policy-document file://trust-policy.json
+```
+
+### Permissions policy
+
+The role needs the minimum to push images and update the service:
+
+```bash
+cat > deploy-policy.json <<'EOF'
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "EcrLoginAndPush",
+      "Effect": "Allow",
+      "Action": [
+        "ecr:GetAuthorizationToken",
+        "ecr:BatchGetImage",
+        "ecr:BatchCheckLayerAvailability",
+        "ecr:GetDownloadUrlForLayer",
+        "ecr:InitiateLayerUpload",
+        "ecr:UploadLayerPart",
+        "ecr:CompleteLayerUpload",
+        "ecr:PutImage"
+      ],
+      "Resource": [
+        "arn:aws:ecr:eu-south-2:686255983646:repository/shurly-api",
+        "*"
+      ]
+    },
+    {
+      "Sid": "EcsExpressDeploy",
+      "Effect": "Allow",
+      "Action": [
+        "ecs:ListServices",
+        "ecs:DescribeExpressGatewayService",
+        "ecs:UpdateExpressGatewayService"
+      ],
+      "Resource": "*"
+    }
+  ]
+}
+EOF
+
+aws iam put-role-policy --profile griddo-main \
+    --role-name github-actions-shurly-deploy \
+    --policy-name shurly-deploy \
+    --policy-document file://deploy-policy.json
+```
+
+> **Note**: the `ecr:GetAuthorizationToken` action requires `Resource: "*"` (it's a service-level operation, not a resource-level one). The asterisk on the ECR block is for that single action; the layer/image actions are scoped to the specific repository.
+
+### Wire the role ARN into GitHub Secrets
+
+In the repo's **Settings → Secrets and variables → Actions**, add:
+
+| Secret | Value |
+|---|---|
+| `AWS_DEPLOY_ROLE_ARN` | `arn:aws:iam::686255983646:role/github-actions-shurly-deploy` |
+
+That's the only secret needed. No `AWS_ACCESS_KEY_ID`, no `AWS_SECRET_ACCESS_KEY`.
+
+### Workflow trigger
+
+`deploy-backend.yml` is `workflow_dispatch`-only by default. Once the first manual deploy works end-to-end, optionally re-enable `push: branches: [main]` to get continuous delivery.
+
+---
+
+## Cost estimation (eu-south-2, monthly)
+
+| Component | Cost |
+|---|---|
+| RDS PostgreSQL t4g.micro (20 GB gp3, encrypted) | ~$8 |
+| ECS Fargate task (0.25 vCPU, 0.5 GB) | ~$9 |
+| ALB (shared with Shlink) | $0 marginal |
+| ECR (one image, ~200 MB) | <$0.10 |
+| CloudWatch Logs (30-day retention) | ~$0.50 |
+| Route 53 query traffic | ~$0.20 |
+| ACM certificate | $0 |
+| Lambda + EventBridge for ALB rule sync | $0 (free tier) |
+| **Total** | **~$17 / month** |
+
+Standalone (no shared ALB): add ~$16 for a dedicated ALB. Sharing with Shlink amortizes that across services.
+
+Mitigations if cost ever pinches:
+- Switch the Fargate task to Spot (~70% off, with eviction risk).
+- Add an autoscaling schedule that drops to 0 tasks during off-hours.
+- Move read-heavy endpoints behind CloudFront with a non-zero `REDIRECT_CACHE_LIFETIME` (trades analytics fidelity for compute reduction).
+
+---
+
+## GDPR posture
+
+Visitor logging is privacy-first by default, configured via env vars:
+
+- **`ANONYMIZE_REMOTE_ADDR=true`** (default): IPv4 truncated to `/24`, IPv6 to `/64` at insert time. Truncation happens in `server/utils/network.py::anonymize_ip` before the `Visitor` row is committed — full addresses never reach Postgres.
+- Bots and email tracking pixels share the `visits` table but carry `is_bot` / `is_pixel` flags so click analytics exclude them by default.
+- Tracking pixel responses set `Cache-Control: no-store` so HTML email clients re-fetch on every open.
+- The `User.api_key_scope` enum is in place so post-launch role rollouts (`READ_ONLY`, `CREATE_ONLY`, `DOMAIN_SPECIFIC`) ship without a destructive migration; only `FULL_ACCESS` is enforced today.
+- The `RequestIdMiddleware` echoes `X-Request-Id` on every response (or generates a UUID if absent), enabling log correlation in CloudWatch without leaking PII.
+
+If your privacy policy permits storing full IPs, set `ANONYMIZE_REMOTE_ADDR=false` — but document the decision.
+
+## Trusted-Proxy Configuration
+
+`X-Forwarded-For` is **never** trusted by default — anyone can spoof it. Once the ALB sits in front of the API (which it does), set `TRUSTED_PROXIES` to the CIDRs that may legitimately set the header.
+
+For the shared ALB inside the default VPC, the right value is the VPC's CIDR:
+
+```bash
+TRUSTED_PROXIES='["172.31.0.0/16"]'
+```
+
+The resolver (`server/utils/network.py::resolve_client_ip`) checks the request's source against every CIDR; only when it matches does it honor the leftmost `X-Forwarded-For` entry. Outside the allowlist the socket address wins.
+
+If you ever front the ALB with CloudFront, append the CloudFront edge CIDRs from <https://ip-ranges.amazonaws.com/ip-ranges.json> (filter `service=CLOUDFRONT`).
+
+---
+
+## Routine operations
+
+### View logs
+
+```bash
+aws logs tail /ecs/shurly-api --follow --region eu-south-2 --profile griddo-main
+```
+
+### Force a redeploy (e.g. after Lambda rule-sync change)
+
+```bash
+SERVICE_ARN=$(aws ecs list-services --region eu-south-2 --profile griddo-main \
+    --cluster default \
+    --query "serviceArns[?contains(@, 'shurly-api')] | [0]" --output text)
+
+aws ecs update-express-gateway-service --region eu-south-2 --profile griddo-main \
+    --service-arn "$SERVICE_ARN" --force-new-deployment
+```
+
+### Open a psql shell from a Fargate task (ECS Exec)
+
+```bash
+TASK_ARN=$(aws ecs list-tasks --region eu-south-2 --profile griddo-main \
+    --cluster default --service-name shurly-api \
+    --query 'taskArns[0]' --output text)
+
+aws ecs execute-command --region eu-south-2 --profile griddo-main \
+    --cluster default --task "$TASK_ARN" \
+    --interactive --command "/bin/sh"
+
+# Inside the container:
+PGPASSWORD=$DB_PASSWORD psql -h $DB_HOST -U $DB_USER -d $DB_NAME
+```
+
+### Rotate the JWT secret
+
+1. `JWT_SECRET_KEY=$(openssl rand -hex 32)`
+2. Update the env var in the ECS service (console or `aws ecs update-express-gateway-service`).
+3. Force a redeploy. Existing JWTs will become invalid; clients will need to re-authenticate.
+
+---
 
 ## Troubleshooting
 
-### Lambda Cold Starts
+### `--monitor-resources` timed out during deploy
 
-- **Symptom**: First request takes 2-3 seconds
-- **Solution**: Consider provisioned concurrency for critical paths (adds cost)
-
-### Database Connection Issues
-
-- **Symptom**: "Too many connections" error
-- **Solution**: Reduce `DB_POOL_SIZE` to 2-3 for Lambda
-
-### CORS Errors
-
-- **Symptom**: Browser shows CORS error
-- **Solution**: Ensure `CORS_ORIGINS` environment variable includes frontend domain
-
-### VPC Timeout
-
-- **Symptom**: Lambda times out connecting to RDS
-- **Solution**: Verify Lambda and RDS are in same VPC, check security groups
-
-## Updating the Lambda Function
-
-To deploy code changes:
+Expected per Shlink lesson #2 — not an error. Verify with:
 
 ```bash
-# Rebuild package
-./build_lambda.sh  # Or manual steps from Step 2
-
-# Update function code
-aws lambda update-function-code \
-  --function-name shurly-api \
-  --zip-file fileb://shurly-lambda.zip
+aws ecs describe-express-gateway-service --region eu-south-2 --profile griddo-main \
+    --service-arn "$SERVICE_ARN" \
+    --query "service.{status:status,runningCount:runningCount,desiredCount:desiredCount}"
 ```
 
-## Rollback Procedure
+### `s.griddo.io` returns 503 / "no healthy upstream" after a deploy
 
-1. **List Previous Versions**:
-   ```bash
-   aws lambda list-versions-by-function --function-name shurly-api
-   ```
+The ALB rule at priority 12 is pointing at the inactive target group. Either:
+- The Lambda `ecs-alb-rule-sync`'s `RULE_SYNC_MAP` is missing Shurly's mapping. Add it (see step 6 above).
+- Or invoke the Lambda manually: `aws lambda invoke --function-name ecs-alb-rule-sync --payload '{}' /dev/stdout`.
 
-2. **Update Alias to Previous Version**:
-   ```bash
-   aws lambda update-alias \
-     --function-name shurly-api \
-     --name prod \
-     --function-version <PREVIOUS_VERSION>
-   ```
+### ACM cert stuck in `PENDING_VALIDATION`
 
-## Next Steps
+The CNAME wasn't written to Route 53, or it was written to the wrong account. Validation records for `*.griddo.io` always live in `griddo-production`'s zone `Z0999097TJGECCBKJOY1`.
 
-See [ROADMAP.md](ROADMAP.md) for:
-- Phase 4.2: Infrastructure as Code (AWS SAM/CDK)
-- Phase 4.3: CI/CD Pipeline
-- **Phase 5: MCP Server over Streamable HTTP** (expose the API as a Model Context Protocol server for Claude Code / Claude Desktop; pilot for "MCP-as-product")
-- Phase 6: Testing & Optimization
-- Phase 7: Documentation & Handoff
+### Visit IPs all show `172.31.x.0` (the ALB's IP)
+
+`TRUSTED_PROXIES` isn't configured. Set it to `["172.31.0.0/16"]` in the task definition env vars and redeploy.
+
+---
+
+## Phase status
+
+- ✅ Phase 4.1 — Cleanup of Lambda/SAM artifacts
+- ✅ Phase 4.2 — Container image + health endpoint + production env template
+- 🟡 Phase 4.3 — `scripts/create_rds.sh` ready; **execute manually**
+- 🟡 Phase 4.4 — TLS cert; **execute manually** (commands above)
+- 🟡 Phase 4.5 — `scripts/deploy_ecs.sh` ready; **execute manually**
+- 🟡 Phase 4.6 — `scripts/setup_custom_domain.sh` ready; **execute manually**
+- 🟡 Phase 4.7 — Lambda `ecs-alb-rule-sync` `RULE_SYNC_MAP` extension; **edit + redeploy manually** (instructions above)
+- ✅ Phase 4.8 — `.github/workflows/deploy-backend.yml` rewritten for OIDC + ECR + ECS
+- ⏳ Phase 4.9 — First real deploy (the steps above, executed end-to-end)
