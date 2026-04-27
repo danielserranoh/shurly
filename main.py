@@ -57,15 +57,37 @@ def create_app() -> FastAPI:
 
     @app.on_event("startup")
     async def startup_event():
-        """Initialize predefined tags and the default domain on app startup."""
+        """
+        Create the schema if missing, then seed the default domain and the
+        predefined tag set.
+
+        Schema creation here uses `Base.metadata.create_all()` which is idempotent:
+        it only creates tables that don't exist, never drops or alters. That makes
+        it safe to run on every container start. When we have non-trivial migrations
+        we'll switch to Alembic; until then this avoids needing a separate
+        bootstrap step against an RDS that lives inside the VPC.
+        """
         import os
 
-        # Skip during testing
+        # Skip during testing — conftest.py manages the in-memory schema.
         if os.getenv("TESTING"):
             return
 
+        from server.core import Base, engine
+        from server.core.models import (  # noqa: F401 — register models with Base
+            URL,
+            Campaign,
+            Domain,
+            OrphanVisit,
+            RedirectRule,
+            Tag,
+            User,
+            Visitor,
+        )
         from server.utils.domain import get_or_create_default_domain
         from server.utils.tags import initialize_predefined_tags
+
+        Base.metadata.create_all(bind=engine)
 
         db = next(get_db())
         try:
