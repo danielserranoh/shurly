@@ -97,33 +97,71 @@ echo -e "${GREEN}✓ Listener (443): $LISTENER_ARN${NC}"
 # Find Shurly's active target group. Express Mode uses two target groups for
 # blue/green and routes traffic via weighted forwarding; we want the one
 # currently receiving 100% of the weight in the auto-generated rule.
+#
+# Empirically (April 2026), Express Mode auto-rules use opaque hostnames of
+# the form `sh-<32-hex-chars>.ecs.<region>.on.aws` rather than
+# `<service-name>.ecs...` as some older docs suggest. So we can't grep by
+# service name. Instead we offer two strategies:
+#
+#   1. Manual override (preferred when known): export EXPRESS_PRIORITY=<N>
+#      and the script reads exactly that rule.
+#   2. Auto-detect by elimination: gather every Express Mode auto-rule
+#      (priority < 10) and every custom-domain rule (priority >= 10),
+#      figure out which Express priorities are *not* yet bound to a
+#      custom-domain rule's active TG, and assume the lone unmapped one
+#      is Shurly. Brittle if multiple Express services lack custom
+#      domains, but covers the common case.
 SHURLY_TG_ARN=""
-EXPRESS_PRIORITIES=$(aws elbv2 describe-rules --region "$REGION" --profile "$PROFILE_MAIN" \
-    --listener-arn "$LISTENER_ARN" \
-    --query "Rules[?Priority!='default'].Priority" --output text)
+SHURLY_EXPRESS_PRIORITY=""
 
-for PRI in $EXPRESS_PRIORITIES; do
-    # The rules Express Mode creates carry an Action with ForwardConfig and
-    # multiple TargetGroups (active + standby). The "active" TG is the one
-    # with Weight=100; the standby has Weight=0.
-    HOSTS=$(aws elbv2 describe-rules --region "$REGION" --profile "$PROFILE_MAIN" \
+if [ -n "${EXPRESS_PRIORITY:-}" ]; then
+    echo -e "${YELLOW}Using EXPRESS_PRIORITY=$EXPRESS_PRIORITY (manual override)${NC}"
+    SHURLY_EXPRESS_PRIORITY="$EXPRESS_PRIORITY"
+    SHURLY_TG_ARN=$(aws elbv2 describe-rules --region "$REGION" --profile "$PROFILE_MAIN" \
         --listener-arn "$LISTENER_ARN" \
-        --query "Rules[?Priority=='$PRI'].Conditions[?Field=='host-header'].Values[]" \
-        --output text 2>/dev/null || true)
-    # Match the auto-generated host: <service>.ecs.<region>.on.aws
-    if echo "$HOSTS" | grep -q "${SERVICE_NAME}\."; then
-        SHURLY_TG_ARN=$(aws elbv2 describe-rules --region "$REGION" --profile "$PROFILE_MAIN" \
+        --query "Rules[?Priority=='$EXPRESS_PRIORITY'].Actions[0].ForwardConfig.TargetGroups[?Weight==\`100\`].TargetGroupArn | [0][0]" \
+        --output text)
+else
+    # Auto-detect by elimination.
+    EXPRESS_PRIORITIES=$(aws elbv2 describe-rules --region "$REGION" --profile "$PROFILE_MAIN" \
+        --listener-arn "$LISTENER_ARN" \
+        --query "Rules[?Priority!='default' && Priority<\`10\`].Priority" --output text)
+    CUSTOM_TG_ARNS=$(aws elbv2 describe-rules --region "$REGION" --profile "$PROFILE_MAIN" \
+        --listener-arn "$LISTENER_ARN" \
+        --query "Rules[?Priority!='default' && Priority>=\`10\`].Actions[0].ForwardConfig.TargetGroups[?Weight==\`100\`].TargetGroupArn[]" \
+        --output text)
+
+    UNMAPPED=()
+    for PRI in $EXPRESS_PRIORITIES; do
+        ACTIVE_TG=$(aws elbv2 describe-rules --region "$REGION" --profile "$PROFILE_MAIN" \
             --listener-arn "$LISTENER_ARN" \
             --query "Rules[?Priority=='$PRI'].Actions[0].ForwardConfig.TargetGroups[?Weight==\`100\`].TargetGroupArn | [0][0]" \
             --output text)
-        SHURLY_EXPRESS_PRIORITY="$PRI"
-        break
+        if ! echo "$CUSTOM_TG_ARNS" | tr '\t' '\n' | grep -qF "$ACTIVE_TG"; then
+            UNMAPPED+=("$PRI:$ACTIVE_TG")
+        fi
+    done
+
+    if [ "${#UNMAPPED[@]}" -eq 1 ]; then
+        IFS=':' read -r SHURLY_EXPRESS_PRIORITY SHURLY_TG_ARN <<< "${UNMAPPED[0]}"
+        echo -e "${GREEN}Auto-detected Shurly via priority elimination${NC}"
+    elif [ "${#UNMAPPED[@]}" -gt 1 ]; then
+        echo -e "${RED}Multiple Express Mode services have no custom-domain mapping yet:${NC}"
+        for entry in "${UNMAPPED[@]}"; do echo "  $entry"; done
+        echo "Re-run with EXPRESS_PRIORITY=<N> to disambiguate."
+        exit 1
     fi
-done
+fi
 
 if [ -z "$SHURLY_TG_ARN" ] || [ "$SHURLY_TG_ARN" = "None" ]; then
     echo -e "${RED}Could not locate Shurly's active target group.${NC}"
-    echo "Check that ./scripts/deploy_ecs.sh completed and the service is healthy."
+    echo ""
+    echo "Diagnostics:"
+    echo "  aws elbv2 describe-rules --region $REGION --profile $PROFILE_MAIN \\"
+    echo "      --listener-arn $LISTENER_ARN --output json"
+    echo ""
+    echo "If you can identify the right Express Mode rule priority, re-run with:"
+    echo "  EXPRESS_PRIORITY=<N> ./scripts/setup_custom_domain.sh"
     exit 1
 fi
 echo -e "${GREEN}✓ Active TG: $SHURLY_TG_ARN${NC}"
