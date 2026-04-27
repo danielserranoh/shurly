@@ -117,27 +117,41 @@ SHURLY_EXPRESS_PRIORITY=""
 if [ -n "${EXPRESS_PRIORITY:-}" ]; then
     echo -e "${YELLOW}Using EXPRESS_PRIORITY=$EXPRESS_PRIORITY (manual override)${NC}"
     SHURLY_EXPRESS_PRIORITY="$EXPRESS_PRIORITY"
+    # JMESPath note: filter expressions [?...] inside a projection don't reach
+    # nested objects the way you'd expect; we have to use `| [0]` to break out
+    # of the projection (collapse to a single rule object) before re-entering
+    # with a fresh `[?Weight==`100`]` filter on the inner TargetGroups array.
     SHURLY_TG_ARN=$(aws elbv2 describe-rules --region "$REGION" --profile "$PROFILE_MAIN" \
         --listener-arn "$LISTENER_ARN" \
-        --query "Rules[?Priority=='$EXPRESS_PRIORITY'].Actions[0].ForwardConfig.TargetGroups[?Weight==\`100\`].TargetGroupArn | [0][0]" \
+        --query "Rules[?Priority=='$EXPRESS_PRIORITY'] | [0].Actions[0].ForwardConfig.TargetGroups[?Weight==\`100\`].TargetGroupArn | [0]" \
         --output text)
 else
     # Auto-detect by elimination.
     EXPRESS_PRIORITIES=$(aws elbv2 describe-rules --region "$REGION" --profile "$PROFILE_MAIN" \
         --listener-arn "$LISTENER_ARN" \
         --query "Rules[?Priority!='default' && Priority<\`10\`].Priority" --output text)
-    CUSTOM_TG_ARNS=$(aws elbv2 describe-rules --region "$REGION" --profile "$PROFILE_MAIN" \
+
+    # Collect every active (Weight=100) TG bound by a custom-domain rule.
+    # Loop instead of one big query to dodge the same projection trap.
+    CUSTOM_TG_ARNS=""
+    CUSTOM_PRIORITIES=$(aws elbv2 describe-rules --region "$REGION" --profile "$PROFILE_MAIN" \
         --listener-arn "$LISTENER_ARN" \
-        --query "Rules[?Priority!='default' && Priority>=\`10\`].Actions[0].ForwardConfig.TargetGroups[?Weight==\`100\`].TargetGroupArn[]" \
-        --output text)
+        --query "Rules[?Priority!='default' && Priority>=\`10\`].Priority" --output text)
+    for CPRI in $CUSTOM_PRIORITIES; do
+        TG=$(aws elbv2 describe-rules --region "$REGION" --profile "$PROFILE_MAIN" \
+            --listener-arn "$LISTENER_ARN" \
+            --query "Rules[?Priority=='$CPRI'] | [0].Actions[0].ForwardConfig.TargetGroups[?Weight==\`100\`].TargetGroupArn | [0]" \
+            --output text)
+        CUSTOM_TG_ARNS="$CUSTOM_TG_ARNS $TG"
+    done
 
     UNMAPPED=()
     for PRI in $EXPRESS_PRIORITIES; do
         ACTIVE_TG=$(aws elbv2 describe-rules --region "$REGION" --profile "$PROFILE_MAIN" \
             --listener-arn "$LISTENER_ARN" \
-            --query "Rules[?Priority=='$PRI'].Actions[0].ForwardConfig.TargetGroups[?Weight==\`100\`].TargetGroupArn | [0][0]" \
+            --query "Rules[?Priority=='$PRI'] | [0].Actions[0].ForwardConfig.TargetGroups[?Weight==\`100\`].TargetGroupArn | [0]" \
             --output text)
-        if ! echo "$CUSTOM_TG_ARNS" | tr '\t' '\n' | grep -qF "$ACTIVE_TG"; then
+        if ! echo "$CUSTOM_TG_ARNS" | tr ' ' '\n' | grep -qF "$ACTIVE_TG"; then
             UNMAPPED+=("$PRI:$ACTIVE_TG")
         fi
     done
