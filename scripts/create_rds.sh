@@ -1,182 +1,164 @@
 #!/bin/bash
-# Create RDS PostgreSQL instance for Shurly in eu-west-1
-# Simple setup with default VPC and public accessibility
+# Create RDS PostgreSQL instance for Shurly in the griddo-main account.
+#
+# Mirrors the Shlink deploy guide (Phase 2) with Shurly-specific names. Key
+# departures from naive defaults:
+#
+#   * No --engine-version pin. AWS picks the latest stable Postgres available
+#     in eu-south-2; pinning bit us once with a version that wasn't available.
+#   * --no-publicly-accessible. The DB only needs to be reachable from
+#     Fargate tasks inside the VPC; opening 5432 to the internet would be a
+#     gift to bot scanners.
+#   * Security group ingress restricted to the default VPC CIDR (172.31.0.0/16),
+#     not 0.0.0.0/0. Fargate tasks live in this CIDR.
+#   * Reuses the shlink-db-subnets subnet group when present (we share the
+#     default VPC across services). Falls back to creating a fresh
+#     shurly-db-subnets group if not.
+#
+# Run with the griddo-main SSO profile:
+#   AWS_PROFILE=griddo-main ./scripts/create_rds.sh
 
-set -e  # Exit on error
+set -euo pipefail
 
-# Configuration
-REGION="eu-west-1"
-DB_INSTANCE_ID="shurly-dev-db"
-DB_INSTANCE_CLASS="db.t4g.micro"  # ARM-based, cost-effective
+REGION="${REGION:-eu-south-2}"
+DB_INSTANCE_ID="${DB_INSTANCE_ID:-shurly-db}"
+DB_INSTANCE_CLASS="db.t4g.micro"
 DB_ENGINE="postgres"
-DB_ENGINE_VERSION="14.10"
 DB_NAME="shurly"
-DB_USER="postgres"
-DB_ALLOCATED_STORAGE="20"  # GB
-DB_BACKUP_RETENTION="7"    # days
+DB_USER="shurly"
+DB_ALLOCATED_STORAGE="20"
+DB_BACKUP_RETENTION="7"
+DB_SUBNET_GROUP_NAME="${DB_SUBNET_GROUP_NAME:-shurly-db-subnets}"
+DB_SG_NAME="${DB_SG_NAME:-shurly-db-sg}"
 
-# Colors
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 RED='\033[0;31m'
-NC='\033[0m' # No Color
+NC='\033[0m'
 
-echo -e "${YELLOW}========================================${NC}"
-echo -e "${YELLOW}Shurly RDS PostgreSQL Setup${NC}"
-echo -e "${YELLOW}========================================${NC}"
+echo -e "${YELLOW}Shurly RDS PostgreSQL setup (region: $REGION)${NC}"
 echo ""
 
-# Prompt for password
-read -sp "Enter PostgreSQL master password (min 8 chars): " DB_PASSWORD
-echo ""
-read -sp "Confirm password: " DB_PASSWORD_CONFIRM
-echo ""
+# Generate a strong password automatically. The user copies it from the script's
+# output into Secrets Manager (or .env for the very first deploy) — we never
+# echo it to disk.
+DB_PASSWORD="$(openssl rand -base64 24 | tr -d '/+=' | head -c 32)"
 
-if [ "$DB_PASSWORD" != "$DB_PASSWORD_CONFIRM" ]; then
-    echo -e "${RED}Passwords don't match!${NC}"
+# ─── 1. Default VPC ─────────────────────────────────────────────────────────
+echo -e "${YELLOW}1. Locating default VPC...${NC}"
+VPC_ID=$(aws ec2 describe-vpcs --region "$REGION" \
+    --filters "Name=isDefault,Values=true" \
+    --query "Vpcs[0].VpcId" --output text)
+
+if [ -z "$VPC_ID" ] || [ "$VPC_ID" = "None" ]; then
+    echo -e "${RED}No default VPC in $REGION. Run 'aws ec2 create-default-vpc --region $REGION' or pick a different region.${NC}"
     exit 1
 fi
+echo -e "${GREEN}✓ VPC: $VPC_ID${NC}"
 
-if [ ${#DB_PASSWORD} -lt 8 ]; then
-    echo -e "${RED}Password must be at least 8 characters!${NC}"
-    exit 1
+VPC_CIDR=$(aws ec2 describe-vpcs --region "$REGION" \
+    --vpc-ids "$VPC_ID" \
+    --query "Vpcs[0].CidrBlock" --output text)
+echo -e "${GREEN}✓ VPC CIDR: $VPC_CIDR${NC}"
+
+# ─── 2. Subnet group ────────────────────────────────────────────────────────
+echo ""
+echo -e "${YELLOW}2. Subnet group...${NC}"
+if aws rds describe-db-subnet-groups --region "$REGION" \
+    --db-subnet-group-name "$DB_SUBNET_GROUP_NAME" >/dev/null 2>&1; then
+    echo -e "${GREEN}✓ Reusing existing subnet group $DB_SUBNET_GROUP_NAME${NC}"
+elif aws rds describe-db-subnet-groups --region "$REGION" \
+    --db-subnet-group-name "shlink-db-subnets" >/dev/null 2>&1; then
+    DB_SUBNET_GROUP_NAME="shlink-db-subnets"
+    echo -e "${GREEN}✓ Reusing shlink-db-subnets (same VPC)${NC}"
+else
+    SUBNET_IDS=$(aws ec2 describe-subnets --region "$REGION" \
+        --filters "Name=vpc-id,Values=$VPC_ID" \
+        --query "Subnets[*].SubnetId" --output text)
+    aws rds create-db-subnet-group --region "$REGION" \
+        --db-subnet-group-name "$DB_SUBNET_GROUP_NAME" \
+        --db-subnet-group-description "Subnets for Shurly PostgreSQL" \
+        --subnet-ids $SUBNET_IDS >/dev/null
+    echo -e "${GREEN}✓ Created subnet group $DB_SUBNET_GROUP_NAME${NC}"
 fi
 
+# ─── 3. Security group ──────────────────────────────────────────────────────
 echo ""
-echo -e "${YELLOW}Configuration:${NC}"
-echo "  Region:          $REGION"
-echo "  Instance ID:     $DB_INSTANCE_ID"
-echo "  Instance Class:  $DB_INSTANCE_CLASS"
-echo "  Engine:          $DB_ENGINE $DB_ENGINE_VERSION"
-echo "  Database Name:   $DB_NAME"
-echo "  Storage:         ${DB_ALLOCATED_STORAGE}GB"
-echo ""
+echo -e "${YELLOW}3. Security group...${NC}"
+SG_ID=$(aws ec2 describe-security-groups --region "$REGION" \
+    --filters "Name=group-name,Values=$DB_SG_NAME" "Name=vpc-id,Values=$VPC_ID" \
+    --query "SecurityGroups[0].GroupId" --output text 2>/dev/null || true)
 
-read -p "Proceed with RDS creation? (yes/no): " CONFIRM
-if [ "$CONFIRM" != "yes" ]; then
-    echo "Aborted."
-    exit 0
+if [ -z "$SG_ID" ] || [ "$SG_ID" = "None" ]; then
+    SG_ID=$(aws ec2 create-security-group --region "$REGION" \
+        --group-name "$DB_SG_NAME" \
+        --description "Security group for Shurly PostgreSQL - VPC-only ingress" \
+        --vpc-id "$VPC_ID" \
+        --query "GroupId" --output text)
+    echo -e "${GREEN}✓ Created SG: $SG_ID${NC}"
+else
+    echo -e "${GREEN}✓ Reusing SG: $SG_ID${NC}"
 fi
 
+# Idempotent ingress rule: VPC-only on 5432
+aws ec2 authorize-security-group-ingress --region "$REGION" \
+    --group-id "$SG_ID" \
+    --protocol tcp --port 5432 \
+    --cidr "$VPC_CIDR" 2>/dev/null \
+    && echo -e "${GREEN}✓ Allowed 5432 from $VPC_CIDR${NC}" \
+    || echo -e "${GREEN}✓ Ingress rule already present${NC}"
+
+# ─── 4. Create the instance ─────────────────────────────────────────────────
 echo ""
-echo -e "${YELLOW}Step 1: Getting default VPC...${NC}"
+echo -e "${YELLOW}4. Creating RDS instance $DB_INSTANCE_ID (no engine-version pin)...${NC}"
+echo "   This takes ~5-10 minutes."
 
-# Get default VPC
-VPC_ID=$(aws ec2 describe-vpcs \
-    --region $REGION \
-    --filters "Name=is-default,Values=true" \
-    --query "Vpcs[0].VpcId" \
-    --output text)
-
-if [ "$VPC_ID" == "None" ] || [ -z "$VPC_ID" ]; then
-    echo -e "${RED}No default VPC found in $REGION!${NC}"
-    echo "Please create a VPC or choose a different region."
-    exit 1
+if aws rds describe-db-instances --region "$REGION" \
+    --db-instance-identifier "$DB_INSTANCE_ID" >/dev/null 2>&1; then
+    echo -e "${YELLOW}!  $DB_INSTANCE_ID already exists — skipping creation. Continuing to wait for availability.${NC}"
+else
+    aws rds create-db-instance --region "$REGION" \
+        --db-instance-identifier "$DB_INSTANCE_ID" \
+        --db-instance-class "$DB_INSTANCE_CLASS" \
+        --engine "$DB_ENGINE" \
+        --master-username "$DB_USER" \
+        --master-user-password "$DB_PASSWORD" \
+        --allocated-storage "$DB_ALLOCATED_STORAGE" \
+        --storage-type gp3 \
+        --db-name "$DB_NAME" \
+        --db-subnet-group-name "$DB_SUBNET_GROUP_NAME" \
+        --vpc-security-group-ids "$SG_ID" \
+        --no-publicly-accessible \
+        --backup-retention-period "$DB_BACKUP_RETENTION" \
+        --no-multi-az \
+        --storage-encrypted \
+        --tags "Key=Project,Value=Shurly" "Key=ManagedBy,Value=create_rds.sh" >/dev/null
+    echo -e "${GREEN}✓ Creation initiated${NC}"
 fi
 
-echo -e "${GREEN}✓ Default VPC: $VPC_ID${NC}"
+aws rds wait db-instance-available --region "$REGION" \
+    --db-instance-identifier "$DB_INSTANCE_ID"
 
+DB_ENDPOINT=$(aws rds describe-db-instances --region "$REGION" \
+    --db-instance-identifier "$DB_INSTANCE_ID" \
+    --query "DBInstances[0].Endpoint.Address" --output text)
+
+# ─── Done ───────────────────────────────────────────────────────────────────
 echo ""
-echo -e "${YELLOW}Step 2: Creating security group...${NC}"
-
-# Create security group for RDS
-SG_ID=$(aws ec2 create-security-group \
-    --region $REGION \
-    --group-name shurly-rds-sg \
-    --description "Security group for Shurly RDS PostgreSQL" \
-    --vpc-id $VPC_ID \
-    --query 'GroupId' \
-    --output text 2>/dev/null || \
-    aws ec2 describe-security-groups \
-        --region $REGION \
-        --filters "Name=group-name,Values=shurly-rds-sg" \
-        --query "SecurityGroups[0].GroupId" \
-        --output text)
-
-echo -e "${GREEN}✓ Security Group: $SG_ID${NC}"
-
+echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo -e "${GREEN}RDS ready.${NC}"
+echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo ""
-echo -e "${YELLOW}Step 3: Configuring security group rules...${NC}"
-
-# Allow PostgreSQL from anywhere (we'll lock this down later)
-aws ec2 authorize-security-group-ingress \
-    --region $REGION \
-    --group-id $SG_ID \
-    --protocol tcp \
-    --port 5432 \
-    --cidr 0.0.0.0/0 \
-    2>/dev/null || echo "  (Rule already exists)"
-
-echo -e "${GREEN}✓ PostgreSQL port 5432 open${NC}"
-
+echo "  DB_HOST     = $DB_ENDPOINT"
+echo "  DB_PORT     = 5432"
+echo "  DB_NAME     = $DB_NAME"
+echo "  DB_USER     = $DB_USER"
+echo "  DB_PASSWORD = $DB_PASSWORD"
+echo "  DB_SG       = $SG_ID"
 echo ""
-echo -e "${YELLOW}Step 4: Creating RDS instance (this takes ~5-10 minutes)...${NC}"
-
-# Create RDS instance
-aws rds create-db-instance \
-    --region $REGION \
-    --db-instance-identifier $DB_INSTANCE_ID \
-    --db-instance-class $DB_INSTANCE_CLASS \
-    --engine $DB_ENGINE \
-    --engine-version $DB_ENGINE_VERSION \
-    --master-username $DB_USER \
-    --master-user-password "$DB_PASSWORD" \
-    --allocated-storage $DB_ALLOCATED_STORAGE \
-    --storage-type gp3 \
-    --db-name $DB_NAME \
-    --vpc-security-group-ids $SG_ID \
-    --publicly-accessible \
-    --backup-retention-period $DB_BACKUP_RETENTION \
-    --storage-encrypted \
-    --enable-performance-insights \
-    --performance-insights-retention-period 7 \
-    --deletion-protection \
-    --tags Key=Project,Value=Shurly Key=Environment,Value=dev
-
-echo ""
-echo -e "${GREEN}✓ RDS instance creation initiated!${NC}"
-echo ""
-echo -e "${YELLOW}Waiting for RDS instance to become available...${NC}"
-echo "(This typically takes 5-10 minutes. Feel free to grab a coffee ☕)"
-echo ""
-
-# Wait for instance to be available
-aws rds wait db-instance-available \
-    --region $REGION \
-    --db-instance-identifier $DB_INSTANCE_ID
-
-echo ""
-echo -e "${GREEN}✓ RDS instance is now available!${NC}"
-
-# Get endpoint
-DB_ENDPOINT=$(aws rds describe-db-instances \
-    --region $REGION \
-    --db-instance-identifier $DB_INSTANCE_ID \
-    --query "DBInstances[0].Endpoint.Address" \
-    --output text)
-
-echo ""
-echo -e "${GREEN}========================================${NC}"
-echo -e "${GREEN}RDS PostgreSQL Setup Complete!${NC}"
-echo -e "${GREEN}========================================${NC}"
-echo ""
-echo "Database Details:"
-echo "  Endpoint:   $DB_ENDPOINT"
-echo "  Port:       5432"
-echo "  Database:   $DB_NAME"
-echo "  Username:   $DB_USER"
-echo "  Password:   (the one you entered)"
-echo ""
-echo "Connection String:"
-echo "  postgresql://$DB_USER:<password>@$DB_ENDPOINT:5432/$DB_NAME"
-echo ""
-echo -e "${YELLOW}Next Steps:${NC}"
-echo "  1. Test connection: ./scripts/test_db_connection.sh $DB_ENDPOINT"
-echo "  2. Save endpoint for SAM deployment"
-echo "  3. Deploy Lambda: sam deploy --guided"
-echo ""
-echo -e "${YELLOW}Important:${NC}"
-echo "  - Save your password securely (not stored anywhere)"
-echo "  - Endpoint: $DB_ENDPOINT"
-echo "  - Cost: ~€10-12/month"
+echo "Next steps:"
+echo "  • Save DB_PASSWORD into AWS Secrets Manager (or your password manager)."
+echo "    The script generated it; it is not stored anywhere else."
+echo "  • Generate a JWT secret: openssl rand -hex 32"
+echo "  • Run ./scripts/deploy_ecs.sh to build and deploy the container."
 echo ""
