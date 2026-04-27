@@ -154,7 +154,7 @@ else
         --memory 512 \
         --health-check-path "/api/v1/health" \
         --scaling-target '{"minTaskCount": 1, "maxTaskCount": 2}' \
-        --tags "Key=Project,Value=Shurly" "Key=ManagedBy,Value=deploy_ecs.sh" \
+        --tags "key=Project,value=Shurly" "key=ManagedBy,value=deploy_ecs.sh" \
         || echo -e "${YELLOW}!  create returned non-zero (expected: --monitor-resources may timeout)${NC}"
 
     echo -e "${YELLOW}Verifying with describe-express-gateway-service...${NC}"
