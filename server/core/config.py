@@ -64,6 +64,13 @@ class Settings(BaseSettings):
     # explicit domain_id are bound to this row so the composite UNIQUE works.
     default_domain: str = "shurl.griddo.io"
 
+    # Optional override for the absolute URL emitted in API responses
+    # (URLResponse.short_url, campaign exports, OG previews). When empty,
+    # build_short_url() derives it from `default_domain` in production-style
+    # deploys, or falls back to http://localhost:8000 locally. Set this if the
+    # short-link host differs from the API host (rare).
+    base_url: str = ""
+
     # Phase 3.10.6 — Configurable redirect behavior.
     # `redirect_status_code`: 302 (default) keeps every hit hitting the backend so
     # analytics stay accurate. 301 is SEO-friendly but cached aggressively by

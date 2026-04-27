@@ -540,61 +540,122 @@ System creates:
 
 ---
 
-## Phase 4: AWS Deployment Preparation
+## Phase 4: AWS Deployment (ECS Express on griddo-main)
 
-### 4.1 Lambda Adaptation ✅
-- [x] Install Mangum adapter
-- [x] Create Lambda handler (`lambda_handler.py`)
-- [x] Environment variable configuration (Lambda-specific settings)
-- [x] Database connection pooling for Lambda (configurable pool sizes)
-- [x] Create deployment documentation (DEPLOYMENT.md)
-- [ ] Test locally with Lambda emulator (AWS SAM or LocalStack) - deferred to 4.2
+**Architecture decision**: Pivoted from AWS Lambda to **ECS Express Mode** (Fargate-backed, ALB-fronted, replacement for App Runner). Rationale:
 
-### 4.2 Infrastructure as Code ✅
-- [x] Create AWS SAM template (template.yaml)
-  - [x] Lambda function definition with ARM64 architecture
-  - [x] API Gateway HTTP API with CORS
-  - [x] CloudWatch Logs with 30-day retention
-  - [x] IAM roles and permissions
-  - [x] Parameterized stack outputs
-- [x] SAM configuration (samconfig.toml) for multi-environment
-- [x] Build automation script (build_lambda.sh)
-- [x] Requirements.txt for SAM builds
-- [x] Enhanced deployment documentation with SAM guide
-- [ ] RDS PostgreSQL in template (deferred - create manually)
-- [ ] S3 bucket for frontend (deferred to Phase 4.6)
-- [ ] CloudFront distribution (deferred to Phase 4.6)
+- The Phase 5 MCP server prefers a long-lived process (cold-start-free, persistent connection pool to RDS, native fit for Streamable HTTP).
+- Redirect path latency: containers don't have cold starts; Lambda does.
+- Reuse of existing infrastructure in `griddo-main`: shared ALB, IAM roles, default VPC, and the `ecs-alb-rule-sync` Lambda are already provisioned for the Shlink stack.
+- Cost trade-off: ~$15-20/mo extra over Lambda (Fargate task + RDS) but the ALB cost amortizes across services that share it.
 
-### 4.3 Database Setup ✅
-- [x] RDS PostgreSQL automated creation script (eu-west-1)
-- [x] Security group configuration (automated)
-- [x] Database initialization script
-- [x] Connection test script
-- [x] Comprehensive deployment documentation
-- [ ] VPC setup (deferred - using default VPC for dev)
-- [ ] Secrets Manager integration (deferred - using parameters for now)
+**Reference**: Mirrors the Shlink ECS Express deploy pattern documented at `~/Documents/Cowork/Griddo/Marketing & Comms/WebAnalytics/shlink-deploy-guide.md`. Phases below cite the corresponding Shlink phase where the steps overlap; only Shurly-specific details are reproduced here.
 
-### 4.4 CI/CD Pipeline ✅
-- [x] GitHub Actions test workflow
-  - [x] Run tests with pytest (Python 3.10 & 3.11)
-  - [x] Lint with ruff (check and format)
-  - [x] Coverage reporting to Codecov
-- [x] GitHub Actions backend deployment workflow
-  - [x] Deploy Lambda function via SAM
-  - [x] Environment-based deployments (dev/staging/prod)
-  - [x] Manual deployment triggers
-- [x] GitHub Actions frontend deployment workflow
-  - [x] Deploy frontend to S3
-  - [x] Invalidate CloudFront cache
-- [x] Comprehensive CI/CD setup documentation
-- [x] IAM permissions guide
-- [x] GitHub Secrets configuration guide
+**AWS account layout**:
+| Account | Profile | Region | Owns |
+|---|---|---|---|
+| Griddo Main (686255983646) | `griddo-main` | eu-south-2 | ECS, RDS, ECR, ACM, ALB |
+| Griddo Production (253490783612) | `griddo-production` | global | Route 53 zone for `griddo.io` |
 
-### 4.5 Custom Domain Setup
-- [ ] Route 53 hosted zone for griddo.io
-- [ ] SSL certificate (ACM) for shurl.griddo.io
-- [ ] CloudFront custom domain configuration
-- [ ] API Gateway custom domain (api.shurl.griddo.io or same domain with /api)
+**Hostnames**:
+- `s.griddo.io` — Shurly API + redirect path (short, optimized for printing/QR — short URLs benefit from short hosts).
+- `shurl.griddo.io` (or `shurly.griddo.io`) — reserved for the future frontend (Phase 7).
+
+**Existing reusable infrastructure** (created during the Shlink deploy):
+- VPC `vpc-01b31e19aa032bcff` (default)
+- Shared ALB `ecs-express-gateway-alb-d37ca364-224022788.eu-south-2.elb.amazonaws.com` (zone `Z0956581394HF5D5LXGAP`)
+- IAM roles `ecsTaskExecutionRole`, `ecsInfrastructureRoleForExpressServices`
+- Route 53 zone for `griddo.io`: `Z0999097TJGECCBKJOY1` (in `griddo-production`)
+- Lambda `ecs-alb-rule-sync` + EventBridge rule (just needs `RULE_SYNC_MAP` extended for Shurly)
+- ALB priorities **1-3 reserved** by Express Mode auto-rules; **10, 11 used by shlink-api / shlink-web**; Shurly will use **12**.
+
+---
+
+### 4.1 Cleanup of Lambda/SAM artifacts ✅
+Replace the Lambda-oriented setup that landed in earlier prep commits with the ECS-oriented one. No production code changes — only build artifacts and infrastructure-as-code files.
+- [x] Remove `lambda_handler.py` (Mangum entry point — not needed; uvicorn is the server now)
+- [x] Remove `template.yaml`, `samconfig.toml`, `build_lambda.sh` (SAM-specific)
+- [x] Remove `requirements.txt` (was auto-generated for SAM build; the project uses `pyproject.toml` + `uv.lock`)
+- [x] Remove `.env.lambda.example` (replaced in 4.2 by `.env.production.example`)
+- [x] Remove `mangum` dependency from `pyproject.toml`
+- [x] Verify `uv run pytest` still passes (285 tests)
+
+### 4.2 Container image ready for Fargate
+- [ ] Audit existing `dockerfile`: confirm uvicorn entrypoint, exposed port, multi-stage build to keep image small, and that it builds for `linux/arm64` (Fargate ARM64 is ~20% cheaper than x86).
+- [ ] Add `GET /api/v1/health` endpoint that returns `{"status": "ok"}` without touching the database. ECS Express will hit this via the ALB target group health check; we don't want every health check to consume an RDS connection.
+- [ ] Optional: a `GET /api/v1/health/db` endpoint that does touch the DB — used for synthetic monitoring, not for the ALB.
+- [ ] Replace `.env.lambda.example` with `.env.production.example`. Same settings (`ANONYMIZE_REMOTE_ADDR`, `TRUSTED_PROXIES`, `DEFAULT_DOMAIN=s.griddo.io`, `REDIRECT_STATUS_CODE`, `REDIRECT_CACHE_LIFETIME`, etc.) but oriented at ECS task env vars instead of Lambda env.
+- [ ] Local smoke: `docker build -t shurly:dev . && docker run --env-file .env shurly:dev` should boot uvicorn and answer the health check.
+
+### 4.3 Database (mirrors Shlink Phase 2)
+Adapt `scripts/create_rds.sh` for Shurly. Reusing concepts from the Shlink deploy guide; specifics:
+- [ ] DB SG: either reuse Shlink's `sg-0336fc12dcb7cad06` (lowest friction) or create `shurly-db-sg`. Decision: separate SG so we can revoke independently if needed.
+- [ ] Subnet group: reuse `shlink-db-subnets` (covers default VPC subnets — same VPC).
+- [ ] DB instance `shurly-db`, `db.t4g.micro`, 20 GB gp3, `--no-publicly-accessible`, 7-day backup retention.
+- [ ] **No `--engine-version` pin** (per Shlink lesson #6).
+- [ ] Master user `shurly`, DB name `shurly`. Password from `openssl rand -base64 24` — captured for the env, not committed.
+
+### 4.4 TLS certificate (mirrors Shlink Phase 3)
+- [ ] `aws acm request-certificate --domain-name s.griddo.io --validation-method DNS` (`griddo-main`, eu-south-2)
+- [ ] Capture validation CNAME, write it to Route 53 from **`griddo-production`** profile (zone `Z0999097TJGECCBKJOY1`)
+- [ ] `aws acm wait certificate-validated`
+
+### 4.5 ECS Express service (mirrors Shlink Phase 5)
+- [ ] Create ECR repository `shurly-api` in `griddo-main`
+- [ ] `docker buildx build --platform linux/arm64 --tag <account>.dkr.ecr.eu-south-2.amazonaws.com/shurly-api:<sha> .`
+- [ ] ECR login + push
+- [ ] `aws ecs create-express-gateway-service --service-name shurly-api`:
+  - Reuses `ecsTaskExecutionRole` + `ecsInfrastructureRoleForExpressServices`
+  - `--cpu 256 --memory 512` (Fargate units, **not** decimal — per Shlink lesson #1)
+  - `--health-check-path /api/v1/health`
+  - `--scaling-target {minTaskCount: 1, maxTaskCount: 2}`
+  - Env vars: full set from `.env.production.example`, with `DB_HOST` from RDS endpoint and `DB_PASSWORD`/`JWT_SECRET_KEY` from prompts (or Secrets Manager later)
+- [ ] `--monitor-resources` may timeout; verify with `describe-express-gateway-service` (Shlink lesson #2)
+- [ ] Smoke against the auto-generated host: `curl https://shurly-api.ecs.eu-south-2.on.aws/api/v1/health`
+
+### 4.6 Custom domain `s.griddo.io` (mirrors Shlink Phase 6)
+- [ ] `aws elbv2 add-listener-certificates` — add the `s.griddo.io` ACM cert to the shared ALB's HTTPS listener (Shlink lesson #3)
+- [ ] `aws elbv2 create-rule --priority 12 --conditions host-header=s.griddo.io` pointing to Shurly's active target group (the one with weight 100 — Shlink lesson #7 about priority headroom for Express Mode)
+- [ ] `aws route53 change-resource-record-sets` from **`griddo-production`** profile: A-alias `s.griddo.io` → ALB
+- [ ] `dig s.griddo.io && curl https://s.griddo.io/api/v1/health` to verify
+
+### 4.7 ALB rule sync — extend the existing Lambda
+ECS Express does blue/green deploys by alternating target group weights. Manual ALB rules (priority 12 in our case) need to follow the active TG or the service drops. The `ecs-alb-rule-sync` Lambda already handles this for Shlink; we extend it.
+- [ ] Identify Shurly's Express Mode rule priority (the one Express Mode auto-creates between 1-5)
+- [ ] PR against the Lambda's `RULE_SYNC_MAP`: add `<shurly-express-priority>: "12"` mapping
+- [ ] Test: `aws lambda invoke --function-name ecs-alb-rule-sync` returns "No changes needed" or syncs correctly
+- [ ] Force a redeploy via `update-express-gateway-service --force-new-deployment` and verify `s.griddo.io` keeps responding without manual intervention
+
+### 4.8 CI/CD with OIDC + ECR + ECS
+Replaces the SAM-based GitHub Actions workflow.
+- [ ] **One-time setup in `griddo-main`** (documented in DEPLOYMENT.md, executed manually with SSO):
+  - GitHub OIDC provider (`token.actions.githubusercontent.com`)
+  - IAM role `github-actions-shurly-deploy` with trust policy scoped to `repo:danielserranoh/shurly:*`
+  - Permissions: ECR push (scoped to the `shurly-api` repo), ECS update-express-gateway-service (scoped to the Shurly service ARN), CloudWatch Logs read for verification
+- [ ] Rewrite `.github/workflows/deploy-backend.yml`:
+  - `permissions: id-token: write` for OIDC
+  - `aws-actions/configure-aws-credentials@v4` with `role-to-assume`, no access keys
+  - `docker buildx build --platform linux/arm64 --push`
+  - `aws ecs update-express-gateway-service --force-new-deployment`
+  - Trigger: `workflow_dispatch` only until first manual deploy succeeds; then optionally re-enable `push` to `main`
+- [ ] No `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` secrets — only `AWS_DEPLOY_ROLE_ARN`, `DB_HOST`, `JWT_SECRET_KEY`, etc.
+
+### 4.9 First real deploy + smoke
+End-to-end run with the user driving SSO locally:
+- [ ] `./scripts/create_rds.sh` (one-time)
+- [ ] Request ACM cert + validate
+- [ ] `./scripts/deploy_ecs.sh` (build + push + service create)
+- [ ] `./scripts/setup_custom_domain.sh` (cert, rule, DNS)
+- [ ] Update Lambda `RULE_SYNC_MAP`
+- [ ] Smoke checklist:
+  - `register` → `login` → returns JWT
+  - `POST /api/v1/urls` creates a short URL bound to `s.griddo.io`
+  - `GET /<code>` returns 302 to destination
+  - `GET /<code>/track` returns 43-byte GIF
+  - `GET /robots.txt` returns default-deny
+  - `GET /api/v1/analytics/orphan-visits` after a typo'd `GET /xyzabc` shows the orphan
+  - Force `update-express-gateway-service --force-new-deployment` → verify `s.griddo.io` stays up
+- [ ] Capture findings in CHANGELOG.md and any follow-up items as new issues
 
 ---
 
