@@ -92,7 +92,7 @@ SG_ID=$(aws ec2 describe-security-groups --region "$REGION" \
 if [ -z "$SG_ID" ] || [ "$SG_ID" = "None" ]; then
     SG_ID=$(aws ec2 create-security-group --region "$REGION" \
         --group-name "$DB_SG_NAME" \
-        --description "Security group for Shurly PostgreSQL — VPC-only ingress" \
+        --description "Security group for Shurly PostgreSQL - VPC-only ingress" \
         --vpc-id "$VPC_ID" \
         --query "GroupId" --output text)
     echo -e "${GREEN}✓ Created SG: $SG_ID${NC}"
