@@ -62,20 +62,47 @@ uv sync --extra mcp --extra dev
 
 ### Stdio transport (Claude Code, Claude Desktop)
 
-Run the server as a subprocess and let an MCP client talk to it over stdin/stdout:
+Run the server as a subprocess and let an MCP client talk to it over stdin/stdout.
+
+The repository ships a wrapper script that handles three things the MCP
+client config can't easily express on a single line: changing into the
+project root, opting into the `[mcp]` extra (`uv run --extra mcp`), and
+setting `TESTING=1` so the FastAPI startup event doesn't try to reach
+the private-VPC RDS from your laptop:
 
 ```bash
-uv run python -m mcp_server
+# Direct invocation (what the wrapper does internally)
+./scripts/run_mcp_local.sh
 ```
 
-In Claude Code, register it via the MCP config (one-time, per dev machine):
+Register with Claude Code (one-time, per dev machine):
 
 ```bash
-claude mcp add shurly-local -- uv run --directory /Users/<you>/Tools/shurly python -m mcp_server
+claude mcp add shurly-local -- /Users/<you>/Tools/shurly/scripts/run_mcp_local.sh
 ```
 
-Then in any Claude Code session, `/mcp` should list the `shurly-local`
-server with the auto-generated tools.
+Replace `<you>` with your username. The script resolves the project root
+from its own path, so the registered command stays short and survives
+moving the repo. After registration, any Claude Code session can list
+the server via `/mcp` and invoke its tools.
+
+If a previous registration was wrong (truncated by terminal wrap, missing
+extras, etc.), remove it before re-adding:
+
+```bash
+claude mcp remove shurly-local
+```
+
+#### What `TESTING=1` does
+
+`main.py`'s startup hook calls `Base.metadata.create_all()` and seeds the
+default `Domain` row plus predefined tags. All three need a live DB
+connection; the production RDS sits inside a private VPC, so a stdio
+server running on your laptop can't reach it. The startup hook checks
+`os.getenv("TESTING")` and short-circuits when set — same gate the test
+suite uses. Tool **listing** doesn't need the DB and works fine. Tool
+**invocation** against real data needs a live DB and is wired up in
+Phase 5.4 (auth + per-user scoping against the deployed API).
 
 ### Streamable HTTP transport (deployed)
 
