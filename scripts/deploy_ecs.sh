@@ -21,7 +21,12 @@ set -euo pipefail
 REGION="${REGION:-eu-south-2}"
 SERVICE_NAME="${SERVICE_NAME:-shurly-api}"
 ECR_REPO="${ECR_REPO:-shurly-api}"
-IMAGE_TAG="${IMAGE_TAG:-$(git rev-parse --short HEAD 2>/dev/null || echo "manual-$(date +%s)")}"
+# ECR repo is created with imageTagMutability=IMMUTABLE — re-pushing the same
+# tag fails. Default to <sha>-<unix-timestamp> so every invocation produces a
+# unique tag while staying traceable to the source commit. Override IMAGE_TAG
+# explicitly to pin a build (e.g. for promoting dev → prod).
+SHA_SHORT=$(git rev-parse --short HEAD 2>/dev/null || echo "manual")
+IMAGE_TAG="${IMAGE_TAG:-${SHA_SHORT}-$(date +%s)}"
 CLUSTER="${CLUSTER:-default}"
 
 # Load .env file if present so the user doesn't need to export everything by
