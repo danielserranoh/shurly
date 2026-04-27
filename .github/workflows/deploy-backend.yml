@@ -144,17 +144,24 @@ jobs:
           done
           echo "::warning::Service did not reach ACTIVE within ~3 min. Check the console."
 
-      - name: Smoke test the auto-generated host
+      - name: Smoke test the public host
+        # ECS Express auto-hosts use the form `sh-<32-hex>.ecs.<region>.on.aws`,
+        # NOT `<service>.ecs...`, so probing the latter always 404s. The right
+        # target is the public host bound to Shurly's ALB rule (priority 12).
+        # The blue/green Lambda (ecs-alb-rule-sync) handles the TG flip on
+        # SERVICE_DEPLOYMENT_COMPLETED, but its EventBridge fan-out can lag a
+        # few seconds — so we retry with a short backoff before giving up.
         run: |
-          AUTO_HOST="${ECS_SERVICE_NAME}.ecs.${AWS_REGION}.on.aws"
-          echo "Probing https://${AUTO_HOST}/api/v1/health"
-          for i in $(seq 1 6); do
-            if curl -fsS "https://${AUTO_HOST}/api/v1/health" > /dev/null; then
-              echo "✓ Health endpoint responding"
+          PUBLIC_HOST="s.griddo.io"
+          echo "Probing https://${PUBLIC_HOST}/api/v1/health"
+          for i in $(seq 1 12); do
+            CODE=$(curl -sS -o /dev/null -w "%{http_code}" "https://${PUBLIC_HOST}/api/v1/health" || echo "000")
+            if [ "$CODE" = "200" ]; then
+              echo "✓ Health endpoint responding (attempt $i)"
               exit 0
             fi
-            echo "[$i/6] not ready, retrying in 10s"
+            echo "[$i/12] HTTP $CODE — not ready, retrying in 10s"
             sleep 10
           done
-          echo "::error::Health endpoint did not respond after rollout"
+          echo "::error::Health endpoint did not return 200 after rollout"
           exit 1
