@@ -99,35 +99,68 @@ echo -e "${YELLOW}3. ECS Express service${NC}"
 EXEC_ROLE_ARN="arn:aws:iam::${AWS_ACCOUNT_ID}:role/ecsTaskExecutionRole"
 INFRA_ROLE_ARN="arn:aws:iam::${AWS_ACCOUNT_ID}:role/ecsInfrastructureRoleForExpressServices"
 
-# Build the env array as a JSON list. Sensible defaults filled here; override
-# any of them by exporting before running this script.
-read -r -d '' CONTAINER_JSON <<EOF || true
-{
-    "image": "${IMAGE_URI}",
-    "containerPort": 8000,
-    "environment": [
-        {"name": "DB_HOST",                "value": "${DB_HOST}"},
-        {"name": "DB_PORT",                "value": "${DB_PORT:-5432}"},
-        {"name": "DB_USER",                "value": "${DB_USER:-shurly}"},
-        {"name": "DB_PASSWORD",            "value": "${DB_PASSWORD}"},
-        {"name": "DB_NAME",                "value": "${DB_NAME:-shurly}"},
-        {"name": "DB_SSL_MODE",            "value": "${DB_SSL_MODE:-require}"},
-        {"name": "JWT_SECRET_KEY",         "value": "${JWT_SECRET_KEY}"},
-        {"name": "JWT_ALGORITHM",          "value": "${JWT_ALGORITHM:-HS256}"},
-        {"name": "JWT_ACCESS_TOKEN_EXPIRE_MINUTES", "value": "${JWT_ACCESS_TOKEN_EXPIRE_MINUTES:-10080}"},
-        {"name": "API_TITLE",              "value": "Shurly API"},
-        {"name": "API_VERSION",            "value": "0.1.0"},
-        {"name": "CORS_ORIGINS",           "value": "${CORS_ORIGINS:-[\"https://shurl.griddo.io\"]}"},
-        {"name": "ANONYMIZE_REMOTE_ADDR",  "value": "${ANONYMIZE_REMOTE_ADDR:-true}"},
-        {"name": "TRUSTED_PROXIES",        "value": "${TRUSTED_PROXIES:-[\"172.31.0.0/16\"]}"},
-        {"name": "DISABLE_TRACK_PARAM",    "value": "${DISABLE_TRACK_PARAM:-nostat}"},
-        {"name": "SHORT_URL_MODE",         "value": "${SHORT_URL_MODE:-loose}"},
-        {"name": "DEFAULT_DOMAIN",         "value": "${DEFAULT_DOMAIN:-s.griddo.io}"},
-        {"name": "REDIRECT_STATUS_CODE",   "value": "${REDIRECT_STATUS_CODE:-302}"},
-        {"name": "REDIRECT_CACHE_LIFETIME","value": "${REDIRECT_CACHE_LIFETIME:-0}"}
-    ]
-}
-EOF
+# Build the container JSON via jq. Doing this with a bash heredoc previously
+# mangled values containing quotes (notably CORS_ORIGINS='["https://..."]'
+# arrived at the task as [https://...] with quotes stripped, breaking
+# Pydantic's JSON decode and crashloop'ing the container). jq's --arg takes
+# raw shell strings and emits valid JSON, sidestepping the entire quoting
+# mess. Requires jq (already a dependency on macOS via brew, install on
+# Linux runners with apt-get install -y jq).
+if ! command -v jq >/dev/null 2>&1; then
+    echo -e "${RED}jq is required (brew install jq / apt-get install -y jq)${NC}"
+    exit 1
+fi
+
+CONTAINER_JSON=$(jq -n \
+    --arg image          "$IMAGE_URI" \
+    --argjson port       8000 \
+    --arg db_host        "$DB_HOST" \
+    --arg db_port        "${DB_PORT:-5432}" \
+    --arg db_user        "${DB_USER:-shurly}" \
+    --arg db_password    "$DB_PASSWORD" \
+    --arg db_name        "${DB_NAME:-shurly}" \
+    --arg db_ssl_mode    "${DB_SSL_MODE:-require}" \
+    --arg jwt_secret     "$JWT_SECRET_KEY" \
+    --arg jwt_algorithm  "${JWT_ALGORITHM:-HS256}" \
+    --arg jwt_expire     "${JWT_ACCESS_TOKEN_EXPIRE_MINUTES:-10080}" \
+    --arg api_title      "Shurly API" \
+    --arg api_version    "0.1.0" \
+    --arg cors_origins   "${CORS_ORIGINS:-[\"https://shurl.griddo.io\"]}" \
+    --arg anonymize      "${ANONYMIZE_REMOTE_ADDR:-true}" \
+    --arg trusted_proxies "${TRUSTED_PROXIES:-[\"172.31.0.0/16\"]}" \
+    --arg disable_track  "${DISABLE_TRACK_PARAM:-nostat}" \
+    --arg short_url_mode "${SHORT_URL_MODE:-loose}" \
+    --arg default_domain "${DEFAULT_DOMAIN:-s.griddo.io}" \
+    --arg redirect_status "${REDIRECT_STATUS_CODE:-302}" \
+    --arg redirect_cache "${REDIRECT_CACHE_LIFETIME:-0}" \
+    '{
+        image: $image,
+        containerPort: $port,
+        environment: [
+            {name: "DB_HOST",                            value: $db_host},
+            {name: "DB_PORT",                            value: $db_port},
+            {name: "DB_USER",                            value: $db_user},
+            {name: "DB_PASSWORD",                        value: $db_password},
+            {name: "DB_NAME",                            value: $db_name},
+            {name: "DB_SSL_MODE",                        value: $db_ssl_mode},
+            {name: "JWT_SECRET_KEY",                     value: $jwt_secret},
+            {name: "JWT_ALGORITHM",                      value: $jwt_algorithm},
+            {name: "JWT_ACCESS_TOKEN_EXPIRE_MINUTES",    value: $jwt_expire},
+            {name: "API_TITLE",                          value: $api_title},
+            {name: "API_VERSION",                        value: $api_version},
+            {name: "CORS_ORIGINS",                       value: $cors_origins},
+            {name: "ANONYMIZE_REMOTE_ADDR",              value: $anonymize},
+            {name: "TRUSTED_PROXIES",                    value: $trusted_proxies},
+            {name: "DISABLE_TRACK_PARAM",                value: $disable_track},
+            {name: "SHORT_URL_MODE",                     value: $short_url_mode},
+            {name: "DEFAULT_DOMAIN",                     value: $default_domain},
+            {name: "REDIRECT_STATUS_CODE",               value: $redirect_status},
+            {name: "REDIRECT_CACHE_LIFETIME",            value: $redirect_cache}
+        ]
+    }')
+
+# Optional debug: uncomment to inspect the generated JSON before sending.
+# echo "$CONTAINER_JSON" | jq .
 
 # Check whether the service already exists. ECS Express's "describe" command is
 # different from regular ECS — we look up the ARN by listing services first.
