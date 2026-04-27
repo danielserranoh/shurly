@@ -67,20 +67,24 @@ fi
 ECR_URI="${AWS_ACCOUNT_ID}.dkr.ecr.${REGION}.amazonaws.com/${ECR_REPO}"
 IMAGE_URI="${ECR_URI}:${IMAGE_TAG}"
 
-# ─── 2. Build + push for linux/arm64 ────────────────────────────────────────
+# ─── 2. Build + push as a multi-arch manifest (amd64 + arm64) ──────────────
+# ECS Express Mode runs on x86_64 Fargate by default; an arm64-only image
+# fails to pull with "Manifest does not contain descriptor matching platform
+# 'linux/amd64'". Building both architectures keeps the manifest portable so
+# the same image works on either Fargate runtime, and on developer Macs
+# (Apple Silicon = arm64) for local docker run testing.
 echo ""
-echo -e "${YELLOW}2. Build (linux/arm64) + push${NC}"
+echo -e "${YELLOW}2. Build (linux/amd64,linux/arm64) + push${NC}"
 echo "   Image: $IMAGE_URI"
 
 aws ecr get-login-password --region "$REGION" | \
     docker login --username AWS --password-stdin "$ECR_URI" >/dev/null
 
-# buildx with --push avoids loading the manifest into the local Docker daemon
-# (which can get confused on multi-arch). Requires the buildx builder to
-# support linux/arm64 — on Apple Silicon hosts it's native; on x86 hosts the
-# Docker driver has to use QEMU emulation but still works for one platform.
+# buildx --push uploads the multi-arch manifest directly to ECR. ECR honors
+# the manifest list and Fargate picks the matching architecture at pull time.
+# On x86 hosts the arm64 layer is built via QEMU emulation, slower but works.
 docker buildx build \
-    --platform linux/arm64 \
+    --platform linux/amd64,linux/arm64 \
     --tag "$IMAGE_URI" \
     --push \
     --progress=plain \
