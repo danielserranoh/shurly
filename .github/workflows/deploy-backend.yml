@@ -1,14 +1,18 @@
 name: Deploy Backend to ECS
 
-# Phase 4.8 — manual-only trigger until the first deploy succeeds. Re-enable
-# `push: branches: [main]` once we're confident in the pipeline.
+# Auto-deploy on every merge to main. Branch protection on main requires PR +
+# passing tests, so by the time a commit lands here the deploy gate has already
+# been crossed. workflow_dispatch is preserved for manual deploys (rollback,
+# debugging, deploying to a non-prod env when we add one).
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
     inputs:
       environment:
         description: 'Environment to deploy to'
         required: true
-        default: 'dev'
+        default: 'prod'
         type: choice
         options:
           - dev
