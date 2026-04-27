@@ -30,6 +30,12 @@ dev = [
     "pytest-cov>=4.0.0",
     "httpx>=0.26.0",
 ]
+# Phase 5 — MCP server. Optional so it doesn't bloat the production image
+# unless deliberately enabled. Install with `uv sync --extra mcp` for local
+# development of the MCP transport surface.
+mcp = [
+    "fastmcp>=0.4.0",
+]
 
 [build-system]
 requires = ["hatchling"]
