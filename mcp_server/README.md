@@ -148,17 +148,33 @@ redirect rules (4), campaigns (6), analytics (7), tags (4).
 renamed, the test fails until `MCP_TOOL_NAMES` (or `EXCLUDED_ROUTE_MAPS`) is
 updated — forcing a deliberate decision rather than silent surface drift.
 
-Phase 5.3 adds hand-curated tools where auto-generation produces awkward
-shapes. Likely candidates:
+## Hand-curated tools (Phase 5.3)
 
-- `create_campaign_from_rows` — replaces multipart CSV upload with a
-  JSON list of rows, easier to invoke from chat.
-- `get_url_analytics_summary` — composes overview + daily + geo into one
-  call so the LLM doesn't need three separate tool invocations.
-- `add_redirect_rule` — sugar over `POST /urls/{code}/rules` with named
-  args per condition type.
-- `list_orphan_visits_grouped` — clusters by attempted_path so typos
-  are obvious without paginating through a flat list.
+Four workflows produce awkward shapes when projected straight from OpenAPI.
+Phase 5.3 ships hand-written tools alongside the auto-generated set:
+
+- **`create_campaign_from_rows`** — accepts `rows: list[dict]` instead of
+  an embedded CSV string. Serialises in-memory and reuses the existing
+  campaign generator (same uniqueness retry, same `user_data` shape).
+- **`get_url_analytics_summary`** — composes totals + daily series + top
+  countries into one call so the LLM doesn't chain `overview/daily/geo`.
+- **`add_redirect_rule`** — sugar over `POST /urls/{code}/rules` with named
+  condition args (`device="ios"`, `language="en"`, etc.) instead of a raw
+  conditions list.
+- **`list_orphan_visits_grouped`** — clusters orphan visits by
+  `attempted_path` so typo patterns are obvious instead of paginating
+  through a flat event log.
+
+The pure logic lives in `mcp_server/curated.py` (takes `db: Session` and
+`user: User` explicitly — easy to test). The MCP-facing wrappers in
+`mcp_server/server.py` open a `SessionLocal` per call. **Auth resolution is
+stubbed until Phase 5.4** — tool listing works; invocation raises a clear
+`NotImplementedError` until the bearer-token plumbing lands.
+
+Total tool surface after Phase 5.3: **40 tools** (36 auto-generated + 4
+curated). The 5.2 contract test (`tests/test_phase52_mcp_tools.py`) and
+the 5.3 logic tests (`tests/test_phase53_curated_tools.py`) together pin
+the surface.
 
 ## Authentication (Phase 5.4 — not yet)
 
