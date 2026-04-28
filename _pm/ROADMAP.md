@@ -684,12 +684,13 @@ End-to-end run with the user driving SSO locally:
 - [ ] Verify the OG-preview, robots.txt, redirect path, and tracking pixel routes are excluded (they're public unversioned routes, not management API).
 - [ ] Tests: each auto-generated tool round-trips through the MCP server and produces the same output as the underlying endpoint.
 
-### 5.3 Hand-curated tools (where auto-gen is awkward)
-- [ ] **`create_campaign_from_rows`** — replaces the multipart CSV upload with a JSON tool: `{name, original_url, csv_columns, rows: [...]}`. The existing endpoint stays for browser uploads; the MCP variant reuses the same campaign generator.
-- [ ] **`get_url_analytics_summary`** — composes overview + daily + geo into one structured response so the LLM doesn't need 3 calls to answer "how is this URL doing".
-- [ ] **`add_redirect_rule`** — sugar over `POST /urls/{code}/rules` with named arguments per condition type (e.g. `device="ios"`, `language="en"`) instead of a raw conditions list.
-- [ ] **`list_orphan_visits_grouped`** — group by attempted_path so the LLM can spot typo patterns instead of paging through a flat list.
-- [ ] Tests for each curated tool covering the natural-language phrasings we expect.
+### 5.3 Hand-curated tools (where auto-gen is awkward) ✅
+- [x] **`create_campaign_from_rows`** — accepts `rows: list[dict]`, serialises to CSV in-memory, reuses the existing campaign generator.
+- [x] **`get_url_analytics_summary`** — composes totals + daily series + top countries in one call (default 7-day window, bot/pixel filtering aligned with regular analytics endpoints).
+- [x] **`add_redirect_rule`** — sugar over `POST /urls/{code}/rules` with named condition args (device/language/browser/query_param[+value]/before_date/after_date), at least one condition required.
+- [x] **`list_orphan_visits_grouped`** — clusters by `attempted_path`, returns top-N groups with capped sample list (3 per group) and overall totals.
+- [x] Logic in `mcp_server/curated.py` (testable with explicit `db`+`user`); MCP wrappers in `mcp_server/server.py` (auth stub raises until 5.4 lands).
+- [x] Tests in `tests/test_phase53_curated_tools.py` cover registration, happy paths, validation, scoping, bot/pixel toggle.
 
 ### 5.4 Authentication & per-user scoping
 - [ ] Map MCP requests to users via `Authorization: Bearer <api_key>` (reusing the existing `User.api_key` column).
