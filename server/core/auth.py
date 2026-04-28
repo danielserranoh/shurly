@@ -88,6 +88,27 @@ def decode_access_token(token: str) -> dict:
         ) from None
 
 
+def get_user_by_api_key(db: Session, api_key: str) -> User | None:
+    """
+    Phase 5.4 — look up a user by their API key.
+
+    Returns None for unknown / inactive accounts. Centralized here so both the
+    FastAPI bearer dependency and the MCP token verifier share one code path.
+    """
+    if not api_key:
+        return None
+    user = db.query(User).filter(User.api_key == api_key).first()
+    if user is None or not user.is_active:
+        return None
+    return user
+
+
+def _looks_like_jwt(token: str) -> bool:
+    """JWTs are dot-separated 3-part base64. API keys produced by
+    `secrets.token_urlsafe(32)` never contain dots, so this is unambiguous."""
+    return token.count(".") == 2
+
+
 def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security),
     db: Session = Depends(get_db),
@@ -95,26 +116,35 @@ def get_current_user(
     """
     FastAPI dependency to get the current authenticated user.
 
+    Accepts both JWT access tokens (issued by /auth/login) and API keys (issued
+    by /auth/api-key/generate). The token shape disambiguates: JWTs have two
+    dots, API keys never do. JWT validation runs first; if the token isn't a
+    JWT we fall back to the API-key lookup.
+
     Usage in routes:
         @app.get("/protected")
         def protected_route(current_user: User = Depends(get_current_user)):
             ...
     """
     token = credentials.credentials
-    payload = decode_access_token(token)
 
-    email: str = payload.get("sub")
-    if email is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Could not validate credentials",
-        )
+    if _looks_like_jwt(token):
+        payload = decode_access_token(token)
+        email: str | None = payload.get("sub")
+        if email is None:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Could not validate credentials",
+            )
+        user = db.query(User).filter(User.email == email).first()
+    else:
+        user = get_user_by_api_key(db, token)
 
-    user = db.query(User).filter(User.email == email).first()
     if user is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="User not found",
+            detail="Could not validate credentials",
+            headers={"WWW-Authenticate": "Bearer"},
         )
 
     if not user.is_active:

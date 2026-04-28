@@ -61,6 +61,11 @@ EXPECTED_TOOLS: set[str] = {
     "create_tag",
     "update_tag",
     "delete_tag",
+    # Phase 5.3 — hand-curated tools
+    "create_campaign_from_rows",
+    "add_redirect_rule",
+    "get_url_analytics_summary",
+    "list_orphan_visits_grouped",
 }
 
 

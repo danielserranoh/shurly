@@ -111,14 +111,136 @@ def _build_mcp_server() -> FastMCP:
     FastAPI matters here: by the time we reach this function, `main.app` has
     all its routes registered, so the OpenAPI schema FastMCP introspects is
     complete.
+
+    Auth (Phase 5.4): a `ShurlyTokenVerifier` validates the inbound bearer
+    against `User.api_key` (or a JWT). For the auto-generated tools that go
+    through httpx → FastAPI, we install an httpx auth hook that re-attaches
+    the same bearer to the outbound request so `get_current_user` resolves
+    the same user. The `MCP_DISABLE_AUTH=1` escape hatch is for stdio dev
+    only — production deploys must always run with auth on.
     """
+    from mcp_server.auth import ShurlyTokenVerifier, forward_bearer
+
     name = os.getenv("MCP_SERVER_NAME", "shurly")
-    return FastMCP.from_fastapi(
-        app=fastapi_app,
-        name=name,
-        route_maps=EXCLUDED_ROUTE_MAPS,
-        mcp_names=MCP_TOOL_NAMES,
+    auth_disabled = os.getenv("MCP_DISABLE_AUTH") == "1"
+
+    kwargs: dict = {
+        "app": fastapi_app,
+        "name": name,
+        "route_maps": EXCLUDED_ROUTE_MAPS,
+        "mcp_names": MCP_TOOL_NAMES,
+        "httpx_client_kwargs": {"auth": forward_bearer},
+    }
+    if not auth_disabled:
+        kwargs["auth"] = ShurlyTokenVerifier()
+
+    server = FastMCP.from_fastapi(**kwargs)
+    _register_curated_tools(server)
+    return server
+
+
+def _register_curated_tools(server: FastMCP) -> None:
+    """
+    Register Phase 5.3 hand-curated tools alongside the auto-generated set.
+
+    The functions in `mcp_server.curated` take an explicit `db` and `user` so
+    they're trivially testable from pytest. The MCP-facing wrappers open a
+    `SessionLocal` per call and resolve the user from the bearer token via
+    `mcp_server.auth.resolve_current_user` (Phase 5.4).
+    """
+    from mcp_server import curated
+    from mcp_server.auth import resolve_current_user
+
+    @server.tool(
+        name="create_campaign_from_rows",
+        description=(
+            "Create a campaign from a list of row dicts (more LLM-friendly "
+            "than the raw CSV-string variant). All rows must share the same "
+            "keys; each row becomes one personalized short URL."
+        ),
     )
+    def create_campaign_from_rows(
+        name: str,
+        original_url: str,
+        rows: list[dict[str, str]],
+    ) -> dict:
+        from server.core import SessionLocal
+
+        with SessionLocal() as db:
+            return curated.create_campaign_from_rows(
+                db, resolve_current_user(db),
+                name=name, original_url=original_url, rows=rows,
+            )
+
+    @server.tool(
+        name="add_redirect_rule",
+        description=(
+            "Create a redirect rule on a short URL using named condition "
+            "args (device, language, browser, query_param/query_value, "
+            "before_date, after_date). At least one condition is required."
+        ),
+    )
+    def add_redirect_rule(
+        short_code: str,
+        target_url: str,
+        priority: int = 0,
+        device: str | None = None,
+        language: str | None = None,
+        browser: str | None = None,
+        query_param: str | None = None,
+        query_value: str | None = None,
+        before_date: str | None = None,
+        after_date: str | None = None,
+    ) -> dict:
+        from server.core import SessionLocal
+
+        with SessionLocal() as db:
+            return curated.add_redirect_rule(
+                db, resolve_current_user(db),
+                short_code=short_code, target_url=target_url, priority=priority,
+                device=device, language=language, browser=browser,
+                query_param=query_param, query_value=query_value,
+                before_date=before_date, after_date=after_date,
+            )
+
+    @server.tool(
+        name="get_url_analytics_summary",
+        description=(
+            "One-shot analytics for a short URL: totals, daily series, and "
+            "top countries. Avoids three separate calls to overview/daily/geo."
+        ),
+    )
+    def get_url_analytics_summary(
+        short_code: str,
+        days: int = 7,
+        include_bots: bool = False,
+    ) -> dict:
+        from server.core import SessionLocal
+
+        with SessionLocal() as db:
+            return curated.get_url_analytics_summary(
+                db, resolve_current_user(db),
+                short_code=short_code, days=days, include_bots=include_bots,
+            )
+
+    @server.tool(
+        name="list_orphan_visits_grouped",
+        description=(
+            "List orphan visits grouped by attempted_path so typo patterns "
+            "are visible without paginating through a flat event log."
+        ),
+    )
+    def list_orphan_visits_grouped(
+        since_days: int = 30,
+        limit_groups: int = 20,
+    ) -> dict:
+        from server.core import SessionLocal
+
+        with SessionLocal() as db:
+            return curated.list_orphan_visits_grouped(
+                db, resolve_current_user(db),
+                since_days=since_days, limit_groups=limit_groups,
+            )
 
 
 # Module-level instance is what `python -m mcp_server` and any external

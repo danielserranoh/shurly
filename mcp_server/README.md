@@ -148,28 +148,90 @@ redirect rules (4), campaigns (6), analytics (7), tags (4).
 renamed, the test fails until `MCP_TOOL_NAMES` (or `EXCLUDED_ROUTE_MAPS`) is
 updated — forcing a deliberate decision rather than silent surface drift.
 
-Phase 5.3 adds hand-curated tools where auto-generation produces awkward
-shapes. Likely candidates:
+## Hand-curated tools (Phase 5.3)
 
-- `create_campaign_from_rows` — replaces multipart CSV upload with a
-  JSON list of rows, easier to invoke from chat.
-- `get_url_analytics_summary` — composes overview + daily + geo into one
-  call so the LLM doesn't need three separate tool invocations.
-- `add_redirect_rule` — sugar over `POST /urls/{code}/rules` with named
-  args per condition type.
-- `list_orphan_visits_grouped` — clusters by attempted_path so typos
-  are obvious without paginating through a flat list.
+Four workflows produce awkward shapes when projected straight from OpenAPI.
+Phase 5.3 ships hand-written tools alongside the auto-generated set:
 
-## Authentication (Phase 5.4 — not yet)
+- **`create_campaign_from_rows`** — accepts `rows: list[dict]` instead of
+  an embedded CSV string. Serialises in-memory and reuses the existing
+  campaign generator (same uniqueness retry, same `user_data` shape).
+- **`get_url_analytics_summary`** — composes totals + daily series + top
+  countries into one call so the LLM doesn't chain `overview/daily/geo`.
+- **`add_redirect_rule`** — sugar over `POST /urls/{code}/rules` with named
+  condition args (`device="ios"`, `language="en"`, etc.) instead of a raw
+  conditions list.
+- **`list_orphan_visits_grouped`** — clusters orphan visits by
+  `attempted_path` so typo patterns are obvious instead of paginating
+  through a flat event log.
 
-Currently the MCP server inherits whatever the FastAPI app does (i.e.,
-unauthenticated tools that hit the API would also be unauthenticated,
-which is wrong for production). Phase 5.4 plumbs the existing
-`User.api_key` + `ApiKeyScope` enum through the MCP `Authorization: Bearer`
-header to scope tool calls per user.
+The pure logic lives in `mcp_server/curated.py` (takes `db: Session` and
+`user: User` explicitly — easy to test). The MCP-facing wrappers in
+`mcp_server/server.py` open a `SessionLocal` per call. **Auth resolution is
+stubbed until Phase 5.4** — tool listing works; invocation raises a clear
+`NotImplementedError` until the bearer-token plumbing lands.
 
-Until then, this is **local-dev only**. Don't expose the HTTP transport
-to the public internet without auth.
+Total tool surface after Phase 5.3: **40 tools** (36 auto-generated + 4
+curated). The 5.2 contract test (`tests/test_phase52_mcp_tools.py`) and
+the 5.3 logic tests (`tests/test_phase53_curated_tools.py`) together pin
+the surface.
+
+## Authentication (Phase 5.4)
+
+The MCP server validates the inbound `Authorization: Bearer <token>`
+against `User.api_key`. Both API keys and JWTs are accepted (token shape
+disambiguates — JWTs have two dots, API keys never do). The same code path
+backs the FastAPI `get_current_user` dependency, so a single key works in
+either surface.
+
+Two integration points:
+
+1. **`ShurlyTokenVerifier`** (in `mcp_server/auth.py`) — fastmcp
+   `TokenVerifier` subclass. Looks up the bearer in `User.api_key`,
+   returns an `AccessToken` carrying the user id + email + scope.
+   Returning `None` produces a 401 at the MCP layer.
+
+2. **`forward_bearer`** — an httpx `Auth` hook attached via
+   `httpx_client_kwargs={"auth": forward_bearer}`. The auto-generated
+   tools call FastAPI through `httpx.AsyncClient(transport=ASGITransport)`.
+   This hook re-attaches the inbound bearer to the outbound request so
+   `get_current_user` resolves the same user.
+
+Curated tools (Phase 5.3 wrappers) read the AccessToken via
+`get_access_token()` and resolve the User row via
+`resolve_current_user(db)` — no extra header plumbing needed.
+
+### Generating an API key
+
+```bash
+# 1. Get a JWT via /auth/login (or use the existing dashboard).
+# 2. Mint an API key:
+curl -X POST https://s.griddo.io/api/v1/auth/api-key/generate \
+  -H "Authorization: Bearer <jwt>"
+# → {"api_key": "<32-byte url-safe>", "scope": "full_access"}
+# 3. Use it in the MCP client config:
+claude mcp add shurly --transport http \
+    --url https://s.griddo.io/mcp \
+    --header "Authorization: Bearer <api_key>"
+```
+
+Rotation: re-run `POST /auth/api-key/generate` to issue a new key (any
+existing one is replaced). Revocation: `DELETE /auth/api-key`.
+
+### Scope (`ApiKeyScope`)
+
+The `User.api_key_scope` enum exists today (`FULL_ACCESS`, `READ_ONLY`,
+`CREATE_ONLY`, `DOMAIN_SPECIFIC`) but only `FULL_ACCESS` is enforced.
+Adding fine-grained enforcement is a future change — the column is
+already on the AccessToken claims so MCP tools can branch on it once the
+policy is decided.
+
+### Local-dev escape hatch
+
+`MCP_DISABLE_AUTH=1 ./scripts/run_mcp_local.sh` skips the verifier so
+stdio sessions can list (and, once a DB is wired, invoke) tools without
+a key. **Never set this in production.** The wrapper does not set it by
+default.
 
 ## Roadmap reference
 
