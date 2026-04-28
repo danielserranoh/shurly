@@ -553,6 +553,26 @@ Single developer, no SLA. Adding a manual deploy step would only add friction wi
 
 Listed in `BRANCH_STRATEGY.md` § "What we deliberately don't do (yet)". All deferred until pain points justify them.
 
+### Why ECS Express and not Lightsail?
+
+Considered after Phase 4 went live (2026-04-27). Lightsail Containers is **genuinely simpler and slightly cheaper for a standalone service** — predictable $5/mo flat for the Nano tier (0.5 GB RAM, 2 burstable vCPU), HTTPS terminated on the service endpoint with no separate ALB cost, deploy via a single `aws lightsail create-container-service-deployment ...`. No IAM/OIDC, no rule priorities, no blue/green target groups, no rule-sync Lambda.
+
+**Why we kept ECS Express anyway:**
+
+- The ALB is already shared with Shlink at zero marginal cost. Lightsail's standalone-friendly economics don't beat "free" for the load-balancing piece.
+- RDS lives in the same VPC as the Fargate task — connectivity is private and free. Lightsail Containers can reach a VPC via peering but it adds setup we'd have to do.
+- Lightsail vCPU is burstable (shared on a host, with credit budget); Fargate is dedicated. For Shurly's volume the burst is fine, but we'd need to re-validate under sustained load.
+- Migration cost: replicate IAM/OIDC, GitHub Actions, deploy scripts, smoke tests for a different deploy mechanism. Days of work for ~$5/mo savings.
+- Consistency with Shlink (also on ECS Express in `griddo-main`) — splitting services across two products doubles operational surface (different consoles, CLIs, log shapes).
+
+**When Lightsail WOULD be the right call:**
+
+- A new standalone service that doesn't share infrastructure with anything else in the account.
+- A standalone MCP-as-product pilot that wants to ship in a day with predictable pricing.
+- If Shurly's traffic ever shrinks to "I want to pay $5/mo or zero for this", Lightsail is the natural target — at that point the migration cost may be worth the savings.
+
+**Threshold for reconsidering**: if Shurly's compute cost grows (e.g., we stop sharing the ALB, or scale beyond a single Fargate task that the Nano tier can absorb), revisit. For now: stay put.
+
 ---
 
 ## Cross-references

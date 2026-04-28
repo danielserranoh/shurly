@@ -699,12 +699,14 @@ End-to-end run with the user driving SSO locally:
 - [ ] Document the API key generation + rotation flow in `mcp_server/README.md` (rotation already exists via `POST /api/v1/auth/api-key/generate` which returns `{api_key, scope}`).
 
 ### 5.5 Deploy & operational integration
-- [ ] Deploy MCP server alongside the API. Two viable shapes:
-  - **(a)** Same Lambda + same API Gateway, mounted on a different path (`/mcp`). Simpler, single artifact.
-  - **(b)** Separate Lambda + dedicated API Gateway endpoint. Cleaner blast radius if MCP traffic spikes.
-- [ ] Pick one (recommendation: (a) for the pilot) and document the choice.
-- [ ] Make the MCP endpoint reachable from Claude Code via per-user MCP config (`claude_code config add mcp shurly --url https://...`).
+
+**Decision (2026-04-28):** Same ECS task as the FastAPI app, MCP mounted on `/mcp`. Single Docker image, single deployment, shared RDS connection pool. Split into a separate ECS service only if MCP traffic patterns later force independent scaling.
+
+- [ ] Mount the FastMCP app on `main.app` at `/mcp` (Streamable HTTP transport).
+- [ ] Confirm the existing ECS Express service serves both surfaces with no extra ALB rule (same listener, same target group).
+- [ ] Make the MCP endpoint reachable from Claude Code / Claude Desktop via per-user MCP config (`claude mcp add shurly --transport http --url https://s.griddo.io/mcp --header "Authorization: Bearer <api_key>"`).
 - [ ] Verify the existing `RequestIdMiddleware` propagates through the MCP path so logs correlate.
+- [ ] Local stdio server (`scripts/run_mcp_local.sh`) stays as the dev workflow — not replaced by the deploy. Document the dev/prod split in `mcp_server/README.md`.
 - [ ] CloudWatch alarms reuse the API alarms (latency, 5xx) — no new monitoring needed.
 
 ### 5.6 Internal dogfood + signal capture
