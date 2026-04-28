@@ -692,12 +692,15 @@ End-to-end run with the user driving SSO locally:
 - [x] Logic in `mcp_server/curated.py` (testable with explicit `db`+`user`); MCP wrappers in `mcp_server/server.py` (auth stub raises until 5.4 lands).
 - [x] Tests in `tests/test_phase53_curated_tools.py` cover registration, happy paths, validation, scoping, bot/pixel toggle.
 
-### 5.4 Authentication & per-user scoping
-- [ ] Map MCP requests to users via `Authorization: Bearer <api_key>` (reusing the existing `User.api_key` column).
-- [ ] Resolve `current_user` per-request from the bearer token (same code path as the existing JWT dependency, just a different lookup).
-- [ ] Honor the `User.api_key_scope` enum at request time — `FULL_ACCESS` allowed today; `READ_ONLY`/`CREATE_ONLY`/`DOMAIN_SPECIFIC` reserved.
-- [ ] Tests: bad token → 401; valid token → user-scoped queries (URLs / campaigns / rules belong to the caller).
-- [ ] Document the API key generation + rotation flow in `mcp_server/README.md` (rotation already exists via `POST /api/v1/auth/api-key/generate` which returns `{api_key, scope}`).
+### 5.4 Authentication & per-user scoping ✅
+- [x] FastAPI `get_current_user` accepts both JWTs and API keys (token-shape dispatch — JWTs have dots, API keys don't). Single dependency, single test surface.
+- [x] `ShurlyTokenVerifier` validates the inbound MCP bearer against `User.api_key`, populating `AccessToken.claims` with user id + email + scope.
+- [x] httpx `forward_bearer` hook re-attaches the inbound bearer to the outbound FastAPI call so auto-generated tools resolve the same user as the MCP layer.
+- [x] Curated-tool wrappers swap the Phase 5.3 `NotImplementedError` stub for `resolve_current_user(db)` reading from the AccessToken context.
+- [x] `MCP_DISABLE_AUTH=1` escape hatch for local stdio dev (never to be set in prod).
+- [x] `ApiKeyScope` enum surfaced on the AccessToken claims — only `FULL_ACCESS` is enforced today; the rest stay reserved for a future scope-policy phase.
+- [x] Tests: 14 cases covering token-shape dispatch, API-key auth on FastAPI routes (200 / 401), inactive-user rejection, JWT regression, verifier accept/reject, and `resolve_current_user` failure when no token is bound.
+- [x] Documented the API-key mint/rotate/revoke flow in `mcp_server/README.md`.
 
 ### 5.5 Deploy & operational integration
 

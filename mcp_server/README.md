@@ -176,16 +176,62 @@ curated). The 5.2 contract test (`tests/test_phase52_mcp_tools.py`) and
 the 5.3 logic tests (`tests/test_phase53_curated_tools.py`) together pin
 the surface.
 
-## Authentication (Phase 5.4 — not yet)
+## Authentication (Phase 5.4)
 
-Currently the MCP server inherits whatever the FastAPI app does (i.e.,
-unauthenticated tools that hit the API would also be unauthenticated,
-which is wrong for production). Phase 5.4 plumbs the existing
-`User.api_key` + `ApiKeyScope` enum through the MCP `Authorization: Bearer`
-header to scope tool calls per user.
+The MCP server validates the inbound `Authorization: Bearer <token>`
+against `User.api_key`. Both API keys and JWTs are accepted (token shape
+disambiguates — JWTs have two dots, API keys never do). The same code path
+backs the FastAPI `get_current_user` dependency, so a single key works in
+either surface.
 
-Until then, this is **local-dev only**. Don't expose the HTTP transport
-to the public internet without auth.
+Two integration points:
+
+1. **`ShurlyTokenVerifier`** (in `mcp_server/auth.py`) — fastmcp
+   `TokenVerifier` subclass. Looks up the bearer in `User.api_key`,
+   returns an `AccessToken` carrying the user id + email + scope.
+   Returning `None` produces a 401 at the MCP layer.
+
+2. **`forward_bearer`** — an httpx `Auth` hook attached via
+   `httpx_client_kwargs={"auth": forward_bearer}`. The auto-generated
+   tools call FastAPI through `httpx.AsyncClient(transport=ASGITransport)`.
+   This hook re-attaches the inbound bearer to the outbound request so
+   `get_current_user` resolves the same user.
+
+Curated tools (Phase 5.3 wrappers) read the AccessToken via
+`get_access_token()` and resolve the User row via
+`resolve_current_user(db)` — no extra header plumbing needed.
+
+### Generating an API key
+
+```bash
+# 1. Get a JWT via /auth/login (or use the existing dashboard).
+# 2. Mint an API key:
+curl -X POST https://s.griddo.io/api/v1/auth/api-key/generate \
+  -H "Authorization: Bearer <jwt>"
+# → {"api_key": "<32-byte url-safe>", "scope": "full_access"}
+# 3. Use it in the MCP client config:
+claude mcp add shurly --transport http \
+    --url https://s.griddo.io/mcp \
+    --header "Authorization: Bearer <api_key>"
+```
+
+Rotation: re-run `POST /auth/api-key/generate` to issue a new key (any
+existing one is replaced). Revocation: `DELETE /auth/api-key`.
+
+### Scope (`ApiKeyScope`)
+
+The `User.api_key_scope` enum exists today (`FULL_ACCESS`, `READ_ONLY`,
+`CREATE_ONLY`, `DOMAIN_SPECIFIC`) but only `FULL_ACCESS` is enforced.
+Adding fine-grained enforcement is a future change — the column is
+already on the AccessToken claims so MCP tools can branch on it once the
+policy is decided.
+
+### Local-dev escape hatch
+
+`MCP_DISABLE_AUTH=1 ./scripts/run_mcp_local.sh` skips the verifier so
+stdio sessions can list (and, once a DB is wired, invoke) tools without
+a key. **Never set this in production.** The wrapper does not set it by
+default.
 
 ## Roadmap reference
 
