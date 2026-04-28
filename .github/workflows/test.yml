@@ -27,11 +27,13 @@ jobs:
         curl -LsSf https://astral.sh/uv/install.sh | sh
         echo "$HOME/.cargo/bin" >> $GITHUB_PATH
 
-    - name: Install dependencies (with dev extras)
+    - name: Install dependencies (dev + mcp extras)
       # ruff and pytest live in the [dev] optional-dependencies group; without
       # --extra dev `uv sync` skips them and the lint step fails to spawn ruff.
+      # --extra mcp pulls fastmcp so the Phase 5 / Phase 5.5 tests don't get
+      # silently skipped via `pytest.importorskip("fastmcp")`.
       run: |
-        uv sync --extra dev
+        uv sync --extra dev --extra mcp
 
     - name: Lint with ruff
       # Pre-existing lint/format debt across the codebase (35 errors,

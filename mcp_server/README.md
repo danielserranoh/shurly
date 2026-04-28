@@ -104,17 +104,31 @@ suite uses. Tool **listing** doesn't need the DB and works fine. Tool
 **invocation** against real data needs a live DB and is wired up in
 Phase 5.4 (auth + per-user scoping against the deployed API).
 
-### Streamable HTTP transport (deployed)
+### Streamable HTTP transport (production — Phase 5.5)
 
-Useful for testing the transport that production will use (Phase 5.5).
-Bind to a local port:
+The MCP server is mounted on the main FastAPI app at `/mcp` and ships in
+the same Docker image / ECS task as the regular API. Production endpoint:
 
-```bash
-uv run python -m mcp_server --http --port 9000
+```
+https://s.griddo.io/mcp
 ```
 
-The MCP endpoint is then reachable at `http://localhost:9000/mcp` (or
-similar, depending on `fastmcp` defaults — check the startup log).
+Single deployment, single Dockerfile, single ALB rule — same SLO as the
+rest of the API. The `_try_build_mcp_app` hook in `main.py` is conditional
+on the `[mcp]` extra, so dev environments running `uv sync` (without
+`--extra mcp`) keep working as before.
+
+#### Standalone HTTP for local debugging
+
+If you want to exercise the transport without spinning up the whole API:
+
+```bash
+uv run --extra mcp python -m mcp_server --http --port 9000
+```
+
+The MCP endpoint is reachable at `http://localhost:9000/mcp/`. Useful when
+iterating on transport-level concerns (auth, session lifecycle) without the
+overhead of the full app.
 
 For programmatic clients:
 
@@ -125,6 +139,28 @@ async with Client("http://localhost:9000/mcp") as client:
     tools = await client.list_tools()
     print([t.name for t in tools])
 ```
+
+#### Registering the deployed endpoint with Claude Desktop / Claude Code
+
+```bash
+# 1. Mint an API key (one-time):
+curl -X POST https://s.griddo.io/api/v1/auth/api-key/generate \
+    -H "Authorization: Bearer <jwt>"
+# → {"api_key": "<32-byte url-safe>", "scope": "full_access"}
+
+# 2. Register the deployed MCP:
+claude mcp add shurly --transport http \
+    --url https://s.griddo.io/mcp \
+    --header "Authorization: Bearer <api_key>"
+```
+
+#### Operational escape hatches
+
+- `MCP_DISABLE_MOUNT=1` — skip the `/mcp` mount entirely. Use during
+  incident response if the MCP layer is implicated; lets the API keep
+  serving without rebuilding the image.
+- `MCP_DISABLE_AUTH=1` — skip the verifier (stdio dev only — never set
+  in prod).
 
 ## Auto-generated tool surface (Phase 5.2)
 
