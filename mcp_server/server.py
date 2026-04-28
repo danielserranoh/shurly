@@ -111,14 +111,30 @@ def _build_mcp_server() -> FastMCP:
     FastAPI matters here: by the time we reach this function, `main.app` has
     all its routes registered, so the OpenAPI schema FastMCP introspects is
     complete.
+
+    Auth (Phase 5.4): a `ShurlyTokenVerifier` validates the inbound bearer
+    against `User.api_key` (or a JWT). For the auto-generated tools that go
+    through httpx → FastAPI, we install an httpx auth hook that re-attaches
+    the same bearer to the outbound request so `get_current_user` resolves
+    the same user. The `MCP_DISABLE_AUTH=1` escape hatch is for stdio dev
+    only — production deploys must always run with auth on.
     """
+    from mcp_server.auth import ShurlyTokenVerifier, forward_bearer
+
     name = os.getenv("MCP_SERVER_NAME", "shurly")
-    server = FastMCP.from_fastapi(
-        app=fastapi_app,
-        name=name,
-        route_maps=EXCLUDED_ROUTE_MAPS,
-        mcp_names=MCP_TOOL_NAMES,
-    )
+    auth_disabled = os.getenv("MCP_DISABLE_AUTH") == "1"
+
+    kwargs: dict = {
+        "app": fastapi_app,
+        "name": name,
+        "route_maps": EXCLUDED_ROUTE_MAPS,
+        "mcp_names": MCP_TOOL_NAMES,
+        "httpx_client_kwargs": {"auth": forward_bearer},
+    }
+    if not auth_disabled:
+        kwargs["auth"] = ShurlyTokenVerifier()
+
+    server = FastMCP.from_fastapi(**kwargs)
     _register_curated_tools(server)
     return server
 
@@ -128,19 +144,12 @@ def _register_curated_tools(server: FastMCP) -> None:
     Register Phase 5.3 hand-curated tools alongside the auto-generated set.
 
     The functions in `mcp_server.curated` take an explicit `db` and `user` so
-    they're trivially testable from pytest. The MCP-facing wrappers below
-    open a `SessionLocal` per call and resolve the user from the request's
-    bearer token — but the bearer plumbing lands in Phase 5.4. Until then
-    invocation raises a helpful error; tool LISTING works (the signatures
-    are introspected without calling the wrapper).
+    they're trivially testable from pytest. The MCP-facing wrappers open a
+    `SessionLocal` per call and resolve the user from the bearer token via
+    `mcp_server.auth.resolve_current_user` (Phase 5.4).
     """
     from mcp_server import curated
-
-    def _require_auth_user() -> User:  # noqa: F821 — fwd ref, resolved at call time
-        raise NotImplementedError(
-            "MCP auth plumbing arrives in Phase 5.4. Until then, curated "
-            "tools are only callable from pytest with an explicit user."
-        )
+    from mcp_server.auth import resolve_current_user
 
     @server.tool(
         name="create_campaign_from_rows",
@@ -159,7 +168,7 @@ def _register_curated_tools(server: FastMCP) -> None:
 
         with SessionLocal() as db:
             return curated.create_campaign_from_rows(
-                db, _require_auth_user(),
+                db, resolve_current_user(db),
                 name=name, original_url=original_url, rows=rows,
             )
 
@@ -187,7 +196,7 @@ def _register_curated_tools(server: FastMCP) -> None:
 
         with SessionLocal() as db:
             return curated.add_redirect_rule(
-                db, _require_auth_user(),
+                db, resolve_current_user(db),
                 short_code=short_code, target_url=target_url, priority=priority,
                 device=device, language=language, browser=browser,
                 query_param=query_param, query_value=query_value,
@@ -210,7 +219,7 @@ def _register_curated_tools(server: FastMCP) -> None:
 
         with SessionLocal() as db:
             return curated.get_url_analytics_summary(
-                db, _require_auth_user(),
+                db, resolve_current_user(db),
                 short_code=short_code, days=days, include_bots=include_bots,
             )
 
@@ -229,7 +238,7 @@ def _register_curated_tools(server: FastMCP) -> None:
 
         with SessionLocal() as db:
             return curated.list_orphan_visits_grouped(
-                db, _require_auth_user(),
+                db, resolve_current_user(db),
                 since_days=since_days, limit_groups=limit_groups,
             )
 
