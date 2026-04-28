@@ -126,22 +126,27 @@ async with Client("http://localhost:9000/mcp") as client:
     print([t.name for t in tools])
 ```
 
-## What's auto-generated (Phase 5.1 baseline)
+## Auto-generated tool surface (Phase 5.2)
 
-Every FastAPI route becomes an MCP tool, including:
+Phase 5.1 produced 47 raw tools — every FastAPI route, verbatim. Phase 5.2
+filters and renames that set down to **36 LLM-facing tools** with clean names.
 
-- All `/api/v1/auth/*` endpoints (register, login, change-password, api-key)
-- All `/api/v1/urls/*` endpoints (CRUD, OG preview, tagging)
-- All `/api/v1/campaigns/*` endpoints (CSV upload included — see Phase 5.3 caveat)
-- All `/api/v1/analytics/*` endpoints (overview, daily/weekly/geo, orphans)
-- All `/api/v1/tags/*` endpoints
-- All `/api/v1/urls/{code}/rules` endpoints (Phase 3.10.2 redirect rules)
-- The public unversioned routes: `/{code}` redirect, `/{code}/track` pixel, `/robots.txt`, `/`
+Two filters live in `mcp_server/server.py`:
 
-Phase 5.2 audits this list — some of these aren't useful as MCP tools
-(the redirect path, the pixel, robots.txt are public-facing endpoints
-that an LLM should never call directly). We'll filter them out of the
-generated tool set.
+- **`EXCLUDED_ROUTE_MAPS`** — drops public unversioned routes (`/`,
+  `/{short_code}` redirect, `/{short_code}/track` pixel, `/robots.txt`),
+  health probes (`/api/v1/health`, `/api/v1/health/db`), and the legacy
+  `/api/v1/stats/*` namespace superseded by `/api/v1/analytics/*`.
+- **`MCP_TOOL_NAMES`** — maps FastAPI's verbose auto-generated operationIds
+  (`create_short_url_api_v1_urls_post`) to clean MCP tool names
+  (`create_short_url`).
+
+The 36-tool surface covers: auth (6), URL CRUD + tagging + previews (9),
+redirect rules (4), campaigns (6), analytics (7), tags (4).
+
+`tests/test_phase52_mcp_tools.py` pins this list. When a route is added or
+renamed, the test fails until `MCP_TOOL_NAMES` (or `EXCLUDED_ROUTE_MAPS`) is
+updated — forcing a deliberate decision rather than silent surface drift.
 
 Phase 5.3 adds hand-curated tools where auto-generation produces awkward
 shapes. Likely candidates:
