@@ -55,7 +55,7 @@ jobs:
       # bad image lands in ECR and the running service stays untouched.
       - name: Install deps + run tests
         run: |
-          uv sync --extra dev
+          uv sync --extra dev --extra mcp
           uv run pytest -q
 
       - name: Configure AWS credentials (OIDC)

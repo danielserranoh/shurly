@@ -702,16 +702,19 @@ End-to-end run with the user driving SSO locally:
 - [x] Tests: 14 cases covering token-shape dispatch, API-key auth on FastAPI routes (200 / 401), inactive-user rejection, JWT regression, verifier accept/reject, and `resolve_current_user` failure when no token is bound.
 - [x] Documented the API-key mint/rotate/revoke flow in `mcp_server/README.md`.
 
-### 5.5 Deploy & operational integration
+### 5.5 Deploy & operational integration ✅
 
 **Decision (2026-04-28):** Same ECS task as the FastAPI app, MCP mounted on `/mcp`. Single Docker image, single deployment, shared RDS connection pool. Split into a separate ECS service only if MCP traffic patterns later force independent scaling.
 
-- [ ] Mount the FastMCP app on `main.app` at `/mcp` (Streamable HTTP transport).
-- [ ] Confirm the existing ECS Express service serves both surfaces with no extra ALB rule (same listener, same target group).
-- [ ] Make the MCP endpoint reachable from Claude Code / Claude Desktop via per-user MCP config (`claude mcp add shurly --transport http --url https://s.griddo.io/mcp --header "Authorization: Bearer <api_key>"`).
-- [ ] Verify the existing `RequestIdMiddleware` propagates through the MCP path so logs correlate.
-- [ ] Local stdio server (`scripts/run_mcp_local.sh`) stays as the dev workflow — not replaced by the deploy. Document the dev/prod split in `mcp_server/README.md`.
-- [ ] CloudWatch alarms reuse the API alarms (latency, 5xx) — no new monitoring needed.
+- [x] Mounted FastMCP app on `main.app` at `/mcp` (Streamable HTTP transport). Lifespan forwarded so the MCP session manager starts/stops with the host.
+- [x] Resolved a `main → mcp_server.server → main` circular import via PEP 562 lazy `__getattr__` on the module-level `mcp_server` symbol + an explicit `build_mcp_for_app(app)` helper used by the in-process mount.
+- [x] Same ECS Express service, same ALB target group — `/mcp` is just another path on `s.griddo.io`. No new ALB rule, no new TG, no new CloudWatch alarms.
+- [x] Dockerfile bumped to `uv sync --no-dev --frozen --extra mcp` so the prod image carries fastmcp; `mcp_server/` directory copied into the image.
+- [x] `MCP_DISABLE_MOUNT=1` runtime escape hatch — skips the mount without rebuilding (incident response).
+- [x] `RequestIdMiddleware` runs at the FastAPI layer, before the mount, so MCP requests inherit the same `x-request-id` correlation as `/api/v1/*`.
+- [x] CI workflows (`test.yml`, `deploy-backend.yml`) install with `--extra mcp` so the Phase 5 tests don't get silently skipped.
+- [x] Local stdio server (`scripts/run_mcp_local.sh`) stays as the dev workflow — not replaced by the deploy.
+- [x] Documented the dev/prod split, registration, and escape hatches in `mcp_server/README.md`.
 
 ### 5.6 Internal dogfood + signal capture
 - [ ] Roll out to the Griddo team: 3–5 internal users with API keys.

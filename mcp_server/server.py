@@ -25,8 +25,6 @@ import os
 from fastmcp import FastMCP
 from fastmcp.server.providers.openapi import MCPType, RouteMap
 
-from main import app as fastapi_app
-
 # Routes that exist in the FastAPI app but should NOT be MCP tools.
 #
 # Public-facing infrastructure: an LLM driving the API has no business
@@ -102,15 +100,15 @@ MCP_TOOL_NAMES: dict[str, str] = {
 }
 
 
-def _build_mcp_server() -> FastMCP:
+def _build_mcp_server(fastapi_app=None) -> FastMCP:
     """
-    Build the MCP server from the FastAPI app.
+    Build the MCP server from a FastAPI app.
 
-    Kept as a function so consumers (entry point, tests) can rebuild a fresh
-    instance instead of sharing module-level state. The decorator order in
-    FastAPI matters here: by the time we reach this function, `main.app` has
-    all its routes registered, so the OpenAPI schema FastMCP introspects is
-    complete.
+    `fastapi_app` defaults to the lazily-imported `main.app` so existing
+    callers (stdio entry point, tests) keep working unchanged. The Phase 5.5
+    deploy mount in `main.create_app()` calls this function explicitly with
+    the in-construction app to avoid a circular import (main → mcp_server →
+    main).
 
     Auth (Phase 5.4): a `ShurlyTokenVerifier` validates the inbound bearer
     against `User.api_key` (or a JWT). For the auto-generated tools that go
@@ -120,6 +118,9 @@ def _build_mcp_server() -> FastMCP:
     only — production deploys must always run with auth on.
     """
     from mcp_server.auth import ShurlyTokenVerifier, forward_bearer
+
+    if fastapi_app is None:
+        from main import app as fastapi_app  # local import — see docstring
 
     name = os.getenv("MCP_SERVER_NAME", "shurly")
     auth_disabled = os.getenv("MCP_DISABLE_AUTH") == "1"
@@ -137,6 +138,11 @@ def _build_mcp_server() -> FastMCP:
     server = FastMCP.from_fastapi(**kwargs)
     _register_curated_tools(server)
     return server
+
+
+def build_mcp_for_app(fastapi_app):
+    """Public alias used by `main.create_app()` during the lifespan/mount setup."""
+    return _build_mcp_server(fastapi_app=fastapi_app)
 
 
 def _register_curated_tools(server: FastMCP) -> None:
@@ -243,7 +249,18 @@ def _register_curated_tools(server: FastMCP) -> None:
             )
 
 
-# Module-level instance is what `python -m mcp_server` and any external
-# embedders pick up. Kept lazily-evaluated against the current app object so
-# changes to FastAPI routes during development hot-reload also take effect.
-mcp_server: FastMCP = _build_mcp_server()
+# Module-level lazy instance. The stdio entry point and external embedders
+# import `mcp_server.server.mcp_server` and expect a built FastMCP. We can't
+# build it at module-load time because `main.app` isn't ready yet when this
+# module is imported during `main.create_app()` (Phase 5.5 mount). PEP 562
+# `__getattr__` defers construction until first access, breaking the cycle.
+_mcp_server_singleton: FastMCP | None = None
+
+
+def __getattr__(name: str):
+    global _mcp_server_singleton
+    if name == "mcp_server":
+        if _mcp_server_singleton is None:
+            _mcp_server_singleton = _build_mcp_server()
+        return _mcp_server_singleton
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
