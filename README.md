@@ -26,7 +26,7 @@ A modern, full-stack URL shortener with analytics and campaign management, built
 - **uv** + **ruff** + **pytest** — packaging, linting, testing (336 tests)
 
 ### Frontend
-- **Astro 6**, fully static output (`frontend/dist/` can be served from S3/any CDN), vanilla TypeScript islands
+- **Astro 7** (Vite 8), fully static output (`frontend/dist/` can be served from S3/any CDN), vanilla TypeScript islands
 - **Tailwind CSS 4** via **`@tailwindcss/vite`**. The design tokens live in `src/styles/global.css` (`@theme`)
 - **Lucide** icons, self-hosted **Inter / Bricolage Grotesque / JetBrains Mono** variable fonts, **uqr** for QR codes
 - Design system: [`design/DESIGN_SYSTEM.md`](design/DESIGN_SYSTEM.md) and the live styleguide at `/styleguide/`
@@ -34,7 +34,7 @@ A modern, full-stack URL shortener with analytics and campaign management, built
 ## Prerequisites
 
 - Python 3.10 or higher
-- Node.js 20.19+ or 22.12+ (Astro 6 requirement)
+- Node.js 22.12+ (Astro 7 requirement)
 - PostgreSQL database (14 or higher recommended)
 - [uv](https://github.com/astral-sh/uv) (Python package installer)
 
@@ -164,6 +164,10 @@ npm run dev
 
 The frontend will be available at `http://localhost:4232`
 
+**First run:** there is no default account. Open `http://localhost:4232/register/` and sign up with any
+email and a password of 8+ characters; you're signed in straight away. Accounts live in your local
+database, so each environment needs its own.
+
 #### Configuration (optional, build-time)
 
 | Variable | Default | Purpose |
@@ -279,7 +283,7 @@ shurly/
 ├── design/
 │   ├── DESIGN_SYSTEM.md           # Brand, tokens, patterns, paywall rules, brief decisions
 │   └── brand/                     # Logo SVG/PNG exports + usage (README.md)
-├── frontend/                      # Astro 6 + Tailwind 4, static output
+├── frontend/                      # Astro 7 + Tailwind 4, static output
 │   ├── public/                    # Favicons, manifest, og-image, brand/
 │   └── src/
 │       ├── styles/global.css      # Design tokens (@theme) + component classes

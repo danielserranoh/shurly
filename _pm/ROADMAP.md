@@ -555,6 +555,7 @@ System creates:
       list `q` + repeatable `url_type`, `click_count` / `campaign_id` / `user_data` on URLs,
       `short_url` + `title` in overview `top_urls`, tags on campaign detail
 - [x] Verified: 336 tests, `astro check` clean, e2e smoke of 14 core flows, 1440 px + 390 px layouts
+- [x] Astro 7.3.4 upgrade (Vite 8): rendered text + screenshots match the Astro 6 build
 - [ ] Custom-preview badge on link cards; campaign edit screen; Pro billing (pricing TBD)
 
 ---

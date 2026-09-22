@@ -17,7 +17,7 @@ This project follows a **pragmatic, TDD-driven** development philosophy:
 
 ### 1. **Project Overview** (5 min)
 Read [README.md](README.md) to understand:
-- Tech stack (FastAPI + Astro 6 + PostgreSQL)
+- Tech stack (FastAPI + Astro 7 + PostgreSQL)
 - Project structure
 - API endpoints (versioned under `/api/v1/`)
 - How to run locally
@@ -46,7 +46,7 @@ paywall rules) and browse `/styleguide/` in the running frontend.
 ## Project Architecture at a Glance
 
 ```
-Backend (FastAPI)               Frontend (Astro 6 + Tailwind 4)
+Backend (FastAPI)               Frontend (Astro 7 + Tailwind 4)
 ├── /api/v1/auth/*              ├── /, /login, /register, /styleguide
 ├── /api/v1/urls/*              ├── /dashboard (links), /dashboard/create
 │   └── /rules                  ├── /dashboard/link/?code=…
@@ -91,7 +91,7 @@ Backend (FastAPI)               Frontend (Astro 6 + Tailwind 4)
 1. **Understand the context**: Check related code and tests first.
 2. **Write tests**: Add/update tests before implementing (TDD).
 3. **Implement**: Make changes to pass the tests.
-4. **Verify**: Run `uv run pytest` — all 285 tests must pass.
+4. **Verify**: Run `uv run pytest` — all 336 tests must pass.
 5. **Lint**: `uv run ruff check server tests main.py` (focus on the files you touched).
 6. **Commit**: Use clear, descriptive commit messages following the existing pattern (`feat: Phase X.Y.Z — …`).
 
@@ -113,6 +113,8 @@ Backend (FastAPI)               Frontend (Astro 6 + Tailwind 4)
   - Tailwind 4 CSS-first config in `src/styles/global.css`: design tokens (`@theme`) + component classes (`btn`, `card`, `tag`, …)
   - **Static output, no adapter**: record pages use query params (`/dashboard/link/?code=`), never `[param].astro`
   - Render dynamic HTML with the escaping `html` tag from `@/utils/html` (never raw `innerHTML` with API data)
+  - Astro 7 strips whitespace with JSX rules (`compressHTML: 'jsx'`): a line break between text and an inline
+    element renders as *no* space. Keep them on one line or write `{' '}` (e.g. `</b>{' '}` then `{caption}`)
   - Copy follows the voice in `design/DESIGN_SYSTEM.md` (sentence case, "link" not "URL")
 
 - **Testing**:

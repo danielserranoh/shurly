@@ -27,7 +27,7 @@ const isDo = kind === 'do';
       <Icon name={isDo ? 'check' : 'x'} class="size-3.5" strokeWidth={3} />
     </span>
     <p class="min-w-0 text-ink-700">
-      <b class:list={['font-semibold', isDo ? 'text-brand-800' : 'text-red-700']}>{isDo ? 'Do' : 'Don’t'}</b>
+      <b class:list={['font-semibold', isDo ? 'text-brand-800' : 'text-red-700']}>{isDo ? 'Do' : 'Don’t'}</b>{' '}
       {caption}
     </p>
   </figcaption>

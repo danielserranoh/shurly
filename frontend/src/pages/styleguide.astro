@@ -832,12 +832,12 @@ const colorCount = allColors.length;
               spacing.map((s) => (
                 <li class="grid grid-cols-[4.5rem_minmax(0,1fr)] items-center gap-4 py-2.5 sm:grid-cols-[4.5rem_5rem_minmax(0,1fr)]">
                   <p class="text-sm font-semibold text-ink-950">
-                    {s.px}
+                    {s.px}{' '}
                     <span class="font-normal text-ink-500">px</span>
                   </p>
                   <span class="block h-4 rounded-[3px] bg-brand-400" style={`width:${s.px}px`} aria-hidden="true" />
                   <p class="col-span-2 text-sm text-ink-600 sm:col-span-1">
-                    <span class="inline-block w-6 font-mono text-[11px] text-ink-500">{s.t}</span>
+                    <span class="inline-block w-6 font-mono text-[11px] text-ink-500">{s.t}</span>{' '}
                     {s.use}
                   </p>
                 </li>

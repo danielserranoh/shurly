@@ -182,6 +182,16 @@ implementation lifecycle and is independent of the URL version segment.
 - Default `CORS_ORIGINS` includes the frontend dev server
   (`http://localhost:4232`).
 
+### Changed — Astro 7
+- Frontend upgraded to **Astro 7.3.4** (Vite 8, Rust compiler) with
+  `@tailwindcss/vite`/`tailwindcss` 4.3.3 and `@astrojs/check` 0.9.10.
+  Requires Node.js ≥ 22.12. The `vite ^7.3.2` npm override was removed
+  (Astro 7 needs Vite ≥ 8.0.13); `npm audit` is clean.
+- Astro 7 compresses HTML with JSX whitespace rules (`compressHTML: 'jsx'`).
+  Three styleguide templates relied on a line break for a space and now use
+  an explicit `{' '}`. Every page's rendered text and screenshots (1440 and
+  390 px) were compared against the Astro 6 build and match.
+
 ### Frontend
 - Astro 4 → 6 upgrade. `@astrojs/tailwind` (deprecated for Astro ≥ 5)
   replaced with `@tailwindcss/vite` + Tailwind 4 (CSS-first config in
