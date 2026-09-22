@@ -1,4 +1,6 @@
+import os
 import uuid
+from contextlib import asynccontextmanager
 
 import uvicorn
 from fastapi import FastAPI, Request
@@ -28,15 +30,91 @@ class RequestIdMiddleware(BaseHTTPMiddleware):
         return response
 
 
+def _try_build_mcp_app(fastapi_app):
+    """
+    Phase 5.5 — Build the MCP Streamable HTTP app for mounting under `/mcp`.
+
+    Returns `None` when:
+      * the `[mcp]` extra isn't installed (dev environments running just the API),
+      * `MCP_DISABLE_MOUNT=1` is set (escape hatch for incident response).
+
+    Production images install `--extra mcp` so the mount is active by default.
+    Takes the in-construction FastAPI app explicitly to avoid a circular
+    import (the MCP layer's auto-generated tools introspect this app via
+    `from_fastapi(app=...)`).
+    """
+    if os.getenv("MCP_DISABLE_MOUNT") == "1":
+        return None
+    try:
+        from mcp_server.server import build_mcp_for_app
+    except ImportError:
+        return None
+    server = build_mcp_for_app(fastapi_app)
+    # `path="/"` because we mount the result under `/mcp` — fastmcp would
+    # otherwise produce double-prefixed URLs.
+    return server.http_app(path="/", transport="http")
+
+
+def _seed_database():
+    """
+    Create the schema if missing, then seed the default domain and predefined tag set.
+
+    `Base.metadata.create_all()` is idempotent — only creates tables that don't
+    exist. Safe on every container start. Switch to Alembic when migrations
+    arrive; until then this avoids a separate bootstrap step against an RDS
+    that lives inside the VPC.
+    """
+    from server.core import Base, engine
+    from server.core.models import (  # noqa: F401 — register models with Base
+        URL,
+        Campaign,
+        Domain,
+        OrphanVisit,
+        RedirectRule,
+        Tag,
+        User,
+        Visitor,
+    )
+    from server.utils.domain import get_or_create_default_domain
+    from server.utils.tags import initialize_predefined_tags
+
+    Base.metadata.create_all(bind=engine)
+
+    db = next(get_db())
+    try:
+        initialize_predefined_tags(db)
+        get_or_create_default_domain(db)
+    finally:
+        db.close()
+
+
 def create_app() -> FastAPI:
     """Create and configure the FastAPI application."""
+
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        # `TESTING=1` skips DB seeding (conftest manages the in-memory schema).
+        if not os.getenv("TESTING"):
+            _seed_database()
+
+        # `app.state.mcp_app` is set during construction below (after the
+        # routers are registered, so the MCP introspection sees them all).
+        # The lifespan executes only after construction returns, so reading
+        # state here is safe even though the value is set later in the call.
+        mounted_mcp = getattr(app.state, "mcp_app", None)
+        if mounted_mcp is not None:
+            async with mounted_mcp.lifespan(app):
+                yield
+        else:
+            yield
+
     app = FastAPI(
         title=settings.api_title,
         version=settings.api_version,
         description=settings.api_description,
+        lifespan=lifespan,
     )
 
-    # Add CORS middleware
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origins,
@@ -49,53 +127,25 @@ def create_app() -> FastAPI:
     # response, including the OPTIONS preflight handled by CORSMiddleware.
     app.add_middleware(RequestIdMiddleware)
 
-    # Include API routes under /api/v1 (versioned API)
+    # Versioned API.
     app.include_router(api_router, prefix="/api/v1")
 
-    # Include redirect endpoint at root level (/{short_code})
+    # Public unversioned routes (redirect, robots, pixel, landing).
     app.include_router(redirect_router)
 
-    @app.on_event("startup")
-    async def startup_event():
-        """
-        Create the schema if missing, then seed the default domain and the
-        predefined tag set.
-
-        Schema creation here uses `Base.metadata.create_all()` which is idempotent:
-        it only creates tables that don't exist, never drops or alters. That makes
-        it safe to run on every container start. When we have non-trivial migrations
-        we'll switch to Alembic; until then this avoids needing a separate
-        bootstrap step against an RDS that lives inside the VPC.
-        """
-        import os
-
-        # Skip during testing — conftest.py manages the in-memory schema.
-        if os.getenv("TESTING"):
-            return
-
-        from server.core import Base, engine
-        from server.core.models import (  # noqa: F401 — register models with Base
-            URL,
-            Campaign,
-            Domain,
-            OrphanVisit,
-            RedirectRule,
-            Tag,
-            User,
-            Visitor,
-        )
-        from server.utils.domain import get_or_create_default_domain
-        from server.utils.tags import initialize_predefined_tags
-
-        Base.metadata.create_all(bind=engine)
-
-        db = next(get_db())
-        try:
-            initialize_predefined_tags(db)
-            # Phase 3.10.1 — seed default domain so URLs always have a host.
-            get_or_create_default_domain(db)
-        finally:
-            db.close()
+    # Phase 5.5 — Streamable HTTP MCP transport at /mcp. Built AFTER the
+    # routers are registered so fastmcp's OpenAPI introspection sees the
+    # full route graph. Mounted last so the FastAPI routes take precedence
+    # on every other path. Build is conditional on the [mcp] extra being
+    # installed (returns None in dev environments without fastmcp).
+    mcp_app = _try_build_mcp_app(app)
+    if mcp_app is not None:
+        app.mount("/mcp", mcp_app)
+        # Late-bind the lifespan so the MCP session manager starts/stops
+        # with the host. We can't read `mcp_app` from the lifespan closure
+        # at app-construction time (it's built right above), so we attach a
+        # router-level startup that delegates to the MCP lifespan.
+        app.state.mcp_app = mcp_app
 
     return app
 

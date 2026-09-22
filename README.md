@@ -128,6 +128,7 @@ SHORT_URL_MODE=loose                       # "loose" lowercases codes/slugs
 DEFAULT_DOMAIN=shurl.griddo.io             # Seeded at startup
 REDIRECT_STATUS_CODE=302                   # 301 / 302 / 307 / 308
 REDIRECT_CACHE_LIFETIME=0                  # Seconds; 0 = no-cache
+OG_FETCH_ALLOW_PRIVATE=false               # true only to preview localhost pages in dev
 ```
 
 #### Initialize the Database
@@ -426,6 +427,7 @@ Note: Update the Docker configuration with environment variables for production 
 - **Authorization**: user-scoped resources for URLs / campaigns / tags
 - **GDPR by default**: visitor IPs anonymized at insert (`/24` IPv4, `/64` IPv6); toggle with `ANONYMIZE_REMOTE_ADDR`
 - **Trusted-proxy allowlist**: `X-Forwarded-For` is **never** trusted unless the request source is in `TRUSTED_PROXIES` (CIDRs)
+- **SSRF-safe link previews**: the Open Graph fetcher only requests http(s) URLs whose host resolves exclusively to public addresses (no loopback, private, link-local/cloud metadata), re-checks every redirect hop (max 5), and connects to the checked IP so DNS rebinding can't swap it; `OG_FETCH_ALLOW_PRIVATE=true` relaxes this for local development only
 - **Default-deny crawlability**: short URLs are excluded from `/robots.txt` unless explicitly marked `crawlable=true`
 - **Bot-aware analytics**: visits classified at log time; bots excluded from click counts
 - **X-Request-Id correlation**: every response carries a request id (echoed if supplied) for log tracing

@@ -33,8 +33,11 @@ dev = [
 # Phase 5 — MCP server. Optional so it doesn't bloat the production image
 # unless deliberately enabled. Install with `uv sync --extra mcp` for local
 # development of the MCP transport surface.
+# fastmcp 4 moved its HTTP stack to httpx2 (see mcp_server/auth.py). Capped
+# below 5 because uv.lock is not committed: every CI run and deploy resolves
+# the newest release, so an unbounded spec lets a new major land unreviewed.
 mcp = [
-    "fastmcp>=0.4.0",
+    "fastmcp>=4,<5",
 ]
 
 [build-system]

@@ -26,6 +26,30 @@ implementation lifecycle and is independent of the URL version segment.
 
 ## [Unreleased]
 
+### Security
+- **SSRF hardening for the Open Graph fetcher.** Link previews are fetched
+  server-side from user-supplied URLs (`POST /api/v1/urls`,
+  `POST /api/v1/urls/custom`, `POST /api/v1/urls/{code}/refresh-preview`), so any
+  authenticated user could make the API request internal addresses (loopback,
+  RFC 1918, the link-local cloud metadata endpoints `169.254.169.254` /
+  `169.254.170.2`) and read page titles and descriptions back.
+  `fetch_opengraph_metadata` now:
+  - fetches only `http` / `https` URLs;
+  - resolves the host and refuses it unless **every** address is globally
+    routable: no private, loopback, link-local, reserved, multicast, unspecified
+    or shared (`100.64.0.0/10`) addresses, with IPv4-mapped and 6to4 IPv6 forms
+    checked as the IPv4 address they carry;
+  - connects to the address it checked, while the `Host` header and TLS
+    (SNI + certificate verification) keep the hostname, so DNS rebinding can't
+    swap in an internal IP after the check;
+  - follows redirects manually, re-checking every hop, up to 5 (previously
+    httpx's default of 20, unchecked).
+  A refused fetch returns empty metadata like any other fetch failure, so URL
+  creation never breaks.
+- **`OG_FETCH_ALLOW_PRIVATE`** (default `false`) disables the address check so
+  local development can preview pages served from `localhost`. Never enable it
+  in production.
+
 ### Changed
 - **API moved under `/api/v1/` prefix.** All routes previously served at
   `/api/...` are now served at `/api/v1/...`. The unversioned path is no

@@ -40,9 +40,11 @@ framework, the rest of the application is untouched.
 
 ```
 mcp_server/
-├── __init__.py     # exposes mcp_server (the FastMCP instance)
+├── __init__.py     # package docstring only (the instance lives in server.py)
 ├── __main__.py     # `python -m mcp_server` entry point — stdio or HTTP
-├── server.py       # FastMCP.from_fastapi(...) bootstrap
+├── server.py       # FastMCP.from_fastapi(...) bootstrap + curated-tool wrappers
+├── curated.py      # hand-curated tool logic (Phase 5.3)
+├── auth.py         # bearer verification + forwarding (Phase 5.4)
 └── README.md       # this file
 ```
 
@@ -59,6 +61,21 @@ Install the optional dependency:
 ```bash
 uv sync --extra mcp --extra dev
 ```
+
+The extra pins `fastmcp>=4,<5`. fastmcp 4 runs its HTTP stack on
+[httpx2](https://github.com/pydantic/httpx2) instead of httpx, so anything
+handed to its HTTP client (`httpx_client_kwargs`) must be httpx2-compatible.
+
+### Tests
+
+```bash
+uv run --extra mcp --extra dev pytest --require-mcp
+```
+
+Without the extra, the MCP test modules skip via
+`pytest.importorskip("fastmcp")`. `--require-mcp` turns a missing fastmcp
+into an error instead, so a skip can't hide a broken MCP layer. CI always
+passes it.
 
 ### Stdio transport (Claude Code, Claude Desktop)
 
@@ -104,17 +121,31 @@ suite uses. Tool **listing** doesn't need the DB and works fine. Tool
 **invocation** against real data needs a live DB and is wired up in
 Phase 5.4 (auth + per-user scoping against the deployed API).
 
-### Streamable HTTP transport (deployed)
+### Streamable HTTP transport (production — Phase 5.5)
 
-Useful for testing the transport that production will use (Phase 5.5).
-Bind to a local port:
+The MCP server is mounted on the main FastAPI app at `/mcp` and ships in
+the same Docker image / ECS task as the regular API. Production endpoint:
 
-```bash
-uv run python -m mcp_server --http --port 9000
+```
+https://s.griddo.io/mcp
 ```
 
-The MCP endpoint is then reachable at `http://localhost:9000/mcp` (or
-similar, depending on `fastmcp` defaults — check the startup log).
+Single deployment, single Dockerfile, single ALB rule — same SLO as the
+rest of the API. The `_try_build_mcp_app` hook in `main.py` is conditional
+on the `[mcp]` extra, so dev environments running `uv sync` (without
+`--extra mcp`) keep working as before.
+
+#### Standalone HTTP for local debugging
+
+If you want to exercise the transport without spinning up the whole API:
+
+```bash
+uv run --extra mcp python -m mcp_server --http --port 9000
+```
+
+The MCP endpoint is reachable at `http://localhost:9000/mcp/`. Useful when
+iterating on transport-level concerns (auth, session lifecycle) without the
+overhead of the full app.
 
 For programmatic clients:
 
@@ -125,6 +156,28 @@ async with Client("http://localhost:9000/mcp") as client:
     tools = await client.list_tools()
     print([t.name for t in tools])
 ```
+
+#### Registering the deployed endpoint with Claude Desktop / Claude Code
+
+```bash
+# 1. Mint an API key (one-time):
+curl -X POST https://s.griddo.io/api/v1/auth/api-key/generate \
+    -H "Authorization: Bearer <jwt>"
+# → {"api_key": "<32-byte url-safe>", "scope": "full_access"}
+
+# 2. Register the deployed MCP:
+claude mcp add shurly --transport http \
+    --url https://s.griddo.io/mcp \
+    --header "Authorization: Bearer <api_key>"
+```
+
+#### Operational escape hatches
+
+- `MCP_DISABLE_MOUNT=1` — skip the `/mcp` mount entirely. Use during
+  incident response if the MCP layer is implicated; lets the API keep
+  serving without rebuilding the image.
+- `MCP_DISABLE_AUTH=1` — skip the verifier (stdio dev only — never set
+  in prod).
 
 ## Auto-generated tool surface (Phase 5.2)
 
@@ -167,9 +220,8 @@ Phase 5.3 ships hand-written tools alongside the auto-generated set:
 
 The pure logic lives in `mcp_server/curated.py` (takes `db: Session` and
 `user: User` explicitly — easy to test). The MCP-facing wrappers in
-`mcp_server/server.py` open a `SessionLocal` per call. **Auth resolution is
-stubbed until Phase 5.4** — tool listing works; invocation raises a clear
-`NotImplementedError` until the bearer-token plumbing lands.
+`mcp_server/server.py` open a `SessionLocal` per call and resolve the
+caller with `resolve_current_user(db)` (Phase 5.4).
 
 Total tool surface after Phase 5.3: **40 tools** (36 auto-generated + 4
 curated). The 5.2 contract test (`tests/test_phase52_mcp_tools.py`) and
@@ -191,11 +243,16 @@ Two integration points:
    returns an `AccessToken` carrying the user id + email + scope.
    Returning `None` produces a 401 at the MCP layer.
 
-2. **`forward_bearer`** — an httpx `Auth` hook attached via
-   `httpx_client_kwargs={"auth": forward_bearer}`. The auto-generated
-   tools call FastAPI through `httpx.AsyncClient(transport=ASGITransport)`.
-   This hook re-attaches the inbound bearer to the outbound request so
-   `get_current_user` resolves the same user.
+2. **`forward_bearer_auth`** — an auth callable attached via
+   `httpx_client_kwargs={"auth": forward_bearer_auth}`. The auto-generated
+   tools call FastAPI through fastmcp's
+   `httpx2.AsyncClient(transport=ASGITransport)`. This hook re-attaches the
+   inbound bearer to the outbound request so `get_current_user` resolves
+   the same user. It's a plain function, not an `Auth` subclass: httpx2
+   rejects `httpx.Auth` instances (that's how the fastmcp 4 upgrade broke
+   the original hook), and a callable works with either library.
+   `tests/test_phase54_mcp_auth.py` calls a generated tool with and
+   without a bound token to pin the behavior.
 
 Curated tools (Phase 5.3 wrappers) read the AccessToken via
 `get_access_token()` and resolve the User row via

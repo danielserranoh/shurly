@@ -17,7 +17,10 @@ WORKDIR /app
 COPY pyproject.toml uv.lock README.md ./
 
 # `--no-dev` skips the [dev] extra (ruff, pytest); `--frozen` enforces uv.lock.
-RUN uv sync --no-dev --frozen
+# `--extra mcp` installs fastmcp so the Streamable HTTP transport at /mcp
+# (Phase 5.5) is available. Set `MCP_DISABLE_MOUNT=1` at runtime to opt out
+# without rebuilding (e.g. incident response).
+RUN uv sync --no-dev --frozen --extra mcp
 
 # ─── Runtime image ──────────────────────────────────────────────────────────
 
@@ -40,8 +43,10 @@ COPY --from=builder /app/.venv /app/.venv
 
 # Application code. `server/` includes templates/preview.html (used by the
 # social-media crawler preview path) and all the SQLAlchemy models registered
-# in server/core/models/__init__.py.
+# in server/core/models/__init__.py. `mcp_server/` exposes the API as MCP
+# tools and is mounted at `/mcp` by `main.py` when fastmcp is installed.
 COPY server ./server
+COPY mcp_server ./mcp_server
 COPY main.py ./
 
 ENV PATH="/app/.venv/bin:$PATH" \
