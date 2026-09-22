@@ -15,24 +15,27 @@ Two integration points:
    resolved user id is stored in the AccessToken so curated tools can pick
    it up with `get_access_token()` without re-querying the DB.
 
-2. **`forward_bearer_auth`** — an httpx auth callable. The auto-generated
-   tools call FastAPI via `httpx.AsyncClient(transport=ASGITransport(app))`.
-   That call needs the same Bearer header so FastAPI's `get_current_user`
-   resolves the same user. This auth callable reads the token from the
-   current MCP request scope and copies it to the outbound request.
+2. **`forward_bearer_auth`** — an HTTP client auth callable. The
+   auto-generated tools call FastAPI via fastmcp's
+   `httpx2.AsyncClient(transport=ASGITransport(app))`. That call needs the
+   same Bearer header so FastAPI's `get_current_user` resolves the same
+   user. This auth callable reads the token from the current MCP request
+   scope and copies it to the outbound request.
 """
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING
 
-import httpx
 from fastmcp.server.auth import AccessToken, TokenVerifier
 from fastmcp.server.dependencies import get_access_token
 
 from server.core import SessionLocal as _DefaultSessionLocal
 from server.core.auth import _looks_like_jwt, decode_access_token, get_user_by_api_key
 from server.core.models import User
+
+if TYPE_CHECKING:
+    import httpx2
 
 
 class ShurlyTokenVerifier(TokenVerifier):
@@ -114,29 +117,20 @@ def resolve_current_user(db) -> User:
     return user
 
 
-def forward_bearer_auth(request: httpx.Request) -> httpx.Request:
+def forward_bearer_auth(request: httpx2.Request) -> httpx2.Request:
     """
-    httpx auth hook — copies the inbound MCP bearer onto the outbound
+    Outbound auth hook — copies the inbound MCP bearer onto the outbound
     FastAPI call so `get_current_user` validates against the same token.
 
     Wired via `httpx_client_kwargs={"auth": forward_bearer_auth}` on
     `FastMCP.from_fastapi(...)`. Without this, the auto-generated tools hit
     FastAPI anonymously and every protected route returns 401.
+
+    Deliberately a plain callable, not an `Auth` subclass: fastmcp 4 builds
+    its client on `httpx2`, which rejects `httpx.Auth` instances, while both
+    libraries accept a callable and wrap it in their own `FunctionAuth`.
     """
     access = get_access_token()
     if access is not None and access.token:
         request.headers["Authorization"] = f"Bearer {access.token}"
     return request
-
-
-# httpx accepts either a callable or an Auth subclass. Newer httpx versions
-# expect Auth subclasses for proper request lifecycle integration.
-class _ForwardBearer(httpx.Auth):
-    def auth_flow(self, request: httpx.Request) -> Any:
-        access = get_access_token()
-        if access is not None and access.token:
-            request.headers["Authorization"] = f"Bearer {access.token}"
-        yield request
-
-
-forward_bearer = _ForwardBearer()

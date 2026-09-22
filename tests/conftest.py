@@ -48,6 +48,26 @@ TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engin
 Base.metadata.create_all(bind=engine)
 
 
+def pytest_addoption(parser):
+    parser.addoption(
+        "--require-mcp",
+        action="store_true",
+        help="Fail instead of skipping the MCP suites when the [mcp] extra is missing.",
+    )
+
+
+def pytest_configure(config):
+    # The MCP suites use `pytest.importorskip("fastmcp")`, so without the
+    # extra they skip silently. CI passes --require-mcp so they can't.
+    if config.getoption("--require-mcp"):
+        try:
+            import fastmcp  # noqa: F401
+        except ImportError as exc:
+            raise pytest.UsageError(
+                "--require-mcp: fastmcp is not installed. Run `uv sync --extra mcp`."
+            ) from exc
+
+
 @pytest.fixture(scope="function")
 def db_session():
     """Create a fresh database session for each test."""
