@@ -29,7 +29,8 @@ implementation lifecycle and is independent of the URL version segment.
 ### Security
 - **SSRF hardening for the Open Graph fetcher.** Link previews are fetched
   server-side from user-supplied URLs (`POST /api/v1/urls`,
-  `POST /api/v1/urls/custom`, `POST /api/v1/urls/{code}/refresh-preview`), so any
+  `POST /api/v1/urls/custom`, `POST /api/v1/urls/{code}/refresh-preview`, and since
+  Phase 3.11 `POST /api/v1/urls/fetch-metadata`), so any
   authenticated user could make the API request internal addresses (loopback,
   RFC 1918, the link-local cloud metadata endpoints `169.254.169.254` /
   `169.254.170.2`) and read page titles and descriptions back.

@@ -7,7 +7,7 @@ analytics, and Shlink-inspired hardening (multi-domain, redirect rules, GDPR).
 
 This project follows a **pragmatic, TDD-driven** development philosophy:
 
-- **Test-Driven Development**: Write tests first, then implement features. **All 336 tests must pass.**
+- **Test-Driven Development**: Write tests first, then implement features. **All 382 tests must pass.**
 - **Incremental Progress**: Complete features end-to-end before moving to the next.
 - **Clear Documentation**: Code is the truth, docs explain the why.
 - **Production-Ready**: Every commit should maintain a working application.
@@ -24,7 +24,7 @@ Read [README.md](README.md) to understand:
 
 ### 2. **Development Roadmap** (10 min)
 Review [_pm/ROADMAP.md](_pm/ROADMAP.md) for:
-- **Current Status**: Phase 3 (incl. 3.11 brand + frontend redesign) and 5.3/5.4 complete (336 tests passing)
+- **Current Status**: Phase 3 (incl. 3.11 brand + frontend redesign) and 5.3–5.5 complete (382 tests passing)
 - Use cases (standard URLs, custom URLs, campaigns, multi-domain)
 - Phase 1–3.10 completion status (✅)
 - Phase 4–6 next steps (AWS Lambda + RDS, deployment hardening, docs)
@@ -91,7 +91,7 @@ Backend (FastAPI)               Frontend (Astro 7 + Tailwind 4)
 1. **Understand the context**: Check related code and tests first.
 2. **Write tests**: Add/update tests before implementing (TDD).
 3. **Implement**: Make changes to pass the tests.
-4. **Verify**: Run `uv run pytest` — all 336 tests must pass.
+4. **Verify**: Run `uv run pytest` — all 382 tests must pass.
 5. **Lint**: `uv run ruff check server tests main.py` (focus on the files you touched).
 6. **Commit**: Use clear, descriptive commit messages following the existing pattern (`feat: Phase X.Y.Z — …`).
 
@@ -161,7 +161,7 @@ Backend (FastAPI)               Frontend (Astro 7 + Tailwind 4)
 
 ### Running Tests
 ```bash
-# All tests (should show 336 passed)
+# All tests (should show 382 passed; MCP suites skip without `--extra mcp`)
 uv run pytest
 
 # With coverage
@@ -209,7 +209,7 @@ docker compose up -d
 - Commit messages follow `feat: Phase X.Y.Z — short description` style
 
 ### Testing Status
-- ✅ **336 backend tests passing**
+- ✅ **382 backend tests passing**
 - ✅ Frontend builds clean (`npm run build`); `npm audit` 0 vulnerabilities
 - ⏳ Manual smoke testing for production deploy (Phase 4)
 

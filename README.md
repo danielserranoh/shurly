@@ -23,7 +23,7 @@ A modern, full-stack URL shortener with analytics and campaign management, built
 - **Pydantic v2** — schema validation
 - **SQLAlchemy 2.0 + PostgreSQL** — `psycopg2-binary` driver
 - **python-jose** + **passlib (bcrypt<5)** — JWT + password hashing
-- **uv** + **ruff** + **pytest** — packaging, linting, testing (336 tests)
+- **uv** + **ruff** + **pytest** — packaging, linting, testing (382 tests)
 
 ### Frontend
 - **Astro 7** (Vite 8), fully static output (`frontend/dist/` can be served from S3/any CDN), vanilla TypeScript islands
@@ -302,7 +302,7 @@ shurly/
 │               ├── campaigns/index.astro · campaigns/create.astro (4-step wizard)
 │               ├── analytics.astro
 │               └── settings.astro         # Account · API & MCP · Tags · Notifications · Plan
-├── tests/                         # 336 passing
+├── tests/                         # 382 passing
 │   ├── conftest.py                # In-memory SQLite fixtures
 │   ├── test_auth.py / _urls.py / _campaigns.py / _analytics.py / _tags.py
 │   ├── test_user_agent.py / _utils.py / _network.py
@@ -400,7 +400,7 @@ zero or more priority-ordered redirect rules.
 
 ### Automated Tests
 
-The project includes a comprehensive test suite with **336 passing tests**:
+The project includes a comprehensive test suite with **382 passing tests**:
 
 - **Unit tests**: UA parsing, IP anonymization, redirect-rule evaluator, OG charset decoding
 - **Integration tests**: API contracts, redirect path, multi-domain, bot filtering, CSV export, orphan visits, redirect rules, tracking pixel
