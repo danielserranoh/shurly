@@ -52,7 +52,7 @@ export function shadows(): { name: string; value: string; layers: string[] }[] {
   return [...theme.matchAll(/--shadow-([\w]+):\s*([^;]+);/g)].map((m) => ({ name: m[1], value: m[2].trim(), layers: summarizeShadow(m[2]) }));
 }
 
-/** "0 16px 32px -8px rgb(9 13 19 / 0.16), …" → ["y16 blur 32 spread −8 16%", …] */
+/** "0 16px 32px -8px rgb(0 27 60 / 0.16), …" → ["y16 blur 32 spread −8 16%", …] */
 function summarizeShadow(value: string): string[] {
   return value
     .split(/,(?![^(]*\))/)

@@ -11,7 +11,7 @@ export interface QrOptions {
 }
 
 export function qrSvg(text: string, opts: QrOptions = {}): string {
-  const { foreground = '#090d13', background = '#ffffff', margin = 4 } = opts;
+  const { foreground = '#001b3c', background = '#ffffff', margin = 4 } = opts;
   const qr = encode(text, { ecc: 'M', border: 0 });
   const size = qr.size + margin * 2;
   let path = '';

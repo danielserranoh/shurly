@@ -32,6 +32,12 @@ implementation lifecycle and is independent of the URL version segment.
   brand text/icons on ink use `brand-300`, charts draw in `brand-400`. Logo dot,
   favicons, app icons and the OG card are regenerated in blue.
 - Page canvas is warm off-white `#faf9f6` (was `#f5f6f8`).
+- Ink scale is Griddo navy: `ink-950` `#001b3c`, `ink-900` `#022958`, the rest
+  regenerated in the same hue with the same contrast roles (`ink-500` still the
+  lightest text, 4.5:1+ on white, canvas and `ink-100`). Logo letters, isotype
+  tile, shadows and the modal backdrop follow. Brand marks on `ink-900` use
+  `brand-300` (`brand-400` there is 2.8:1).
+- Headlines (`.display`) drop from weight 750 to 500: Logical works best light.
 - Interface typeface is Figtree (was Inter). Headlines use Logical, Griddo's
   typeface, when available and fall back to Figtree until its web font files are
   added (was Bricolage Grotesque, which the wordmark SVG still uses).

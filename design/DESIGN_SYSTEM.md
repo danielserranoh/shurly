@@ -25,12 +25,12 @@ available as utilities (`bg-ink-950`, `text-brand-700`, `rounded-xl`, `shadow-md
 
 | Scale | Use | Rules |
 |---|---|---|
-| `ink-50…950` (cool neutral) | text, surfaces, borders, primary buttons | `ink-500` is the lightest text shade: at least 4.5:1 on white, canvas and `ink-100`. `ink-400` is for icons and text on dark ink only |
+| `ink-50…950` (Griddo navy: 900 `#022958`, 950 `#001b3c`) | text, surfaces, borders, primary buttons | `ink-500` is the lightest text shade: at least 4.5:1 on white, canvas and `ink-100`. `ink-400` is for icons and text on dark ink only. Brand marks on `ink-900` use `brand-300` (`brand-400` there is 2.8:1) |
 | `brand-50…950` (Griddo blue) | the click dot, accent fills, links, charts, focus halo, success | `brand-400` `#5057ff` is the signature: white text on it (5.1:1), and fine as text on light (5.1:1 on white). Hover is `brand-500`. **On ink, use `brand-300`** for text and icons (10.6:1); `brand-400` on ink (3.9:1) only for large headlines |
 | Surfaces | `canvas #faf9f6` page (warm off-white), `surface #fff` cards, `line` / `line-strong` borders | |
 | Status | Tailwind `red` (error/danger), `amber` (warning), `blue` (info) | always paired with an icon and words |
 
-**Type.** Logical, Griddo's typeface (`font-display`, the `.display` class), for page
+**Type.** Logical, Griddo's typeface (`font-display`, the `.display` class, weight 500), for page
 titles and marketing headlines. Figtree (`font-sans`) for all UI text and numbers, with
 tabular figures in tables. JetBrains Mono (`font-mono`, the `.shortlink` class) for short
 links and codes. Figtree and JetBrains Mono are self-hosted (`@fontsource-variable/*`).

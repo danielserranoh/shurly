@@ -46,7 +46,7 @@ const faqs = [
           One link per client, straight from a CSV
         </p>
         <h1 class="display mt-6 text-[2.75rem] sm:text-6xl lg:text-[4.25rem]">
-          Send the link.<br /><span class="text-brand-400">Know who opened it.</span>
+          Send the link.<br /><span class="text-brand-400">Know who opened&nbsp;it.</span>
         </h1>
         <p class="mt-6 max-w-xl text-lg leading-8 text-ink-300">
           Shurly turns your proposals, decks and landing pages into short links you can track — one per client if you like — so you always know who’s interested.
@@ -65,7 +65,7 @@ const faqs = [
       <div class="relative mx-auto w-full max-w-md animate-fade-up pb-24 [animation-delay:120ms] lg:max-w-none" aria-hidden="true">
         <div class="rounded-3xl bg-white p-5 text-ink-900 shadow-xl ring-1 ring-white/10 sm:p-6">
           <div class="flex items-start gap-3">
-            <div class="grid size-10 shrink-0 place-items-center rounded-xl bg-orange-100 font-display text-lg font-bold text-orange-800">G</div>
+            <div class="grid size-10 shrink-0 place-items-center rounded-xl bg-orange-100 font-display text-lg font-medium text-orange-800">G</div>
             <div class="min-w-0 flex-1">
               <p class="truncate font-semibold">Q4 proposal — Acme Corp</p>
               <p class="shortlink mt-0.5 truncate text-sm text-ink-950">{site.shortDomain.includes('localhost') ? 's.griddo.io' : site.shortDomain}/q4-acme</p>
@@ -101,7 +101,7 @@ const faqs = [
           <p class="text-xs text-ink-400">Clicks this week</p>
           <div class="mt-1 flex items-end justify-between gap-3">
             <p class="text-3xl font-semibold tracking-tight">128</p>
-            <svg width="84" height="30" viewBox="0 0 84 30" class="overflow-visible"><path d="M3 24L15 21 27 23 39 15 51 17 63 9 75 6" fill="none" stroke="#39414b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path><circle cx="75" cy="6" r="4" fill="#5057ff" stroke="#141921" stroke-width="2"></circle></svg>
+            <svg width="84" height="30" viewBox="0 0 84 30" class="overflow-visible"><path d="M3 24L15 21 27 23 39 15 51 17 63 9 75 6" fill="none" stroke="#2a476e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path><circle cx="75" cy="6" r="4" fill="#acbdff" stroke="#022958" stroke-width="2"></circle></svg>
           </div>
           <p class="mt-1 text-xs font-medium text-brand-300">+24% vs last week</p>
         </div>
@@ -138,12 +138,12 @@ const faqs = [
           <div class="mt-6 rounded-xl border border-line p-4" aria-hidden="true">
             <div class="flex items-baseline justify-between"><p class="text-2xl font-semibold tracking-tight">42 <span class="text-sm font-normal text-ink-500">clicks</span></p><p class="text-xs text-ink-500">Last click 2h ago</p></div>
             <svg viewBox="0 0 280 80" class="mt-3 w-full">
-              <line x1="0" x2="280" y1="71.5" y2="71.5" stroke="#e4e7eb" />
+              <line x1="0" x2="280" y1="71.5" y2="71.5" stroke="#e0e6ef" />
               {[18, 30, 22, 44, 36, 58, 50].map((h, i) => (
                 <path d={`M${20 + i * 40},72V${76 - h}q0,-4 4,-4h10q4,0 4,4V72Z`} fill="#5057ff" />
               ))}
               {['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((d, i) => (
-                <text x={29 + i * 40} y="80" text-anchor="middle" font-size="7" fill="#68707a">{d}</text>
+                <text x={29 + i * 40} y="80" text-anchor="middle" font-size="7" fill="#5c708c">{d}</text>
               ))}
             </svg>
           </div>
@@ -154,7 +154,7 @@ const faqs = [
           <h3 class="mt-5 text-lg font-semibold text-ink-950">Looks great when shared</h3>
           <p class="mt-2 text-[15px] leading-7 text-ink-500">Shurly fetches the page’s title and image automatically, so your link unfurls nicely on LinkedIn, WhatsApp and Slack.</p>
           <div class="mt-6 overflow-hidden rounded-xl border border-line" aria-hidden="true">
-            <div class="h-28 bg-[linear-gradient(135deg,#141921_0%,#39414b_55%,#5057ff_100%)]"></div>
+            <div class="h-28 bg-[linear-gradient(135deg,#022958_0%,#2a476e_55%,#5057ff_100%)]"></div>
             <div class="px-4 py-3">
               <p class="text-xs text-ink-500 uppercase">acme.com</p>
               <p class="mt-0.5 font-semibold text-ink-950">The 2026 Product Catalogue</p>

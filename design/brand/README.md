@@ -6,9 +6,9 @@ quiet ink, so the dot is the one thing you remember.
 
 ![Horizontal lockup](png/logo-horizontal@2x.png)
 
-> **Trial (Sept 2026): Griddo blue.** The web app now uses Griddo blue `#5057ff` for the dot
-> (`frontend/public/brand/`, favicons and OG card regenerated), and its blue-tile isotype is
-> `isotype-brand.svg`. The kit files below are still the lime originals; they get regenerated
+> **Trial (Sept 2026): Griddo blue and navy.** The web app now uses Griddo blue `#5057ff` for the
+> dot and Griddo navy `#001b3c` for the letters and the isotype tile (`frontend/public/brand/`,
+> favicons and OG card regenerated); its blue-tile isotype is `isotype-brand.svg`. The kit files below are still the lime originals; they get regenerated
 > if the change is adopted.
 
 ## Files

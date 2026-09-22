@@ -93,7 +93,7 @@ const logoTiles = [
   { title: 'Primary', body: 'Ink and Griddo blue, on white and light surfaces.', file: 'wordmark.svg', code: '<Logo />', stage: 'bg-white', src: '/brand/wordmark.svg' },
   { title: 'Reversed', body: 'White and Griddo blue, on ink and dark photos.', file: 'wordmark-reversed.svg', code: '<Logo tone="reversed" />', stage: 'bg-ink-950', src: '/brand/wordmark-reversed.svg' },
   { title: 'Mono ink', body: 'On light tints, and for one-color print.', file: 'wordmark-mono-ink.svg', code: '<Logo tone="mono" />', stage: 'bg-brand-100', src: '/brand/wordmark-mono-ink.svg' },
-  { title: 'Mono white', body: 'On brand blue, busy or colored backgrounds.', file: 'wordmark-mono-white.svg', code: '<img>', stage: 'bg-[linear-gradient(135deg,#141921_0%,#39414b_55%,#5057ff_100%)]', src: '/brand/wordmark-mono-white.svg' },
+  { title: 'Mono white', body: 'On brand blue, busy or colored backgrounds.', file: 'wordmark-mono-white.svg', code: '<img>', stage: 'bg-[linear-gradient(135deg,#022958_0%,#2a476e_55%,#5057ff_100%)]', src: '/brand/wordmark-mono-white.svg' },
 ];
 
 // ---------------------------------------------------------------- Typography
@@ -106,7 +106,7 @@ const families = [
     aa: 'display',
     sample: 'Send the link.',
     sampleCls: 'display text-[1.75rem]',
-    use: 'Griddo’s typeface. Page titles, marketing headlines, empty-state titles. Weight 750, tracked −0.03em. Falls back to Figtree until its web font is added.',
+    use: 'Griddo’s typeface. Page titles, marketing headlines, empty-state titles. Weight 500, tracked −0.03em. Falls back to Figtree until its web font is added.',
     code: ['.display', 'font-display'],
   },
   {
@@ -552,8 +552,8 @@ const colorCount = allColors.length;
       </Section>
 
       <!-- 02 Color ======================================================= -->
-      <Section id="color" index={num('color')} title="Color" intro="Ink does the talking; blue does the clicking. Cool neutrals carry text and UI. Griddo blue is the signature: fills, links, charts and the click dot.">
-        <Specimen title="Ink" description="A cool neutral for text, UI and primary buttons." code={['bg-ink-*', 'text-ink-*', 'border-ink-*']} stage="white">
+      <Section id="color" index={num('color')} title="Color" intro="Ink does the talking; blue does the clicking. Navy neutrals carry text and UI. Griddo blue is the signature: fills, links, charts and the click dot.">
+        <Specimen title="Ink" description="Griddo navy, #001b3c at the dark end, for text, UI and primary buttons." code={['bg-ink-*', 'text-ink-*', 'border-ink-*']} stage="white">
           <ColorScale tokens={ink} label="Ink scale" ink={INK_950} markers={{ 'ink-500': 'Min. text', 'ink-950': 'Buttons' }} />
         </Specimen>
 
@@ -700,7 +700,7 @@ const colorCount = allColors.length;
           </div>
         </Specimen>
 
-        <Specimen title="Display scale" description="Logical at weight 750, tracked −0.03em, line-height 1–1.05. Figtree stands in until the Logical web font is added." code={['.display', 'text-6xl → text-3xl']} stage="white" class="py-2!">
+        <Specimen title="Display scale" description="Logical at weight 500, tracked −0.03em, line-height 1–1.05. Figtree stands in until the Logical web font is added." code={['.display', 'text-6xl → text-3xl']} stage="white" class="py-2!">
           <ul class="divide-y divide-line">
             {
               displayScale.map((s) => (
@@ -751,7 +751,7 @@ const colorCount = allColors.length;
             }
             <div>
               <p class="display text-2xl text-ink-950">Link copied</p>
-              <p class="mt-1 text-sm font-semibold text-ink-950">Display <span class="font-normal text-ink-500">· 750</span></p>
+              <p class="mt-1 text-sm font-semibold text-ink-950">Display <span class="font-normal text-ink-500">· 500</span></p>
               <p class="text-xs text-ink-500">Logical, headlines</p>
             </div>
             <div>
@@ -1009,7 +1009,7 @@ const colorCount = allColors.length;
             <li class="flex flex-col overflow-hidden rounded-2xl border border-line bg-white">
               <div class="grid h-32 place-items-center bg-canvas px-6">
                 <span id="sg-anim-flash" data-sg-anim="animate-flash" class="card flex w-full max-w-60 animate-flash items-center gap-3 px-3 py-2.5" aria-hidden="true">
-                  <span class="grid size-7 place-items-center rounded-lg bg-orange-100 font-display text-sm font-bold text-orange-800">G</span>
+                  <span class="grid size-7 place-items-center rounded-lg bg-orange-100 font-display text-sm font-medium text-orange-800">G</span>
                   <span class="min-w-0 flex-1"><span class="block truncate text-sm font-semibold text-ink-950">Q4 proposal</span><span class="shortlink block text-xs text-ink-600">{SHORT}/q4-acme</span></span>
                 </span>
               </div>
