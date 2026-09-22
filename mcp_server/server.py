@@ -115,12 +115,13 @@ def _build_mcp_server(fastapi_app=None) -> FastMCP:
 
     Auth (Phase 5.4): a `ShurlyTokenVerifier` validates the inbound bearer
     against `User.api_key` (or a JWT). For the auto-generated tools that go
-    through httpx → FastAPI, we install an httpx auth hook that re-attaches
-    the same bearer to the outbound request so `get_current_user` resolves
-    the same user. The `MCP_DISABLE_AUTH=1` escape hatch is for stdio dev
-    only — production deploys must always run with auth on.
+    through fastmcp's httpx2 client → FastAPI, we install an auth hook that
+    re-attaches the same bearer to the outbound request so
+    `get_current_user` resolves the same user. The `MCP_DISABLE_AUTH=1`
+    escape hatch is for stdio dev only — production deploys must always run
+    with auth on.
     """
-    from mcp_server.auth import ShurlyTokenVerifier, forward_bearer
+    from mcp_server.auth import ShurlyTokenVerifier, forward_bearer_auth
 
     if fastapi_app is None:
         from main import app as fastapi_app  # local import — see docstring
@@ -133,7 +134,7 @@ def _build_mcp_server(fastapi_app=None) -> FastMCP:
         "name": name,
         "route_maps": EXCLUDED_ROUTE_MAPS,
         "mcp_names": MCP_TOOL_NAMES,
-        "httpx_client_kwargs": {"auth": forward_bearer},
+        "httpx_client_kwargs": {"auth": forward_bearer_auth},
     }
     if not auth_disabled:
         kwargs["auth"] = ShurlyTokenVerifier()

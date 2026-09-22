@@ -10,13 +10,16 @@ Covers two surfaces:
 
 2. **MCP** — the `ShurlyTokenVerifier` and `resolve_current_user` helpers
    used by the curated-tool wrappers. Direct unit tests; the wrappers
-   themselves get integration coverage via Phase 5.3 tests already.
+   themselves get integration coverage via Phase 5.3 tests already. Plus
+   the bearer forwarding: a generated tool called with a bound access token
+   must reach FastAPI as the same user, and without one it must get a 401.
 """
 
 from __future__ import annotations
 
 import asyncio
 import secrets
+from contextlib import contextmanager
 
 import pytest
 from fastapi.testclient import TestClient
@@ -114,8 +117,6 @@ def test_jwt_still_works_after_api_key_path_added(client: TestClient, auth_heade
 def verifier_factory(db_session):
     """Builds a ShurlyTokenVerifier wired to the in-memory test DB session.
     Avoids hitting the real RDS SessionLocal."""
-    from contextlib import contextmanager
-
     from mcp_server.auth import ShurlyTokenVerifier
 
     @contextmanager
@@ -160,3 +161,56 @@ def test_resolve_current_user_without_token_raises(db_session):
 
     with pytest.raises(PermissionError, match="no bound access token"):
         resolve_current_user(db_session)
+
+
+# ---------------------------------------------------------------------------
+# MCP: generated tools forward the bearer to FastAPI
+# ---------------------------------------------------------------------------
+
+
+@contextmanager
+def _bound_access_token(token: str):
+    """Bind `token` to the current context the way the MCP SDK's auth
+    middleware does for each authenticated HTTP request."""
+    from fastmcp.server.auth import AccessToken
+    from mcp.server.auth.middleware.auth_context import auth_context_var
+    from mcp.server.auth.middleware.bearer_auth import AuthenticatedUser
+
+    reset_token = auth_context_var.set(
+        AuthenticatedUser(AccessToken(token=token, client_id="test-client", scopes=[]))
+    )
+    try:
+        yield
+    finally:
+        auth_context_var.reset(reset_token)
+
+
+@pytest.fixture
+def mcp_on_test_db(db_session):
+    """MCP server whose generated tools call a FastAPI app bound to the test DB."""
+    from main import app
+    from mcp_server.server import build_mcp_for_app
+    from server.core import get_db
+
+    app.dependency_overrides[get_db] = lambda: db_session
+    try:
+        yield build_mcp_for_app(app)
+    finally:
+        app.dependency_overrides.pop(get_db, None)
+
+
+def test_generated_tool_forwards_bearer_to_fastapi(db_session, test_user, mcp_on_test_db):
+    test_user.api_key = "forwarded-key"
+    db_session.commit()
+
+    with _bound_access_token("forwarded-key"):
+        result = asyncio.run(mcp_on_test_db.call_tool("get_current_user_info", {}))
+
+    assert result.structured_content["email"] == test_user.email
+
+
+def test_generated_tool_without_bound_token_is_rejected(mcp_on_test_db):
+    from fastmcp.exceptions import ToolError
+
+    with pytest.raises(ToolError, match="401"):
+        asyncio.run(mcp_on_test_db.call_tool("get_current_user_info", {}))

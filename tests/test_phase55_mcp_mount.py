@@ -47,22 +47,39 @@ def test_disable_mount_env_skips_mount(monkeypatch):
     assert mounts == [], "MCP_DISABLE_MOUNT=1 should suppress the mount"
 
 
+def _first_full_match(app, path: str, method: str = "GET"):
+    """The top-level route Starlette dispatches `method path` to, if any."""
+    from starlette.routing import Match
+
+    scope = {
+        "type": "http",
+        "path": path,
+        "root_path": "",
+        "method": method,
+        "headers": [],
+        "query_string": b"",
+    }
+    for route in app.routes:
+        match, _ = route.matches(scope)
+        if match == Match.FULL:
+            return route
+    return None
+
+
 def test_api_v1_routes_take_precedence_over_mcp_mount():
     """The mount sits at `/mcp`; nothing else should be shadowed."""
     import main as m
 
     importlib.reload(m)
 
-    api_paths = [
-        getattr(r, "path", None)
-        for r in m.app.routes
-        if type(r).__name__ == "APIRoute"
-    ]
-    # Must include at least the auth + redirect endpoints — sanity check that
-    # the mount didn't accidentally swallow them.
-    assert "/api/v1/auth/me" in api_paths
-    assert "/{short_code}" in api_paths
-    assert "/robots.txt" in api_paths
+    # The auth + redirect endpoints must still dispatch to FastAPI, not the
+    # mount. Resolved via route matching rather than by listing `APIRoute`s:
+    # newer FastAPI keeps included routers nested in `app.routes` instead of
+    # flattening their routes into it.
+    for path in ("/api/v1/auth/me", "/abc123", "/robots.txt"):
+        route = _first_full_match(m.app, path)
+        assert route is not None, f"no route matches {path}"
+        assert not _is_mcp_mount(route), f"{path} is shadowed by the /mcp mount"
 
 
 def test_app_state_carries_mcp_app_handle():

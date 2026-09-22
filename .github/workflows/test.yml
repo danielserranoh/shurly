@@ -46,8 +46,10 @@ jobs:
         uv run ruff format --check .
 
     - name: Run tests
+      # --require-mcp errors out if fastmcp is missing, instead of letting the
+      # MCP suites skip and hide a failure (see tests/conftest.py).
       run: |
-        uv run pytest --cov=server --cov-report=xml --cov-report=term
+        uv run pytest --require-mcp --cov=server --cov-report=xml --cov-report=term
 
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v4
