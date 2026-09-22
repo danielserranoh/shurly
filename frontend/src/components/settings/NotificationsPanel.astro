@@ -1,0 +1,106 @@
+---
+/**
+ * Click notifications: designed, not built yet (no API). Everything here is a
+ * disabled preview of how it will work once Pro ships.
+ */
+import Icon from '@/components/ui/Icon.astro';
+import ProBadge from '@/components/ui/ProBadge.astro';
+import SettingsSection from './SettingsSection.astro';
+import type { IconName } from '@/utils/icons';
+
+const channels: { name: string; body: string; icon: IconName }[] = [
+  { name: 'Slack', body: 'A channel, or a direct message to you.', icon: 'hash' },
+  { name: 'Google Chat', body: 'Any space your team already uses.', icon: 'message' },
+  { name: 'Telegram', body: 'A chat with the Shurly bot.', icon: 'send' },
+  { name: 'WhatsApp', body: 'Straight to your phone.', icon: 'smartphone' },
+  { name: 'Email', body: 'A short note in your inbox.', icon: 'mail' },
+];
+
+const cadence = [
+  { when: 'First hour after sharing', what: 'Every click, as it happens.' },
+  { when: 'After that', what: 'An hourly digest.' },
+  { when: 'After a week', what: 'A daily digest.' },
+];
+---
+
+<div class="grid gap-10">
+  <div class="flex items-start gap-4 rounded-2xl border border-line bg-white p-5 shadow-xs sm:items-center" id="notifications-notice">
+    <span class="grid size-10 shrink-0 place-items-center rounded-xl bg-ink-950 text-brand-400"><Icon name="bell" class="size-5" /></span>
+    <div class="min-w-0 flex-1">
+      <p class="flex flex-wrap items-center gap-2 font-semibold text-ink-950">Click notifications are coming with Pro <ProBadge /></p>
+      <p class="mt-0.5 text-sm text-ink-500">Here’s how they’ll work. Nothing on this page is switched on yet.</p>
+    </div>
+  </div>
+
+  <SettingsSection id="alerts-title" title="Click alerts" description="Know the moment someone opens your link, and follow up while it’s fresh.">
+    <div class="card flex items-start justify-between gap-4 p-5 sm:p-6">
+      <div>
+        <p id="alerts-label" class="text-sm font-medium text-ink-900">Tell me when someone clicks my links</p>
+        <p id="alerts-hint" class="hint mt-0.5">Covers every link and campaign you own.</p>
+      </div>
+      <span class="switch mt-0.5" data-tooltip="Coming with Pro" data-tooltip-align="end">
+        <input type="checkbox" role="switch" disabled aria-labelledby="alerts-label" aria-describedby="alerts-hint notifications-notice" /><span></span>
+      </span>
+    </div>
+  </SettingsSection>
+
+  <SettingsSection id="channels-title" title="Where to send them" description="Pick the places your team already talks.">
+    <div class="card overflow-hidden">
+      <ul class="divide-y divide-line">
+        {
+          channels.map((c) => (
+            <li class="flex items-center gap-4 px-5 py-4 sm:px-6">
+              <span class="grid size-10 shrink-0 place-items-center rounded-xl bg-ink-100 text-ink-600">
+                <Icon name={c.icon} class="size-5" />
+              </span>
+              <div class="min-w-0 flex-1">
+                <p class="text-sm font-semibold text-ink-900">{c.name}</p>
+                <p class="text-sm text-ink-500">{c.body}</p>
+              </div>
+              <button type="button" class="btn btn-secondary btn-sm" disabled aria-label={`Connect ${c.name}`} aria-describedby="notifications-notice">
+                Connect
+              </button>
+            </li>
+          ))
+        }
+      </ul>
+      <div class="flex flex-col gap-3 border-t border-line bg-ink-50/60 px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+        <p class="text-sm text-ink-500">We’ll send a sample click so you can see what it looks like.</p>
+        <button type="button" class="btn btn-secondary btn-sm self-start sm:self-auto" disabled aria-describedby="notifications-notice">
+          <Icon name="send" />Send a test notification
+        </button>
+      </div>
+    </div>
+  </SettingsSection>
+
+  <SettingsSection id="cadence-title" title="How often" description="Busy links won’t bury you: alerts calm down as a link gets older.">
+    <div class="card p-5 sm:p-6">
+      <!-- A timeline: down the card on phones, left to right from sm up. -->
+      <ol class="grid gap-5 sm:grid-cols-3 sm:gap-6">
+        {
+          cadence.map((c, i) => (
+            <li class="relative flex gap-4 sm:flex-col sm:gap-3">
+              {i < cadence.length - 1 && (
+                <span
+                  class="absolute top-5 -bottom-4 left-[5px] w-0.5 rounded-full bg-ink-200 sm:top-[5px] sm:-right-4 sm:bottom-auto sm:left-5 sm:h-0.5 sm:w-auto"
+                  aria-hidden="true"
+                />
+              )}
+              <span
+                class:list={[
+                  'relative mt-1 size-3 shrink-0 rounded-full sm:mt-0',
+                  i === 0 ? 'bg-brand-500 ring-4 ring-brand-100' : 'bg-white ring-2 ring-ink-400 ring-inset',
+                ]}
+                aria-hidden="true"
+              />
+              <div>
+                <p class="text-sm font-semibold text-ink-900">{c.when}</p>
+                <p class="text-sm text-ink-500">{c.what}</p>
+              </div>
+            </li>
+          ))
+        }
+      </ol>
+    </div>
+  </SettingsSection>
+</div>

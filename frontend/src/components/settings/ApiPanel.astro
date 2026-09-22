@@ -1,0 +1,217 @@
+---
+import Icon from '@/components/ui/Icon.astro';
+import SettingsSection from './SettingsSection.astro';
+import { site } from '@/config/site';
+---
+
+<div class="grid gap-10">
+  <SettingsSection
+    id="api-key-title"
+    title="API key"
+    description="Use it with the REST API and the Shurly MCP server, so Claude and other AI assistants can create links and read stats for you."
+  >
+    <a slot="aside" href={site.apiDocsUrl} target="_blank" rel="noopener" class="link mt-3 inline-flex items-center gap-1 text-sm">
+      API reference<Icon name="arrow-up-right" class="size-3.5" />
+    </a>
+
+    <div class="card overflow-hidden">
+      <!-- Loading -->
+      <div class="grid gap-3 p-5 sm:p-6" data-key-loading aria-hidden="true">
+        <span class="skeleton block h-4 w-28"></span>
+        <span class="skeleton block h-12 w-full rounded-xl"></span>
+        <span class="skeleton block h-3.5 w-2/3"></span>
+      </div>
+
+      <!-- No key yet -->
+      <div class="flex flex-col items-start gap-4 p-5 sm:flex-row sm:items-center sm:p-6" data-key-empty hidden>
+        <span class="grid size-10 shrink-0 place-items-center rounded-xl bg-ink-950 text-brand-400"><Icon name="key" class="size-5" /></span>
+        <div class="min-w-0 flex-1">
+          <p class="font-semibold text-ink-950">You don’t have an API key yet</p>
+          <p class="mt-0.5 text-sm text-ink-500">Generate one when you’re ready. You can revoke it any time.</p>
+        </div>
+        <button type="button" class="btn btn-primary" data-key-generate><Icon name="plus" />Generate API key</button>
+      </div>
+
+      <!-- Key -->
+      <div data-key-present hidden>
+        <div class="grid gap-3 p-5 sm:p-6">
+          <div class="flex animate-fade-up items-start gap-3 rounded-xl border border-brand-200 bg-brand-50 p-3 text-sm text-brand-900" role="status" data-key-notice hidden>
+            <span class="grid size-5 shrink-0 animate-pop place-items-center rounded-full bg-brand-400 text-ink-950"><Icon name="check" class="size-3.5" strokeWidth={3} /></span>
+            <p class="min-w-0 flex-1"><b class="font-semibold">Here’s your new key.</b> Copy it now and keep it somewhere safe.</p>
+            <button type="button" class="-m-1 rounded-md p-1 text-brand-800 hover:bg-brand-100" data-key-notice-close aria-label="Dismiss"><Icon name="x" /></button>
+          </div>
+
+          <p class="label" id="api-key-label">Your API key</p>
+          <div class="flex flex-col gap-2 rounded-xl border border-line bg-ink-50 p-2 sm:flex-row sm:items-center sm:pl-4" role="group" aria-labelledby="api-key-label">
+            <code class="min-w-0 flex-1 px-2 py-1 font-mono text-sm break-all text-ink-900 sm:px-0" data-key-value></code>
+            <span class="sr-only" data-key-sr></span>
+            <div class="flex shrink-0 gap-2">
+              <button type="button" class="btn btn-secondary btn-sm min-w-[5.75rem]" aria-pressed="false" data-key-reveal>
+                <span data-eye><Icon name="eye" /></span><span data-eye-off hidden><Icon name="eye-off" /></span><span data-reveal-label>Reveal</span>
+              </button>
+              <button type="button" class="btn btn-secondary btn-sm" data-copy="" data-key-copy>
+                <span data-copy-icon><Icon name="copy" /></span><span data-copy-label>Copy</span><span class="sr-only"> API key</span>
+              </button>
+            </div>
+          </div>
+          <p class="hint">Anyone with this key can manage your links, so treat it like a password.</p>
+        </div>
+        <div class="flex flex-wrap items-center justify-end gap-2 border-t border-line bg-ink-50/60 px-5 py-3 sm:px-6">
+          <button type="button" class="btn btn-secondary btn-sm" data-key-regenerate><Icon name="refresh" />Regenerate</button>
+          <button type="button" class="btn btn-danger-ghost btn-sm" data-key-revoke><Icon name="ban" />Revoke</button>
+        </div>
+      </div>
+    </div>
+  </SettingsSection>
+
+  <SettingsSection id="try-title" title="Try it" description="Paste this into a terminal to list your links. They come back as JSON.">
+    <div class="overflow-hidden rounded-2xl bg-ink-950 shadow-sm">
+      <div class="flex items-center justify-between gap-3 border-b border-white/10 py-2 pr-2 pl-4">
+        <p class="flex items-center gap-2 text-xs font-medium text-ink-400"><Icon name="terminal" class="size-3.5" />Terminal</p>
+        <button type="button" class="btn btn-sm text-ink-200 hover:bg-white/10 hover:text-white" data-copy="" data-snippet-copy>
+          <span data-copy-icon><Icon name="copy" /></span><span data-copy-label>Copy</span><span class="sr-only"> command</span>
+        </button>
+      </div>
+      <pre class="overflow-x-auto p-4 font-mono text-[13px] leading-6 text-ink-100"><code data-snippet></code></pre>
+    </div>
+    <p class="hint mt-2" data-snippet-hint hidden></p>
+  </SettingsSection>
+</div>
+
+<script>
+  import { API_BASE_URL, apiDelete, apiPost, errorMessage } from '@/utils/api';
+  import { html, setHTML } from '@/utils/html';
+  import { confirmDialog, setLoading, toast } from '@/utils/ui';
+  import { currentUser } from './store';
+  import type { ApiKeyResponse, MessageResponse } from '@/utils/types';
+
+  const $ = <T extends HTMLElement = HTMLElement>(sel: string) => document.querySelector<T>(sel)!;
+  const loading = $('[data-key-loading]');
+  const empty = $('[data-key-empty]');
+  const present = $('[data-key-present]');
+  const notice = $('[data-key-notice]');
+  const valueEl = $('[data-key-value]');
+  const srValue = $('[data-key-sr]');
+  const revealBtn = $<HTMLButtonElement>('[data-key-reveal]');
+  const copyBtn = $<HTMLButtonElement>('[data-key-copy]');
+  const generateBtn = $<HTMLButtonElement>('[data-key-generate]');
+  const snippet = $('[data-snippet]');
+  const snippetCopy = $<HTMLButtonElement>('[data-snippet-copy]');
+  const snippetHint = $('[data-snippet-hint]');
+
+  const PLACEHOLDER = 'YOUR_API_KEY';
+  const LIST_URL = `${API_BASE_URL}/api/v1/urls`;
+
+  let key: string | null = null;
+  let revealed = false;
+  let loaded = false;
+
+  const masked = (k: string) => `${k.slice(0, 4)}${'•'.repeat(16)}${k.slice(-4)}`;
+
+  function render() {
+    loading.hidden = true;
+    empty.hidden = key !== null;
+    present.hidden = key === null;
+    copyBtn.dataset.copy = key ?? '';
+    if (key) {
+      valueEl.textContent = revealed ? key : masked(key);
+      // Dots are noise to a screen reader: describe the hidden state instead.
+      if (revealed) valueEl.removeAttribute('aria-hidden');
+      else valueEl.setAttribute('aria-hidden', 'true');
+      srValue.textContent = revealed ? '' : 'Hidden. Use Reveal to show it.';
+      revealBtn.setAttribute('aria-pressed', String(revealed));
+      revealBtn.querySelector<HTMLElement>('[data-eye]')!.hidden = revealed;
+      revealBtn.querySelector<HTMLElement>('[data-eye-off]')!.hidden = !revealed;
+      revealBtn.querySelector<HTMLElement>('[data-reveal-label]')!.textContent = revealed ? 'Hide' : 'Reveal';
+    }
+    renderSnippet();
+  }
+
+  function renderSnippet() {
+    const shown = key ? (revealed ? key : masked(key)) : PLACEHOLDER;
+    setHTML(
+      snippet,
+      html`<span class="text-ink-500 select-none">$ </span><span class="text-brand-400">curl</span> -H <span class="text-ink-300">"Authorization: Bearer ${shown}"</span> \\\n    <span class="text-ink-300">${LIST_URL}</span>`,
+    );
+    snippetCopy.dataset.copy = `curl -H "Authorization: Bearer ${key ?? PLACEHOLDER}" \\\n  ${LIST_URL}`;
+    const hint = !loaded ? '' : key ? (revealed ? '' : 'Copying includes your full key.') : `Swap ${PLACEHOLDER} for your key once you’ve generated one.`;
+    snippetHint.textContent = hint;
+    snippetHint.hidden = !hint;
+  }
+
+  function showFreshKey(fresh: string) {
+    key = fresh;
+    revealed = true;
+    render();
+    notice.hidden = false;
+  }
+
+  currentUser.subscribe((user) => {
+    loaded = true;
+    key = user.api_key ?? null;
+    revealed = false;
+    notice.hidden = true;
+    render();
+  });
+
+  revealBtn.addEventListener('click', () => {
+    revealed = !revealed;
+    render();
+  });
+
+  $('[data-key-notice-close]').addEventListener('click', () => {
+    notice.hidden = true;
+    copyBtn.focus();
+  });
+
+  generateBtn.addEventListener('click', async () => {
+    setLoading(generateBtn, true, 'Generating…');
+    try {
+      const res = await apiPost<ApiKeyResponse>('/api/v1/auth/api-key/generate');
+      setLoading(generateBtn, false);
+      showFreshKey(res.api_key);
+      copyBtn.focus();
+    } catch (err) {
+      setLoading(generateBtn, false);
+      toast('Couldn’t generate a key', 'error', { description: errorMessage(err) });
+    }
+  });
+
+  $('[data-key-regenerate]').addEventListener('click', async () => {
+    let fresh = null as string | null;
+    const ok = await confirmDialog({
+      title: 'Regenerate your API key?',
+      body: 'You’ll get a new key right away. Anything using the current key will stop working immediately.',
+      confirmLabel: 'Regenerate key',
+      danger: true,
+      onConfirm: async () => {
+        fresh = (await apiPost<ApiKeyResponse>('/api/v1/auth/api-key/generate')).api_key;
+      },
+    });
+    if (ok && fresh) {
+      showFreshKey(fresh);
+      copyBtn.focus();
+    }
+  });
+
+  $('[data-key-revoke]').addEventListener('click', async () => {
+    const ok = await confirmDialog({
+      title: 'Revoke your API key?',
+      body: 'Anything using it — scripts, integrations, AI assistants — will stop working immediately. You can generate a new one any time.',
+      confirmLabel: 'Revoke key',
+      danger: true,
+      onConfirm: async () => {
+        await apiDelete<MessageResponse>('/api/v1/auth/api-key');
+      },
+    });
+    if (!ok) return;
+    key = null;
+    revealed = false;
+    notice.hidden = true;
+    render();
+    toast('API key revoked', 'success');
+    generateBtn.focus();
+  });
+
+  renderSnippet();
+</script>

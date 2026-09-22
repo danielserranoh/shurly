@@ -1,0 +1,50 @@
+---
+import Modal from '@/components/ui/Modal.astro';
+import Icon from '@/components/ui/Icon.astro';
+import ProBadge from '@/components/ui/ProBadge.astro';
+---
+
+<Modal id="qr-modal" title="QR code" description="Scans straight to your short link, so every scan is counted." width="26rem">
+  <div class="grid gap-5 px-6 py-6">
+    <div class="mx-auto grid size-56 place-items-center rounded-2xl border border-line bg-white p-3 shadow-xs" data-qr-preview></div>
+    <p class="shortlink truncate text-center text-sm text-ink-700" data-qr-label></p>
+    <div class="grid grid-cols-2 gap-2">
+      <button type="button" class="btn btn-primary" data-qr-png><Icon name="download" />PNG</button>
+      <button type="button" class="btn btn-secondary" data-qr-svg><Icon name="download" />SVG</button>
+    </div>
+    <div class="flex items-center gap-3 rounded-xl border border-dashed border-ink-300 bg-ink-50 px-4 py-3" aria-disabled="true">
+      <span class="grid size-8 shrink-0 place-items-center rounded-lg bg-white text-ink-500 ring-1 ring-ink-200"><Icon name="palette" /></span>
+      <div class="min-w-0 flex-1">
+        <p class="flex items-center gap-2 text-sm font-medium text-ink-800">Brand colors & logo <ProBadge /></p>
+        <p class="text-xs text-ink-500">Branded QR codes are coming with Pro.</p>
+      </div>
+    </div>
+    <p class="flex gap-2 text-xs leading-5 text-ink-500"><Icon name="info" class="mt-0.5 size-3.5 shrink-0" />Printing? Keep it at least 2 cm wide and test it with your phone first.</p>
+  </div>
+</Modal>
+
+<script>
+  import { downloadQrPng, downloadQrSvg, qrSvg } from '@/utils/qr';
+  import { errorMessage } from '@/utils/api';
+  import { toast } from '@/utils/ui';
+
+  const dialog = document.getElementById('qr-modal') as HTMLDialogElement;
+  const preview = dialog.querySelector<HTMLElement>('[data-qr-preview]')!;
+  const label = dialog.querySelector<HTMLElement>('[data-qr-label]')!;
+  let url = '';
+  let name = 'shurly-qr';
+
+  // Pages open the modal by dispatching this event with the short URL.
+  window.addEventListener('shurly:qr', (e) => {
+    const detail = (e as CustomEvent<{ url: string; code: string }>).detail;
+    url = detail.url;
+    name = `shurly-${detail.code}`;
+    preview.innerHTML = qrSvg(url);
+    preview.querySelector('svg')?.setAttribute('class', 'size-full');
+    label.textContent = url.replace(/^https?:\/\//, '');
+  });
+  dialog.querySelector('[data-qr-png]')!.addEventListener('click', () => {
+    downloadQrPng(url, `${name}.png`).catch((err) => toast('Couldn’t export the QR code', 'error', { description: errorMessage(err) }));
+  });
+  dialog.querySelector('[data-qr-svg]')!.addEventListener('click', () => downloadQrSvg(url, `${name}.svg`));
+</script>

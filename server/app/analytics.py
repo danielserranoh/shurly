@@ -11,8 +11,6 @@ from sqlalchemy.orm import Session
 from server.core import get_db
 from server.core.auth import get_current_user
 from server.core.models import URL, Campaign, OrphanVisit, User, Visitor
-from server.core.models.url import URLType
-from server.utils.csv_export import stream_csv
 from server.schemas.analytics import (
     CampaignSummary,
     CampaignUsersResponse,
@@ -26,6 +24,8 @@ from server.schemas.analytics import (
     WeeklyStatsResponse,
 )
 from server.schemas.responses import get_responses
+from server.utils.csv_export import stream_csv
+from server.utils.url import build_short_url
 
 
 def _exclude_bots(query: SAQuery, include_bots: bool) -> SAQuery:
@@ -321,11 +321,11 @@ def get_campaign_summary(
     # Convert campaign_id string to UUID
     try:
         campaign_uuid = UUIDType(campaign_id)
-    except ValueError:
+    except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid campaign ID format",
-        )
+        ) from exc
 
     # Verify campaign exists and belongs to user
     campaign = (
@@ -477,11 +477,11 @@ def get_campaign_users(
     # Convert campaign_id string to UUID
     try:
         campaign_uuid = UUIDType(campaign_id)
-    except ValueError:
+    except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid campaign ID format",
-        )
+        ) from exc
 
     # Verify campaign exists and belongs to user
     campaign = (
@@ -580,6 +580,8 @@ def get_overview_stats(
     - **401**: Authentication required or invalid token
 
     **Note:** Includes all-time totals and recent activity for the last 7 days.
+    Each `top_urls` item has `short_code`, `short_url`, `title`, `original_url`,
+    `url_type` and `clicks` (tracking-pixel opens are never counted as clicks).
     """
     # Total URLs
     total_urls = db.query(func.count(URL.id)).filter(URL.created_by == current_user.id).scalar() or 0
@@ -627,9 +629,11 @@ def get_overview_stats(
     )
 
     # Top 5 URLs by click count.
-    # outer-join keeps URLs with zero visits; bot filter must be expressed on the join
+    # outer-join keeps URLs with zero visits; click filters must be expressed on the join
     # condition (not as a where) so the LEFT JOIN still emits those URL rows.
-    visitor_join = URL.id == Visitor.url_id
+    # Phase 3.11 — tracking-pixel opens are never clicks (same definition as
+    # `_exclude_bots`, and as `URLResponse.click_count`), even with include_bots.
+    visitor_join = (URL.id == Visitor.url_id) & (Visitor.is_pixel.is_(False))
     if not include_bots:
         visitor_join = visitor_join & (Visitor.is_bot.is_(False))
     top_urls_data = (
@@ -637,11 +641,12 @@ def get_overview_stats(
             URL.short_code,
             URL.original_url,
             URL.url_type,
+            URL.title,
             func.count(Visitor.id).label("click_count"),
         )
         .join(Visitor, visitor_join, isouter=True)
         .filter(URL.created_by == current_user.id)
-        .group_by(URL.id, URL.short_code, URL.original_url, URL.url_type)
+        .group_by(URL.id, URL.short_code, URL.original_url, URL.url_type, URL.title)
         .order_by(func.count(Visitor.id).desc())
         .limit(5)
         .all()
@@ -650,6 +655,9 @@ def get_overview_stats(
     top_urls = [
         {
             "short_code": url.short_code,
+            # Phase 3.11 — absolute short URL + title so the dashboard can render/copy links
+            "short_url": build_short_url(url.short_code),
+            "title": url.title,
             "original_url": url.original_url,
             "url_type": url.url_type.value,
             "clicks": url.click_count or 0,

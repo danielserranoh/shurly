@@ -1,0 +1,25 @@
+---
+/**
+ * One settings section: title + description on the left, content on the right
+ * (stacked on smaller screens).
+ */
+interface Props {
+  /** id of the section heading; the section is labelled by it */
+  id: string;
+  title: string;
+  description?: string;
+}
+
+const { id, title, description } = Astro.props;
+---
+
+<section class="grid gap-4 lg:grid-cols-[16rem_minmax(0,1fr)] lg:gap-10" aria-labelledby={id}>
+  <div class="lg:pt-1">
+    <h2 id={id} class="font-semibold text-ink-950">{title}<slot name="title-end" /></h2>
+    {description && <p class="mt-1 text-sm leading-6 text-ink-500">{description}</p>}
+    <slot name="aside" />
+  </div>
+  <div class="min-w-0">
+    <slot />
+  </div>
+</section>

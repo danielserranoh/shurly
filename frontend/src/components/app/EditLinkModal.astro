@@ -1,0 +1,99 @@
+---
+import Modal from '@/components/ui/Modal.astro';
+import Icon from '@/components/ui/Icon.astro';
+---
+
+<Modal id="edit-link" title="Edit link" description="The short link stays the same — only what it does changes." width="38rem" staticBackdrop>
+  <form id="edit-link-form" class="grid gap-5 px-6 py-5" novalidate>
+    <div data-form-alert hidden></div>
+
+    <div class="grid gap-1.5">
+      <label for="edit-title" class="label">Title</label>
+      <input id="edit-title" name="title" class="input" maxlength="255" placeholder="e.g. Q4 proposal — Acme" />
+      <p class="field-error" data-error-for="title" hidden></p>
+    </div>
+
+    <div class="grid gap-1.5">
+      <label for="edit-destination" class="label">Destination</label>
+      <input id="edit-destination" name="original_url" class="input" type="url" inputmode="url" required />
+      <p class="hint" data-destination-hint>Everyone who already has this link will go to the new destination.</p>
+      <p class="field-error" data-error-for="original_url" hidden></p>
+    </div>
+
+    <div class="grid gap-1.5">
+      <span class="label" id="edit-tags-label">Tags</span>
+      <div id="edit-tags" data-label="Tags" aria-labelledby="edit-tags-label"></div>
+    </div>
+
+    <label class="flex items-start justify-between gap-4 rounded-xl border border-line p-4">
+      <span>
+        <span class="block text-sm font-medium text-ink-900">Forward query parameters</span>
+        <span class="hint mt-0.5 block">Pass ?utm_source=… and friends from the short link through to the destination.</span>
+      </span>
+      <span class="switch mt-0.5"><input type="checkbox" name="forward_parameters" role="switch" /><span></span></span>
+    </label>
+
+    <details class="disclosure rounded-xl border border-line" data-og-section>
+      <summary class="px-4 py-3.5">
+        <Icon name="share" class="size-4 text-ink-500" />
+        <span class="text-sm font-medium text-ink-900">Social preview</span>
+        <span class="text-xs text-ink-500" data-og-summary></span>
+        <Icon name="chevron-down" class="chevron ml-auto size-4 text-ink-400" />
+      </summary>
+      <div class="disclosure-body grid gap-4 border-t border-line px-4 py-4">
+        <div class="flex items-center justify-between gap-3">
+          <p class="hint">How the link looks when shared on LinkedIn, WhatsApp or Slack. Empty fields use the page’s own.</p>
+          <button type="button" class="btn btn-secondary btn-sm shrink-0" data-fetch-og><Icon name="refresh" />Fetch from page</button>
+        </div>
+        <div class="grid gap-1.5">
+          <label for="edit-og-title" class="label">Preview title</label>
+          <input id="edit-og-title" name="og_title" class="input" maxlength="255" />
+        </div>
+        <div class="grid gap-1.5">
+          <label for="edit-og-description" class="label">Preview description</label>
+          <textarea id="edit-og-description" name="og_description" class="textarea" rows="2"></textarea>
+        </div>
+        <div class="grid gap-1.5">
+          <label for="edit-og-image" class="label">Preview image URL</label>
+          <input id="edit-og-image" name="og_image_url" class="input" type="url" inputmode="url" placeholder="https://…/image.jpg" />
+          <p class="hint">1200 × 630 px works everywhere.</p>
+          <p class="field-error" data-error-for="og_image_url" hidden></p>
+        </div>
+      </div>
+    </details>
+
+    <details class="disclosure rounded-xl border border-line" data-advanced-section>
+      <summary class="px-4 py-3.5">
+        <Icon name="settings" class="size-4 text-ink-500" />
+        <span class="text-sm font-medium text-ink-900">Schedule & limits</span>
+        <span class="text-xs text-ink-500" data-advanced-summary></span>
+        <Icon name="chevron-down" class="chevron ml-auto size-4 text-ink-400" />
+      </summary>
+      <div class="disclosure-body grid grid-cols-1 gap-4 border-t border-line px-4 py-4 sm:grid-cols-2">
+        <div class="grid gap-1.5">
+          <label for="edit-since" class="label">Goes live</label>
+          <input id="edit-since" name="valid_since" class="input" type="datetime-local" />
+          <p class="hint">Before this, the link shows “not found”.</p>
+        </div>
+        <div class="grid gap-1.5">
+          <label for="edit-until" class="label">Expires</label>
+          <input id="edit-until" name="valid_until" class="input" type="datetime-local" />
+          <p class="field-error" data-error-for="valid_until" hidden></p>
+        </div>
+        <div class="grid gap-1.5">
+          <label for="edit-max" class="label">Click limit</label>
+          <input id="edit-max" name="max_visits" class="input" type="number" min="1" step="1" inputmode="numeric" placeholder="No limit" />
+          <p class="field-error" data-error-for="max_visits" hidden></p>
+        </div>
+        <label class="flex items-center justify-between gap-3 self-end rounded-lg border border-line px-3 py-2.5">
+          <span class="text-sm text-ink-800">Let search engines index it</span>
+          <span class="switch"><input type="checkbox" name="crawlable" role="switch" /><span></span></span>
+        </label>
+      </div>
+    </details>
+  </form>
+  <div class="flex flex-col-reverse gap-2 border-t border-line px-6 py-4 sm:flex-row sm:justify-end">
+    <button type="button" class="btn btn-secondary" data-dialog-close>Cancel</button>
+    <button type="submit" form="edit-link-form" class="btn btn-primary" data-save>Save changes</button>
+  </div>
+</Modal>

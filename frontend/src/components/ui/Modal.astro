@@ -1,0 +1,30 @@
+---
+import Icon from './Icon.astro';
+
+interface Props {
+  id: string;
+  title: string;
+  description?: string;
+  /** CSS width of the panel, e.g. "36rem" */
+  width?: string;
+  /** Prevent closing by backdrop click (e.g. forms with unsaved input) */
+  staticBackdrop?: boolean;
+}
+
+const { id, title, description, width = '34rem', staticBackdrop = false } = Astro.props;
+---
+
+<dialog id={id} class="modal" aria-labelledby={`${id}-title`} data-static={staticBackdrop ? '' : undefined}>
+  <div class="modal-panel" style={`--modal-width: ${width}`}>
+    <div class="flex items-start justify-between gap-4 border-b border-line px-6 py-4">
+      <div class="min-w-0">
+        <h2 id={`${id}-title`} class="text-base font-semibold text-ink-950">{title}</h2>
+        {description && <p class="mt-0.5 text-sm text-ink-500">{description}</p>}
+      </div>
+      <button type="button" class="btn btn-ghost btn-sm btn-icon -mr-2" data-dialog-close aria-label="Close">
+        <Icon name="x" />
+      </button>
+    </div>
+    <slot />
+  </div>
+</dialog>

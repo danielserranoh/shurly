@@ -1,0 +1,10 @@
+---
+/** "Pro" marker for features that belong to the paid plan. See design/DESIGN_SYSTEM.md → Paywall. */
+interface Props {
+  class?: string;
+  label?: string;
+}
+const { class: className = '', label = 'Pro' } = Astro.props;
+---
+
+<span class:list={['badge-pro inline-flex items-center', className]}>{label}</span>

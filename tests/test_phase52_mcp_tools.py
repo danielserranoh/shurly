@@ -36,6 +36,9 @@ EXPECTED_TOOLS: set[str] = {
     "bulk_tag_urls",
     "get_url_preview",
     "refresh_url_preview",
+    # Phase 3.11 — single-URL detail + live OG preview for the dashboard redesign
+    "get_url",
+    "fetch_url_metadata",
     # Redirect rules
     "list_redirect_rules",
     "create_redirect_rule",

@@ -23,17 +23,18 @@ A modern, full-stack URL shortener with analytics and campaign management, built
 - **Pydantic v2** — schema validation
 - **SQLAlchemy 2.0 + PostgreSQL** — `psycopg2-binary` driver
 - **python-jose** + **passlib (bcrypt<5)** — JWT + password hashing
-- **uv** + **ruff** + **pytest** — packaging, linting, testing (285 tests)
+- **uv** + **ruff** + **pytest** — packaging, linting, testing (382 tests)
 
 ### Frontend
-- **Astro 6** with the **`@astrojs/node`** adapter (three dashboard routes are SSR)
-- **Tailwind CSS 4** via **`@tailwindcss/vite`** (CSS-first config in `src/styles/global.css`)
-- **TypeScript** + **Vite 7**
+- **Astro 7** (Vite 8), fully static output (`frontend/dist/` can be served from S3/any CDN), vanilla TypeScript islands
+- **Tailwind CSS 4** via **`@tailwindcss/vite`**. The design tokens live in `src/styles/global.css` (`@theme`)
+- **Lucide** icons, self-hosted **Inter / Bricolage Grotesque / JetBrains Mono** variable fonts, **uqr** for QR codes
+- Design system: [`design/DESIGN_SYSTEM.md`](design/DESIGN_SYSTEM.md) and the live styleguide at `/styleguide/`
 
 ## Prerequisites
 
 - Python 3.10 or higher
-- Node.js 20.19+ or 22.12+ (Astro 6 requirement)
+- Node.js 22.12+ (Astro 7 requirement)
 - PostgreSQL database (14 or higher recommended)
 - [uv](https://github.com/astral-sh/uv) (Python package installer)
 
@@ -163,6 +164,22 @@ npm run dev
 
 The frontend will be available at `http://localhost:4232`
 
+**First run:** there is no default account. Open `http://localhost:4232/register/` and sign up with any
+email and a password of 8+ characters; you're signed in straight away. Accounts live in your local
+database, so each environment needs its own.
+
+#### Configuration (optional, build-time)
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `PUBLIC_API_URL` | `http://localhost:8000` | FastAPI base URL |
+| `PUBLIC_SHORT_DOMAIN` | host of `PUBLIC_API_URL` | Domain shown in short-link previews |
+| `PUBLIC_SITE_URL` | `http://localhost:4232` | Canonical/OG URLs |
+| `PUBLIC_SOURCE_URL`, `PUBLIC_SPONSOR_URL` | unset | Footer and plan links (hidden when unset) |
+
+Routes are all static. Record pages take a query parameter instead of a path segment
+(`/dashboard/link/?code=abc123`, `/dashboard/campaign/?id=…`), so no server adapter is needed.
+
 ## Development
 
 ### Backend Development
@@ -263,29 +280,29 @@ shurly/
 │       ├── redirect_rules.py      # Conditional redirect evaluator
 │       ├── csv_export.py          # Streaming CSV writer
 │       └── tags.py                # Predefined tag seeding
-├── frontend/                      # Astro 6 + Tailwind 4
-│   ├── src/
-│   │   ├── styles/global.css      # @import "tailwindcss"
-│   │   ├── layouts/Layout.astro
-│   │   ├── pages/
-│   │   │   ├── index.astro
-│   │   │   ├── login.astro
-│   │   │   ├── register.astro
-│   │   │   └── dashboard/
-│   │   │       ├── index.astro            # Dashboard home (static)
-│   │   │       ├── analytics.astro        # Analytics view
-│   │   │       ├── create.astro           # Create URL
-│   │   │       ├── settings.astro
-│   │   │       ├── campaigns/
-│   │   │       │   ├── index.astro
-│   │   │       │   ├── create.astro
-│   │   │       │   └── [id].astro         # SSR (prerender = false)
-│   │   │       └── urls/
-│   │   │           └── [short_code].astro # SSR (prerender = false)
-│   │   ├── components/
-│   │   └── utils/                 # api.ts, auth.ts, types.ts
-│   └── astro.config.mjs           # Includes @astrojs/node adapter
-├── tests/                         # 285 passing
+├── design/
+│   ├── DESIGN_SYSTEM.md           # Brand, tokens, patterns, paywall rules, brief decisions
+│   └── brand/                     # Logo SVG/PNG exports + usage (README.md)
+├── frontend/                      # Astro 7 + Tailwind 4, static output
+│   ├── public/                    # Favicons, manifest, og-image, brand/
+│   └── src/
+│       ├── styles/global.css      # Design tokens (@theme) + component classes
+│       ├── layouts/               # Base, Marketing, Auth, App (dashboard shell)
+│       ├── components/            # brand/, ui/, app/, illustrations/, settings/, styleguide/
+│       ├── config/site.ts         # Public env config + plans
+│       ├── utils/                 # api, auth, html (escaping), links, campaigns, charts, tags, …
+│       └── pages/
+│           ├── index.astro        # Landing + pricing
+│           ├── login.astro · register.astro · 404.astro · styleguide.astro
+│           └── dashboard/
+│               ├── index.astro            # Links (quick create, filters, bulk actions)
+│               ├── create.astro           # Full link editor with live preview
+│               ├── link.astro             # Link details (?code=)
+│               ├── campaign.astro         # Campaign details (?id=)
+│               ├── campaigns/index.astro · campaigns/create.astro (4-step wizard)
+│               ├── analytics.astro
+│               └── settings.astro         # Account · API & MCP · Tags · Notifications · Plan
+├── tests/                         # 382 passing
 │   ├── conftest.py                # In-memory SQLite fixtures
 │   ├── test_auth.py / _urls.py / _campaigns.py / _analytics.py / _tags.py
 │   ├── test_user_agent.py / _utils.py / _network.py
@@ -320,7 +337,9 @@ full versioning policy.
 ### URL Shortening
 - `POST /api/v1/urls` — auto-generated 6-char code
 - `POST /api/v1/urls/custom` — user-supplied slug
-- `GET /api/v1/urls` — list (supports `tags=`, `tag_filter=any|all`, pagination)
+- `GET /api/v1/urls` — list (supports `tags=`, `tag_filter=any|all`, `q=` search, repeatable `url_type=`, pagination); each item carries `click_count`
+- `GET /api/v1/urls/{short_code}` — one URL (with `click_count`, tags, campaign linkage)
+- `POST /api/v1/urls/fetch-metadata` — OG title/description/image for any destination (powers the live preview)
 - `PATCH /api/v1/urls/{short_code}`
 - `DELETE /api/v1/urls/{short_code}`
 - `GET /api/v1/urls/{short_code}/preview` — OG metadata
@@ -381,7 +400,7 @@ zero or more priority-ordered redirect rules.
 
 ### Automated Tests
 
-The project includes a comprehensive test suite with **285 passing tests**:
+The project includes a comprehensive test suite with **382 passing tests**:
 
 - **Unit tests**: UA parsing, IP anonymization, redirect-rule evaluator, OG charset decoding
 - **Integration tests**: API contracts, redirect path, multi-domain, bot filtering, CSV export, orphan visits, redirect rules, tracking pixel

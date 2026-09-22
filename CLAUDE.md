@@ -7,7 +7,7 @@ analytics, and Shlink-inspired hardening (multi-domain, redirect rules, GDPR).
 
 This project follows a **pragmatic, TDD-driven** development philosophy:
 
-- **Test-Driven Development**: Write tests first, then implement features. **All 285 tests must pass.**
+- **Test-Driven Development**: Write tests first, then implement features. **All 382 tests must pass.**
 - **Incremental Progress**: Complete features end-to-end before moving to the next.
 - **Clear Documentation**: Code is the truth, docs explain the why.
 - **Production-Ready**: Every commit should maintain a working application.
@@ -17,14 +17,14 @@ This project follows a **pragmatic, TDD-driven** development philosophy:
 
 ### 1. **Project Overview** (5 min)
 Read [README.md](README.md) to understand:
-- Tech stack (FastAPI + Astro 6 + PostgreSQL)
+- Tech stack (FastAPI + Astro 7 + PostgreSQL)
 - Project structure
 - API endpoints (versioned under `/api/v1/`)
 - How to run locally
 
 ### 2. **Development Roadmap** (10 min)
 Review [_pm/ROADMAP.md](_pm/ROADMAP.md) for:
-- **Current Status**: Phase 3 + 3.8 + 3.9 + 3.10 complete (285 tests passing)
+- **Current Status**: Phase 3 (incl. 3.11 brand + frontend redesign) and 5.3–5.5 complete (382 tests passing)
 - Use cases (standard URLs, custom URLs, campaigns, multi-domain)
 - Phase 1–3.10 completion status (✅)
 - Phase 4–6 next steps (AWS Lambda + RDS, deployment hardening, docs)
@@ -39,15 +39,20 @@ Check [docs/TESTING.md](docs/TESTING.md) when you need to:
 Read [CHANGELOG.md](CHANGELOG.md) — Keep-a-Changelog formatted, lists every
 behavior change since the v0.1 baseline including the API versioning policy.
 
+### 5. **Design system** (before any UI work)
+Read [design/DESIGN_SYSTEM.md](design/DESIGN_SYSTEM.md) (tokens, voice, patterns,
+paywall rules) and browse `/styleguide/` in the running frontend.
+
 ## Project Architecture at a Glance
 
 ```
-Backend (FastAPI)               Frontend (Astro 6 + Tailwind 4)
-├── /api/v1/auth/*              ├── /login, /register
-├── /api/v1/urls/*              ├── /dashboard (URL management)
-│   └── /rules                  ├── /dashboard/campaigns/*
-├── /api/v1/campaigns/*         └── /dashboard/analytics
-├── /api/v1/tags/*
+Backend (FastAPI)               Frontend (Astro 7 + Tailwind 4)
+├── /api/v1/auth/*              ├── /, /login, /register, /styleguide
+├── /api/v1/urls/*              ├── /dashboard (links), /dashboard/create
+│   └── /rules                  ├── /dashboard/link/?code=…
+├── /api/v1/campaigns/*         ├── /dashboard/campaigns/, …/create
+├── /api/v1/tags/*              ├── /dashboard/campaign/?id=…
+│                               └── /dashboard/analytics, /dashboard/settings
 ├── /api/v1/analytics/*
 │   └── /orphan-visits
 └── (unversioned, public)
@@ -86,7 +91,7 @@ Backend (FastAPI)               Frontend (Astro 6 + Tailwind 4)
 1. **Understand the context**: Check related code and tests first.
 2. **Write tests**: Add/update tests before implementing (TDD).
 3. **Implement**: Make changes to pass the tests.
-4. **Verify**: Run `uv run pytest` — all 285 tests must pass.
+4. **Verify**: Run `uv run pytest` — all 382 tests must pass.
 5. **Lint**: `uv run ruff check server tests main.py` (focus on the files you touched).
 6. **Commit**: Use clear, descriptive commit messages following the existing pattern (`feat: Phase X.Y.Z — …`).
 
@@ -105,8 +110,12 @@ Backend (FastAPI)               Frontend (Astro 6 + Tailwind 4)
   - Components: `frontend/src/components/`
   - Utils: `frontend/src/utils/`
   - Run dev: `npm run dev` on **port 4232**
-  - Tailwind 4 CSS-first config in `src/styles/global.css`
-  - Three dashboard dynamic routes use `prerender = false` (require `@astrojs/node`)
+  - Tailwind 4 CSS-first config in `src/styles/global.css`: design tokens (`@theme`) + component classes (`btn`, `card`, `tag`, …)
+  - **Static output, no adapter**: record pages use query params (`/dashboard/link/?code=`), never `[param].astro`
+  - Render dynamic HTML with the escaping `html` tag from `@/utils/html` (never raw `innerHTML` with API data)
+  - Astro 7 strips whitespace with JSX rules (`compressHTML: 'jsx'`): a line break between text and an inline
+    element renders as *no* space. Keep them on one line or write `{' '}` (e.g. `</b>{' '}` then `{caption}`)
+  - Copy follows the voice in `design/DESIGN_SYSTEM.md` (sentence case, "link" not "URL")
 
 - **Testing**:
   - In-memory SQLite for isolation (`tests/conftest.py`)
@@ -125,6 +134,8 @@ Backend (FastAPI)               Frontend (Astro 6 + Tailwind 4)
 - `server/utils/redirect_rules.py` — Conditional redirect evaluator
 - `server/utils/network.py` — IP anonymization + trusted-proxy resolution
 - `frontend/src/utils/api.ts` — API client with auth + JSON-array CORS-friendly fetch
+- `frontend/src/layouts/AppLayout.astro` — dashboard shell (nav, user menu, auth guard, shortcuts)
+- `frontend/src/utils/ui.ts` — toasts, copy feedback, dialogs, confirm, global delegated behaviours
 - `docker-compose.yml` — Local dev environment
 
 ## Common Tasks
@@ -142,14 +153,15 @@ Backend (FastAPI)               Frontend (Astro 6 + Tailwind 4)
 4. Add a unit test that round-trips through `db_session`
 
 ### Adding a Frontend Page
-1. Create the page in `frontend/src/pages/*.astro`
-2. If it's a dynamic route (`[id].astro`) and renders client-side, add `export const prerender = false;`
+1. Create the page in `frontend/src/pages/*.astro` inside `AppLayout` (dashboard) or `MarketingLayout` (public)
+2. Records are addressed by query param (`?id=`), not a dynamic route, to keep the build static
 3. Use `apiGet/apiPost` from `@/utils/api` for backend calls
-4. Add to navigation in `Navbar.astro` if needed
+4. Reuse the patterns in `/styleguide/` (empty/loading/error states, `EmptyState`, `StatCard`, `Modal`)
+5. Add to the `nav` array in `layouts/AppLayout.astro` if needed
 
 ### Running Tests
 ```bash
-# All tests (should show 285 passed)
+# All tests (should show 382 passed; MCP suites skip without `--extra mcp`)
 uv run pytest
 
 # With coverage
@@ -177,7 +189,8 @@ docker compose up -d
 - ✅ **Phase 1–3**: Backend + Frontend + Analytics + Tags
 - ✅ **Phase 3.9**: API versioning, validity window, bot detection, robots.txt, GDPR, X-Request-Id, SHORT_URL_MODE, TRUSTED_PROXIES, OG charset, API key scope
 - ✅ **Phase 3.10**: Multi-domain, redirect rules, tracking pixel, orphan visits, CSV export, configurable redirect
-- ⏳ **Phase 4**: AWS Lambda + RDS deployment (next)
+- ✅ **Phase 3.11**: Brand identity + design system + full frontend redesign (static build)
+- ⏳ **Phase 4**: AWS deployment (next)
 
 ### Defaults Worth Knowing
 - `SHORT_URL_MODE=loose` → all generated codes and custom slugs are lowercased
@@ -196,7 +209,7 @@ docker compose up -d
 - Commit messages follow `feat: Phase X.Y.Z — short description` style
 
 ### Testing Status
-- ✅ **285 backend tests passing**
+- ✅ **382 backend tests passing**
 - ✅ Frontend builds clean (`npm run build`); `npm audit` 0 vulnerabilities
 - ⏳ Manual smoke testing for production deploy (Phase 4)
 

@@ -1,511 +1,431 @@
 ---
-import Layout from '@/layouts/Layout.astro';
-import Navbar from '@/components/Navbar.astro';
-import ProtectedRoute from '@/components/ProtectedRoute.astro';
+import AppLayout from '@/layouts/AppLayout.astro';
+import PageHeader from '@/components/ui/PageHeader.astro';
+import Icon from '@/components/ui/Icon.astro';
+import QrModal from '@/components/app/QrModal.astro';
+import Illustration from '@/components/illustrations/Illustration.astro';
+import { site } from '@/config/site';
 ---
 
-<Layout title="Create Short URL - Shurly">
-  <ProtectedRoute>
-    <div id="dashboard-navbar"></div>
+<AppLayout title="New link" section="links">
+  <PageHeader title="New link" description="Shorten it, name it, tag it. Only the destination is required." back={{ href: '/dashboard/', label: 'Links' }} />
 
-    <main class="min-h-screen bg-gray-50 py-8">
-      <div class="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
-        <!-- Header -->
-        <div class="mb-8">
-          <div class="flex items-center gap-2 mb-2">
-            <a href="/dashboard" class="text-gray-600 hover:text-gray-900">
-              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-              </svg>
-            </a>
-            <h1 class="text-3xl font-bold text-gray-900">
-              Create Short URL
-            </h1>
-          </div>
-          <p class="text-gray-600">
-            Generate a shortened URL for easy sharing
-          </p>
+  <div id="editor" class="grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
+    <form id="create-form" class="grid gap-5" novalidate>
+      <div data-form-alert hidden></div>
+
+      <section class="card grid gap-5 p-6">
+        <div class="grid gap-1.5">
+          <label for="url" class="label">Destination <span class="font-normal text-ink-500">— where the link goes</span></label>
+          <input id="url" name="url" type="url" inputmode="url" class="input input-lg" placeholder="https://docs.google.com/presentation/d/…" autocomplete="off" required autofocus aria-describedby="url-error" />
+          <p id="url-error" class="field-error" data-error-for="url" hidden></p>
         </div>
 
-        <!-- Form Card -->
-        <div class="bg-white rounded-lg shadow-lg p-8">
-          <!-- URL Type Toggle -->
-          <div class="mb-6">
-            <label class="block text-sm font-medium text-gray-700 mb-3">
-              URL Type
-            </label>
-            <div class="flex rounded-lg border border-gray-300 overflow-hidden">
-              <button
-                id="standard-btn"
-                class="flex-1 py-3 px-4 font-medium transition-colors bg-blue-600 text-white"
-              >
-                Standard
-              </button>
-              <button
-                id="custom-btn"
-                class="flex-1 py-3 px-4 font-medium transition-colors bg-white text-gray-700 hover:bg-gray-50"
-              >
-                Custom
-              </button>
-            </div>
+        <div class="grid gap-1.5">
+          <label for="title" class="label">Title <span class="font-normal text-ink-500">— only you see this</span></label>
+          <input id="title" name="title" class="input" maxlength="255" placeholder="e.g. Q4 proposal — Acme Corp" />
+        </div>
+
+        <fieldset class="grid gap-2.5">
+          <legend class="label mb-2">Back-half</legend>
+          <div class="segmented justify-self-start" role="radiogroup" aria-label="Back-half type">
+            <label><input type="radio" name="mode" value="random" checked /><span><Icon name="zap" />Random</span></label>
+            <label><input type="radio" name="mode" value="custom" /><span><Icon name="pencil" />Custom</span></label>
           </div>
-
-          <form id="create-form" class="space-y-6">
-            <!-- Original URL Field -->
-            <div>
-              <label for="url" class="block text-sm font-medium text-gray-700 mb-2">
-                Original URL *
-              </label>
-              <input
-                type="url"
-                id="url"
-                name="url"
-                required
-                placeholder="https://example.com/very/long/url"
-                class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              />
+          <div data-custom hidden class="grid gap-1.5">
+            <div class="input-group">
+              <span class="addon shortlink">{site.shortDomain}/</span>
+              <input name="custom_code" aria-label="Custom back-half" placeholder="acme-proposal" maxlength="20" autocomplete="off" spellcheck="false" aria-describedby="code-hint code-error" />
             </div>
+            <p id="code-hint" class="hint">3–20 letters, numbers, hyphens or underscores. We’ll make it lowercase.</p>
+            <p id="code-error" class="field-error" data-error-for="custom_code" hidden></p>
+          </div>
+        </fieldset>
 
-            <!-- Title Field (Phase 3.6) -->
-            <div>
-              <label for="title" class="block text-sm font-medium text-gray-700 mb-2">
-                Title <span class="text-gray-400 text-xs">(optional)</span>
-              </label>
-              <input
-                type="text"
-                id="title"
-                name="title"
-                maxlength="255"
-                placeholder="My Marketing Campaign"
-                class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              />
-              <p class="mt-1 text-xs text-gray-500">
-                A friendly name to help you identify this URL
-              </p>
-            </div>
+        <div class="grid gap-1.5">
+          <span id="tags-label" class="label">Tags</span>
+          <div id="tags" data-placeholder="Add tags — channel, audience, client…" aria-labelledby="tags-label"></div>
+        </div>
 
-            <!-- Forward Parameters Toggle (Phase 3.6) -->
-            <div>
-              <label class="flex items-center justify-between p-4 border border-gray-300 rounded-lg hover:bg-gray-50 cursor-pointer">
-                <div>
-                  <span class="text-sm font-medium text-gray-700">Forward Query Parameters</span>
-                  <p class="text-xs text-gray-500 mt-1">
-                    Append UTM tags and other query parameters to the destination URL
-                  </p>
-                </div>
-                <input
-                  type="checkbox"
-                  id="forward-parameters"
-                  name="forward-parameters"
-                  checked
-                  class="h-5 w-5 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                />
-              </label>
-            </div>
+        <label class="flex items-start justify-between gap-4 rounded-xl border border-line p-4">
+          <span>
+            <span class="block text-sm font-medium text-ink-900">Forward query parameters</span>
+            <span class="hint mt-0.5 block">Keeps ?utm_source=… and similar tags from the short link on the destination. Leave it on unless you know you don’t want it.</span>
+          </span>
+          <span class="switch mt-0.5"><input type="checkbox" name="forward_parameters" role="switch" checked /><span></span></span>
+        </label>
+      </section>
 
-            <!-- Advanced: Open Graph Fields (Phase 3.7) -->
-            <div class="border-t border-gray-200 pt-6">
-              <button
-                type="button"
-                id="toggle-og-fields"
-                class="flex items-center gap-2 text-sm font-medium text-gray-700 hover:text-blue-600 transition-colors"
-              >
-                <svg class="w-4 h-4 transition-transform" id="og-chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
-                </svg>
-                Social Media Preview (Advanced)
-              </button>
+      <details class="disclosure card" data-og-section>
+        <summary class="px-6 py-4">
+          <Icon name="share" class="size-4 text-ink-500" />
+          <span class="text-sm font-semibold text-ink-900">Social preview</span>
+          <span class="badge badge-neutral" data-og-state>Automatic</span>
+          <Icon name="chevron-down" class="chevron ml-auto size-4 text-ink-400" />
+        </summary>
+        <div class="disclosure-body grid gap-4 border-t border-line px-6 py-5">
+          <p class="hint">We pull the title, description and image from the page. Override them here if you want the link to look different when shared.</p>
+          <div class="grid gap-1.5">
+            <label for="og_title" class="label">Preview title</label>
+            <input id="og_title" name="og_title" class="input" maxlength="255" />
+          </div>
+          <div class="grid gap-1.5">
+            <label for="og_description" class="label">Preview description</label>
+            <textarea id="og_description" name="og_description" class="textarea" rows="2"></textarea>
+          </div>
+          <div class="grid gap-1.5">
+            <label for="og_image_url" class="label">Preview image URL</label>
+            <input id="og_image_url" name="og_image_url" type="url" inputmode="url" class="input" placeholder="https://…/image.jpg" />
+            <p class="hint">1200 × 630 px works everywhere.</p>
+            <p class="field-error" data-error-for="og_image_url" hidden></p>
+          </div>
+        </div>
+      </details>
 
-              <div id="og-fields" class="hidden mt-4 space-y-4 pl-6 border-l-2 border-blue-200">
-                <p class="text-xs text-gray-500">
-                  Customize how your link appears when shared on social media. Leave blank to auto-fetch from the destination URL.
-                </p>
+      <details class="disclosure card" data-advanced-section>
+        <summary class="px-6 py-4">
+          <Icon name="calendar-clock" class="size-4 text-ink-500" />
+          <span class="text-sm font-semibold text-ink-900">Schedule & limits</span>
+          <span class="text-xs text-ink-500">Optional</span>
+          <Icon name="chevron-down" class="chevron ml-auto size-4 text-ink-400" />
+        </summary>
+        <div class="disclosure-body grid grid-cols-1 gap-4 border-t border-line px-6 py-5 sm:grid-cols-2">
+          <div class="grid gap-1.5">
+            <label for="valid_since" class="label">Goes live</label>
+            <input id="valid_since" name="valid_since" type="datetime-local" class="input" />
+            <p class="hint">Before this, the link shows “not found”.</p>
+          </div>
+          <div class="grid gap-1.5">
+            <label for="valid_until" class="label">Expires</label>
+            <input id="valid_until" name="valid_until" type="datetime-local" class="input" />
+            <p class="field-error" data-error-for="valid_until" hidden></p>
+          </div>
+          <div class="grid gap-1.5">
+            <label for="max_visits" class="label">Click limit</label>
+            <input id="max_visits" name="max_visits" type="number" min="1" step="1" inputmode="numeric" class="input" placeholder="No limit" />
+            <p class="field-error" data-error-for="max_visits" hidden></p>
+          </div>
+          <label class="flex items-center justify-between gap-3 self-end rounded-lg border border-line px-3 py-2.5">
+            <span class="text-sm text-ink-800">Let search engines index it</span>
+            <span class="switch"><input type="checkbox" name="crawlable" role="switch" /><span></span></span>
+          </label>
+        </div>
+      </details>
 
-                <!-- OG Title -->
-                <div>
-                  <label for="og-title" class="block text-sm font-medium text-gray-700 mb-2">
-                    Preview Title
-                  </label>
-                  <input
-                    type="text"
-                    id="og-title"
-                    name="og-title"
-                    maxlength="255"
-                    placeholder="Amazing Product - Limited Time Offer"
-                    class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
-                  />
-                </div>
+      <div class="flex flex-col-reverse gap-2 sm:flex-row sm:items-center">
+        <p class="hint hidden sm:block"><span class="kbd">Ctrl</span> + <span class="kbd">Enter</span> to create</p>
+        <a href="/dashboard/" class="btn btn-secondary sm:ml-auto">Cancel</a>
+        <button type="submit" class="btn btn-primary btn-lg">Create link<Icon name="arrow-right" /></button>
+      </div>
+    </form>
 
-                <!-- OG Description -->
-                <div>
-                  <label for="og-description" class="block text-sm font-medium text-gray-700 mb-2">
-                    Preview Description
-                  </label>
-                  <textarea
-                    id="og-description"
-                    name="og-description"
-                    rows="2"
-                    placeholder="Get 50% off all products this week only! Free shipping on orders over $50."
-                    class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
-                  ></textarea>
-                </div>
+    <!-- Live preview -->
+    <aside class="grid gap-4 lg:sticky lg:top-24" aria-label="Preview">
+      <div class="card p-5">
+        <p class="eyebrow">Your short link</p>
+        <p class="shortlink mt-2 text-lg break-all text-ink-950"><span class="text-ink-500">{site.shortDomain}/</span><span data-preview-code class="text-ink-400">••••••</span></p>
+        <p class="hint mt-1" data-preview-code-hint>A random 6-character code is generated for you.</p>
+      </div>
 
-                <!-- OG Image URL -->
-                <div>
-                  <label for="og-image" class="block text-sm font-medium text-gray-700 mb-2">
-                    Preview Image URL
-                  </label>
-                  <input
-                    type="url"
-                    id="og-image"
-                    name="og-image"
-                    placeholder="https://example.com/images/product.jpg"
-                    class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
-                  />
-                  <p class="mt-1 text-xs text-gray-500">
-                    Recommended: 1200x630px for best results on all platforms
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            <!-- Custom Code Field (Hidden by default) -->
-            <div id="custom-code-field" class="hidden">
-              <label for="custom-code" class="block text-sm font-medium text-gray-700 mb-2">
-                Custom Short Code *
-              </label>
-              <div class="flex items-center gap-2">
-                <span class="text-gray-500">http://localhost:8000/</span>
-                <input
-                  type="text"
-                  id="custom-code"
-                  name="custom-code"
-                  placeholder="my-custom-code"
-                  pattern="[a-zA-Z0-9_-]+"
-                  class="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                />
-              </div>
-              <p class="mt-1 text-xs text-gray-500">
-                Only letters, numbers, hyphens, and underscores allowed
-              </p>
-            </div>
-
-            <!-- Error Message -->
-            <div id="error-message" class="hidden">
-              <div class="bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-lg text-sm">
-                <span id="error-text"></span>
-              </div>
-            </div>
-
-            <!-- Warning Message -->
-            <div id="warning-message" class="hidden">
-              <div class="bg-yellow-50 border border-yellow-200 text-yellow-800 px-4 py-3 rounded-lg text-sm">
-                <span id="warning-text"></span>
-              </div>
-            </div>
-
-            <!-- Success Message -->
-            <div id="success-message" class="hidden">
-              <div class="bg-green-50 border border-green-200 rounded-lg p-6">
-                <div class="flex items-center mb-4">
-                  <svg class="w-6 h-6 text-green-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
-                  </svg>
-                  <h3 class="text-lg font-semibold text-green-900">
-                    URL Created Successfully!
-                  </h3>
-                </div>
-                <div class="space-y-3">
-                  <div>
-                    <label class="text-xs text-green-700 uppercase tracking-wide font-semibold">
-                      Your Short URL
-                    </label>
-                    <div class="flex items-center gap-2 mt-1">
-                      <input
-                        type="text"
-                        id="created-url"
-                        readonly
-                        class="flex-1 px-3 py-2 bg-white border border-green-300 rounded-lg text-green-900 font-medium"
-                      />
-                      <button
-                        type="button"
-                        id="copy-success-btn"
-                        class="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors font-medium"
-                      >
-                        Copy
-                      </button>
-                    </div>
-                  </div>
-                  <div class="flex gap-2">
-                    <a
-                      href="/dashboard"
-                      class="flex-1 text-center px-4 py-2 border border-green-600 text-green-700 rounded-lg hover:bg-green-50 transition-colors font-medium"
-                    >
-                      Back to Dashboard
-                    </a>
-                    <button
-                      type="button"
-                      id="create-another-btn"
-                      class="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
-                    >
-                      Create Another
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <!-- Submit Button -->
-            <div id="submit-section">
-              <button
-                type="submit"
-                id="submit-btn"
-                class="w-full flex justify-center items-center py-3 px-6 border border-transparent text-base font-medium rounded-lg text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors"
-              >
-                <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
-                </svg>
-                Create Short URL
-              </button>
-            </div>
-          </form>
+      <div class="card overflow-hidden">
+        <div class="flex items-center justify-between px-5 pt-4 pb-3">
+          <p class="eyebrow">When shared</p>
+          <span class="flex items-center gap-1.5 text-xs text-ink-500" data-og-status></span>
+        </div>
+        <div class="border-t border-line" data-og-card>
+          <div class="grid aspect-[1200/630] place-items-center bg-ink-100 text-ink-400" data-og-image>
+            <Illustration name="links" class="h-20 w-auto opacity-60" />
+          </div>
+          <div class="grid gap-1 px-5 py-4">
+            <p class="truncate text-xs text-ink-500 uppercase" data-og-domain>your-site.com</p>
+            <p class="line-clamp-2 font-semibold text-ink-950" data-og-title>Paste a link to see its preview</p>
+            <p class="line-clamp-2 text-sm text-ink-500" data-og-description>We’ll show how it unfurls on LinkedIn, WhatsApp and Slack.</p>
+          </div>
         </div>
       </div>
-    </main>
-  </ProtectedRoute>
+    </aside>
+  </div>
 
-  <script>
-    import { apiGet, apiPost } from '@/utils/api';
-    import type { User, CreateURLResponse } from '@/utils/types';
+  <!-- Success -->
+  <section id="success" hidden class="mx-auto max-w-xl animate-fade-up" aria-live="polite">
+    <div class="card overflow-hidden text-center">
+      <div class="bg-brand-50 px-6 pt-10 pb-8">
+        <Illustration name="success" class="mx-auto h-28 w-auto" />
+        <h2 class="display mt-5 text-3xl text-ink-950">Your link is ready.</h2>
+        <p class="mt-2 text-[15px] text-ink-600" data-success-sub>Share it anywhere — every click shows up in Shurly.</p>
+      </div>
+      <div class="grid gap-4 px-6 py-6">
+        <div data-success-warning hidden class="flex gap-2.5 rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-3 text-left text-sm text-amber-900">
+          <Icon name="warning" class="mt-0.5 size-4 shrink-0 text-amber-600" /><p data-success-warning-text></p>
+        </div>
+        <div class="flex items-center gap-2 rounded-xl border border-line bg-ink-50 p-2 pl-4">
+          <a class="shortlink min-w-0 flex-1 truncate text-left text-lg text-ink-950 hover:underline" target="_blank" rel="noopener" data-success-link></a>
+          <button type="button" class="btn btn-accent" data-success-copy><span data-copy-icon><Icon name="copy" /></span><span data-copy-label>Copy</span></button>
+          <button type="button" class="btn btn-secondary btn-icon" data-success-qr aria-label="QR code"><Icon name="qr" /></button>
+        </div>
+        <div class="grid grid-cols-1 gap-2 sm:grid-cols-3">
+          <button type="button" class="btn btn-secondary" data-create-another><Icon name="plus" />Create another</button>
+          <a class="btn btn-secondary" data-success-details><Icon name="chart" />View details</a>
+          <a class="btn btn-secondary" href="/dashboard/"><Icon name="list" />All links</a>
+        </div>
+      </div>
+    </div>
+  </section>
 
-    const standardBtn = document.getElementById('standard-btn') as HTMLButtonElement;
-    const customBtn = document.getElementById('custom-btn') as HTMLButtonElement;
-    const customCodeField = document.getElementById('custom-code-field') as HTMLDivElement;
-    const customCodeInput = document.getElementById('custom-code') as HTMLInputElement;
-    const form = document.getElementById('create-form') as HTMLFormElement;
-    const submitBtn = document.getElementById('submit-btn') as HTMLButtonElement;
-    const submitSection = document.getElementById('submit-section') as HTMLDivElement;
-    const errorMessage = document.getElementById('error-message') as HTMLDivElement;
-    const errorText = document.getElementById('error-text') as HTMLSpanElement;
-    const warningMessage = document.getElementById('warning-message') as HTMLDivElement;
-    const warningText = document.getElementById('warning-text') as HTMLSpanElement;
-    const successMessage = document.getElementById('success-message') as HTMLDivElement;
-    const createdUrlInput = document.getElementById('created-url') as HTMLInputElement;
-    const copySuccessBtn = document.getElementById('copy-success-btn') as HTMLButtonElement;
-    const createAnotherBtn = document.getElementById('create-another-btn') as HTMLButtonElement;
-    const dashboardNavbar = document.getElementById('dashboard-navbar') as HTMLDivElement;
+  <QrModal />
+</AppLayout>
 
-    let isCustomMode = false;
-    let ogFieldsVisible = false;
+<script>
+  import { errorMessage } from '@/utils/api';
+  import { applyApiError, clearErrors, revealFirstError, setFieldError } from '@/utils/forms';
+  import { fromLocalInput, hostname, isValidHttpUrl, normalizeUrlInput } from '@/utils/format';
+  import { escapeHtml, safeUrl } from '@/utils/html';
+  import { iconSvg } from '@/utils/icons';
+  import { createLink, fetchMetadata, linkHref, openQr, setLinkTags } from '@/utils/links';
+  import { mountTagInput } from '@/utils/tag-input';
+  import { copyWithFeedback, setLoading, toast, writeClipboard } from '@/utils/ui';
+  import type { CreateLinkRequest, LinkMetadata, ShortLink } from '@/utils/types';
 
-    // Toggle Open Graph fields
-    const toggleOgBtn = document.getElementById('toggle-og-fields') as HTMLButtonElement;
-    const ogFields = document.getElementById('og-fields') as HTMLDivElement;
-    const ogChevron = document.getElementById('og-chevron') as unknown as SVGElement;
+  const form = document.getElementById('create-form') as HTMLFormElement;
+  const field = <T extends HTMLElement = HTMLInputElement>(name: string) => form.elements.namedItem(name) as unknown as T;
+  const q = <T extends HTMLElement = HTMLElement>(sel: string) => document.querySelector<T>(sel)!;
+  const submit = form.querySelector<HTMLButtonElement>('button[type="submit"]')!;
+  const tags = mountTagInput(document.getElementById('tags')!);
 
-    toggleOgBtn.addEventListener('click', () => {
-      ogFieldsVisible = !ogFieldsVisible;
-      if (ogFieldsVisible) {
-        ogFields.classList.remove('hidden');
-        ogChevron.style.transform = 'rotate(180deg)';
-      } else {
-        ogFields.classList.add('hidden');
-        ogChevron.style.transform = 'rotate(0deg)';
-      }
-    });
+  // Prefill from ?url= (e.g. from the dashboard)
+  const pre = new URLSearchParams(location.search).get('url');
+  if (pre) field('url').value = pre;
 
-    // Load user info and render navbar
-    async function loadUserInfo() {
-      try {
-        const user = await apiGet<User>('/api/v1/auth/me', true);
-        const navbarHTML = `
-          <nav class="bg-white shadow-sm border-b border-gray-200">
-            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-              <div class="flex justify-between items-center h-16">
-                <div class="flex-shrink-0">
-                  <a href="/" class="text-2xl font-bold text-blue-600 hover:text-blue-700 transition-colors">
-                    Shurly
-                  </a>
-                </div>
-                <div class="flex items-center space-x-4">
-                  <span class="text-sm text-gray-600 hidden sm:inline">
-                    ${user.email}
-                  </span>
-                  <a
-                    href="/dashboard"
-                    class="text-gray-700 hover:text-blue-600 transition-colors font-medium"
-                  >
-                    Dashboard
-                  </a>
-                  <button
-                    id="logout-btn"
-                    class="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition-colors font-medium text-sm"
-                  >
-                    Logout
-                  </button>
-                </div>
-              </div>
-            </div>
-          </nav>
-        `;
-        dashboardNavbar.innerHTML = navbarHTML;
+  // ------------------------------------------------------------- Back-half mode
+  const customBox = q('[data-custom]');
+  const codeInput = field('custom_code');
+  const previewCode = q('[data-preview-code]');
+  const previewHint = q('[data-preview-code-hint]');
+  function syncCode() {
+    const custom = (form.querySelector<HTMLInputElement>('input[name="mode"]:checked')?.value ?? 'random') === 'custom';
+    customBox.hidden = !custom;
+    const value = codeInput.value.trim().toLowerCase();
+    previewCode.textContent = custom && value ? value : '••••••';
+    previewCode.className = custom && value ? 'text-ink-950' : 'text-ink-400';
+    previewHint.textContent = custom ? 'If it’s taken, we’ll add a few characters and let you know.' : 'A random 6-character code is generated for you.';
+  }
+  form.querySelectorAll<HTMLInputElement>('input[name="mode"]').forEach((r) =>
+    r.addEventListener('change', () => {
+      syncCode();
+      if (r.value === 'custom' && r.checked) codeInput.focus();
+    }),
+  );
+  codeInput.addEventListener('input', () => {
+    setFieldError(form, 'custom_code', null);
+    syncCode();
+  });
 
-        const logoutBtn = document.getElementById('logout-btn');
-        if (logoutBtn) {
-          logoutBtn.addEventListener('click', () => {
-            import('@/utils/auth').then(({ logout }) => logout());
-          });
-        }
-      } catch (error) {
-        console.error('Failed to load user info:', error);
-      }
+  // ------------------------------------------------------------- Live preview
+  let fetched: LinkMetadata | null = null;
+  let fetchedFor = '';
+  let fetchTimer = 0;
+  const ogState = q('[data-og-state]');
+  const ogStatus = q('[data-og-status]');
+
+  function renderPreview() {
+    const dest = normalizeUrlInput(field('url').value);
+    const valid = isValidHttpUrl(dest);
+    const title = field('og_title').value.trim() || fetched?.og_title || '';
+    const description = field<HTMLTextAreaElement>('og_description').value.trim() || fetched?.og_description || '';
+    const image = field('og_image_url').value.trim() || fetched?.og_image_url || '';
+    const custom = Boolean(field('og_title').value.trim() || field<HTMLTextAreaElement>('og_description').value.trim() || field('og_image_url').value.trim());
+    ogState.textContent = custom ? 'Custom' : 'Automatic';
+    ogState.className = `badge ${custom ? 'badge-brand' : 'badge-neutral'}`;
+
+    q('[data-og-domain]').textContent = valid ? hostname(dest) : 'your-site.com';
+    q('[data-og-title]').textContent = valid ? title || field('title').value.trim() || hostname(dest) : 'Paste a link to see its preview';
+    q('[data-og-description]').textContent = valid ? description || (fetched ? 'No description found — add one to make it clickable.' : '') : 'We’ll show how it unfurls on LinkedIn, WhatsApp and Slack.';
+    const imgBox = q('[data-og-image]');
+    if (valid && image && isValidHttpUrl(image)) {
+      imgBox.innerHTML = `<img src="${escapeHtml(safeUrl(image))}" alt="" referrerpolicy="no-referrer" class="size-full object-cover" />`;
+      imgBox.querySelector('img')!.addEventListener('error', () => {
+        imgBox.innerHTML = `<span class="flex items-center gap-2 text-sm">${iconSvg('image-off', 'size-4')}Image couldn’t be loaded</span>`;
+      });
+    } else if (valid) {
+      imgBox.innerHTML = `<span class="flex items-center gap-2 text-sm">${iconSvg('image', 'size-4')}No preview image</span>`;
     }
+    const titleInput = field('title');
+    titleInput.placeholder = fetched?.og_title ? `e.g. ${fetched.og_title}` : 'e.g. Q4 proposal — Acme Corp';
+  }
 
-    // Toggle between standard and custom mode
-    standardBtn.addEventListener('click', () => {
-      isCustomMode = false;
-      standardBtn.classList.add('bg-blue-600', 'text-white');
-      standardBtn.classList.remove('bg-white', 'text-gray-700', 'hover:bg-gray-50');
-      customBtn.classList.remove('bg-blue-600', 'text-white');
-      customBtn.classList.add('bg-white', 'text-gray-700', 'hover:bg-gray-50');
-      customCodeField.classList.add('hidden');
-      customCodeInput.required = false;
-    });
+  function setOgStatus(kind: 'idle' | 'loading' | 'ok' | 'none' | 'error') {
+    const map = {
+      idle: '',
+      loading: '<span class="spinner"></span>Fetching preview…',
+      ok: `<span class="text-brand-700">${iconSvg('check', 'size-3.5', 2.5)}</span>From the page`,
+      none: 'No preview on this page',
+      error: 'Couldn’t reach the page',
+    } as const;
+    ogStatus.innerHTML = map[kind];
+    q('[data-og-card]').classList.toggle('opacity-60', kind === 'loading');
+  }
 
-    customBtn.addEventListener('click', () => {
-      isCustomMode = true;
-      customBtn.classList.add('bg-blue-600', 'text-white');
-      customBtn.classList.remove('bg-white', 'text-gray-700', 'hover:bg-gray-50');
-      standardBtn.classList.remove('bg-blue-600', 'text-white');
-      standardBtn.classList.add('bg-white', 'text-gray-700', 'hover:bg-gray-50');
-      customCodeField.classList.remove('hidden');
-      customCodeInput.required = true;
-    });
-
-    function showError(message: string) {
-      errorText.textContent = message;
-      errorMessage.classList.remove('hidden');
-      warningMessage.classList.add('hidden');
+  async function lookup() {
+    const dest = normalizeUrlInput(field('url').value);
+    if (!isValidHttpUrl(dest) || dest === fetchedFor) return;
+    fetchedFor = dest;
+    setOgStatus('loading');
+    try {
+      const meta = await fetchMetadata(dest);
+      if (dest !== fetchedFor) return;
+      fetched = meta;
+      setOgStatus(meta.og_title || meta.og_description || meta.og_image_url ? 'ok' : 'none');
+    } catch {
+      if (dest !== fetchedFor) return;
+      fetched = null;
+      setOgStatus('error');
     }
+    renderPreview();
+  }
 
-    function showWarning(message: string) {
-      warningText.textContent = message;
-      warningMessage.classList.remove('hidden');
-    }
+  const urlInput = field('url');
+  urlInput.addEventListener('input', () => {
+    setFieldError(form, 'url', null);
+    renderPreview();
+    window.clearTimeout(fetchTimer);
+    fetchTimer = window.setTimeout(lookup, 900);
+  });
+  urlInput.addEventListener('paste', () => {
+    window.clearTimeout(fetchTimer);
+    fetchTimer = window.setTimeout(lookup, 50);
+  });
+  urlInput.addEventListener('blur', () => {
+    const dest = normalizeUrlInput(urlInput.value);
+    if (urlInput.value.trim() && dest !== urlInput.value.trim()) urlInput.value = dest;
+    if (urlInput.value.trim() && !isValidHttpUrl(dest)) setFieldError(form, 'url', 'That doesn’t look like a web link. Try https://example.com/page');
+    window.clearTimeout(fetchTimer);
+    void lookup();
+  });
+  ['og_title', 'og_description', 'og_image_url', 'title'].forEach((n) => field(n).addEventListener('input', renderPreview));
+  if (pre) void lookup();
+  renderPreview();
+  syncCode();
 
-    function hideMessages() {
-      errorMessage.classList.add('hidden');
-      warningMessage.classList.add('hidden');
-    }
-
-    function setLoading(loading: boolean) {
-      submitBtn.disabled = loading;
-      submitBtn.innerHTML = loading
-        ? '<div class="animate-spin rounded-full h-5 w-5 border-b-2 border-white mx-auto"></div>'
-        : '<svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg> Create Short URL';
-      submitBtn.classList.toggle('opacity-50', loading);
-      submitBtn.classList.toggle('cursor-not-allowed', loading);
-    }
-
-    // Copy button functionality
-    copySuccessBtn.addEventListener('click', async () => {
-      try {
-        await navigator.clipboard.writeText(createdUrlInput.value);
-        const originalText = copySuccessBtn.textContent;
-        copySuccessBtn.textContent = 'Copied!';
-        setTimeout(() => {
-          copySuccessBtn.textContent = originalText;
-        }, 2000);
-      } catch (error) {
-        console.error('Failed to copy:', error);
-      }
-    });
-
-    // Create another button
-    createAnotherBtn.addEventListener('click', () => {
-      form.reset();
-      successMessage.classList.add('hidden');
-      submitSection.classList.remove('hidden');
-      hideMessages();
-    });
-
-    // Form submission
-    form.addEventListener('submit', async (e) => {
+  // ------------------------------------------------------------- Submit
+  form.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
       e.preventDefault();
-      hideMessages();
+      form.requestSubmit();
+    }
+  });
 
-      const formData = new FormData(form);
-      const url = formData.get('url') as string;
-      const customCode = formData.get('custom-code') as string;
-      const title = formData.get('title') as string;
-      const forwardParameters = (document.getElementById('forward-parameters') as HTMLInputElement).checked;
-      const ogTitle = formData.get('og-title') as string;
-      const ogDescription = formData.get('og-description') as string;
-      const ogImage = formData.get('og-image') as string;
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    clearErrors(form);
+    const dest = normalizeUrlInput(urlInput.value);
+    const custom = (form.querySelector<HTMLInputElement>('input[name="mode"]:checked')?.value ?? 'random') === 'custom';
+    const code = codeInput.value.trim();
+    const ogImage = field('og_image_url').value.trim();
+    const maxRaw = field('max_visits').value.trim();
+    const since = fromLocalInput(field('valid_since').value);
+    const until = fromLocalInput(field('valid_until').value);
 
-      if (!url) {
-        showError('Please enter a URL');
-        return;
+    let ok = true;
+    if (!dest) {
+      setFieldError(form, 'url', 'Paste the link you want to shorten.');
+      ok = false;
+    } else if (!isValidHttpUrl(dest)) {
+      setFieldError(form, 'url', 'That doesn’t look like a web link. Try https://example.com/page');
+      ok = false;
+    }
+    if (custom && !/^[A-Za-z0-9_-]{3,20}$/.test(code)) {
+      setFieldError(form, 'custom_code', code ? 'Use 3–20 letters, numbers, hyphens or underscores.' : 'Choose a back-half, or switch to Random.');
+      ok = false;
+    }
+    if (ogImage && !isValidHttpUrl(ogImage)) {
+      setFieldError(form, 'og_image_url', 'Use a full image link starting with https://');
+      ok = false;
+    }
+    if (maxRaw && (!/^\d+$/.test(maxRaw) || Number(maxRaw) < 1)) {
+      setFieldError(form, 'max_visits', 'Use a whole number of 1 or more, or leave it empty.');
+      ok = false;
+    }
+    if (since && until && new Date(until) <= new Date(since)) {
+      setFieldError(form, 'valid_until', 'The expiry needs to be after the go-live date.');
+      ok = false;
+    }
+    if (!ok) {
+      revealFirstError(form);
+      return;
+    }
+
+    const payload: CreateLinkRequest = {
+      url: dest,
+      forward_parameters: field('forward_parameters').checked,
+      crawlable: field('crawlable').checked,
+    };
+    const title = field('title').value.trim();
+    if (title) payload.title = title;
+    if (custom) payload.custom_code = code;
+    const ogTitle = field('og_title').value.trim();
+    const ogDesc = field<HTMLTextAreaElement>('og_description').value.trim();
+    if (ogTitle) payload.og_title = ogTitle;
+    if (ogDesc) payload.og_description = ogDesc;
+    if (ogImage) payload.og_image_url = ogImage;
+    if (since) payload.valid_since = since;
+    if (until) payload.valid_until = until;
+    if (maxRaw) payload.max_visits = Number(maxRaw);
+
+    setLoading(submit, true, 'Creating…');
+    try {
+      let link = await createLink(payload);
+      const tagIds = tags.getIds();
+      if (tagIds.length) {
+        try {
+          const res = await setLinkTags(link.short_code, tagIds);
+          link = { ...link, tags: res.tags };
+        } catch (err) {
+          toast('Link created, but the tags didn’t stick', 'error', { description: errorMessage(err) });
+        }
       }
-
-      setLoading(true);
-
-      try {
-        let response: CreateURLResponse;
-
-        // Build request payload with Phase 3.6 and 3.7 fields
-        const payload: any = {
-          url,
-          forward_parameters: forwardParameters,
-        };
-
-        // Add title if provided (Phase 3.6)
-        if (title) {
-          payload.title = title;
-        }
-
-        // Add Open Graph fields if provided (Phase 3.7)
-        if (ogTitle) {
-          payload.og_title = ogTitle;
-        }
-        if (ogDescription) {
-          payload.og_description = ogDescription;
-        }
-        if (ogImage) {
-          payload.og_image_url = ogImage;
-        }
-
-        if (isCustomMode && customCode) {
-          payload.custom_code = customCode;
-          response = await apiPost<CreateURLResponse>(
-            '/api/v1/urls/custom',
-            payload,
-            true
-          );
-        } else {
-          response = await apiPost<CreateURLResponse>(
-            '/api/v1/urls',
-            payload,
-            true
-          );
-        }
-
-        // Show warning if present
-        if (response.warning) {
-          showWarning(response.warning);
-        }
-
-        // Show success
-        createdUrlInput.value = response.short_url;
-        submitSection.classList.add('hidden');
-        successMessage.classList.remove('hidden');
-      } catch (error) {
-        setLoading(false);
-        const message = error instanceof Error ? error.message : 'Failed to create URL. Please try again.';
-        showError(message);
+      await showSuccess(link);
+    } catch (err) {
+      if (/custom code/i.test(errorMessage(err, ''))) {
+        setFieldError(form, 'custom_code', 'Use 3–20 letters, numbers, hyphens or underscores.');
+        codeInput.focus();
+      } else {
+        applyApiError(form, err);
       }
-    });
+    } finally {
+      setLoading(submit, false);
+    }
+  });
 
-    loadUserInfo();
-  </script>
-</Layout>
+  // ------------------------------------------------------------- Success
+  let created: ShortLink | null = null;
+  async function showSuccess(link: ShortLink) {
+    created = link;
+    const copied = await writeClipboard(link.short_url ?? '');
+    q('#editor').hidden = true;
+    q('#success').hidden = false;
+    const a = q<HTMLAnchorElement>('[data-success-link]');
+    a.textContent = (link.short_url ?? link.short_code).replace(/^https?:\/\//, '');
+    a.href = link.short_url ?? '#';
+    q<HTMLAnchorElement>('[data-success-details]').href = linkHref(link.short_code);
+    q('[data-success-sub]').textContent = copied ? 'It’s already on your clipboard. Every click will show up in Shurly.' : 'Share it anywhere — every click shows up in Shurly.';
+    const warn = q('[data-success-warning]');
+    warn.hidden = !link.warning;
+    if (link.warning) q('[data-success-warning-text]').textContent = link.warning;
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    toast(copied ? 'Link created and copied' : 'Link created', 'success');
+  }
+  q('[data-success-copy]').addEventListener('click', (e) => created?.short_url && copyWithFeedback(created.short_url, e.currentTarget as HTMLElement));
+  q('[data-success-qr]').addEventListener('click', () => created && openQr(created));
+  q('[data-create-another]').addEventListener('click', () => {
+    form.reset();
+    tags.clear();
+    fetched = null;
+    fetchedFor = '';
+    setOgStatus('idle');
+    syncCode();
+    renderPreview();
+    q('#success').hidden = true;
+    q('#editor').hidden = false;
+    urlInput.focus();
+  });
+</script>
