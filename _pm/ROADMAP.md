@@ -695,7 +695,7 @@ End-to-end run with the user driving SSO locally:
 ### 5.4 Authentication & per-user scoping ✅
 - [x] FastAPI `get_current_user` accepts both JWTs and API keys (token-shape dispatch — JWTs have dots, API keys don't). Single dependency, single test surface.
 - [x] `ShurlyTokenVerifier` validates the inbound MCP bearer against `User.api_key`, populating `AccessToken.claims` with user id + email + scope.
-- [x] httpx `forward_bearer` hook re-attaches the inbound bearer to the outbound FastAPI call so auto-generated tools resolve the same user as the MCP layer.
+- [x] `forward_bearer_auth` hook re-attaches the inbound bearer to the outbound FastAPI call so auto-generated tools resolve the same user as the MCP layer.
 - [x] Curated-tool wrappers swap the Phase 5.3 `NotImplementedError` stub for `resolve_current_user(db)` reading from the AccessToken context.
 - [x] `MCP_DISABLE_AUTH=1` escape hatch for local stdio dev (never to be set in prod).
 - [x] `ApiKeyScope` enum surfaced on the AccessToken claims — only `FULL_ACCESS` is enforced today; the rest stay reserved for a future scope-policy phase.

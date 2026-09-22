@@ -53,10 +53,11 @@ jobs:
 
       # Run the test suite before pushing anything to AWS. If tests fail, no
       # bad image lands in ECR and the running service stays untouched.
+      # --require-mcp: the image ships the [mcp] extra, so its tests must run.
       - name: Install deps + run tests
         run: |
           uv sync --extra dev --extra mcp
-          uv run pytest -q
+          uv run pytest -q --require-mcp
 
       - name: Configure AWS credentials (OIDC)
         # The role lives in griddo-main and is created one-time via the
