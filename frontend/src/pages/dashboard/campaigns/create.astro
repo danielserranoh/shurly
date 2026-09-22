@@ -303,7 +303,7 @@ const steps = ['Details', 'Recipients', 'Review', 'Create'];
     setHTML(
       $('[data-review-table]'),
       html`<table class="table"><thead><tr><th class="w-10">#</th>${headers.map((h) => html`<th>${h}</th>`)}</tr></thead>
-        <tbody>${preview.map((r, i) => html`<tr><td class="num text-ink-400">${i + 1}</td>${headers.map((_, c) => html`<td class="whitespace-nowrap">${r[c] || html`<span class="text-ink-400">—</span>`}</td>`)}</tr>`)}</tbody></table>`,
+        <tbody>${preview.map((r, i) => html`<tr><td class="num text-ink-500">${i + 1}</td>${headers.map((_, c) => html`<td class="whitespace-nowrap">${r[c] || html`<span class="text-ink-500">—</span>`}</td>`)}</tr>`)}</tbody></table>`,
     );
     $('[data-review-more]').textContent = rows.length > 5 ? `…and ${pluralize(rows.length - 5, 'more row')}.` : '';
     $('[data-example-name]').textContent = rows[0]?.[0] || 'the first recipient';

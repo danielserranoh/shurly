@@ -244,7 +244,7 @@ import QrModal from '@/components/app/QrModal.astro';
           </tr></thead>
           <tbody>${slice.map((r) => html`<tr>
             <td><input type="checkbox" class="checkbox" data-select="${r.code}" ${selected.has(r.code) ? raw('checked') : ''} aria-label="Select ${personLabel(r.data)}" /></td>
-            ${cols.map((c, i) => html`<td class="whitespace-nowrap ${i === 0 ? 'font-medium text-ink-950' : ''}">${r.data[c] || html`<span class="text-ink-400">—</span>`}</td>`)}
+            ${cols.map((c, i) => html`<td class="whitespace-nowrap ${i === 0 ? 'font-medium text-ink-950' : ''}">${r.data[c] || html`<span class="text-ink-500">—</span>`}</td>`)}
             <td class="whitespace-nowrap">
               <div class="flex items-center gap-1">
                 <a class="shortlink text-[13px] text-ink-900 hover:underline" href="${linkHref(r.code)}">${prettyUrl(r.shortUrl)}</a>
@@ -252,7 +252,7 @@ import QrModal from '@/components/app/QrModal.astro';
                 <button type="button" class="btn btn-ghost btn-sm btn-icon" data-qr="${r.code}" aria-label="QR code for ${personLabel(r.data)}">${icon('qr')}</button>
               </div>
             </td>
-            <td class="num text-right ${r.clicks ? 'font-semibold text-ink-950' : 'text-ink-400'}">${formatNumber(r.clicks)}</td>
+            <td class="num text-right ${r.clicks ? 'font-semibold text-ink-950' : 'text-ink-500'}">${formatNumber(r.clicks)}</td>
             <td class="whitespace-nowrap text-ink-500">${r.last ? html`<span class="inline-flex items-center gap-1.5"><span class="status-dot text-brand-600"></span><time data-relative datetime="${r.last}" title="${formatDateTime(r.last)}"></time></span>` : html`<span class="badge badge-outline">Not yet</span>`}</td>
           </tr>`)}</tbody></table>`,
       );

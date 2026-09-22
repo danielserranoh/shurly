@@ -25,7 +25,7 @@ available as utilities (`bg-ink-950`, `text-brand-700`, `rounded-xl`, `shadow-md
 
 | Scale | Use | Rules |
 |---|---|---|
-| `ink-50…950` (cool neutral) | text, surfaces, borders, primary buttons | `ink-500` is the lightest text allowed on white (4.8:1) |
+| `ink-50…950` (cool neutral) | text, surfaces, borders, primary buttons | `ink-500` is the lightest text shade: at least 4.5:1 on white, canvas and `ink-100`. `ink-400` is for icons and text on dark ink only |
 | `brand-50…950` (lime) | the click dot, accent fills, focus halo, success | `brand-400` `#b8f03e` is the signature: **fill only, never text on light**. `brand-700` is the lightest brand text on white (4.8:1). `brand-600` is the chart series colour (3.2:1, graphics only) |
 | Surfaces | `canvas #f5f6f8` page, `surface #fff` cards, `line` / `line-strong` borders | |
 | Status | Tailwind `red` (error/danger), `amber` (warning), `blue` (info) | always paired with an icon and words |

@@ -1624,17 +1624,17 @@ const colorCount = allColors.length;
         <Specimen title="Empty states" description="An illustration, a heading that says it all, one line of help and the next step." code={['<EmptyState />', 'compact']}>
           <div class="grid gap-4 xl:grid-cols-3">
             <div class="card">
-              <EmptyState compact illustration="links" title="Your links will live here" body="Paste a long link above — a Drive folder, a deck, a landing page.">
+              <EmptyState compact level={4} illustration="links" title="Your links will live here" body="Paste a long link above — a Drive folder, a deck, a landing page.">
                 <a href="#loading" class="btn btn-secondary btn-sm"><Icon name="wand" />Open the full editor</a>
               </EmptyState>
             </div>
             <div class="card">
-              <EmptyState compact illustration="search" title="No links match" body="Try a different search or clear the filters.">
+              <EmptyState compact level={4} illustration="search" title="No links match" body="Try a different search or clear the filters.">
                 <button type="button" class="btn btn-secondary btn-sm">Clear filters</button>
               </EmptyState>
             </div>
             <div class="card">
-              <EmptyState compact illustration="error" title="We couldn’t load your links" body="Check your connection and try again.">
+              <EmptyState compact level={4} illustration="error" title="We couldn’t load your links" body="Check your connection and try again.">
                 <button type="button" class="btn btn-primary btn-sm"><Icon name="refresh" />Try again</button>
               </EmptyState>
             </div>

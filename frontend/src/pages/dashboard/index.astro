@@ -92,13 +92,13 @@ import QrModal from '@/components/app/QrModal.astro';
 
   <ul id="link-list" class="mt-4 grid gap-3 transition-opacity duration-200" aria-live="polite" aria-busy="true"></ul>
 
-  <EmptyState id="empty-first" hidden illustration="links" title="Your links will live here" body="Paste a long link in the box above — a Drive folder, a deck, a landing page. You’ll see every click right here.">
+  <EmptyState id="empty-first" hidden level={3} illustration="links" title="Your links will live here" body="Paste a long link in the box above — a Drive folder, a deck, a landing page. You’ll see every click right here.">
     <a href="/dashboard/create/" class="btn btn-secondary"><Icon name="wand" />Open the full editor</a>
   </EmptyState>
-  <EmptyState id="empty-filtered" hidden illustration="search" title="No links match" body="Try a different search or clear the filters.">
+  <EmptyState id="empty-filtered" hidden level={3} illustration="search" title="No links match" body="Try a different search or clear the filters.">
     <button type="button" class="btn btn-secondary" data-clear-all>Clear filters</button>
   </EmptyState>
-  <EmptyState id="load-error" hidden illustration="error" title="We couldn’t load your links" body="Check your connection and try again.">
+  <EmptyState id="load-error" hidden level={3} illustration="error" title="We couldn’t load your links" body="Check your connection and try again.">
     <button type="button" class="btn btn-primary" data-retry><Icon name="refresh" />Try again</button>
   </EmptyState>
 

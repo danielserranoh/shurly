@@ -338,7 +338,7 @@ import { BROWSERS, DEVICES, LANGUAGES } from '@/utils/rules';
       $('[data-og-card]'),
       html`${link.og_image_url
           ? html`<div class="aspect-[1200/630] bg-ink-100"><img src="${safeUrl(link.og_image_url)}" alt="" referrerpolicy="no-referrer" class="size-full object-cover" data-fallback /></div>`
-          : html`<div class="grid aspect-[1200/630] place-items-center bg-ink-50 text-sm text-ink-400"><span class="flex items-center gap-2">${raw(iconSvg('image', 'size-4'))}No preview image</span></div>`}
+          : html`<div class="grid aspect-[1200/630] place-items-center bg-ink-50 text-sm text-ink-500"><span class="flex items-center gap-2">${raw(iconSvg('image', 'size-4'))}No preview image</span></div>`}
         <div class="grid gap-1 px-5 py-4">
           <p class="truncate text-xs text-ink-500 uppercase">${hostname(link.original_url)}</p>
           <p class="line-clamp-2 font-semibold text-ink-950">${title}</p>
