@@ -1,0 +1,48 @@
+---
+/**
+ * One documented example: a title, an optional one-liner, the classes/tokens to use,
+ * and a "stage" (the artboard) the live example sits on.
+ */
+interface Props {
+  title: string;
+  description?: string;
+  /** Class names, tokens or components a developer should reach for. */
+  code?: string[];
+  stage?: 'canvas' | 'white' | 'dark' | 'none';
+  /** Extra classes for the stage. */
+  class?: string;
+  id?: string;
+}
+
+const { title, description, code = [], stage = 'canvas', class: className = '', id } = Astro.props;
+
+const STAGES = {
+  canvas: 'rounded-2xl border border-line bg-canvas p-5 sm:p-7',
+  white: 'rounded-2xl border border-line bg-white p-5 sm:p-7',
+  dark: 'rounded-2xl bg-ink-950 p-5 text-white sm:p-7',
+  none: '',
+};
+---
+
+<div id={id} class="min-w-0 scroll-mt-24">
+  <div class="mb-4 flex flex-col gap-3 md:flex-row md:items-start md:justify-between md:gap-8">
+    <div class="min-w-0 max-w-2xl">
+      <h3 class="text-base font-semibold text-ink-950">{title}</h3>
+      {description && <p class="mt-1 text-sm leading-6 text-ink-500">{description}</p>}
+    </div>
+    {
+      code.length > 0 && (
+        <ul class="flex flex-wrap gap-1.5 md:max-w-[50%] md:shrink-0 md:justify-end md:pt-0.5" aria-label="Use">
+          {code.map((c) => (
+            <li>
+              <code class="inline-flex rounded-md bg-ink-100 px-1.5 font-mono text-xs leading-5 whitespace-nowrap text-ink-700">{c}</code>
+            </li>
+          ))}
+        </ul>
+      )
+    }
+  </div>
+  <div class:list={[STAGES[stage], className]}>
+    <slot />
+  </div>
+</div>

@@ -1,0 +1,542 @@
+---
+import AppLayout from '@/layouts/AppLayout.astro';
+import Icon from '@/components/ui/Icon.astro';
+import StatCard from '@/components/ui/StatCard.astro';
+import EmptyState from '@/components/ui/EmptyState.astro';
+import EditLinkModal from '@/components/app/EditLinkModal.astro';
+import QrModal from '@/components/app/QrModal.astro';
+import { BROWSERS, DEVICES, LANGUAGES } from '@/utils/rules';
+---
+
+<AppLayout title="Link details" section="links">
+  <a href="/dashboard/" class="mb-4 inline-flex items-center gap-1.5 rounded-md text-sm font-medium text-ink-500 hover:text-ink-950"><Icon name="arrow-left" />Links</a>
+
+  <EmptyState id="not-found" hidden illustration="not-found" title="We couldn’t find that link" body="It may have been deleted, or it belongs to another account.">
+    <a href="/dashboard/" class="btn btn-primary"><Icon name="list" />Back to your links</a>
+  </EmptyState>
+
+  <!-- Skeleton while loading -->
+  <div id="loading" class="grid gap-6" aria-hidden="true">
+    <div class="flex gap-4"><span class="skeleton size-14 rounded-2xl"></span><div class="flex-1 space-y-3 pt-1"><span class="skeleton block h-7 w-1/3"></span><span class="skeleton block h-5 w-1/4"></span><span class="skeleton block h-4 w-1/2"></span></div></div>
+    <div class="grid grid-cols-2 gap-4 lg:grid-cols-4">{[1, 2, 3, 4].map(() => <div class="skeleton h-32 rounded-2xl"></div>)}</div>
+    <div class="skeleton h-72 rounded-2xl"></div>
+  </div>
+
+  <div id="content" hidden>
+    <!-- Header -->
+    <header class="flex flex-col gap-5 lg:flex-row lg:items-start">
+      <div class="flex min-w-0 flex-1 gap-4">
+        <span data-thumb></span>
+        <div class="min-w-0 flex-1">
+          <div class="flex flex-wrap items-center gap-2">
+            <h1 class="display min-w-0 text-[1.75rem] break-words text-ink-950 sm:text-3xl" data-title></h1>
+            <span class="flex flex-wrap gap-1.5" data-badges></span>
+          </div>
+          <div class="mt-2 flex flex-wrap items-center gap-2">
+            <a class="shortlink text-lg text-ink-950 hover:underline decoration-brand-400 decoration-2 underline-offset-4" target="_blank" rel="noopener" data-short></a>
+            <button type="button" class="btn btn-accent btn-sm" data-copy-short><span data-copy-icon><Icon name="copy" /></span><span data-copy-label>Copy</span></button>
+            <button type="button" class="btn btn-secondary btn-sm btn-icon" data-qr aria-label="QR code" data-tooltip="QR code"><Icon name="qr" /></button>
+          </div>
+          <p class="mt-2 flex min-w-0 items-center gap-1.5 text-sm text-ink-500">
+            <Icon name="corner-down-right" class="size-4 shrink-0" />
+            <a class="truncate hover:text-ink-900 hover:underline" target="_blank" rel="noopener noreferrer" data-destination></a>
+          </p>
+          <p class="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-[13px] text-ink-500" data-meta></p>
+          <div class="mt-3 flex flex-wrap gap-1.5" data-tags></div>
+        </div>
+      </div>
+      <div class="flex shrink-0 gap-2" data-actions>
+        <button type="button" class="btn btn-secondary" data-edit><Icon name="pencil" />Edit</button>
+        <button type="button" class="btn btn-secondary btn-icon" popovertarget="link-menu" aria-label="More actions"><Icon name="more" /></button>
+        <div id="link-menu" popover class="menu" data-align="end">
+          <button type="button" class="menu-item" data-refresh-og-menu><Icon name="refresh" />Refresh preview</button>
+          <a class="menu-item" data-open-short target="_blank" rel="noopener"><Icon name="external-link" />Open short link</a>
+          <div class="menu-sep"></div>
+          <button type="button" class="menu-item" data-danger data-delete><Icon name="trash" />Delete link</button>
+        </div>
+      </div>
+    </header>
+
+    <!-- Campaign context -->
+    <div data-campaign hidden class="mt-6 flex flex-col gap-3 rounded-2xl border border-sky-200 bg-sky-50 p-4 sm:flex-row sm:items-center">
+      <span class="grid size-9 shrink-0 place-items-center rounded-xl bg-white text-sky-700 ring-1 ring-sky-200"><Icon name="megaphone" /></span>
+      <div class="min-w-0 flex-1 text-sm text-sky-900">
+        <p>This is a personal link in <a class="font-semibold underline underline-offset-2" data-campaign-link>a campaign</a>. It’s managed with the campaign, so it can’t be edited or deleted on its own.</p>
+        <div class="mt-2 flex flex-wrap gap-1.5" data-user-data></div>
+      </div>
+    </div>
+
+    <!-- KPIs -->
+    <section aria-label="Summary" class="mt-8 grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
+      <StatCard label="Clicks, all time" stat="total" icon="click" accent />
+      <StatCard label="Last 7 days" stat="week" icon="activity" />
+      <StatCard label="Last 8 weeks" stat="weeks" icon="trending" />
+      <StatCard label="Last click" stat="last" icon="clock" />
+    </section>
+
+    <div class="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
+      <!-- Activity chart -->
+      <section class="card p-5 sm:p-6" aria-labelledby="activity-title">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 id="activity-title" class="font-semibold text-ink-950">Clicks</h2>
+            <p class="text-sm text-ink-500" data-activity-sub>Per day, last 7 days</p>
+          </div>
+          <div class="flex items-center gap-2">
+            <div class="segmented" role="radiogroup" aria-label="Period">
+              <label><input type="radio" name="period" value="daily" checked /><span>7 days</span></label>
+              <label><input type="radio" name="period" value="weekly" /><span>8 weeks</span></label>
+            </div>
+            <button type="button" class="btn btn-ghost btn-sm" data-table-toggle aria-pressed="false"><Icon name="list" /><span data-label>Table</span></button>
+          </div>
+        </div>
+        <div class="mt-6" data-chart></div>
+        <div class="mt-4 max-h-80 overflow-auto rounded-xl border border-line" data-table hidden></div>
+      </section>
+
+      <!-- Social preview -->
+      <section class="card overflow-hidden" aria-labelledby="preview-title">
+        <div class="flex items-center justify-between px-5 pt-5 pb-4">
+          <div>
+            <h2 id="preview-title" class="font-semibold text-ink-950">Social preview</h2>
+            <p class="text-xs text-ink-500" data-og-meta></p>
+          </div>
+          <div class="flex gap-1">
+            <button type="button" class="btn btn-ghost btn-sm btn-icon" data-refresh-og aria-label="Refresh from page" data-tooltip="Refresh from page" data-tooltip-align="end"><Icon name="refresh" /></button>
+            <button type="button" class="btn btn-ghost btn-sm btn-icon" data-edit-og aria-label="Edit preview" data-tooltip="Edit preview" data-tooltip-align="end"><Icon name="pencil" /></button>
+          </div>
+        </div>
+        <div class="border-t border-line" data-og-card></div>
+      </section>
+    </div>
+
+    <div class="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
+      <!-- Countries -->
+      <section class="card p-5 sm:p-6" aria-labelledby="geo-title">
+        <h2 id="geo-title" class="font-semibold text-ink-950">Top countries</h2>
+        <p class="text-sm text-ink-500">Last 30 days</p>
+        <div class="mt-5" data-geo></div>
+      </section>
+
+      <!-- Tracking -->
+      <section class="card p-5 sm:p-6" aria-labelledby="track-title">
+        <h2 id="track-title" class="font-semibold text-ink-950">Track email opens</h2>
+        <p class="mt-1 text-sm leading-6 text-ink-500">Paste this invisible image into an HTML email. Opens show up separately from clicks, so your click numbers stay clean.</p>
+        <div class="mt-4 flex items-start gap-2 rounded-xl border border-line bg-ink-50 p-3">
+          <code class="min-w-0 flex-1 font-mono text-xs leading-5 break-all text-ink-700" data-pixel></code>
+          <button type="button" class="btn btn-secondary btn-sm shrink-0" data-copy-pixel><span data-copy-icon><Icon name="copy" /></span><span data-copy-label>Copy</span></button>
+        </div>
+        <div class="mt-4 flex gap-2.5 rounded-xl bg-brand-50 p-3 text-sm text-brand-900" data-utm-tip>
+          <Icon name="zap" class="mt-0.5 size-4 shrink-0 text-brand-700" />
+          <p>Tip: add <code class="font-mono text-[13px]">?utm_source=newsletter</code> to the short link and it’s passed on to your page.</p>
+        </div>
+      </section>
+    </div>
+
+    <!-- Smart redirects -->
+    <section class="card mt-6 p-5 sm:p-6" aria-labelledby="rules-title">
+      <div class="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 id="rules-title" class="flex items-center gap-2 font-semibold text-ink-950">Smart redirects <span class="badge badge-neutral">Advanced</span></h2>
+          <p class="mt-1 max-w-xl text-sm text-ink-500">Send some visitors somewhere else — iPhone users to the App Store, Spanish speakers to the Spanish page. Everyone else goes to the destination.</p>
+        </div>
+        <button type="button" class="btn btn-secondary btn-sm" data-add-rule><Icon name="plus" />Add rule</button>
+      </div>
+      <ul class="mt-5 grid gap-2" data-rules></ul>
+      <p class="mt-2 hidden text-sm text-ink-500" data-rules-empty>No rules yet — everyone goes to the destination.</p>
+
+      <form data-rule-form hidden class="mt-4 grid gap-4 rounded-2xl border border-line bg-ink-50 p-4" novalidate>
+        <div class="grid grid-cols-1 gap-4 sm:grid-cols-[12rem_minmax(0,1fr)]">
+          <div class="grid gap-1.5">
+            <label class="label" for="rule-type">When</label>
+            <select id="rule-type" name="type" class="select">
+              <option value="device">Device</option>
+              <option value="language">Browser language</option>
+              <option value="browser">Browser</option>
+              <option value="query_param">Link has parameter</option>
+              <option value="after_date">On or after date</option>
+              <option value="before_date">Before date</option>
+            </select>
+          </div>
+          <div class="grid gap-1.5">
+            <span class="label" id="rule-value-label">Is</span>
+            <div data-rule-value="device"><select name="device" class="select" aria-labelledby="rule-value-label">{Object.entries(DEVICES).map(([v, l]) => <option value={v}>{l}</option>)}</select></div>
+            <div data-rule-value="language" hidden><select name="language" class="select" aria-labelledby="rule-value-label">{Object.entries(LANGUAGES).map(([v, l]) => <option value={v}>{l}</option>)}</select></div>
+            <div data-rule-value="browser" hidden><select name="browser" class="select" aria-labelledby="rule-value-label">{BROWSERS.map((b) => <option value={b.toLowerCase()}>{b}</option>)}</select></div>
+            <div data-rule-value="query_param" hidden class="grid grid-cols-2 gap-2">
+              <input name="param" class="input" placeholder="Parameter, e.g. ref" aria-label="Parameter name" />
+              <input name="param_value" class="input" placeholder="Value (optional)" aria-label="Parameter value" />
+            </div>
+            <div data-rule-value="date" hidden><input name="date" type="datetime-local" class="input" aria-labelledby="rule-value-label" /></div>
+            <p class="field-error" data-error-for="param" hidden></p>
+            <p class="field-error" data-error-for="date" hidden></p>
+          </div>
+        </div>
+        <div class="grid gap-1.5">
+          <label class="label" for="rule-target">Send them to</label>
+          <input id="rule-target" name="target_url" type="url" inputmode="url" class="input" placeholder="https://…" />
+          <p class="field-error" data-error-for="target_url" hidden></p>
+        </div>
+        <div class="flex justify-end gap-2">
+          <button type="button" class="btn btn-ghost btn-sm" data-cancel-rule>Cancel</button>
+          <button type="submit" class="btn btn-primary btn-sm">Save rule</button>
+        </div>
+      </form>
+    </section>
+  </div>
+
+  <EditLinkModal />
+  <QrModal />
+</AppLayout>
+
+<script>
+  import { apiGet, ApiError, errorMessage } from '@/utils/api';
+  import { barList, bindChartTableToggle, columnChart, dataTable, sparkline } from '@/utils/charts';
+  import { clearErrors, setFieldError } from '@/utils/forms';
+  import { formatDate, formatDateTime, formatNumber, fromLocalInput, hostname, isValidHttpUrl, linkTitle, normalizeUrlInput, parseDate, pluralize, prettyUrl } from '@/utils/format';
+  import { escapeHtml, html, raw, safeUrl, setHTML } from '@/utils/html';
+  import { iconSvg } from '@/utils/icons';
+  import { openLinkEditor } from '@/utils/link-editor';
+  import { campaignHref, deleteLink, getLink, linkBadges, linkThumb, openQr } from '@/utils/links';
+  import { createRule, deleteRule, listRules, renderRule } from '@/utils/rules';
+  import { tagPill } from '@/utils/tags';
+  import { confirmDialog, copyWithFeedback, hydrateTimes, setLoading, toast } from '@/utils/ui';
+  import { apiPost } from '@/utils/api';
+  import type { CampaignListResponse, DailyStatsResponse, GeoStatsResponse, PreviewMetadata, RedirectRule, RuleCondition, RuleConditionType, ShortLink, WeeklyStatsResponse } from '@/utils/types';
+
+  const code = new URLSearchParams(location.search).get('code') ?? '';
+  const $ = <T extends HTMLElement = HTMLElement>(sel: string) => document.querySelector<T>(sel)!;
+  let link: ShortLink;
+  let daily: DailyStatsResponse | null = null;
+  let weekly: WeeklyStatsResponse | null = null;
+  let rules: RedirectRule[] = [];
+  let period: 'daily' | 'weekly' = 'daily';
+
+  // ------------------------------------------------------------------ Header
+  function renderHeader() {
+    const title = linkTitle(link);
+    document.title = `${title} · Shurly`;
+    setHTML($('[data-thumb]'), linkThumb(link, 'size-14'));
+    $('[data-title]').textContent = title;
+    setHTML($('[data-badges]'), linkBadges(link));
+    const short = $<HTMLAnchorElement>('[data-short]');
+    short.textContent = prettyUrl(link.short_url);
+    short.href = safeUrl(link.short_url);
+    $<HTMLAnchorElement>('[data-open-short]').href = safeUrl(link.short_url);
+    const dest = $<HTMLAnchorElement>('[data-destination]');
+    dest.textContent = prettyUrl(link.original_url);
+    dest.href = safeUrl(link.original_url);
+    dest.title = link.original_url;
+    setHTML(
+      $('[data-meta]'),
+      html`<span class="inline-flex items-center gap-1.5">${raw(iconSvg('calendar', 'size-3.5'))}Created ${formatDate(link.created_at)}</span>
+        <span class="inline-flex items-center gap-1.5">${raw(iconSvg('pencil', 'size-3.5'))}Updated <time data-relative datetime="${link.updated_at}"></time></span>
+        ${link.valid_since ? html`<span class="inline-flex items-center gap-1.5">${raw(iconSvg('calendar-clock', 'size-3.5'))}Live from ${formatDateTime(link.valid_since)}</span>` : ''}
+        ${link.valid_until ? html`<span class="inline-flex items-center gap-1.5">${raw(iconSvg('timer', 'size-3.5'))}Expires ${formatDateTime(link.valid_until)}</span>` : ''}
+        ${link.max_visits ? html`<span class="inline-flex items-center gap-1.5">${raw(iconSvg('ban', 'size-3.5'))}${formatNumber(link.click_count)} of ${formatNumber(link.max_visits)} clicks used</span>` : ''}`,
+    );
+    setHTML($('[data-tags]'), html`${link.tags.map((t) => tagPill(t, { href: `/dashboard/?tags=${t.id}` }))}`);
+    hydrateTimes($('[data-meta]'));
+
+    const isCampaign = link.url_type === 'campaign';
+    $('[data-edit]').hidden = isCampaign;
+    $('[data-edit-og]').hidden = isCampaign;
+    $('[data-delete]').hidden = isCampaign;
+    $('[data-campaign]').hidden = !isCampaign;
+    if (isCampaign) {
+      const a = $<HTMLAnchorElement>('[data-campaign-link]');
+      a.href = link.campaign_id ? campaignHref(link.campaign_id) : '/dashboard/campaigns/';
+      setHTML(
+        $('[data-user-data]'),
+        html`${Object.entries(link.user_data ?? {}).map(([k, v]) => html`<span class="badge badge-outline"><span class="text-ink-500">${k}</span> ${v}</span>`)}`,
+      );
+      if (link.campaign_id) {
+        apiGet<CampaignListResponse>('/api/v1/campaigns?limit=100')
+          .then((r) => {
+            const c = r.campaigns.find((x) => x.id === link.campaign_id);
+            if (c) a.textContent = c.name;
+          })
+          .catch(() => {});
+      }
+    }
+    const pixel = link.short_url ? `<img src="${link.short_url}/track" width="1" height="1" alt="" style="display:none">` : '';
+    $('[data-pixel]').textContent = pixel;
+    $('[data-utm-tip]').hidden = !link.forward_parameters || isCampaign;
+  }
+
+  // ------------------------------------------------------------------ Stats & chart
+  function setStat(key: string, value: string, hint?: string | ReturnType<typeof html>) {
+    $(`[data-stat="${key}"]`).textContent = value;
+    const el = $(`[data-stat-hint="${key}"]`);
+    if (hint === undefined) return;
+    if (typeof hint === 'string') el.textContent = hint;
+    else setHTML(el, hint);
+  }
+
+  function renderStats() {
+    setStat('total', formatNumber(link.click_count), link.click_count ? 'Real people — bots excluded' : 'Share it to get the first one');
+    if (daily) setStat('week', formatNumber(daily.total_clicks), html`<span class="flex items-center justify-between gap-2"><span>Per day</span>${sparkline(daily.stats.map((s) => s.clicks), 72, 20)}</span>`);
+    if (weekly) {
+      const s = weekly.stats;
+      const last = s[s.length - 1]?.clicks ?? 0;
+      const prev = s[s.length - 2]?.clicks ?? 0;
+      const delta = prev ? Math.round(((last - prev) / prev) * 100) : null;
+      setStat(
+        'weeks',
+        formatNumber(weekly.total_clicks),
+        delta === null ? 'Weekly totals' : html`<span class="${delta >= 0 ? 'text-brand-800' : 'text-ink-600'} font-medium">${delta >= 0 ? '+' : ''}${delta}%</span> this week vs last`,
+      );
+    }
+    if (parseDate(link.last_click_at)) {
+      setHTML($('[data-stat="last"]'), html`<time data-relative datetime="${link.last_click_at}"></time>`);
+      $('[data-stat-hint="last"]').textContent = formatDateTime(link.last_click_at);
+      hydrateTimes($('[data-stat="last"]'));
+    } else setStat('last', 'Never', 'No clicks yet');
+  }
+
+  function renderChart() {
+    const chartEl = $('[data-chart]');
+    const tableEl = $('[data-table]');
+    if (period === 'daily' && daily) {
+      const today = new Date().toISOString().slice(0, 10);
+      const rows = daily.stats.map((s) => {
+        const d = new Date(`${s.date}T12:00:00`);
+        return {
+          label: s.date === today ? 'Today' : d.toLocaleDateString('en-US', { weekday: 'short' }),
+          value: s.clicks,
+          title: d.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' }),
+        };
+      });
+      $('[data-activity-sub]').textContent = 'Per day, last 7 days';
+      columnChart(chartEl, rows, { ariaLabel: `Clicks per day for the last 7 days. Total ${daily.total_clicks}.`, height: 240 });
+      setHTML(tableEl, dataTable(rows.map((r) => ({ label: r.title, value: r.value })), ['Day', 'Clicks']));
+    } else if (period === 'weekly' && weekly) {
+      const rows = weekly.stats.map((s) => {
+        const d = new Date(`${s.week_start}T12:00:00`);
+        return {
+          label: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+          value: s.clicks,
+          title: `Week of ${d.toLocaleDateString('en-US', { month: 'long', day: 'numeric' })}`,
+        };
+      });
+      $('[data-activity-sub]').textContent = 'Per week, last 8 weeks';
+      columnChart(chartEl, rows, { ariaLabel: `Clicks per week for the last 8 weeks. Total ${weekly.total_clicks}.`, height: 240 });
+      setHTML(tableEl, dataTable(rows.map((r) => ({ label: r.title, value: r.value })), ['Week', 'Clicks']));
+    }
+  }
+
+  // ------------------------------------------------------------------ Social preview
+  function renderPreview(meta?: Partial<PreviewMetadata>) {
+    const title = link.og_title || link.title || hostname(link.original_url);
+    const hasCustom = Boolean(link.og_title || link.og_description || link.og_image_url);
+    const fetchedAt = meta?.fetched_at ?? link.og_fetched_at;
+    $('[data-og-meta]').innerHTML = fetchedAt
+      ? `Fetched <time data-relative datetime="${escapeHtml(fetchedAt)}"></time>`
+      : hasCustom ? 'Custom preview' : 'No preview yet';
+    hydrateTimes($('[data-og-meta]'));
+    setHTML(
+      $('[data-og-card]'),
+      html`${link.og_image_url
+          ? html`<div class="aspect-[1200/630] bg-ink-100"><img src="${safeUrl(link.og_image_url)}" alt="" referrerpolicy="no-referrer" class="size-full object-cover" data-fallback /></div>`
+          : html`<div class="grid aspect-[1200/630] place-items-center bg-ink-50 text-sm text-ink-400"><span class="flex items-center gap-2">${raw(iconSvg('image', 'size-4'))}No preview image</span></div>`}
+        <div class="grid gap-1 px-5 py-4">
+          <p class="truncate text-xs text-ink-500 uppercase">${hostname(link.original_url)}</p>
+          <p class="line-clamp-2 font-semibold text-ink-950">${title}</p>
+          ${link.og_description ? html`<p class="line-clamp-3 text-sm text-ink-500">${link.og_description}</p>` : ''}
+        </div>`,
+    );
+  }
+
+  async function refreshPreview(btn?: HTMLButtonElement | null) {
+    if (btn) setLoading(btn, true, '');
+    try {
+      const meta = await apiPost<PreviewMetadata>(`/api/v1/urls/${encodeURIComponent(code)}/refresh-preview`);
+      link = { ...link, og_title: meta.og_title, og_description: meta.og_description, og_image_url: meta.og_image_url, og_fetched_at: meta.fetched_at };
+      link = await getLink(code);
+      renderPreview(meta);
+      renderHeader();
+      toast('Preview refreshed', 'success', { description: meta.has_custom_preview ? 'Fields you set yourself were kept.' : undefined });
+    } catch (err) {
+      toast('Couldn’t refresh the preview', 'error', { description: errorMessage(err) });
+    } finally {
+      if (btn) setLoading(btn, false);
+    }
+  }
+
+  // ------------------------------------------------------------------ Geo
+  function renderGeo(geo: GeoStatsResponse | null) {
+    const el = $('[data-geo]');
+    if (!geo || geo.stats.length === 0) {
+      el.innerHTML = `<div class="flex items-start gap-3 rounded-xl bg-ink-50 p-4 text-sm text-ink-600"><span class="mt-0.5 text-ink-400">${iconSvg('globe', 'size-4')}</span><p>No location data for these clicks yet. Countries show up here when location lookup is available for the visits.</p></div>`;
+      return;
+    }
+    const items = geo.stats.slice(0, 6).map((g) => ({ label: g.country, value: g.clicks }));
+    setHTML(el, barList(items));
+    if (geo.stats.length > 6) {
+      const more = document.createElement('p');
+      more.className = 'mt-4 text-xs text-ink-500';
+      more.textContent = `+ ${pluralize(geo.stats.length - 6, 'more country', 'more countries')}`;
+      el.append(more);
+    }
+  }
+
+  // ------------------------------------------------------------------ Rules
+  function renderRules() {
+    setHTML($('[data-rules]'), html`${rules.map((r, i) => renderRule(r, i))}`);
+    $('[data-rules-empty]').classList.toggle('hidden', rules.length > 0);
+  }
+
+  const ruleForm = $<HTMLFormElement>('[data-rule-form]');
+  const ruleType = ruleForm.elements.namedItem('type') as HTMLSelectElement;
+  function syncRuleType() {
+    const t = ruleType.value;
+    ruleForm.querySelectorAll<HTMLElement>('[data-rule-value]').forEach((el) => {
+      const key = el.dataset.ruleValue;
+      el.hidden = !(key === t || (key === 'date' && (t === 'after_date' || t === 'before_date')));
+    });
+    $('#rule-value-label').textContent = t === 'query_param' ? 'Named' : t.endsWith('_date') ? 'Date' : 'Is';
+  }
+  ruleType.addEventListener('change', syncRuleType);
+  $('[data-add-rule]').addEventListener('click', () => {
+    ruleForm.hidden = false;
+    ruleForm.reset();
+    syncRuleType();
+    ruleType.focus();
+  });
+  $('[data-cancel-rule]').addEventListener('click', () => (ruleForm.hidden = true));
+  ruleForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    clearErrors(ruleForm);
+    const f = (n: string) => (ruleForm.elements.namedItem(n) as HTMLInputElement).value.trim();
+    const type = ruleType.value as RuleConditionType;
+    const target = normalizeUrlInput(f('target_url'));
+    let condition: RuleCondition;
+    let ok = true;
+    if (type === 'query_param') {
+      if (!/^[\w.-]+$/.test(f('param'))) {
+        setFieldError(ruleForm, 'param', 'Enter the parameter name, e.g. ref');
+        ok = false;
+      }
+      condition = { type, value: f('param_value') || (null as unknown as string), param: f('param') };
+      if (!f('param_value')) delete (condition as Partial<RuleCondition>).value;
+    } else if (type === 'after_date' || type === 'before_date') {
+      const iso = fromLocalInput(f('date'));
+      if (!iso) {
+        setFieldError(ruleForm, 'date', 'Pick a date and time.');
+        ok = false;
+      }
+      condition = { type, value: iso ?? '' };
+    } else {
+      condition = { type, value: f(type) };
+    }
+    if (!isValidHttpUrl(target)) {
+      setFieldError(ruleForm, 'target_url', 'Enter a full link starting with https://');
+      ok = false;
+    }
+    if (!ok) return;
+    const btn = ruleForm.querySelector<HTMLButtonElement>('button[type="submit"]')!;
+    setLoading(btn, true, 'Saving…');
+    try {
+      const priority = rules.length ? Math.max(...rules.map((r) => r.priority)) + 1 : 0;
+      rules = [...rules, await createRule(code, { priority, conditions: [condition], target_url: target })];
+      renderRules();
+      ruleForm.hidden = true;
+      toast('Rule added', 'success');
+    } catch (err) {
+      toast('Couldn’t save the rule', 'error', { description: errorMessage(err) });
+    } finally {
+      setLoading(btn, false);
+    }
+  });
+  $('[data-rules]').addEventListener('click', async (e) => {
+    const btn = (e.target as HTMLElement).closest<HTMLElement>('[data-delete-rule]');
+    if (!btn) return;
+    const id = btn.dataset.deleteRule!;
+    const ok = await confirmDialog({ title: 'Delete this rule?', body: 'Visitors it matched will go to the regular destination.', confirmLabel: 'Delete rule', danger: true, onConfirm: () => deleteRule(code, id) });
+    if (ok) {
+      rules = rules.filter((r) => r.id !== id);
+      renderRules();
+      toast('Rule deleted', 'success');
+    }
+  });
+
+  // ------------------------------------------------------------------ Actions
+  $('[data-copy-short]').addEventListener('click', (e) => link.short_url && copyWithFeedback(link.short_url, e.currentTarget as HTMLElement));
+  $('[data-copy-pixel]').addEventListener('click', (e) => copyWithFeedback($('[data-pixel]').textContent ?? '', e.currentTarget as HTMLElement));
+  $('[data-qr]').addEventListener('click', () => openQr(link));
+  const onSaved = (updated: ShortLink) => {
+    link = updated;
+    renderHeader();
+    renderPreview();
+    renderStats();
+  };
+  $('[data-edit]').addEventListener('click', () => openLinkEditor(link, onSaved));
+  $('[data-edit-og]').addEventListener('click', () => openLinkEditor(link, onSaved, 'og'));
+  $('[data-refresh-og]').addEventListener('click', (e) => refreshPreview(e.currentTarget as HTMLButtonElement));
+  $('[data-refresh-og-menu]').addEventListener('click', () => {
+    $('#link-menu').hidePopover();
+    void refreshPreview(null);
+  });
+  $('[data-delete]').addEventListener('click', async () => {
+    $('#link-menu').hidePopover();
+    const ok = await confirmDialog({
+      title: 'Delete this link?',
+      body: `${prettyUrl(link.short_url)} will stop working for everyone who has it${link.click_count ? `, and its ${pluralize(link.click_count, 'click')} of history will be deleted` : ''}. This can’t be undone.`,
+      confirmLabel: 'Delete link',
+      danger: true,
+      onConfirm: () => deleteLink(code),
+    });
+    if (ok) {
+      sessionStorage.setItem('shurly_flash', 'Link deleted');
+      location.href = '/dashboard/';
+    }
+  });
+  document.querySelectorAll<HTMLInputElement>('input[name="period"]').forEach((r) =>
+    r.addEventListener('change', () => {
+      period = r.value as 'daily' | 'weekly';
+      renderChart();
+    }),
+  );
+  bindChartTableToggle($<HTMLButtonElement>('[data-table-toggle]'), $('[data-chart]'), $('[data-table]'));
+
+  // ------------------------------------------------------------------ Load
+  async function load() {
+    if (!code) {
+      $('#loading').hidden = true;
+      $('#not-found').hidden = false;
+      return;
+    }
+    try {
+      link = await getLink(code);
+    } catch (err) {
+      $('#loading').hidden = true;
+      $('#not-found').hidden = false;
+      if (!(err instanceof ApiError && err.status === 404)) {
+        $('#not-found [data-empty-title]').textContent = 'We couldn’t load this link';
+        $('#not-found [data-empty-body]').textContent = errorMessage(err);
+      }
+      return;
+    }
+    renderHeader();
+    renderPreview();
+    renderStats();
+    $('#loading').hidden = true;
+    $('#content').hidden = false;
+
+    const enc = encodeURIComponent(code);
+    const [d, w, g, r] = await Promise.allSettled([
+      apiGet<DailyStatsResponse>(`/api/v1/analytics/urls/${enc}/daily`),
+      apiGet<WeeklyStatsResponse>(`/api/v1/analytics/urls/${enc}/weekly`),
+      apiGet<GeoStatsResponse>(`/api/v1/analytics/urls/${enc}/geo?days=30`),
+      listRules(code),
+    ]);
+    daily = d.status === 'fulfilled' ? d.value : null;
+    weekly = w.status === 'fulfilled' ? w.value : null;
+    renderStats();
+    renderChart();
+    renderGeo(g.status === 'fulfilled' ? g.value : null);
+    rules = r.status === 'fulfilled' ? r.value : [];
+    renderRules();
+  }
+  load();
+</script>

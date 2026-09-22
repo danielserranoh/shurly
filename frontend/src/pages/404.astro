@@ -1,0 +1,25 @@
+---
+import BaseLayout from '@/layouts/BaseLayout.astro';
+import Logo from '@/components/brand/Logo.astro';
+import Icon from '@/components/ui/Icon.astro';
+import Illustration from '@/components/illustrations/Illustration.astro';
+---
+
+<BaseLayout title="Page not found">
+  <div class="flex min-h-dvh flex-col px-6 py-6 sm:px-10">
+    <Logo href="/" height={24} class="self-start rounded-md" />
+    <main id="main" class="mx-auto flex max-w-md flex-1 flex-col items-center justify-center py-16 text-center">
+      <Illustration name="not-found" class="h-36 w-auto" />
+      <p class="eyebrow mt-6">Error 404</p>
+      <h1 class="display mt-2 text-4xl text-ink-950">This page took a wrong turn.</h1>
+      <p class="mt-3 text-[15px] leading-7 text-ink-500">
+        We looked everywhere — it isn’t here. If you followed a short link, it may have been mistyped or deleted.
+      </p>
+      <div class="mt-8 flex flex-col gap-2 sm:flex-row">
+        <a href="/dashboard/" class="btn btn-primary"><Icon name="house" />Go to your links</a>
+        <a href="/" class="btn btn-secondary">Visit shurly home</a>
+      </div>
+      <p class="mt-10 text-xs text-ink-500">Surely it can’t be gone? It is. And don’t call us Shirley.</p>
+    </main>
+  </div>
+</BaseLayout>

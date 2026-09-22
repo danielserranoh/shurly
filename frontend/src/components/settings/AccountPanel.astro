@@ -1,0 +1,157 @@
+---
+import Icon from '@/components/ui/Icon.astro';
+import PasswordField from '@/components/ui/PasswordField.astro';
+import SettingsSection from './SettingsSection.astro';
+---
+
+<div class="grid gap-10">
+  <SettingsSection id="profile-title" title="Profile" description="How you log in to Shurly.">
+    <div class="card overflow-hidden">
+      <div class="grid gap-1.5 p-5 sm:p-6">
+        <label for="profile-email" class="label">Email</label>
+        <div class="skeleton h-12 w-full rounded-xl sm:max-w-md" data-profile-skeleton aria-hidden="true"></div>
+        <div class="relative sm:max-w-md" data-profile-field hidden>
+          <input id="profile-email" type="email" class="input input-lg pr-11" readonly aria-describedby="profile-email-hint" data-profile-email />
+          <span class="pointer-events-none absolute inset-y-0 right-4 flex items-center text-ink-400"><Icon name="lock" /></span>
+        </div>
+        <p id="profile-email-hint" class="hint">That’s how you log in. To change it, ask your Shurly admin.</p>
+      </div>
+      <p class="flex items-center gap-2 border-t border-line bg-ink-50/60 px-5 py-3 text-sm text-ink-600 sm:px-6">
+        <Icon name="calendar" class="size-4 shrink-0 text-ink-400" />
+        <span data-member-since><span class="skeleton inline-block h-4 w-48 align-middle"></span></span>
+      </p>
+    </div>
+  </SettingsSection>
+
+  <SettingsSection id="password-title" title="Password" description="Pick something long that you don’t use anywhere else.">
+    <form class="card overflow-hidden" data-password-form novalidate aria-labelledby="password-title">
+      <div class="grid gap-5 p-5 sm:p-6">
+        <div data-form-alert hidden></div>
+        <!-- Lets password managers know which account this password belongs to -->
+        <input type="email" name="username" autocomplete="username" hidden data-username />
+        <div class="grid items-start gap-5 sm:grid-cols-2">
+          <PasswordField id="current-password" name="current_password" label="Current password" autocomplete="current-password" />
+          <PasswordField id="new-password" name="new_password" label="New password" autocomplete="new-password" minlength={8} hint="At least 8 characters" />
+        </div>
+      </div>
+      <div class="flex justify-end border-t border-line bg-ink-50/60 px-5 py-3 sm:px-6">
+        <button type="submit" class="btn btn-primary">Update password</button>
+      </div>
+    </form>
+  </SettingsSection>
+
+  <SettingsSection id="danger-title" title="Danger zone" description="Things you can’t undo.">
+    <div class="card flex gap-4 border-red-200 p-5 sm:p-6">
+      <span class="grid size-10 shrink-0 place-items-center rounded-full bg-red-50 text-red-600"><Icon name="trash" class="size-5" /></span>
+      <div class="min-w-0">
+        <h3 class="font-semibold text-ink-950">Delete account</h3>
+        <p class="mt-1 text-sm leading-6 text-ink-600">
+          You can’t delete an account from the app yet. To delete your account and all its links, contact your Shurly admin.
+        </p>
+      </div>
+    </div>
+  </SettingsSection>
+</div>
+
+<script>
+  import { ApiError, apiPost } from '@/utils/api';
+  import { applyApiError, clearErrors, setFieldError } from '@/utils/forms';
+  import { formatDate } from '@/utils/format';
+  import { iconSvg } from '@/utils/icons';
+  import { setLoading, toast } from '@/utils/ui';
+  import { currentUser } from './store';
+  import type { MessageResponse } from '@/utils/types';
+
+  // ---------------------------------------------------------------- Profile
+  const emailInput = document.querySelector<HTMLInputElement>('[data-profile-email]')!;
+  const usernameInput = document.querySelector<HTMLInputElement>('[data-username]')!;
+
+  currentUser.subscribe((user) => {
+    emailInput.value = user.email;
+    // defaultValue so that resetting the password form keeps it
+    usernameInput.defaultValue = user.email;
+    usernameInput.value = user.email;
+    document.querySelector<HTMLElement>('[data-profile-skeleton]')!.hidden = true;
+    document.querySelector<HTMLElement>('[data-profile-field]')!.hidden = false;
+    document.querySelector<HTMLElement>('[data-member-since]')!.textContent =
+      `Member since ${formatDate(user.created_at, { month: 'long', day: 'numeric', year: 'numeric' })}`;
+  });
+
+  // ---------------------------------------------------------------- Password
+  const form = document.querySelector<HTMLFormElement>('[data-password-form]')!;
+  const current = form.elements.namedItem('current_password') as HTMLInputElement;
+  const next = form.elements.namedItem('new_password') as HTMLInputElement;
+  const submit = form.querySelector<HTMLButtonElement>('button[type="submit"]')!;
+  const hint = form.querySelector<HTMLElement>('[data-password-hint]')!;
+
+  // Live length check: the hint earns a lime check once the rule is met (as on sign-up).
+  const renderHint = () => {
+    const ok = next.value.length >= 8;
+    hint.innerHTML = ok
+      ? `<span class="grid size-4 place-items-center rounded-full bg-brand-400 text-ink-950">${iconSvg('check', 'size-3', 3)}</span><span class="text-ink-700">At least 8 characters</span>`
+      : `<span class="size-4 rounded-full border-2 border-ink-300"></span><span>At least 8 characters</span>`;
+  };
+  renderHint();
+  next.addEventListener('input', renderHint);
+
+  form.addEventListener('input', (e) => {
+    const t = e.target as HTMLInputElement;
+    if (t.getAttribute('aria-invalid')) setFieldError(form, t.name, null);
+  });
+
+  /** Put both fields back to hidden text after a successful change. */
+  function hidePasswords() {
+    form.querySelectorAll<HTMLElement>('[data-password-field]').forEach((field) => {
+      const toggle = field.querySelector<HTMLButtonElement>('[data-toggle-password]')!;
+      field.querySelector('input')!.type = 'password';
+      toggle.setAttribute('aria-pressed', 'false');
+      toggle.setAttribute('aria-label', 'Show password');
+      field.querySelector<HTMLElement>('[data-eye]')!.hidden = false;
+      field.querySelector<HTMLElement>('[data-eye-off]')!.hidden = true;
+    });
+  }
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    clearErrors(form);
+
+    let ok = true;
+    if (!current.value) {
+      setFieldError(form, 'current_password', 'Enter your current password.');
+      ok = false;
+    }
+    if (!next.value) {
+      setFieldError(form, 'new_password', 'Choose a new password.');
+      ok = false;
+    } else if (next.value.length < 8) {
+      setFieldError(form, 'new_password', 'Use at least 8 characters.');
+      ok = false;
+    } else if (next.value === current.value) {
+      setFieldError(form, 'new_password', 'Choose a password that’s different from your current one.');
+      ok = false;
+    }
+    if (!ok) {
+      form.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus();
+      return;
+    }
+
+    setLoading(submit, true, 'Updating…');
+    try {
+      await apiPost<MessageResponse>('/api/v1/auth/change-password', { current_password: current.value, new_password: next.value });
+      form.reset();
+      hidePasswords();
+      renderHint();
+      toast('Password updated', 'success', { description: 'Use the new one next time you log in.' });
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 400 && /current password/i.test(err.message)) {
+        setFieldError(form, 'current_password', 'That doesn’t match your current password.');
+        current.focus();
+        current.select();
+      } else {
+        applyApiError(form, err);
+      }
+    } finally {
+      setLoading(submit, false);
+    }
+  });
+</script>

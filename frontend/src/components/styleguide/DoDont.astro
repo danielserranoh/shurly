@@ -1,0 +1,34 @@
+---
+/**
+ * Do / don't tile. The caption continues the label as a sentence:
+ * kind="dont" caption="recolor the dot." → "Don’t recolor the dot."
+ * Status color always comes with an icon and a word, never color alone.
+ */
+import Icon from '@/components/ui/Icon.astro';
+
+interface Props {
+  kind: 'do' | 'dont';
+  caption: string;
+  /** Classes for the demo area (background, padding, min-height). */
+  stage?: string;
+  class?: string;
+}
+
+const { kind, caption, stage = 'bg-canvas', class: className = '' } = Astro.props;
+const isDo = kind === 'do';
+---
+
+<figure class:list={['flex min-w-0 flex-col overflow-hidden rounded-2xl border border-line bg-white', className]}>
+  <div class:list={['grid min-h-32 flex-1 place-items-center p-6', stage]}>
+    <slot />
+  </div>
+  <figcaption class="flex gap-2.5 border-t border-line px-4 py-3 text-sm leading-5">
+    <span class:list={['mt-px grid size-5 shrink-0 place-items-center rounded-full', isDo ? 'bg-brand-400 text-ink-950' : 'bg-red-600 text-white']}>
+      <Icon name={isDo ? 'check' : 'x'} class="size-3.5" strokeWidth={3} />
+    </span>
+    <p class="min-w-0 text-ink-700">
+      <b class:list={['font-semibold', isDo ? 'text-brand-800' : 'text-red-700']}>{isDo ? 'Do' : 'Don’t'}</b>
+      {caption}
+    </p>
+  </figcaption>
+</figure>

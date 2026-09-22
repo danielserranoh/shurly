@@ -249,14 +249,14 @@ System creates:
 - ~~Write tests~~ (Tests already exist in TEST_COVERAGE_REPORT.md)
 - [x] Verify existing tests still pass (123/132 pass, 9 bcrypt edge case failures unrelated)
 
-### 3.6.5 Frontend Updates
+### 3.6.5 Frontend Updates ✅ (Phase 3.11)
 - [x] Add title input field to URL creation forms
 - [x] Add forward_parameters toggle to URL creation forms
-- [ ] Add "Edit URL" button to URL details page (future enhancement)
-- [ ] Create URL edit modal/page (title, destination, forward params toggle) (future enhancement)
-- [ ] Display last_click_at timestamp in URL details (future enhancement)
-- [ ] Show forward_parameters status in URL card (future enhancement)
-- [ ] Update URL list to show titles (if present) (future enhancement)
+- [x] Add "Edit URL" button to URL details page
+- [x] Create URL edit modal/page (`EditLinkModal`: title, destination, forward params, OG, schedule, cap, crawlable, tags)
+- [x] Display last_click_at timestamp in URL details (relative + absolute)
+- [x] Show forward_parameters status in URL card (badge only when off)
+- [x] Update URL list to show titles (title → OG title → destination host)
 
 ---
 
@@ -320,21 +320,21 @@ System creates:
 - ~~Write tests~~ (Tests already exist in TEST_COVERAGE_REPORT.md per TDD philosophy)
 - [x] Verify all existing tests still pass (123/132 pass, 9 bcrypt edge case failures unrelated)
 
-### 3.7.7 Frontend Updates
+### 3.7.7 Frontend Updates (Phase 3.11)
 - [x] Add Open Graph fields to URL creation form (optional, collapsible section)
-- [ ] Create Preview Card component (future enhancement)
-- [ ] Add "Refresh Preview" button in edit view (future enhancement)
-- [ ] Display OG metadata preview card (future enhancement)
-  - [ ] Display og:title, og:description, og:image
-  - [ ] Show fallback if metadata missing
-  - [ ] "Edit Preview" button
-- [ ] Add preview section to URL details page
-  - [ ] Visual preview card (how it appears on social media)
-  - [ ] "Refresh from destination" button
-  - [ ] Edit modal for custom og_* values
+- [x] Create Preview Card component (live preview in Create, auto-fetched on paste)
+- [x] Add "Refresh Preview" button in edit view (details page + "Fetch preview" in the editor)
+- [x] Display OG metadata preview card
+  - [x] Display og:title, og:description, og:image
+  - [x] Show fallback if metadata missing
+  - [x] "Edit Preview" button
+- [x] Add preview section to URL details page
+  - [x] Visual preview card (how it appears on social media)
+  - [x] "Refresh from destination" button
+  - [x] Edit modal for custom og_* values
 - [ ] Add preview indicators to URL list
   - [ ] Icon/badge if custom preview is set
-  - [ ] Preview thumbnail in expanded view
+  - [x] Preview thumbnail on every card
 
 ---
 
@@ -383,18 +383,19 @@ System creates:
 - [x] Campaign tagging tests
 - [x] Verify all existing tests still pass (189/199; 9 pre-existing bcrypt + 1 network-flaky OG test, all unrelated)
 
-### 3.8.6 Frontend Components (Pending UX Designs)
-- [ ] TagBadge component (color-coded display)
-- [ ] TagAutocomplete component (search + inline create)
-- [ ] TagFilter component (Pinterest-style multi-select)
+### 3.8.6 Frontend Components ✅ (Phase 3.11)
+- [x] TagBadge component (color-coded display): `.tag[data-color]` + `tagPill()` in `utils/tags.ts`
+- [x] TagAutocomplete component (search + inline create): `mountTagInput()` in `utils/tag-input.ts`
+- [x] TagFilter component (Pinterest-style multi-select): chips on the Links page, any/all match
 
-### 3.8.7 Frontend Integration (Pending UX Designs)
-- [ ] Add tags to Create URL form
-- [ ] Add tags to URL Card display
-- [ ] Add tags to URL Details page
-- [ ] Add tag filter to Dashboard
-- [ ] Add bulk tagging UI
-- [ ] Add tags to Campaign create/edit
+### 3.8.7 Frontend Integration ✅ (Phase 3.11)
+- [x] Add tags to Create URL form
+- [x] Add tags to URL Card display
+- [x] Add tags to URL Details page
+- [x] Add tag filter to Dashboard
+- [x] Add bulk tagging UI
+- [x] Add tags to Campaign create (campaigns have no edit screen yet)
+- [x] Tag management in Settings (rename/delete your tags)
 
 ---
 
@@ -537,6 +538,24 @@ System creates:
 - [x] All existing tests still pass — **285 passing**
 - [x] Redirect path performance: rules eval is O(n) per URL with n typically <10
 - [x] Frontend remains compatible (no UI changes required for 3.10.1–3.10.4)
+
+---
+
+## Phase 3.11: Brand & Frontend Redesign ✅
+
+**Goal:** Implement the UX/UI brief (`design/Shurly-Brief.zip`): identity, design system, every screen.
+**Docs:** `design/DESIGN_SYSTEM.md` (tokens, voice, patterns, paywall, brief Q1–Q10), `design/brand/README.md`, `/styleguide/`
+
+- [x] Brand: wordmark + "s." isotype with the lime click dot, lockups, favicon pack, OG card (SVG + PNG 1x/2x/3x)
+- [x] Design system: Tailwind 4 `@theme` tokens, component classes, 11 line illustrations, living styleguide
+- [x] Screens: landing + pricing, login/register, 404, links dashboard, create, link details, campaigns
+      list / 4-step wizard / details, analytics, settings (account, API & MCP, tags, notifications, plan)
+- [x] Static build (dropped `@astrojs/node`; record pages use `?code=` / `?id=`)
+- [x] API support (TDD, `tests/test_phase311_ui_api.py`): `GET /urls/{code}`, `POST /urls/fetch-metadata`,
+      list `q` + repeatable `url_type`, `click_count` / `campaign_id` / `user_data` on URLs,
+      `short_url` + `title` in overview `top_urls`, tags on campaign detail
+- [x] Verified: 336 tests, `astro check` clean, e2e smoke of 14 core flows, 1440 px + 390 px layouts
+- [ ] Custom-preview badge on link cards; campaign edit screen; Pro billing (pricing TBD)
 
 ---
 

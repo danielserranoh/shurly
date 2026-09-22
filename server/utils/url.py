@@ -8,6 +8,29 @@ from urllib.parse import urlparse
 from server.core.config import settings
 
 
+def build_short_url(short_code: str) -> str:
+    """Build the full short URL from a short code.
+
+    Single source of truth for every absolute short URL the API emits (URL
+    responses, OG previews, analytics overview, campaign detail + CSV export).
+
+    Resolution order:
+        1. settings.base_url if set (overrides everything; useful for staging
+           that runs on a non-default host).
+        2. https://<default_domain> in production-style deploys.
+        3. http://localhost:8000 as the local-dev fallback so unit tests and
+           docker-compose work without extra config.
+    """
+    if getattr(settings, "base_url", "") and settings.base_url:
+        base_url = settings.base_url.rstrip("/")
+    elif settings.is_lambda or settings.default_domain not in ("", "localhost"):
+        # Production-shaped: default_domain is set to the public hostname.
+        base_url = f"https://{settings.default_domain}"
+    else:
+        base_url = "http://localhost:8000"
+    return f"{base_url}/{short_code}"
+
+
 def generate_short_code(length: int = 6) -> str:
     """
     Generate a random alphanumeric short code.

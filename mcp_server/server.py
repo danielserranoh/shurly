@@ -72,6 +72,9 @@ MCP_TOOL_NAMES: dict[str, str] = {
     "bulk_tag_urls_api_v1_urls_bulk_tags_post": "bulk_tag_urls",
     "get_url_preview_api_v1_urls__short_code__preview_get": "get_url_preview",
     "refresh_url_preview_api_v1_urls__short_code__refresh_preview_post": "refresh_url_preview",
+    # Phase 3.11 — single-URL detail + live OG preview (no link created)
+    "get_url_api_v1_urls__short_code__get": "get_url",
+    "fetch_url_metadata_api_v1_urls_fetch_metadata_post": "fetch_url_metadata",
     # Redirect rules (Phase 3.10.2)
     "list_redirect_rules_api_v1_urls__short_code__rules_get": "list_redirect_rules",
     "create_redirect_rule_api_v1_urls__short_code__rules_post": "create_redirect_rule",

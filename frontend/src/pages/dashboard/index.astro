@@ -1,390 +1,543 @@
 ---
-import Layout from '@/layouts/Layout.astro';
-import Navbar from '@/components/Navbar.astro';
-import ProtectedRoute from '@/components/ProtectedRoute.astro';
-import URLCard from '@/components/URLCard.astro';
+import AppLayout from '@/layouts/AppLayout.astro';
+import PageHeader from '@/components/ui/PageHeader.astro';
+import StatCard from '@/components/ui/StatCard.astro';
+import EmptyState from '@/components/ui/EmptyState.astro';
+import Icon from '@/components/ui/Icon.astro';
+import Modal from '@/components/ui/Modal.astro';
+import EditLinkModal from '@/components/app/EditLinkModal.astro';
+import QrModal from '@/components/app/QrModal.astro';
 ---
 
-<Layout title="Dashboard - Shurly">
-  <ProtectedRoute>
-    <div id="dashboard-navbar"></div>
+<AppLayout title="Links" section="links">
+  <PageHeader title="Links" description="Every short link you’ve made — and who’s clicking." />
 
-    <main class="min-h-screen bg-gray-50 py-8">
-      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <!-- Header -->
-        <div class="mb-8">
-          <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-            <div>
-              <h1 class="text-3xl font-bold text-gray-900">
-                Your URLs
-              </h1>
-              <p class="mt-1 text-sm text-gray-600" id="user-email"></p>
-            </div>
-            <a
-              href="/dashboard/create"
-              class="inline-flex items-center justify-center px-6 py-3 border border-transparent text-base font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 transition-colors shadow-sm"
-            >
-              <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
-              </svg>
-              Create Short URL
-            </a>
-          </div>
-        </div>
+  <div id="welcome" hidden class="mb-5 flex animate-fade-up items-start gap-4 rounded-2xl bg-ink-950 p-5 text-white">
+    <span class="grid size-10 shrink-0 place-items-center rounded-xl bg-brand-400 text-ink-950"><Icon name="rocket" class="size-5" /></span>
+    <div class="flex-1">
+      <p class="font-semibold">You’re in. Let’s make your first link.</p>
+      <p class="mt-1 text-sm text-ink-300">Paste any long link below and press Enter — we’ll copy the short one for you.</p>
+    </div>
+    <button type="button" class="rounded-md p-1 text-ink-400 hover:bg-white/10 hover:text-white" data-dismiss-welcome aria-label="Dismiss"><Icon name="x" /></button>
+  </div>
 
-        <!-- Stats -->
-        <div class="mb-8 grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <div class="bg-white rounded-lg shadow p-6">
-            <div class="flex items-center">
-              <div class="flex-shrink-0">
-                <svg class="h-8 w-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-                </svg>
-              </div>
-              <div class="ml-4">
-                <p class="text-sm font-medium text-gray-600">Total URLs</p>
-                <p class="text-2xl font-semibold text-gray-900" id="total-urls">0</p>
-              </div>
-            </div>
-          </div>
-
-          <div class="bg-white rounded-lg shadow p-6">
-            <div class="flex items-center">
-              <div class="flex-shrink-0">
-                <svg class="h-8 w-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                </svg>
-              </div>
-              <div class="ml-4">
-                <p class="text-sm font-medium text-gray-600">Total Clicks</p>
-                <p class="text-2xl font-semibold text-gray-900" id="total-clicks">0</p>
-              </div>
-            </div>
-          </div>
-
-          <div class="bg-white rounded-lg shadow p-6">
-            <div class="flex items-center">
-              <div class="flex-shrink-0">
-                <svg class="h-8 w-8 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
-                </svg>
-              </div>
-              <div class="ml-4">
-                <p class="text-sm font-medium text-gray-600">Custom URLs</p>
-                <p class="text-2xl font-semibold text-gray-900" id="custom-urls">0</p>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Loading State -->
-        <div id="loading" class="text-center py-12">
-          <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-          <p class="mt-4 text-gray-600">Loading your URLs...</p>
-        </div>
-
-        <!-- Empty State -->
-        <div id="empty-state" class="hidden text-center py-12">
-          <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-          </svg>
-          <h3 class="mt-2 text-sm font-medium text-gray-900">No URLs yet</h3>
-          <p class="mt-1 text-sm text-gray-500">Get started by creating your first short URL.</p>
-          <div class="mt-6">
-            <a
-              href="/dashboard/create"
-              class="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700"
-            >
-              <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
-              </svg>
-              Create Short URL
-            </a>
-          </div>
-        </div>
-
-        <!-- URLs List -->
-        <div id="urls-list" class="hidden grid grid-cols-1 gap-6">
-          <!-- URLCards will be inserted here dynamically -->
-        </div>
+  <!-- Quick create -->
+  <section aria-labelledby="quick-title" class="card p-2">
+    <h2 id="quick-title" class="sr-only">Shorten a link</h2>
+    <form id="quick-form" class="flex flex-col gap-2 sm:flex-row" novalidate>
+      <div class="relative flex-1">
+        <span class="pointer-events-none absolute inset-y-0 left-3.5 flex items-center text-ink-400"><Icon name="link" class="size-5" /></span>
+        <label for="quick-url" class="sr-only">Long link</label>
+        <input id="quick-url" name="url" type="url" inputmode="url" autocomplete="off" class="input input-lg border-transparent pl-11 shadow-none hover:border-transparent" placeholder="Paste a long link to shorten it…" aria-describedby="quick-error" />
       </div>
-    </main>
+      <button type="submit" class="btn btn-primary btn-lg">Shorten</button>
+    </form>
+    <p id="quick-error" class="field-error px-3 pt-1" data-error-for="url" hidden></p>
+    <div id="quick-result" hidden class="m-1 mt-2 flex animate-fade-up flex-col gap-3 rounded-xl border border-brand-200 bg-brand-50 p-3 sm:flex-row sm:items-center">
+      <span class="grid size-8 shrink-0 animate-pop place-items-center rounded-full bg-brand-400 text-ink-950"><Icon name="check" strokeWidth={3} /></span>
+      <div class="min-w-0 flex-1">
+        <p class="text-sm font-semibold text-ink-950" data-result-title>Your link is ready</p>
+        <a class="shortlink block truncate text-[15px] text-ink-950 hover:underline" target="_blank" rel="noopener" data-result-link></a>
+      </div>
+      <div class="flex flex-wrap gap-2">
+        <button type="button" class="btn btn-accent btn-sm" data-result-copy><span data-copy-icon><Icon name="copy" /></span><span data-copy-label>Copy</span></button>
+        <button type="button" class="btn btn-secondary btn-sm" data-result-edit><Icon name="pencil" />Add details</button>
+        <button type="button" class="btn btn-secondary btn-sm btn-icon" data-result-qr aria-label="QR code"><Icon name="qr" /></button>
+        <button type="button" class="btn btn-ghost btn-sm btn-icon" data-result-close aria-label="Dismiss"><Icon name="x" /></button>
+      </div>
+    </div>
+    <p class="hint flex flex-wrap items-center gap-x-1 px-3 pt-1 pb-1.5">
+      Want a custom back-half, tags or a social preview?
+      <a class="link" href="/dashboard/create/">Use the full editor</a>
+      <span class="hidden sm:inline">· or press <span class="kbd">N</span></span>
+    </p>
+  </section>
 
-    <!-- Delete Confirmation Modal -->
-    <div id="delete-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div class="bg-white rounded-lg p-6 max-w-md w-full mx-4">
-        <h3 class="text-lg font-semibold text-gray-900 mb-2">Delete URL?</h3>
-        <p class="text-gray-600 mb-1">
-          Are you sure you want to delete <strong id="delete-url-name" class="text-gray-900"></strong>?
-        </p>
-        <p class="text-sm text-gray-500 mb-6">This action cannot be undone.</p>
-        <div class="flex gap-3 justify-end">
-          <button
-            id="cancel-delete"
-            class="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors font-medium"
-          >
-            Cancel
-          </button>
-          <button
-            id="confirm-delete"
-            class="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors font-medium"
-          >
-            Delete
-          </button>
+  <!-- KPIs -->
+  <section aria-label="Summary" class="mt-6 grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
+    <StatCard label="Links" stat="links" icon="link" />
+    <StatCard label="Clicks, all time" stat="clicks" icon="click" />
+    <StatCard label="Clicks, last 7 days" stat="recent" icon="activity" />
+    <StatCard label="Campaigns" stat="campaigns" icon="megaphone" />
+  </section>
+
+  <!-- Toolbar -->
+  <section class="mt-10" aria-labelledby="list-title">
+    <div class="flex flex-col gap-3 lg:flex-row lg:items-center">
+      <h2 id="list-title" class="text-lg font-semibold text-ink-950">Your links <span class="font-normal text-ink-500" data-count></span></h2>
+      <div class="flex flex-col gap-2 sm:flex-row lg:ml-auto">
+        <div class="relative">
+          <span class="pointer-events-none absolute inset-y-0 left-3 flex items-center text-ink-400"><Icon name="search" /></span>
+          <label for="search" class="sr-only">Search links</label>
+          <input id="search" type="search" class="input w-full pr-9 pl-9 sm:w-72" placeholder="Search title, link or destination" data-search autocomplete="off" />
+          <span class="kbd pointer-events-none absolute inset-y-0 right-2.5 my-auto hidden sm:inline-flex" aria-hidden="true">/</span>
+        </div>
+        <div class="segmented self-start" role="radiogroup" aria-label="Link type">
+          <label><input type="radio" name="type" value="links" checked /><span>Links</span></label>
+          <label><input type="radio" name="type" value="campaign" /><span>Campaign links</span></label>
+          <label><input type="radio" name="type" value="all" /><span>All</span></label>
         </div>
       </div>
     </div>
-  </ProtectedRoute>
+    <div class="mt-3 flex items-center gap-2" id="tag-filter" hidden>
+      <span class="flex shrink-0 items-center gap-1.5 text-xs font-medium text-ink-500"><Icon name="tags" class="size-3.5" />Tags</span>
+      <div class="scrollbar-none -my-1 flex min-w-0 flex-1 gap-1.5 overflow-x-auto py-1 pr-6 [mask-image:linear-gradient(to_right,#000_calc(100%-2.5rem),transparent)]" data-chips role="group" aria-label="Filter by tag"></div>
+      <div class="segmented shrink-0 scale-90" data-match hidden role="radiogroup" aria-label="Tag matching">
+        <label><input type="radio" name="match" value="any" checked /><span>Any</span></label>
+        <label><input type="radio" name="match" value="all" /><span>All</span></label>
+      </div>
+      <button type="button" class="btn btn-ghost btn-sm shrink-0" data-clear-tags hidden>Clear</button>
+    </div>
+  </section>
 
-  <script>
-    import { apiGet } from '@/utils/api';
-    import type { User, URLListResponse } from '@/utils/types';
+  <ul id="link-list" class="mt-4 grid gap-3 transition-opacity duration-200" aria-live="polite" aria-busy="true"></ul>
 
-    const loading = document.getElementById('loading') as HTMLDivElement;
-    const emptyState = document.getElementById('empty-state') as HTMLDivElement;
-    const urlsList = document.getElementById('urls-list') as HTMLDivElement;
-    const userEmailEl = document.getElementById('user-email') as HTMLParagraphElement;
-    const totalUrlsEl = document.getElementById('total-urls') as HTMLParagraphElement;
-    const totalClicksEl = document.getElementById('total-clicks') as HTMLParagraphElement;
-    const customUrlsEl = document.getElementById('custom-urls') as HTMLParagraphElement;
-    const dashboardNavbar = document.getElementById('dashboard-navbar') as HTMLDivElement;
+  <EmptyState id="empty-first" hidden illustration="links" title="Your links will live here" body="Paste a long link in the box above — a Drive folder, a deck, a landing page. You’ll see every click right here.">
+    <a href="/dashboard/create/" class="btn btn-secondary"><Icon name="wand" />Open the full editor</a>
+  </EmptyState>
+  <EmptyState id="empty-filtered" hidden illustration="search" title="No links match" body="Try a different search or clear the filters.">
+    <button type="button" class="btn btn-secondary" data-clear-all>Clear filters</button>
+  </EmptyState>
+  <EmptyState id="load-error" hidden illustration="error" title="We couldn’t load your links" body="Check your connection and try again.">
+    <button type="button" class="btn btn-primary" data-retry><Icon name="refresh" />Try again</button>
+  </EmptyState>
 
-    async function loadDashboard() {
-      try {
-        // Fetch user info
-        const user = await apiGet<User>('/api/v1/auth/me', true);
-        userEmailEl.textContent = user.email;
+  <nav id="pagination" hidden class="mt-6 flex items-center justify-between gap-3 text-sm text-ink-500" aria-label="Pagination">
+    <p data-range></p>
+    <div class="flex gap-2">
+      <button type="button" class="btn btn-secondary btn-sm" data-prev><Icon name="chevron-left" />Previous</button>
+      <button type="button" class="btn btn-secondary btn-sm" data-next>Next<Icon name="chevron-right" /></button>
+    </div>
+  </nav>
 
-        // Render navbar with user email
-        const navbarHTML = `
-          <nav class="bg-white shadow-sm border-b border-gray-200">
-            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-              <div class="flex justify-between items-center h-16">
-                <div class="flex-shrink-0">
-                  <a href="/" class="text-2xl font-bold text-blue-600 hover:text-blue-700 transition-colors">
-                    Shurly
-                  </a>
-                </div>
-                <div class="flex items-center space-x-4">
-                  <span class="text-sm text-gray-600 hidden sm:inline">
-                    ${user.email}
-                  </span>
-                  <a
-                    href="/dashboard"
-                    class="text-gray-700 hover:text-blue-600 transition-colors font-medium"
-                  >
-                    Dashboard
-                  </a>
-                  <button
-                    id="logout-btn"
-                    class="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition-colors font-medium text-sm"
-                  >
-                    Logout
-                  </button>
-                </div>
-              </div>
-            </div>
-          </nav>
-        `;
-        dashboardNavbar.innerHTML = navbarHTML;
+  <!-- Bulk actions -->
+  <div id="bulk-bar" hidden class="fixed inset-x-0 bottom-5 z-30 flex justify-center px-4">
+    <div class="flex animate-fade-up items-center gap-1 rounded-2xl bg-ink-950 py-2 pr-2 pl-4 text-sm text-white shadow-xl">
+      <span class="mr-2 font-semibold"><span data-bulk-count>0</span> selected</span>
+      <button type="button" class="btn btn-sm text-white hover:bg-white/10" data-bulk-tag><Icon name="tag" />Add tags</button>
+      <button type="button" class="btn btn-sm text-white hover:bg-white/10" data-bulk-copy><Icon name="copy" />Copy links</button>
+      <button type="button" class="btn btn-sm btn-icon text-ink-400 hover:bg-white/10 hover:text-white" data-bulk-clear aria-label="Clear selection"><Icon name="x" /></button>
+    </div>
+  </div>
 
-        // Add logout functionality
-        const logoutBtn = document.getElementById('logout-btn');
-        if (logoutBtn) {
-          logoutBtn.addEventListener('click', () => {
-            import('@/utils/auth').then(({ logout }) => logout());
-          });
-        }
+  <Modal id="bulk-tag" title="Add tags" description="Tags are added to every selected link. Existing tags stay." width="30rem">
+    <div class="grid gap-2 px-6 py-5">
+      <span class="label" id="bulk-tags-label">Tags to add</span>
+      <div id="bulk-tags" aria-labelledby="bulk-tags-label"></div>
+    </div>
+    <div class="flex flex-col-reverse gap-2 border-t border-line px-6 py-4 sm:flex-row sm:justify-end">
+      <button type="button" class="btn btn-secondary" data-dialog-close>Cancel</button>
+      <button type="button" class="btn btn-primary" data-bulk-apply>Add tags</button>
+    </div>
+  </Modal>
 
-        // Fetch URLs
-        const data = await apiGet<URLListResponse>('/api/v1/urls?skip=0&limit=100', true);
+  <EditLinkModal />
+  <QrModal />
+</AppLayout>
 
-        // Update stats
-        totalUrlsEl.textContent = data.total.toString();
-        const totalClicks = data.urls.reduce((sum, url) => sum + (url.click_count || 0), 0);
-        totalClicksEl.textContent = totalClicks.toString();
-        const customUrls = data.urls.filter(url => url.url_type === 'custom').length;
-        customUrlsEl.textContent = customUrls.toString();
+<script>
+  import { errorMessage } from '@/utils/api';
+  import { clearErrors, setFieldError } from '@/utils/forms';
+  import { formatNumber, isValidHttpUrl, normalizeUrlInput, pluralize } from '@/utils/format';
+  import { html, setHTML } from '@/utils/html';
+  import { sparkline } from '@/utils/charts';
+  import { openLinkEditor } from '@/utils/link-editor';
+  import { bulkTagLinks, createLink, deleteLink, listLinks, openQr, renderLinkCard, renderLinkSkeleton } from '@/utils/links';
+  import { mountTagInput } from '@/utils/tag-input';
+  import { loadTags, tagPill } from '@/utils/tags';
+  import { closeDialog, confirmDialog, copyWithFeedback, hydrateTimes, openDialog, setLoading, toast, writeClipboard } from '@/utils/ui';
+  import { apiGet } from '@/utils/api';
+  import type { OverviewStats, ShortLink, Tag, URLType } from '@/utils/types';
 
-        // Hide loading
-        loading.classList.add('hidden');
+  const PAGE_SIZE = 20;
+  const TYPES: Record<string, URLType[] | undefined> = { links: ['standard', 'custom'], campaign: ['campaign'], all: undefined };
 
-        if (data.urls.length === 0) {
-          emptyState.classList.remove('hidden');
-        } else {
-          urlsList.classList.remove('hidden');
+  const $ = <T extends HTMLElement = HTMLElement>(sel: string) => document.querySelector<T>(sel)!;
+  const list = $('#link-list');
+  const params = new URLSearchParams(location.search);
+  const state = {
+    q: params.get('q') ?? '',
+    type: (params.get('type') as keyof typeof TYPES) ?? 'links',
+    tags: (params.get('tags') ?? '').split(',').filter(Boolean),
+    match: (params.get('match') === 'all' ? 'all' : 'any') as 'any' | 'all',
+    page: Math.max(1, Number(params.get('page')) || 1),
+  };
+  if (!(state.type in TYPES)) state.type = 'links';
 
-          // Render URLs
-          data.urls.forEach(url => {
-            const urlCard = document.createElement('div');
-            urlCard.innerHTML = `
-              <div class="bg-white rounded-lg shadow-md border border-gray-200 p-6 hover:shadow-lg transition-shadow">
-                <div class="space-y-4">
-                  <div>
-                    <label class="text-xs text-gray-500 uppercase tracking-wide font-semibold">
-                      Short URL
-                    </label>
-                    <div class="flex items-center gap-2 mt-1">
-                      <a
-                        href="${url.short_url}"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        class="text-blue-600 hover:text-blue-700 font-medium text-lg flex-1 truncate"
-                      >
-                        ${url.short_url}
-                      </a>
-                      <button
-                        class="copy-btn bg-blue-600 text-white px-3 py-1.5 rounded-md hover:bg-blue-700 transition-colors text-sm font-medium"
-                        data-url="${url.short_url}"
-                      >
-                        Copy
-                      </button>
-                    </div>
-                  </div>
-                  <div>
-                    <label class="text-xs text-gray-500 uppercase tracking-wide font-semibold">
-                      Original URL
-                    </label>
-                    <a
-                      href="${url.original_url}"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      class="text-gray-700 hover:text-blue-600 block mt-1 truncate"
-                      title="${url.original_url}"
-                    >
-                      ${url.original_url}
-                    </a>
-                  </div>
-                  <div class="flex items-center justify-between text-sm text-gray-500 pt-2 border-t border-gray-200">
-                    <div class="flex items-center gap-4">
-                      <span class="flex items-center gap-1">
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                        </svg>
-                        ${url.click_count || 0} clicks
-                      </span>
-                      <span class="flex items-center gap-1">
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
-                        </svg>
-                        ${url.url_type}
-                      </span>
-                    </div>
-                    <span class="flex items-center gap-1">
-                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                      </svg>
-                      ${new Date(url.created_at).toLocaleDateString('en-US', {
-                        year: 'numeric',
-                        month: 'short',
-                        day: 'numeric',
-                      })}
-                    </span>
-                  </div>
-                </div>
-              </div>
-            `;
-            urlsList.appendChild(urlCard);
-          });
+  let links = new Map<string, ShortLink>();
+  let total = 0;
+  let firstLoad = true;
+  let allTags: Tag[] = [];
+  const selected = new Set<string>();
+  let requestId = 0;
 
-          // Add copy functionality
-          const copyButtons = document.querySelectorAll('.copy-btn');
-          copyButtons.forEach(button => {
-            button.addEventListener('click', async (e) => {
-              const btn = e.target as HTMLButtonElement;
-              const url = btn.dataset.url;
+  // ---------------------------------------------------------------- URL state
+  function syncUrl() {
+    const p = new URLSearchParams();
+    if (state.q) p.set('q', state.q);
+    if (state.type !== 'links') p.set('type', state.type);
+    if (state.tags.length) p.set('tags', state.tags.join(','));
+    if (state.tags.length > 1 && state.match === 'all') p.set('match', 'all');
+    if (state.page > 1) p.set('page', String(state.page));
+    const s = p.toString();
+    history.replaceState(null, '', s ? `?${s}` : location.pathname);
+  }
 
-              if (!url) return;
+  const hasFilters = () => Boolean(state.q || state.tags.length || state.type !== 'links');
 
-              try {
-                await navigator.clipboard.writeText(url);
-                const originalText = btn.textContent;
-                btn.textContent = 'Copied!';
-                btn.classList.add('bg-green-600', 'hover:bg-green-700');
-                btn.classList.remove('bg-blue-600', 'hover:bg-blue-700');
+  // ---------------------------------------------------------------- List
+  async function load() {
+    const id = ++requestId;
+    list.setAttribute('aria-busy', 'true');
+    if (firstLoad) setHTML(list, renderLinkSkeleton(4));
+    else list.classList.add('opacity-50');
+    ['#empty-first', '#empty-filtered', '#load-error'].forEach((s) => ($(s).hidden = true));
 
-                setTimeout(() => {
-                  btn.textContent = originalText;
-                  btn.classList.remove('bg-green-600', 'hover:bg-green-700');
-                  btn.classList.add('bg-blue-600', 'hover:bg-blue-700');
-                }, 2000);
-              } catch (error) {
-                console.error('Failed to copy:', error);
-              }
-            });
-          });
-
-          // Add delete functionality
-          const deleteButtons = document.querySelectorAll('.delete-btn');
-          deleteButtons.forEach(button => {
-            button.addEventListener('click', (e) => {
-              const btn = e.target as HTMLButtonElement;
-              const shortCode = btn.dataset.shortCode;
-              const shortUrl = btn.dataset.shortUrl;
-
-              if (!shortCode || !shortUrl) return;
-
-              // Show modal
-              const modal = document.getElementById('delete-modal')!;
-              const urlName = document.getElementById('delete-url-name')!;
-              urlName.textContent = shortUrl;
-
-              // Store the short code for deletion
-              (window as any).deleteShortCode = shortCode;
-              modal.classList.remove('hidden');
-            });
-          });
-        }
-      } catch (error) {
-        console.error('Failed to load dashboard:', error);
-        loading.innerHTML = `
-          <div class="text-center text-red-600">
-            <p>Failed to load dashboard. Please try again.</p>
-          </div>
-        `;
+    try {
+      const res = await listLinks({
+        q: state.q,
+        types: TYPES[state.type],
+        tags: state.tags,
+        match: state.match,
+        skip: (state.page - 1) * PAGE_SIZE,
+        limit: PAGE_SIZE,
+      });
+      if (id !== requestId) return;
+      if (res.urls.length === 0 && state.page > 1) {
+        state.page = 1;
+        syncUrl();
+        return load();
+      }
+      total = res.total;
+      links = new Map(res.urls.map((l) => [l.short_code, l]));
+      render();
+    } catch (err) {
+      if (id !== requestId) return;
+      list.innerHTML = '';
+      $('#pagination').hidden = true;
+      $('#load-error').hidden = false;
+      $('#load-error [data-empty-body]').textContent = errorMessage(err);
+    } finally {
+      if (id === requestId) {
+        firstLoad = false;
+        list.classList.remove('opacity-50');
+        list.setAttribute('aria-busy', 'false');
       }
     }
+  }
 
-    // Delete modal handlers
-    const deleteModal = document.getElementById('delete-modal')!;
-    const cancelDeleteBtn = document.getElementById('cancel-delete')!;
-    const confirmDeleteBtn = document.getElementById('confirm-delete') as HTMLButtonElement;
+  function render(freshCode?: string) {
+    const items = [...links.values()];
+    setHTML(list, html`${items.map((l) => renderLinkCard(l, { selected: selected.has(l.short_code), fresh: l.short_code === freshCode }))}`);
+    list.classList.toggle('selecting', selected.size > 0);
+    hydrateTimes(list);
+    renderTagChips();
+    $('[data-count]').textContent = total ? `· ${formatNumber(total)}` : '';
 
-    cancelDeleteBtn.addEventListener('click', () => {
-      deleteModal.classList.add('hidden');
-      (window as any).deleteShortCode = null;
+    const empty = items.length === 0;
+    $('#empty-first').hidden = !(empty && !hasFilters());
+    $('#empty-filtered').hidden = !(empty && hasFilters());
+
+    const pages = Math.ceil(total / PAGE_SIZE);
+    $('#pagination').hidden = pages <= 1;
+    const from = (state.page - 1) * PAGE_SIZE + 1;
+    $('#pagination [data-range]').textContent = `Showing ${formatNumber(from)}–${formatNumber(Math.min(total, from + items.length - 1))} of ${formatNumber(total)}`;
+    $<HTMLButtonElement>('[data-prev]').disabled = state.page <= 1;
+    $<HTMLButtonElement>('[data-next]').disabled = state.page >= pages;
+  }
+
+  // ---------------------------------------------------------------- Stats
+  async function loadStats() {
+    const setStat = (key: string, value: string, hint?: string | ReturnType<typeof html>) => {
+      $(`[data-stat="${key}"]`).textContent = value;
+      if (hint !== undefined) {
+        const el = $(`[data-stat-hint="${key}"]`);
+        if (typeof hint === 'string') el.textContent = hint;
+        else setHTML(el, hint);
+      }
+    };
+    try {
+      const [overview, individual] = await Promise.all([
+        apiGet<OverviewStats>('/api/v1/analytics/overview'),
+        listLinks({ types: ['standard', 'custom'], limit: 1 }),
+      ]);
+      const campaignLinks = overview.total_urls - individual.total;
+      setStat('links', formatNumber(individual.total), campaignLinks > 0 ? `+ ${pluralize(campaignLinks, 'campaign link')}` : 'Standard and custom');
+      setStat('clicks', formatNumber(overview.total_clicks), `${pluralize(overview.total_unique_visitors, 'unique visitor')}`);
+      setStat(
+        'recent',
+        formatNumber(overview.recent_clicks_7d),
+        html`<span class="flex items-center justify-between gap-2"><span>Per day, last 7 days</span>${sparkline(overview.recent_activity.map((d) => d.clicks), 72, 20)}</span>`,
+      );
+      setStat('campaigns', formatNumber(overview.total_campaigns), html`<a class="link text-[13px]" href="/dashboard/campaigns/">View campaigns</a>`);
+      if (overview.total_urls === 0) $('#empty-first [data-empty-title]').textContent = 'Your links will live here';
+    } catch {
+      ['links', 'clicks', 'recent', 'campaigns'].forEach((k) => setStat(k, '—', 'Couldn’t load'));
+    }
+  }
+
+  // ---------------------------------------------------------------- Tag chips
+  async function loadTagChips() {
+    try {
+      allTags = await loadTags();
+    } catch {
+      return;
+    }
+    renderTagChips();
+  }
+
+  // Tags are workspace-wide, so chips are facets of *your* results: tags on the links in
+  // view (most used first), plus whatever is already selected.
+  function renderTagChips() {
+    const counts = new Map<string, number>();
+    links.forEach((l) => l.tags.forEach((t) => counts.set(t.id, (counts.get(t.id) ?? 0) + 1)));
+    const byId = new Map(allTags.map((t) => [t.id, t]));
+    links.forEach((l) => l.tags.forEach((t) => byId.has(t.id) || byId.set(t.id, t)));
+    const used = [...byId.values()]
+      .filter((t) => counts.has(t.id) || state.tags.includes(t.id))
+      .sort((a, b) => Number(state.tags.includes(b.id)) - Number(state.tags.includes(a.id)) || (counts.get(b.id) ?? 0) - (counts.get(a.id) ?? 0));
+    $('#tag-filter').hidden = used.length === 0;
+    setHTML($('[data-chips]'), html`${used.map((t) => tagPill(t, { button: true, pressed: state.tags.includes(t.id) }))}`);
+    $('[data-match]').hidden = state.tags.length < 2;
+    $('[data-clear-tags]').hidden = state.tags.length === 0;
+  }
+
+  $('[data-chips]').addEventListener('click', (e) => {
+    const chip = (e.target as HTMLElement).closest<HTMLElement>('[data-tag-id]');
+    if (!chip) return;
+    const id = chip.dataset.tagId!;
+    state.tags = state.tags.includes(id) ? state.tags.filter((t) => t !== id) : [...state.tags, id];
+    state.page = 1;
+    renderTagChips();
+    syncUrl();
+    load();
+  });
+  $('[data-clear-tags]').addEventListener('click', () => {
+    state.tags = [];
+    state.page = 1;
+    renderTagChips();
+    syncUrl();
+    load();
+  });
+  document.querySelectorAll<HTMLInputElement>('input[name="match"]').forEach((r) => {
+    r.checked = r.value === state.match;
+    r.addEventListener('change', () => {
+      state.match = r.value as 'any' | 'all';
+      state.page = 1;
+      syncUrl();
+      load();
     });
+  });
 
-    confirmDeleteBtn.addEventListener('click', async () => {
-      const shortCode = (window as any).deleteShortCode;
-      if (!shortCode) return;
+  // ---------------------------------------------------------------- Search & type
+  const search = $<HTMLInputElement>('#search');
+  search.value = state.q;
+  let debounce = 0;
+  search.addEventListener('input', () => {
+    window.clearTimeout(debounce);
+    debounce = window.setTimeout(() => {
+      state.q = search.value.trim();
+      state.page = 1;
+      syncUrl();
+      load();
+    }, 250);
+  });
+  search.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && search.value) {
+      search.value = '';
+      search.dispatchEvent(new Event('input'));
+    }
+  });
+  document.querySelectorAll<HTMLInputElement>('input[name="type"]').forEach((r) => {
+    r.checked = r.value === state.type;
+    r.addEventListener('change', () => {
+      state.type = r.value as keyof typeof TYPES;
+      state.page = 1;
+      syncUrl();
+      load();
+    });
+  });
+  document.querySelector('[data-clear-all]')!.addEventListener('click', () => {
+    state.q = '';
+    search.value = '';
+    state.tags = [];
+    state.type = 'links';
+    state.page = 1;
+    document.querySelectorAll<HTMLInputElement>('input[name="type"]').forEach((r) => (r.checked = r.value === 'links'));
+    renderTagChips();
+    syncUrl();
+    load();
+  });
+  $('[data-retry]').addEventListener('click', () => load());
+  $('[data-prev]').addEventListener('click', () => {
+    state.page = Math.max(1, state.page - 1);
+    syncUrl();
+    load().then(() => document.getElementById('list-title')!.scrollIntoView({ behavior: 'smooth' }));
+  });
+  $('[data-next]').addEventListener('click', () => {
+    state.page += 1;
+    syncUrl();
+    load().then(() => document.getElementById('list-title')!.scrollIntoView({ behavior: 'smooth' }));
+  });
 
-      try {
-        // Disable button during deletion
-        confirmDeleteBtn.disabled = true;
-        confirmDeleteBtn.textContent = 'Deleting...';
+  // ---------------------------------------------------------------- Card actions
+  function updateBulkBar() {
+    $('#bulk-bar').hidden = selected.size === 0;
+    $('[data-bulk-count]').textContent = String(selected.size);
+    list.classList.toggle('selecting', selected.size > 0);
+  }
 
-        await apiDelete(`/api/v1/urls/${shortCode}`, true);
+  list.addEventListener('change', (e) => {
+    const box = (e.target as HTMLElement).closest<HTMLInputElement>('[data-select]');
+    if (!box) return;
+    if (box.checked) selected.add(box.dataset.select!);
+    else selected.delete(box.dataset.select!);
+    updateBulkBar();
+  });
 
-        // Hide modal
-        deleteModal.classList.add('hidden');
-        (window as any).deleteShortCode = null;
+  list.addEventListener('click', async (e) => {
+    const btn = (e.target as HTMLElement).closest<HTMLElement>('[data-action]');
+    if (!btn) return;
+    const link = links.get(btn.dataset.code!);
+    btn.closest<HTMLElement>('[popover]')?.hidePopover();
+    if (!link) return;
+    if (btn.dataset.action === 'edit') {
+      openLinkEditor(link, (updated) => {
+        links.set(updated.short_code, updated);
+        render();
+      });
+    } else if (btn.dataset.action === 'qr') {
+      openQr(link);
+    } else if (btn.dataset.action === 'delete') {
+      const clicks = link.click_count;
+      const confirmed = await confirmDialog({
+        title: 'Delete this link?',
+        body: `${link.short_url?.replace(/^https?:\/\//, '')} will stop working for everyone who has it${clicks ? `, and its ${pluralize(clicks, 'click')} of history will be deleted` : ''}. This can’t be undone.`,
+        confirmLabel: 'Delete link',
+        danger: true,
+        onConfirm: () => deleteLink(link.short_code),
+      });
+      if (confirmed) {
+        selected.delete(link.short_code);
+        updateBulkBar();
+        toast('Link deleted', 'success');
+        load();
+        loadStats();
+      }
+    }
+  });
 
-        // Reload dashboard
-        window.location.reload();
-      } catch (error) {
-        console.error('Failed to delete URL:', error);
-        alert('Failed to delete URL. Please try again.');
-        confirmDeleteBtn.disabled = false;
-        confirmDeleteBtn.textContent = 'Delete';
+  // ---------------------------------------------------------------- Bulk
+  const bulkTags = mountTagInput(document.getElementById('bulk-tags')!);
+  $('[data-bulk-clear]').addEventListener('click', () => {
+    selected.clear();
+    list.querySelectorAll<HTMLInputElement>('[data-select]').forEach((c) => (c.checked = false));
+    updateBulkBar();
+  });
+  $('[data-bulk-copy]').addEventListener('click', async (e) => {
+    const urls = [...selected].map((c) => links.get(c)?.short_url).filter(Boolean).join('\n');
+    await copyWithFeedback(urls, e.currentTarget as HTMLElement, `${pluralize(selected.size, 'link')} copied`);
+  });
+  $('[data-bulk-tag]').addEventListener('click', () => {
+    bulkTags.clear();
+    openDialog(document.getElementById('bulk-tag') as HTMLDialogElement);
+  });
+  $('[data-bulk-apply]').addEventListener('click', async (e) => {
+    const btn = e.currentTarget as HTMLButtonElement;
+    const ids = bulkTags.getIds();
+    if (!ids.length) {
+      toast('Pick at least one tag', 'info');
+      return;
+    }
+    setLoading(btn, true, 'Adding…');
+    try {
+      const res = await bulkTagLinks([...selected], ids);
+      closeDialog(document.getElementById('bulk-tag') as HTMLDialogElement);
+      toast(`Tags added to ${pluralize(res.updated, 'link')}`, 'success');
+      selected.clear();
+      updateBulkBar();
+      await Promise.all([load(), loadTags(true).then((t) => ((allTags = t), renderTagChips()))]);
+    } catch (err) {
+      toast('Couldn’t add the tags', 'error', { description: errorMessage(err) });
+    } finally {
+      setLoading(btn, false);
+    }
+  });
+
+  // ---------------------------------------------------------------- Quick create
+  const quickForm = $<HTMLFormElement>('#quick-form');
+  const quickInput = $<HTMLInputElement>('#quick-url');
+  const quickSubmit = quickForm.querySelector<HTMLButtonElement>('button[type="submit"]')!;
+  const result = $('#quick-result');
+  let lastCreated: ShortLink | null = null;
+
+  quickInput.addEventListener('input', () => setFieldError(quickForm.parentElement!, 'url', null));
+  quickForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const scope = quickForm.parentElement!;
+    clearErrors(scope);
+    const url = normalizeUrlInput(quickInput.value);
+    if (!url) {
+      setFieldError(scope, 'url', 'Paste the link you want to shorten.');
+      quickInput.focus();
+      return;
+    }
+    if (!isValidHttpUrl(url)) {
+      setFieldError(scope, 'url', 'That doesn’t look like a web link. Try something like https://example.com/page');
+      quickInput.focus();
+      return;
+    }
+    setLoading(quickSubmit, true, 'Shortening…');
+    try {
+      const link = await createLink({ url });
+      lastCreated = link;
+      const copied = await writeClipboard(link.short_url ?? '');
+      quickInput.value = '';
+      $('[data-result-title]').textContent = copied ? 'Copied to your clipboard' : 'Your link is ready';
+      const a = $<HTMLAnchorElement>('[data-result-link]');
+      a.textContent = link.short_url?.replace(/^https?:\/\//, '') ?? link.short_code;
+      a.href = link.short_url ?? '#';
+      result.hidden = false;
+      toast(copied ? 'Link created and copied' : 'Link created', 'success');
+      if (state.page === 1 && !hasFilters()) {
+        links = new Map([[link.short_code, link], ...links]);
+        total += 1;
+        render(link.short_code);
+      }
+      loadStats();
+    } catch (err) {
+      setFieldError(scope, 'url', errorMessage(err));
+      quickInput.focus();
+    } finally {
+      setLoading(quickSubmit, false);
+    }
+  });
+  $('[data-result-copy]').addEventListener('click', (e) => {
+    if (lastCreated?.short_url) copyWithFeedback(lastCreated.short_url, e.currentTarget as HTMLElement);
+  });
+  $('[data-result-qr]').addEventListener('click', () => lastCreated && openQr(lastCreated));
+  $('[data-result-edit]').addEventListener('click', () => {
+    if (!lastCreated) return;
+    openLinkEditor(lastCreated, (updated) => {
+      lastCreated = updated;
+      if (links.has(updated.short_code)) {
+        links.set(updated.short_code, updated);
+        render();
       }
     });
+  });
+  $('[data-result-close]').addEventListener('click', () => (result.hidden = true));
 
-    // Import apiDelete
-    import { apiDelete } from '@/utils/api';
+  // ---------------------------------------------------------------- Welcome
+  if (params.get('welcome')) {
+    $('#welcome').hidden = false;
+    params.delete('welcome');
+    syncUrl();
+    quickInput.focus();
+  }
+  $('[data-dismiss-welcome]').addEventListener('click', () => ($('#welcome').hidden = true));
 
-    loadDashboard();
-  </script>
-</Layout>
+  load();
+  loadStats();
+  loadTagChips();
+</script>

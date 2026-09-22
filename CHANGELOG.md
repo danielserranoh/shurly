@@ -147,6 +147,41 @@ implementation lifecycle and is independent of the URL version segment.
   `public, max-age=N`). Settings validate up-front so a typo at deploy time
   fails fast.
 
+### Added (Phase 3.11 — Brand & frontend redesign)
+- **Brand identity**: wordmark with the lime "click dot", "s." isotype,
+  horizontal/vertical lockups, favicon pack and OG card
+  (`design/brand/`, usage in `design/brand/README.md`).
+- **Design system**: Tailwind 4 `@theme` tokens (ink + lime scales, type,
+  radius, elevation, motion), component classes and patterns, documented in
+  `design/DESIGN_SYSTEM.md` and rendered live at `/styleguide/`.
+- **Every screen rebuilt** to the UX brief: landing with pricing, login,
+  register, 404, links dashboard (quick create with auto-copy, search, type
+  filter, tag chips, bulk tag/copy), full link editor with live social
+  preview, link details (clicks chart + table, countries, social preview,
+  email pixel, smart redirects), campaigns list, 4-step campaign wizard,
+  campaign details (opens, recipients, exports), analytics (7-day view,
+  typo'd links), settings (account, API & MCP, tags, notifications, plan).
+- `GET /api/v1/urls/{short_code}`: fetch one URL.
+- `POST /api/v1/urls/fetch-metadata`: OG title/description/image for any
+  destination (auth required), used by the live preview.
+- `GET /api/v1/urls`: `q` (case-insensitive search over code, title and
+  destination) and repeatable `url_type` filters.
+- `URLResponse` gains `click_count` (bots and pixel opens excluded),
+  `campaign_id` and `user_data`.
+- Analytics overview `top_urls` items gain `short_url` and `title`.
+- `GET /api/v1/campaigns/{id}` now includes the campaign's `tags`.
+- MCP tools `get_url` and `fetch_url_metadata`.
+
+### Changed (Phase 3.11)
+- Frontend is a **fully static build**: `@astrojs/node` removed. The link and
+  campaign detail pages moved from `/dashboard/urls/[short_code]` and
+  `/dashboard/campaigns/[id]` to `/dashboard/link/?code=…` and
+  `/dashboard/campaign/?id=…`.
+- Analytics overview `top_urls` no longer counts tracking-pixel opens as
+  clicks, even with `include_bots=true`.
+- Default `CORS_ORIGINS` includes the frontend dev server
+  (`http://localhost:4232`).
+
 ### Frontend
 - Astro 4 → 6 upgrade. `@astrojs/tailwind` (deprecated for Astro ≥ 5)
   replaced with `@tailwindcss/vite` + Tailwind 4 (CSS-first config in

@@ -1,0 +1,374 @@
+---
+import Icon from '@/components/ui/Icon.astro';
+import EmptyState from '@/components/ui/EmptyState.astro';
+import SettingsSection from './SettingsSection.astro';
+---
+
+<div class="grid gap-10" data-tags-content>
+  <SettingsSection
+    id="user-tags-title"
+    title="Your tags"
+    description="Everyone in your workspace shares these. Rename one and it changes on every link that uses it."
+  >
+    <span slot="title-end" class="font-normal text-ink-500" data-user-tag-count></span>
+
+    <div class="card overflow-hidden">
+      <form class="flex flex-col gap-2 border-b border-line p-4 sm:flex-row sm:items-start sm:px-5" data-new-tag-form novalidate>
+        <div class="grid min-w-0 flex-1 gap-1.5">
+          <label for="new-tag" class="sr-only">New tag name</label>
+          <input
+            id="new-tag"
+            name="name"
+            class="input"
+            placeholder="New tag — a client, a launch, a quarter…"
+            autocomplete="off"
+            spellcheck="false"
+            aria-describedby="new-tag-hint new-tag-error"
+          />
+          <p id="new-tag-hint" class="hint">Up to 30 characters. Emoji welcome.</p>
+          <p id="new-tag-error" class="field-error" data-error-for="name" hidden></p>
+        </div>
+        <button type="submit" class="btn btn-primary"><Icon name="plus" />Add tag</button>
+      </form>
+      <div data-user-tags></div>
+      <EmptyState
+        id="user-tags-empty"
+        hidden
+        compact
+        illustration="tags"
+        title="No tags of your own yet"
+        body="Add one above — a client, a campaign, a quarter. Anything that helps your team find links later."
+      />
+    </div>
+  </SettingsSection>
+
+  <SettingsSection
+    id="predefined-title"
+    title="Predefined tags"
+    description="They come with Shurly, so everyone tags channels, intent and audience the same way. Use them freely — they can’t be renamed or deleted."
+  >
+    <div class="card overflow-hidden" data-predefined></div>
+  </SettingsSection>
+</div>
+
+<EmptyState id="tags-error" hidden illustration="error" title="We couldn’t load your tags" body="Check your connection and try again.">
+  <button type="button" class="btn btn-primary" data-tags-retry><Icon name="refresh" />Try again</button>
+</EmptyState>
+
+<script>
+  import { ApiError, apiDelete, apiPatch, errorMessage } from '@/utils/api';
+  import { clearErrors, setFieldError } from '@/utils/forms';
+  import { formatDate, formatNumber, pluralize } from '@/utils/format';
+  import { html, setHTML, type RawHTML } from '@/utils/html';
+  import { icon } from '@/utils/icons';
+  import { CATEGORY_LABELS, createTag, invalidateTags, loadTags, tagColorAttrs, tagPill } from '@/utils/tags';
+  import { confirmDialog, setLoading, toast } from '@/utils/ui';
+  import { customTagCount } from './store';
+  import type { Tag } from '@/utils/types';
+
+  const MAX_LENGTH = 30;
+
+  const $ = <T extends HTMLElement = HTMLElement>(sel: string) => document.querySelector<T>(sel)!;
+  const content = $('[data-tags-content]');
+  const errorState = $('#tags-error');
+  const listHost = $('[data-user-tags]');
+  const emptyState = $('#user-tags-empty');
+  const countEl = $('[data-user-tag-count]');
+  const predefinedHost = $('[data-predefined]');
+  const newForm = $<HTMLFormElement>('[data-new-tag-form]');
+  const newInput = newForm.elements.namedItem('name') as HTMLInputElement;
+  const addBtn = newForm.querySelector<HTMLButtonElement>('button[type="submit"]')!;
+
+  let tags: Tag[] = [];
+  let editingId: string | null = null;
+  let freshId: string | null = null;
+
+  const customTags = () => tags.filter((t) => !t.is_predefined).sort((a, b) => a.name.localeCompare(b.name));
+  const tagHref = (t: Tag) => `/dashboard/?tags=${encodeURIComponent(t.id)}`;
+  const rowControl = (id: string, action: 'rename' | 'delete') => listHost.querySelector<HTMLElement>(`[data-${action}="${CSS.escape(id)}"]`);
+
+  /** Same rules as the API (1–30 characters, unique ignoring case), with friendlier messages. */
+  function validateName(name: string, selfId?: string): string | null {
+    if (!name) return 'Give the tag a name.';
+    if ([...name].length > MAX_LENGTH) return `Keep it to ${MAX_LENGTH} characters or fewer.`;
+    const clash = tags.find((t) => t.name === name.toLowerCase() && t.id !== selfId);
+    if (clash) return clash.is_predefined ? `“${clash.display_name}” is already a predefined tag.` : `There’s already a tag called “${clash.display_name}”.`;
+    return null;
+  }
+
+  // ---------------------------------------------------------------- Rendering
+  function renderSkeleton() {
+    const widths = ['w-20', 'w-28', 'w-16'];
+    setHTML(
+      listHost,
+      html`<ul class="divide-y divide-ink-100" aria-hidden="true">
+        ${widths.map(
+          (w) => html`<li class="flex items-center gap-4 px-4 py-3.5 sm:px-5">
+            <span class="skeleton h-6 ${w} rounded-full"></span>
+            <span class="skeleton ml-auto h-4 w-16"></span>
+            <span class="skeleton hidden h-4 w-24 sm:block"></span>
+            <span class="skeleton h-8 w-[4.25rem]"></span>
+          </li>`,
+        )}
+      </ul>`,
+    );
+    setHTML(
+      predefinedHost,
+      html`<div class="divide-y divide-line" aria-hidden="true">
+        ${[1, 2, 3, 4, 5].map(
+          () => html`<div class="flex flex-wrap items-center gap-2.5 px-5 py-4 sm:px-6">
+            <span class="skeleton h-4 w-24 sm:mr-10"></span><span class="skeleton h-6 w-16 rounded-full"></span><span class="skeleton h-6 w-24 rounded-full"></span><span class="skeleton h-6 w-14 rounded-full"></span>
+          </div>`,
+        )}
+      </div>`,
+    );
+  }
+
+  function row(tag: Tag): RawHTML {
+    return html`<tr data-tag-row="${tag.id}" class="${tag.id === freshId ? 'animate-flash' : ''}">
+      <td class="px-4 sm:px-5"><div class="flex min-w-0 [&>.tag]:max-w-[min(14rem,100%)]">${tagPill(tag, { href: tagHref(tag) })}</div></td>
+      <td class="px-3 whitespace-nowrap sm:px-4">${tag.usage_count ? pluralize(tag.usage_count, 'link') : html`<span class="text-ink-500">Not used yet</span>`}</td>
+      <td class="p-0 whitespace-nowrap text-ink-500 sm:px-4 sm:py-3"><span class="hidden sm:inline">${formatDate(tag.created_at)}</span></td>
+      <td class="py-2 pr-3 pl-1 sm:pr-4">
+        <div class="flex justify-end gap-1">
+          <button type="button" class="btn btn-ghost btn-sm btn-icon" data-rename="${tag.id}" aria-label="Rename ${tag.display_name}" data-tooltip="Rename">${icon('pencil')}</button>
+          <button type="button" class="btn btn-ghost btn-sm btn-icon hover:bg-red-50 hover:text-red-700" data-delete="${tag.id}" aria-label="Delete ${tag.display_name}" data-tooltip="Delete" data-tooltip-align="end">${icon('trash')}</button>
+        </div>
+      </td>
+    </tr>`;
+  }
+
+  function editRow(tag: Tag): RawHTML {
+    return html`<tr data-tag-row="${tag.id}">
+      <td colspan="4" class="px-4 sm:px-5">
+        <form class="flex flex-wrap items-start gap-2" data-rename-form="${tag.id}" novalidate>
+          <div class="grid min-w-0 flex-1 basis-52 gap-1.5 sm:max-w-sm">
+            <label class="sr-only" for="rename-${tag.id}">New name for ${tag.display_name}</label>
+            <input id="rename-${tag.id}" name="rename" class="input" value="${tag.display_name}" autocomplete="off" spellcheck="false" aria-describedby="rename-error-${tag.id}" />
+            <p id="rename-error-${tag.id}" class="field-error" data-error-for="rename" hidden></p>
+          </div>
+          <div class="flex gap-2">
+            <button type="submit" class="btn btn-primary">Save</button>
+            <button type="button" class="btn btn-ghost" data-cancel-rename>Cancel</button>
+          </div>
+        </form>
+      </td>
+    </tr>`;
+  }
+
+  function renderUserTags() {
+    const list = customTags();
+    countEl.textContent = list.length ? ` · ${formatNumber(list.length)}` : '';
+    customTagCount.set(list.length);
+    emptyState.hidden = list.length > 0;
+    if (!list.length) {
+      listHost.innerHTML = '';
+      return;
+    }
+    setHTML(
+      listHost,
+      // Fixed layout so the columns don't jump when a row switches to rename mode. On phones the
+      // Created column collapses to zero width (not display:none) so the rename row's colspan still fits.
+      html`<table class="table table-fixed">
+        <caption class="sr-only">Your tags</caption>
+        <thead>
+          <tr>
+            <th scope="col" class="px-4 sm:px-5">Tag</th>
+            <th scope="col" class="w-28 px-3 sm:w-30 sm:px-4">Used on</th>
+            <th scope="col" class="w-0 p-0 sm:w-34 sm:px-4 sm:py-2.5"><span class="hidden sm:inline">Created</span></th>
+            <th scope="col" class="w-21 pr-3 pl-1 sm:w-22 sm:pr-4"><span class="sr-only">Actions</span></th>
+          </tr>
+        </thead>
+        <tbody>
+          ${list.map((t) => (t.id === editingId ? editRow(t) : row(t)))}
+        </tbody>
+      </table>`,
+    );
+    freshId = null; // flash a new or renamed row once, not on every re-render
+  }
+
+  function renderPredefined() {
+    const groups = new Map<string, Tag[]>();
+    for (const tag of tags) {
+      if (!tag.is_predefined) continue;
+      const family = tagColorAttrs(tag.color).family ?? 'other';
+      groups.set(family, [...(groups.get(family) ?? []), tag]);
+    }
+    const order = [...Object.keys(CATEGORY_LABELS), ...[...groups.keys()].filter((k) => !(k in CATEGORY_LABELS))].filter((k) => groups.has(k));
+    if (!order.length) {
+      setHTML(predefinedHost, html`<p class="px-5 py-4 text-sm text-ink-500 sm:px-6">There are no predefined tags in this workspace.</p>`);
+      return;
+    }
+    const item = (tag: Tag) => {
+      const uses = pluralize(tag.usage_count, 'link');
+      return html`<li class="inline-flex items-center gap-1.5">
+        ${tagPill(tag, { href: tagHref(tag) })}
+        <span class="num text-xs text-ink-500" title="Used on ${uses}"><span aria-hidden="true">${formatNumber(tag.usage_count)}</span><span class="sr-only">, used on ${uses}</span></span>
+      </li>`;
+    };
+    setHTML(
+      predefinedHost,
+      html`<dl class="divide-y divide-line">
+        ${order.map(
+          (family) => html`<div class="grid gap-2.5 px-5 py-4 sm:grid-cols-[8rem_minmax(0,1fr)] sm:gap-4 sm:px-6">
+            <dt class="text-sm font-medium text-ink-700 sm:pt-0.5">${CATEGORY_LABELS[family] ?? 'Other'}</dt>
+            <dd><ul class="flex flex-wrap gap-x-3.5 gap-y-2">${groups.get(family)!.map(item)}</ul></dd>
+          </div>`,
+        )}
+      </dl>`,
+    );
+  }
+
+  // ---------------------------------------------------------------- Load
+  let loading: Promise<void> = Promise.resolve();
+
+  async function load() {
+    content.hidden = false;
+    errorState.hidden = true;
+    renderSkeleton();
+    try {
+      tags = await loadTags(true);
+      renderUserTags();
+      renderPredefined();
+    } catch (err) {
+      customTagCount.set(null);
+      content.hidden = true;
+      errorState.hidden = false;
+      errorState.querySelector('[data-empty-body]')!.textContent = errorMessage(err);
+    }
+  }
+  const reload = () => (loading = load());
+  $('[data-tags-retry]').addEventListener('click', reload);
+
+  // ---------------------------------------------------------------- Create
+  newInput.addEventListener('input', () => setFieldError(newForm, 'name', null));
+  newForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    clearErrors(newForm);
+    await loading; // a list still loading would overwrite the new tag and skip the duplicate check
+    const name = newInput.value.trim();
+    const problem = validateName(name);
+    if (problem) {
+      setFieldError(newForm, 'name', problem);
+      newInput.focus();
+      return;
+    }
+    setLoading(addBtn, true, 'Adding…');
+    try {
+      const tag = await createTag(name);
+      invalidateTags();
+      tags = [...tags, tag];
+      freshId = tag.id;
+      newInput.value = '';
+      renderUserTags();
+      toast(`Tag “${tag.display_name}” created`, 'success');
+    } catch (err) {
+      const taken = err instanceof ApiError && err.status === 400 && /exists/i.test(err.message);
+      setFieldError(newForm, 'name', taken ? 'That tag already exists.' : errorMessage(err));
+    } finally {
+      setLoading(addBtn, false);
+      newInput.focus();
+    }
+  });
+
+  // ---------------------------------------------------------------- Rename
+  function startEditing(id: string) {
+    editingId = id;
+    freshId = null;
+    renderUserTags();
+    const input = listHost.querySelector<HTMLInputElement>(`[data-rename-form="${CSS.escape(id)}"] input`);
+    input?.focus();
+    input?.select();
+  }
+
+  function stopEditing(focusId: string | null = editingId) {
+    editingId = null;
+    renderUserTags();
+    if (focusId) rowControl(focusId, 'rename')?.focus();
+  }
+
+  async function rename(form: HTMLFormElement) {
+    const tag = tags.find((t) => t.id === form.dataset.renameForm);
+    if (!tag) return;
+    const input = form.elements.namedItem('rename') as HTMLInputElement;
+    const name = input.value.trim();
+    clearErrors(form);
+    if (name === tag.display_name) return stopEditing(tag.id);
+    const problem = validateName(name, tag.id);
+    if (problem) {
+      setFieldError(form, 'rename', problem);
+      input.focus();
+      return;
+    }
+    const save = form.querySelector<HTMLButtonElement>('button[type="submit"]')!;
+    setLoading(save, true, 'Saving…');
+    try {
+      const updated = await apiPatch<Tag>(`/api/v1/tags/${encodeURIComponent(tag.id)}`, { name });
+      invalidateTags();
+      tags = tags.map((t) => (t.id === updated.id ? updated : t));
+      freshId = updated.id;
+      stopEditing(updated.id);
+      toast(`Renamed to “${updated.display_name}”`, 'success');
+    } catch (err) {
+      setLoading(save, false);
+      const taken = err instanceof ApiError && err.status === 400 && /exists/i.test(err.message);
+      setFieldError(form, 'rename', taken ? 'There’s already a tag with that name.' : errorMessage(err));
+      input.focus();
+    }
+  }
+
+  // ---------------------------------------------------------------- Delete
+  async function remove(id: string) {
+    const tag = tags.find((t) => t.id === id);
+    if (!tag) return;
+    const uses = tag.usage_count;
+    const ok = await confirmDialog({
+      title: `Delete “${tag.display_name}”?`,
+      body: uses
+        ? `It’ll be removed from ${pluralize(uses, 'link')} across your workspace. The links themselves won’t change.`
+        : 'It isn’t on any links yet, so nothing else changes.',
+      confirmLabel: 'Delete tag',
+      danger: true,
+      onConfirm: () => apiDelete(`/api/v1/tags/${encodeURIComponent(tag.id)}`),
+    });
+    if (!ok) return;
+    const before = customTags();
+    const index = before.findIndex((t) => t.id === id);
+    const neighbour = before[index + 1] ?? before[index - 1];
+    tags = tags.filter((t) => t.id !== id);
+    if (editingId === id) editingId = null;
+    invalidateTags();
+    renderUserTags();
+    toast('Tag deleted', 'success');
+    // Keep keyboard users in place (the dialog has already closed and returned focus).
+    (neighbour ? rowControl(neighbour.id, 'rename') : newInput)?.focus();
+  }
+
+  // ---------------------------------------------------------------- Row events
+  listHost.addEventListener('click', (e) => {
+    const target = e.target as HTMLElement;
+    const renameBtn = target.closest<HTMLElement>('[data-rename]');
+    const deleteBtn = target.closest<HTMLElement>('[data-delete]');
+    if (renameBtn) startEditing(renameBtn.dataset.rename!);
+    else if (deleteBtn) void remove(deleteBtn.dataset.delete!);
+    else if (target.closest('[data-cancel-rename]')) stopEditing();
+  });
+  listHost.addEventListener('submit', (e) => {
+    const form = (e.target as HTMLElement).closest<HTMLFormElement>('[data-rename-form]');
+    if (!form) return;
+    e.preventDefault();
+    void rename(form);
+  });
+  listHost.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && (e.target as HTMLElement).closest('[data-rename-form]')) {
+      e.preventDefault();
+      stopEditing();
+    }
+  });
+  listHost.addEventListener('input', (e) => {
+    const form = (e.target as HTMLElement).closest<HTMLFormElement>('[data-rename-form]');
+    if (form) setFieldError(form, 'rename', null);
+  });
+
+  reload();
+</script>

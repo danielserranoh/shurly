@@ -18,16 +18,14 @@ from server.schemas.campaign import (
     CampaignURLResponse,
 )
 from server.schemas.responses import get_responses
+from server.schemas.tag import TagResponse
 from server.utils.campaign import generate_campaign_urls, parse_csv, validate_csv
 
+# Phase 3.11 — campaign short URLs (detail + CSV export) use the shared resolver
+# (BASE_URL → https://DEFAULT_DOMAIN → localhost) instead of a hard-coded host.
+from server.utils.url import build_short_url
+
 campaigns_router = APIRouter()
-
-
-def build_short_url(short_code: str) -> str:
-    """Build the full short URL from a short code."""
-    # For now, use localhost. In production, this would be settings.base_url
-    base_url = "http://localhost:8000"
-    return f"{base_url}/{short_code}"
 
 
 @campaigns_router.post(
@@ -270,6 +268,7 @@ def get_campaign(
         csv_columns=campaign.csv_columns,
         url_count=len(urls),
         created_at=campaign.created_at,
+        tags=[TagResponse.model_validate(tag) for tag in campaign.tags],
         urls=url_responses,
     )
 
@@ -468,7 +467,7 @@ def update_campaign_tags(
     - **403**: You don't have permission to update this campaign
     - **404**: Campaign not found
     """
-    from server.core.models import Tag, URL
+    from server.core.models import Tag
     from server.schemas.tag import TagResponse
 
     # Convert string to UUID
@@ -478,7 +477,7 @@ def update_campaign_tags(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Invalid campaign ID: {str(e)}",
-        )
+        ) from e
 
     campaign = db.query(Campaign).filter(Campaign.id == uuid_id).first()
 

@@ -1,13 +1,17 @@
 """URL shortening endpoints."""
 
+import logging
 from datetime import datetime, timezone
 from urllib.parse import urlencode
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from fastapi.responses import PlainTextResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
+from server.app.analytics import _exclude_bots
 from server.core import get_db
 from server.core.auth import get_current_user
 from server.core.config import settings
@@ -31,6 +35,8 @@ from server.schemas.url import (
     URLCreate,
     URLCustomCreate,
     URLListResponse,
+    URLMetadataRequest,
+    URLMetadataResponse,
     URLResponse,
     URLUpdate,
 )
@@ -39,12 +45,15 @@ from server.utils.network import anonymize_ip, resolve_client_ip
 from server.utils.opengraph import fetch_opengraph_metadata, is_social_media_crawler
 from server.utils.redirect_rules import pick_target
 from server.utils.url import (
+    build_short_url,  # Phase 3.11 — moved to utils; still importable from here
     generate_short_code,
     is_valid_custom_code,
     make_code_unique,
     normalize_short_code,
 )
 from server.utils.user_agent import is_bot as ua_is_bot
+
+logger = logging.getLogger(__name__)
 
 urls_router = APIRouter()
 redirect_router = APIRouter()  # Separate router for redirect endpoint
@@ -53,24 +62,42 @@ redirect_router = APIRouter()  # Separate router for redirect endpoint
 templates = Jinja2Templates(directory="server/templates")
 
 
-def build_short_url(short_code: str) -> str:
-    """Build the full short URL from a short code.
+# Phase 3.11 — URLResponse computed fields (`short_url`, `click_count`).
 
-    Resolution order:
-        1. settings.base_url if set (overrides everything; useful for staging
-           that runs on a non-default host).
-        2. https://<default_domain> in production-style deploys.
-        3. http://localhost:8000 as the local-dev fallback so unit tests and
-           docker-compose work without extra config.
+
+def _click_counts(db: Session, url_ids: list[UUID]) -> dict[UUID, int]:
     """
-    if getattr(settings, "base_url", "") and settings.base_url:
-        base_url = settings.base_url.rstrip("/")
-    elif settings.is_lambda or settings.default_domain not in ("", "localhost"):
-        # Production-shaped: default_domain is set to the public hostname.
-        base_url = f"https://{settings.default_domain}"
-    else:
-        base_url = "http://localhost:8000"
-    return f"{base_url}/{short_code}"
+    All-time click counts for a batch of URLs, keyed by URL id.
+
+    One grouped aggregate over `visits` regardless of batch size (no N+1). A
+    "click" uses the analytics endpoints' default definition via `_exclude_bots`:
+    bot/crawler hits and email tracking-pixel opens are excluded. URLs without
+    clicks are absent from the returned dict.
+    """
+    if not url_ids:
+        return {}
+    rows = (
+        _exclude_bots(
+            db.query(Visitor.url_id, func.count(Visitor.id)).filter(Visitor.url_id.in_(url_ids)),
+            include_bots=False,
+        )
+        .group_by(Visitor.url_id)
+        .all()
+    )
+    return dict(rows)
+
+
+def _click_count(db: Session, url: URL) -> int:
+    """All-time click count for a single URL (see `_click_counts`)."""
+    return _click_counts(db, [url.id]).get(url.id, 0)
+
+
+def _to_url_response(url: URL, click_count: int) -> URLResponse:
+    """Serialize a URL row plus its computed `short_url` and `click_count`."""
+    response = URLResponse.model_validate(url)
+    response.short_url = build_short_url(url.short_code)
+    response.click_count = click_count
+    return response
 
 
 @urls_router.post(
@@ -173,11 +200,8 @@ async def create_short_url(
     db.commit()
     db.refresh(url)
 
-    # Build response
-    response = URLResponse.model_validate(url)
-    response.short_url = build_short_url(url.short_code)
-
-    return response
+    # Build response (a brand-new URL cannot have visits yet)
+    return _to_url_response(url, click_count=0)
 
 
 @urls_router.post(
@@ -280,12 +304,56 @@ async def create_custom_url(
     db.commit()
     db.refresh(url)
 
-    # Build response
-    response = URLResponse.model_validate(url)
-    response.short_url = build_short_url(url.short_code)
+    # Build response (a brand-new URL cannot have visits yet)
+    response = _to_url_response(url, click_count=0)
     response.warning = warning
 
     return response
+
+
+@urls_router.post(
+    "/fetch-metadata",
+    response_model=URLMetadataResponse,
+    responses={
+        200: {"description": "Open Graph metadata fetched (fields are null when unavailable)"},
+        **get_responses(401, 422),
+    },
+)
+async def fetch_url_metadata(
+    url_data: URLMetadataRequest,
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Fetch Open Graph metadata for a destination URL without creating a short URL.
+
+    Phase 3.11 — lets the UI render a live link preview while the create form is
+    still being filled in. Nothing is persisted.
+
+    **Authentication:** Required (JWT Bearer token)
+
+    **Request Body:**
+    - **url**: Destination URL to inspect (must be a valid http/https URL)
+
+    **Responses:**
+    - **200**: Metadata returned - `og_title`, `og_description`, `og_image_url` (each null when the page has none or the fetch fails / times out)
+    - **401**: Authentication required or invalid token
+    - **422**: Validation error (invalid URL format)
+
+    **Note:** Upstream failures never surface as errors; they yield all-null fields.
+    """
+    try:
+        metadata = await fetch_opengraph_metadata(url_data.url)
+    except Exception:
+        # fetch_opengraph_metadata already swallows network/parse errors; this guard
+        # keeps the "never 500" contract even if the fetcher's behaviour changes.
+        logger.warning("Open Graph lookup failed for %s", url_data.url, exc_info=True)
+        return URLMetadataResponse()
+
+    return URLMetadataResponse(
+        og_title=metadata.title,
+        og_description=metadata.description,
+        og_image_url=metadata.image_url,
+    )
 
 
 @urls_router.get(
@@ -293,12 +361,21 @@ async def create_custom_url(
     response_model=URLListResponse,
     responses={
         200: {"description": "List of URLs retrieved successfully"},
-        **get_responses(401),
+        **get_responses(400, 401, 422),
     },
 )
 def list_urls(
     tags: str | None = Query(None, description="Comma-separated tag IDs to filter by"),
     tag_filter: str = Query("any", description="'all' (AND) or 'any' (OR) for multiple tags"),
+    q: str | None = Query(
+        None,
+        description="Case-insensitive substring match on title, destination URL or short code",
+    ),
+    url_type: list[URLType] | None = Query(
+        None,
+        description="Only return URLs of these types (standard, custom, campaign). Repeat the "
+        "parameter to match any of several, e.g. ?url_type=standard&url_type=custom",
+    ),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
     skip: int = 0,
@@ -307,7 +384,9 @@ def list_urls(
     """
     List all URLs created by the current user.
 
-    Returns a paginated list of all shortened URLs (standard, custom, and campaign).
+    Returns a paginated list of all shortened URLs (standard, custom, and campaign),
+    newest first. Filters are optional and combine with AND; `total` counts every
+    URL matching the active filters (not just the returned page).
 
     **Authentication:** Required (JWT Bearer token)
 
@@ -316,10 +395,16 @@ def list_urls(
     - **limit**: Maximum number of records to return (default: 100, max: 100)
     - **tags**: Comma-separated tag IDs to filter by
     - **tag_filter**: 'all' (AND) or 'any' (OR) for multiple tags (default: 'any')
+    - **q**: Case-insensitive substring search over title, destination URL and short code (`%` and `_` match literally; surrounding whitespace is ignored)
+    - **url_type**: Only return `standard`, `custom` or `campaign` URLs; repeat it to match several types
+
+    Each item includes `click_count`: all-time clicks excluding bots and email tracking-pixel opens.
 
     **Responses:**
     - **200**: List of URLs retrieved successfully with pagination info
+    - **400**: Invalid tag ID format
     - **401**: Authentication required or invalid token
+    - **422**: Validation error (invalid `url_type`)
     """
     from server.core.models import Tag
 
@@ -327,8 +412,6 @@ def list_urls(
 
     # Apply tag filtering
     if tags:
-        from uuid import UUID
-
         tag_ids_str = [t.strip() for t in tags.split(",")]
 
         # Convert string UUIDs to UUID objects
@@ -345,18 +428,67 @@ def list_urls(
             # OR logic: URL must have ANY tag
             query = query.filter(URL.tags.any(Tag.id.in_(tag_ids)))
 
+    # Phase 3.11 — free-text search. `autoescape` makes `%` / `_` in user input match
+    # literally instead of acting as LIKE wildcards.
+    search = q.strip() if q else ""
+    if search:
+        query = query.filter(
+            or_(
+                URL.title.icontains(search, autoescape=True),
+                URL.original_url.icontains(search, autoescape=True),
+                URL.short_code.icontains(search, autoescape=True),
+            )
+        )
+
+    # Phase 3.11 — URL type filter (standard / custom / campaign); repeated values OR together
+    if url_type:
+        query = query.filter(URL.url_type.in_(url_type))
+
     urls = query.order_by(URL.created_at.desc()).offset(skip).limit(limit).all()
 
     total = query.offset(0).limit(None).count()
 
-    # Add short_url to each URL
-    url_responses = []
-    for url in urls:
-        response = URLResponse.model_validate(url)
-        response.short_url = build_short_url(url.short_code)
-        url_responses.append(response)
+    # Phase 3.11 — click counts for the whole page in one grouped query (no N+1)
+    counts = _click_counts(db, [url.id for url in urls])
+    url_responses = [_to_url_response(url, counts.get(url.id, 0)) for url in urls]
 
     return URLListResponse(urls=url_responses, total=total)
+
+
+# Phase 3.11 — keep this below the static `GET ""` route. Any future static
+# single-segment GET route (e.g. `/export`) must be registered ABOVE this one,
+# otherwise it would be captured as a short code.
+@urls_router.get(
+    "/{short_code}",
+    response_model=URLResponse,
+    responses={
+        200: {"description": "URL retrieved successfully"},
+        **get_responses(401, 404),
+    },
+)
+def get_url(
+    short_code: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Get a single URL by short code.
+
+    Returns the same shape as the list items, including the computed `short_url`
+    and `click_count` (all-time clicks excluding bots and email tracking-pixel opens).
+
+    **Authentication:** Required (JWT Bearer token)
+
+    **Path Parameters:**
+    - **short_code**: The short code of the URL to retrieve
+
+    **Responses:**
+    - **200**: URL retrieved successfully
+    - **401**: Authentication required or invalid token
+    - **404**: URL not found or doesn't belong to current user
+    """
+    url = _get_owned_url(db, short_code, current_user)
+    return _to_url_response(url, _click_count(db, url))
 
 
 @urls_router.delete(
@@ -482,10 +614,7 @@ def update_url(
     db.refresh(url)
 
     # Build response
-    response = URLResponse.model_validate(url)
-    response.short_url = build_short_url(url.short_code)
-
-    return response
+    return _to_url_response(url, _click_count(db, url))
 
 
 @urls_router.patch(

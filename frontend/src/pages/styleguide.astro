@@ -1,0 +1,2313 @@
+---
+/**
+ * Living styleguide: every token, component and pattern in the design system,
+ * rendered with the same code the app ships. Tokens are read from global.css at
+ * build time (components/styleguide/tokens.ts); demos call the real utils.
+ */
+import BaseLayout from '@/layouts/BaseLayout.astro';
+import Logo from '@/components/brand/Logo.astro';
+import Icon from '@/components/ui/Icon.astro';
+import StatCard from '@/components/ui/StatCard.astro';
+import EmptyState from '@/components/ui/EmptyState.astro';
+import Modal from '@/components/ui/Modal.astro';
+import ProBadge from '@/components/ui/ProBadge.astro';
+import PasswordField from '@/components/ui/PasswordField.astro';
+import Illustration from '@/components/illustrations/Illustration.astro';
+import Section from '@/components/styleguide/Section.astro';
+import Specimen from '@/components/styleguide/Specimen.astro';
+import Code from '@/components/styleguide/Code.astro';
+import DoDont from '@/components/styleguide/DoDont.astro';
+import ColorScale from '@/components/styleguide/ColorScale.astro';
+import { animations, bodyFeatures, colorScale, contrast, easings, fontFamilies, namedColors, radii, ratio, shadows, WHITE } from '@/components/styleguide/tokens';
+import { ICON_NAMES, type IconName } from '@/utils/icons';
+import { CATEGORY_LABELS, tagPill } from '@/utils/tags';
+import type { ComponentProps } from 'astro/types';
+
+type IllustrationName = ComponentProps<typeof Illustration>['name'];
+
+const sections: { id: string; label: string; short?: string }[] = [
+  { id: 'brand', label: 'Brand' },
+  { id: 'color', label: 'Color' },
+  { id: 'typography', label: 'Typography' },
+  { id: 'layout', label: 'Layout' },
+  { id: 'motion', label: 'Motion' },
+  { id: 'buttons', label: 'Buttons' },
+  { id: 'forms', label: 'Forms' },
+  { id: 'badges', label: 'Badges & tags' },
+  { id: 'cards', label: 'Cards' },
+  { id: 'feedback', label: 'Feedback' },
+  { id: 'loading', label: 'Loading & empty states', short: 'Loading & empty' },
+  { id: 'dataviz', label: 'Data viz' },
+  { id: 'illustrations', label: 'Illustrations' },
+  { id: 'icons', label: 'Icons' },
+  { id: 'voice', label: 'Voice & tone' },
+];
+const num = (id: string) => sections.findIndex((s) => s.id === id) + 1;
+const pad = (i: number) => String(i).padStart(2, '0');
+
+/** Mono caption under an example, on canvas stages (ink-600 keeps 4.5:1 on canvas). */
+const cap = 'font-mono text-[11px] leading-4 text-ink-600';
+const SHORT = 's.griddo.io';
+
+// ---------------------------------------------------------------- Tokens (from global.css)
+const ink = colorScale('ink');
+const brand = colorScale('brand');
+const surfaces = namedColors(['canvas', 'surface', 'line', 'line-strong']);
+const allColors = [...ink, ...brand, ...surfaces];
+const hexOf = (name: string) => allColors.find((t) => t.name === name)?.hex ?? '#000000';
+const INK_950 = hexOf('ink-950');
+
+const SURFACE_USE: Record<string, { use: string; cls: string }> = {
+  canvas: { use: 'App background, stages', cls: 'bg-canvas' },
+  surface: { use: 'Cards, inputs, menus, dialogs', cls: 'bg-surface' },
+  line: { use: 'Card borders, dividers, table rules', cls: 'border-line' },
+  'line-strong': { use: 'Hover borders, dashed placeholders', cls: 'border-line-strong' },
+};
+
+const textSamples = [
+  { token: 'ink-950', cls: 'text-ink-950', use: 'Headings and primary text' },
+  { token: 'ink-700', cls: 'text-ink-700', use: 'Body copy' },
+  { token: 'ink-500', cls: 'text-ink-500', use: 'Secondary text and hints. The lightest ink for text.' },
+  { token: 'ink-400', cls: 'text-ink-400', use: 'Too light for text. Icons and decoration only.' },
+  { token: 'brand-700', cls: 'text-brand-700', use: 'Brand-colored text. The lightest lime allowed on white.' },
+  { token: 'brand-400', cls: 'text-brand-400', use: 'Never text on light surfaces. It’s a fill.' },
+].map((s) => ({ ...s, ratio: ratio(hexOf(s.token), WHITE), ok: contrast(hexOf(s.token), WHITE) >= 4.5 }));
+
+const statuses: { name: string; badge: string; icon: IconName; label: string; alert: string; iconCls: string; message: string; tokens: string; use: string }[] = [
+  { name: 'Success', badge: 'badge-brand', icon: 'circle-check', label: 'Link created', alert: 'border-brand-200 bg-brand-50 text-brand-900', iconCls: 'text-brand-700', message: 'Your link is ready.', tokens: 'brand-50 · 200 · 900', use: 'Saved, created, live.' },
+  { name: 'Info', badge: 'badge-info', icon: 'info', label: 'Scheduled', alert: 'border-sky-200 bg-sky-50 text-sky-900', iconCls: 'text-sky-700', message: 'This link goes live on Oct 1.', tokens: 'sky-50 · 200 · 800', use: 'Scheduled, campaign, neutral news.' },
+  { name: 'Warning', badge: 'badge-warn', icon: 'warning', label: 'Expires soon', alert: 'border-amber-200 bg-amber-50 text-amber-900', iconCls: 'text-amber-700', message: 'This link expires in 3 days.', tokens: 'amber-50 · 200 · 800', use: 'Needs attention soon.' },
+  { name: 'Danger', badge: 'badge-danger', icon: 'circle-alert', label: 'Expired', alert: 'border-red-200 bg-red-50 text-red-800', iconCls: 'text-red-600', message: 'This link expired on Sep 20.', tokens: 'red-50 · 200 · 700', use: 'Errors, stopped links, destructive actions.' },
+];
+
+// ---------------------------------------------------------------- Brand
+const WORDMARK_RATIO = 3069 / 904; // wordmark.svg viewBox
+const DOT_RATIO = 176 / 904; // the dot's diameter relative to the wordmark's height
+const wordmarkWidth = (h: number) => Math.round(h * WORDMARK_RATIO);
+const clearH = 60;
+const clearX = Math.round(clearH * DOT_RATIO * 10) / 10;
+/** Dot centre inside wordmark*.svg, as a % of the image box. */
+const dotStyle = (scale = 1) => `left:97.13%;top:71.24%;width:${(5.735 * scale).toFixed(2)}%`;
+
+const logoTiles = [
+  { title: 'Primary', body: 'Ink and lime, on white and light surfaces.', file: 'wordmark.svg', code: '<Logo />', stage: 'bg-white', src: '/brand/wordmark.svg' },
+  { title: 'Reversed', body: 'White and lime, on ink and dark photos.', file: 'wordmark-reversed.svg', code: '<Logo tone="reversed" />', stage: 'bg-ink-950', src: '/brand/wordmark-reversed.svg' },
+  { title: 'Mono ink', body: 'On lime, and for one-color print.', file: 'wordmark-mono-ink.svg', code: '<Logo tone="mono" />', stage: 'bg-brand-400', src: '/brand/wordmark-mono-ink.svg' },
+  { title: 'Mono white', body: 'On busy or colored backgrounds.', file: 'wordmark-mono-white.svg', code: '<img>', stage: 'bg-[linear-gradient(135deg,#141921_0%,#39414b_55%,#4b7f11_100%)]', src: '/brand/wordmark-mono-white.svg' },
+];
+
+// ---------------------------------------------------------------- Typography
+const fonts = fontFamilies();
+const features = bodyFeatures();
+const families = [
+  {
+    role: 'Display',
+    name: fonts.display ?? 'Bricolage Grotesque',
+    aa: 'display',
+    sample: 'Send the link.',
+    sampleCls: 'display text-[1.75rem]',
+    use: 'Page titles, marketing headlines, empty-state titles. Weight 750, tracked −0.03em. The logo uses its ExtraBold at −0.04em.',
+    code: ['.display', 'font-display'],
+  },
+  {
+    role: 'Interface',
+    name: fonts.sans ?? 'Inter',
+    aa: 'font-semibold',
+    sample: 'Know who opened it.',
+    sampleCls: 'text-2xl font-semibold tracking-tight',
+    use: 'Everything you read and click, numbers and stat values included. Weights 400–600, with open 4 6 9 and a single-storey a.',
+    code: ['font-sans', ...features],
+  },
+  {
+    role: 'Short links',
+    name: fonts.mono ?? 'JetBrains Mono',
+    aa: 'shortlink',
+    sample: `${SHORT}/q4-acme`,
+    sampleCls: 'shortlink text-xl',
+    use: 'Short links, back-halves, codes and snippets. Weight 500, tracked −0.01em.',
+    code: ['.shortlink', 'font-mono'],
+  },
+];
+
+const displayScale = [
+  { px: 60, cls: 'text-6xl', sample: 'Surely, by design.', use: 'Marketing hero' },
+  { px: 48, cls: 'text-5xl', sample: 'Paste. Share. Know.', use: 'Marketing section titles' },
+  { px: 36, cls: 'text-4xl', sample: 'This page took a wrong turn.', use: 'Section titles, error pages' },
+  { px: 30, cls: 'text-3xl', sample: 'Your links', use: 'App page titles (PageHeader)' },
+];
+const uiScale = [
+  { px: 16, cls: 'text-base font-semibold', sample: 'Social preview', use: 'Card and dialog titles' },
+  { px: 15, cls: 'text-[15px] leading-7', sample: 'Every short link you’ve made — and who’s clicking.', use: 'Page descriptions, marketing body' },
+  { px: 14, cls: 'text-sm', sample: 'Forward query parameters', use: 'Default UI: buttons, inputs, menus, tables' },
+  { px: 13, cls: 'text-[13px]', sample: 'Created Sep 12 · Updated 2h ago', use: 'Meta rows, small buttons' },
+  { px: 12, cls: 'text-xs', sample: '3–20 letters, numbers, hyphens or underscores.', use: 'Hints, badges, errors, eyebrows' },
+];
+const weights = [
+  { w: '400', cls: 'font-normal', name: 'Regular', use: 'Body text' },
+  { w: '500', cls: 'font-medium', name: 'Medium', use: 'Links, menu items' },
+  { w: '550', cls: 'font-[550]', name: 'Label', use: 'Labels, badges, tabs' },
+  { w: '600', cls: 'font-semibold', name: 'Semibold', use: 'Titles, buttons, values' },
+];
+const figures = ['1,111', '8,088', '404', '12,907'];
+
+// ---------------------------------------------------------------- Layout
+const spacing = [
+  { t: '1', px: 4, use: 'Icon to label in badges and tags' },
+  { t: '2', px: 8, use: 'Between buttons, icon to label' },
+  { t: '3', px: 12, use: 'Toolbars, list rows' },
+  { t: '4', px: 16, use: 'Mobile page gutter, compact cards' },
+  { t: '6', px: 24, use: 'Card padding, gap between cards' },
+  { t: '8', px: 32, use: 'Page top, between groups' },
+  { t: '12', px: 48, use: 'Between page sections' },
+  { t: '16', px: 64, use: 'App header height' },
+];
+const RADIUS_CLS: Record<string, string> = { sm: 'rounded-sm', md: 'rounded-md', lg: 'rounded-lg', xl: 'rounded-xl', '2xl': 'rounded-2xl', '3xl': 'rounded-3xl' };
+const RADIUS_USE: Record<string, string> = {
+  sm: 'Tooltips, small insets',
+  md: 'Small buttons, menu items, skeletons',
+  lg: 'Buttons, inputs, segmented',
+  xl: 'Large buttons, menus, toasts',
+  '2xl': 'Cards and dialogs',
+  '3xl': 'Hero panels, pricing',
+};
+const radiusTokens = radii();
+const SHADOW_CLS: Record<string, string> = { xs: 'shadow-xs', sm: 'shadow-sm', md: 'shadow-md', lg: 'shadow-lg', xl: 'shadow-xl' };
+const SHADOW_USE: Record<string, string> = {
+  xs: 'Resting: buttons, inputs, cards',
+  sm: 'Raised details: switch knob, active segment',
+  md: 'Hover: interactive cards',
+  lg: 'Floating: menus, toasts',
+  xl: 'Overlays: dialogs',
+};
+const shadowTokens = shadows();
+const containers = [
+  { name: 'App & marketing content', code: 'max-w-6xl', value: '72rem · 1152px' },
+  { name: 'Narrow forms', code: 'max-w-3xl', value: '48rem · 768px' },
+  { name: 'Wide pages', code: 'max-w-7xl', value: '80rem · 1280px' },
+  { name: 'Page gutters', code: 'px-4 sm:px-6', value: '16px, then 24px' },
+  { name: 'App header', code: 'h-16 sticky', value: '64px, white at 85% + blur' },
+  { name: 'Dialogs', code: '--modal-width', value: '34rem; a bottom sheet under 640px' },
+  { name: 'Breakpoints', code: 'sm md lg xl', value: '640 · 768 · 1024 · 1280' },
+];
+
+// ---------------------------------------------------------------- Motion
+const EASE_USE: Record<string, string> = {
+  snappy: 'The default: a quick start and a soft landing. Buttons, dialogs, toasts, cards.',
+  spring: 'A little overshoot for delight. The switch knob, the check that pops in.',
+};
+const easeTokens = easings().map((e) => {
+  const [x1, y1, x2, y2] = e.points;
+  const X = (v: number) => +(v * 100).toFixed(1);
+  const Y = (v: number) => +(100 - v * 100).toFixed(1);
+  return { ...e, d: `M0,100 C${X(x1)},${Y(y1)} ${X(x2)},${Y(y2)} 100,0`, h1: [X(x1), Y(y1)], h2: [X(x2), Y(y2)] };
+});
+const durations = [
+  { ms: 120, name: 'Micro', use: 'Tooltips, row hovers, chart highlights' },
+  { ms: 200, name: 'Standard', use: 'Buttons, switches, dialogs (180–200ms)' },
+  { ms: 360, name: 'Entrance', use: 'Toasts and fade-ups (320–360ms)' },
+];
+const snappy = easeTokens.find((e) => e.name === 'snappy')?.value ?? 'ease-out';
+const anim = Object.fromEntries(animations().map((a) => [a.name, a.value.replace(/^[\w-]+\s+/, '')]));
+
+// ---------------------------------------------------------------- Buttons
+const buttonVariants: { cls: string; name: string; use: string; icon: IconName; label: string }[] = [
+  { cls: 'btn-primary', name: 'Primary', use: 'The main action on a screen. Ink, not lime.', icon: 'plus', label: 'New link' },
+  { cls: 'btn-accent', name: 'Accent', use: 'Lime moments: Copy, and one hero call to action.', icon: 'copy', label: 'Copy' },
+  { cls: 'btn-secondary', name: 'Secondary', use: 'Everything else.', icon: 'pencil', label: 'Edit' },
+  { cls: 'btn-ghost', name: 'Ghost', use: 'Toolbars, dismiss, low emphasis.', icon: 'list', label: 'Table' },
+  { cls: 'btn-danger', name: 'Danger', use: 'Confirming a destructive action.', icon: 'trash', label: 'Delete link' },
+  { cls: 'btn-danger-ghost', name: 'Danger ghost', use: 'Destructive actions in lists.', icon: 'trash', label: 'Delete' },
+];
+const buttonSizes = [
+  { cls: 'btn-sm', name: 'Small', px: 32 },
+  { cls: '', name: 'Default', px: 40 },
+  { cls: 'btn-lg', name: 'Large', px: 48 },
+];
+
+// ---------------------------------------------------------------- Badges & tags
+const badges: { cls: string; label: string; icon?: IconName; dot?: string; use: string }[] = [
+  { cls: 'badge-neutral', label: 'No param forwarding', icon: 'ban', use: 'Neutral facts' },
+  { cls: 'badge-outline', label: 'Custom', icon: 'pencil', use: 'Link type' },
+  { cls: 'badge-brand', label: 'Early access', dot: 'text-brand-600', use: 'Positive, live' },
+  { cls: 'badge-info', label: 'Scheduled', icon: 'calendar-clock', use: 'Informational' },
+  { cls: 'badge-warn', label: 'Expires soon', icon: 'timer', use: 'Needs attention' },
+  { cls: 'badge-danger', label: 'Expired', icon: 'ban', use: 'Stopped working' },
+  { cls: 'badge-dark', label: 'New', use: 'Announcements' },
+];
+const pill = (name: string, color: string, opts: Parameters<typeof tagPill>[1] = {}) => tagPill({ id: `sg-${name}`, display_name: name, color }, opts).value;
+const tagFamilies = [
+  { family: 'blue', color: 'blue-500', names: ['email', 'social'] },
+  { family: 'green', color: 'green-500', names: ['conversion'] },
+  { family: 'purple', color: 'purple-500', names: ['landing-page'] },
+  { family: 'orange', color: 'orange-500', names: ['b2b'] },
+  { family: 'pink', color: 'pink-500', names: ['onboarding'] },
+  { family: 'red', color: 'red-500', names: ['urgent'] },
+  { family: 'amber', color: 'amber-500', names: ['review'] },
+  { family: 'lime', color: 'lime-500', names: ['launch'] },
+  { family: 'gray', color: 'gray-500', names: ['q4-launch', 'acme'] },
+  { family: 'hex', color: '#e11d48', names: ['vip'] },
+].map((f) => ({ ...f, category: CATEGORY_LABELS[f.family] ?? (f.family === 'gray' ? 'Your own tags' : f.family === 'hex' ? 'Custom color' : 'Also supported') }));
+
+// ---------------------------------------------------------------- Illustrations & icons
+const illustrations: { name: IllustrationName; use: string }[] = [
+  { name: 'links', use: 'No links yet' },
+  { name: 'campaigns', use: 'No campaigns yet' },
+  { name: 'analytics', use: 'No clicks to chart' },
+  { name: 'search', use: 'Nothing matches' },
+  { name: 'error', use: 'Couldn’t load' },
+  { name: 'not-found', use: '404, missing link' },
+  { name: 'success', use: 'Done' },
+  { name: 'tags', use: 'No tags yet' },
+  { name: 'locked', use: 'Pro, or no access' },
+  { name: 'upload', use: 'CSV upload' },
+  { name: 'rules', use: 'Smart redirects' },
+];
+const iconSizes: { cls: string; px: number; use: string; name: IconName }[] = [
+  { cls: 'size-3.5', px: 14, use: 'Badges, meta rows', name: 'calendar' },
+  { cls: 'size-4', px: 16, use: 'Buttons, menus, inputs (default)', name: 'copy' },
+  { cls: 'size-5', px: 20, use: 'Feature tiles, mobile nav', name: 'megaphone' },
+];
+
+// ---------------------------------------------------------------- Voice
+const principles = [
+  { title: 'Say it like a person', body: 'Short sentences, everyday words. Write it the way you’d explain it to a colleague.' },
+  { title: 'Sure, not smug', body: 'Say what happened and what’s next. No hype, no blame, no hedging.' },
+  { title: 'Link, not URL', body: 'Link, short link, destination, back-half: the words our customers use.' },
+  { title: 'Sentence case, no emoji', body: '“Create link”, not “Create Link”. The personality is in the words.' },
+];
+const words = [
+  { say: 'link', not: 'URL', why: 'It’s what people call it.' },
+  { say: 'short link', not: 'shortened URL, short URL', why: 'The thing you share.' },
+  { say: 'destination', not: 'original URL, target', why: 'Where the link goes.' },
+  { say: 'back-half', not: 'slug, short code', why: 'The part after the slash.' },
+  { say: 'click', not: 'hit, visit, request', why: 'A real person opened it. Bots are left out.' },
+  { say: 'campaign link', not: 'personalized URL', why: 'One per recipient, from a CSV.' },
+  { say: 'social preview', not: 'OG metadata', why: 'How the link looks when shared.' },
+  { say: 'smart redirects', not: 'redirect rules', why: 'Sending some visitors somewhere else.' },
+];
+
+const colorCount = allColors.length;
+---
+
+<BaseLayout
+  title="Design system"
+  description="The Shurly design system: brand, color, type, motion and every UI component, rendered as live code."
+  bodyClass="bg-white"
+  themeColor="#ffffff"
+>
+  <a href="#main" class="sr-only z-50 rounded-md bg-ink-950 px-3 py-2 text-sm font-semibold text-white focus:not-sr-only focus:fixed focus:top-3 focus:left-3">Skip to content</a>
+
+  <!-- Top bar ------------------------------------------------------------->
+  <header id="top" class="sticky top-0 z-30 border-b border-line bg-white/85 backdrop-blur-md">
+    <div class="mx-auto flex h-16 max-w-7xl items-center gap-3 px-4 sm:px-6">
+      <Logo href="/" height={22} class="rounded-md" />
+      <span class="h-5 w-px bg-line-strong" aria-hidden="true"></span>
+      <span class="text-sm font-semibold whitespace-nowrap text-ink-950">Design system</span>
+      <div class="ml-auto flex items-center gap-2">
+        <button type="button" class="btn btn-secondary btn-sm max-sm:w-8 max-sm:px-0 lg:hidden" popovertarget="sg-toc-menu" aria-label="Contents"><Icon name="list" /><span class="hidden sm:inline">Contents</span></button>
+        <nav id="sg-toc-menu" popover class="menu max-h-[70dvh] w-64 overflow-y-auto" data-align="end" aria-label="On this page">
+          {
+            sections.map((s, i) => (
+              <a class="menu-item aria-[current=true]:bg-ink-100 aria-[current=true]:text-ink-950" href={`#${s.id}`} data-toc-link={s.id}>
+                <span class="w-5 font-mono text-[11px] text-ink-500">{pad(i + 1)}</span>
+                {s.short ?? s.label}
+              </a>
+            ))
+          }
+        </nav>
+        <a href="/" class="btn btn-ghost btn-sm" aria-label="Back to home"><Icon name="arrow-left" /><span class="hidden sm:inline">Back to home</span></a>
+      </div>
+    </div>
+  </header>
+
+  <!-- Hero ----------------------------------------------------------------->
+  <div class="relative overflow-hidden bg-ink-950 text-white">
+    <div class="bg-dots-dark absolute inset-0 opacity-60" aria-hidden="true"></div>
+    <div class="absolute -top-56 right-[-14rem] size-[44rem] rounded-full bg-[radial-gradient(closest-side,rgb(184_240_62/0.18),transparent)]" aria-hidden="true"></div>
+    <div class="relative mx-auto grid max-w-7xl items-center gap-12 px-4 pt-16 pb-14 sm:px-6 sm:pt-20 lg:grid-cols-[1.1fr_0.9fr] lg:pb-20">
+      <div class="animate-fade-up">
+        <p class="eyebrow text-ink-400">Shurly design system</p>
+        <h1 class="display mt-4 text-5xl sm:text-6xl">Surely,<br />by design.</h1>
+        <p class="mt-6 max-w-xl text-lg leading-8 text-ink-300">
+          The tokens, components and rules behind every Shurly screen. Everything here is live code from the app — if it looks right here, it ships right.
+        </p>
+        <ul class="mt-7 flex flex-wrap gap-2" aria-label="Where it lives">
+          <li><Code tone="dark">src/styles/global.css</Code></li>
+          <li><Code tone="dark">src/components/ui/</Code></li>
+          <li><Code tone="dark">src/utils/</Code></li>
+        </ul>
+      </div>
+      <div class="animate-fade-up [animation-delay:120ms]" aria-hidden="true">
+        <div class="rounded-3xl bg-white/[0.04] px-8 py-12 ring-1 ring-white/10 sm:px-12 sm:py-16">
+          <div class="relative mx-auto w-fit">
+            <img src="/brand/wordmark-reversed.svg" width={wordmarkWidth(80)} height="80" alt="" class="block h-14 w-auto sm:h-20" draggable="false" />
+            <span class="absolute aspect-square -translate-x-1/2 -translate-y-1/2 animate-ping-dot rounded-full bg-brand-400" style={dotStyle()}></span>
+          </div>
+          <p class="mt-10 text-center text-sm text-ink-400">
+            <span class="mr-2 inline-block size-2 rounded-full bg-brand-400 align-middle"></span>The dot is the period in “Surely.” — and the click.
+          </p>
+        </div>
+      </div>
+    </div>
+    <div class="relative border-t border-white/10">
+      <dl class="mx-auto grid max-w-7xl grid-cols-2 gap-6 px-4 py-7 sm:grid-cols-4 sm:px-6">
+        {
+          [
+            [colorCount, 'Color tokens'],
+            [ICON_NAMES.length, 'Icons'],
+            [illustrations.length, 'Illustrations'],
+            [3, 'Typefaces'],
+          ].map(([value, label]) => (
+            <div class="flex flex-col-reverse gap-1">
+              <dt class="text-sm text-ink-400">{label}</dt>
+              <dd class="text-3xl font-semibold tracking-tight">{value}</dd>
+            </div>
+          ))
+        }
+      </dl>
+    </div>
+  </div>
+
+  <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:grid lg:grid-cols-[12.5rem_minmax(0,1fr)] lg:gap-12 xl:grid-cols-[14rem_minmax(0,1fr)] xl:gap-16">
+    <!-- Table of contents ---------------------------------------------------->
+    <nav aria-label="On this page" class="hidden lg:block">
+      <div class="sticky top-16 max-h-[calc(100dvh-4rem)] overflow-y-auto pt-14 pb-10">
+        <p class="eyebrow px-2.5">On this page</p>
+        <ol class="mt-3 grid gap-px">
+          {
+            sections.map((s, i) => (
+              <li>
+                <a
+                  href={`#${s.id}`}
+                  data-toc-link={s.id}
+                  class="group flex items-center gap-3 rounded-md px-2.5 py-1.5 text-sm text-ink-600 transition-colors hover:bg-ink-100 hover:text-ink-950 aria-[current=true]:font-semibold aria-[current=true]:text-ink-950"
+                >
+                  <span class="w-5 shrink-0 font-mono text-[11px] font-normal text-ink-500">{pad(i + 1)}</span>
+                  <span class="min-w-0 flex-1">{s.short ?? s.label}</span>
+                  <span class="size-1.5 shrink-0 rounded-full bg-brand-500 opacity-0 transition-opacity group-aria-[current=true]:opacity-100" aria-hidden="true" />
+                </a>
+              </li>
+            ))
+          }
+        </ol>
+      </div>
+    </nav>
+
+    <main id="main" class="min-w-0 pb-24">
+      <!-- 01 Brand ======================================================= -->
+      <Section id="brand" index={num('brand')} title="Brand" intro="SH(ort) + URL + Y — say it like “surely”. Confident, never cocky: professional with personality, casual but competent.">
+        <Specimen title="The name" stage="white">
+          <div class="grid gap-8 lg:grid-cols-[1.15fr_1fr] lg:items-center">
+            <div>
+              <p class="flex flex-wrap items-center gap-2 font-mono text-sm text-ink-500">
+                <span class="rounded-lg border border-line bg-canvas px-2.5 py-1 text-ink-600"><b class="font-semibold text-ink-950">SH</b>ort</span>
+                <span aria-hidden="true">+</span>
+                <span class="rounded-lg border border-line bg-canvas px-2.5 py-1 font-semibold text-ink-950">URL</span>
+                <span aria-hidden="true">+</span>
+                <span class="rounded-lg border border-line bg-canvas px-2.5 py-1 font-semibold text-ink-950">Y</span>
+              </p>
+              <p class="display mt-6 text-4xl text-ink-950 sm:text-5xl">Shurly <span class="text-ink-300" aria-hidden="true">≈</span><span class="sr-only">sounds like</span> Surely.</p>
+              <p class="mt-4 max-w-md text-[15px] leading-7 text-ink-600">A promise in a name: the link works, the numbers are right, and you’ll know who opened it.</p>
+            </div>
+            <ul class="grid gap-3">
+              <li class="rounded-xl border border-line p-4">
+                <p class="font-semibold text-ink-950">Sure of itself</p>
+                <p class="mt-1 text-sm leading-6 text-ink-500">We state things plainly. No hype, no hedging.</p>
+              </li>
+              <li class="rounded-xl border border-line p-4">
+                <p class="font-semibold text-ink-950">Professional, with personality</p>
+                <p class="mt-1 text-sm leading-6 text-ink-500">Competent first, with a wink when it helps. “And don’t call us Shirley.”</p>
+              </li>
+              <li class="rounded-xl border border-line p-4">
+                <p class="font-semibold text-ink-950">Casual, but competent</p>
+                <p class="mt-1 text-sm leading-6 text-ink-500">Everyday words, precise meaning. We say link, not URL.</p>
+              </li>
+            </ul>
+          </div>
+        </Specimen>
+
+        <Specimen
+          title="Logo"
+          description="The wordmark is set in Bricolage Grotesque ExtraBold, tracked −0.04em. Its lime dot is the period of “Surely.” — and the click."
+          code={['<Logo />', 'public/brand/', 'design/brand/']}
+          stage="none"
+        >
+          <div class="grid gap-4 sm:grid-cols-2">
+            {
+              logoTiles.map((t) => (
+                <figure class="overflow-hidden rounded-2xl border border-line bg-white">
+                  <div class:list={['grid h-40 place-items-center', t.stage]}>
+                    <img src={t.src} width={wordmarkWidth(44)} height="44" alt={`Shurly wordmark, ${t.title.toLowerCase()}`} draggable="false" />
+                  </div>
+                  <figcaption class="border-t border-line px-4 py-3">
+                    <p class="text-sm font-semibold text-ink-950">{t.title}</p>
+                    <p class="text-sm text-ink-500">{t.body}</p>
+                    <p class="mt-1.5 font-mono text-[11px] text-ink-500">
+                      {t.file} · {t.code}
+                    </p>
+                  </figcaption>
+                </figure>
+              ))
+            }
+          </div>
+        </Specimen>
+
+        <Specimen title="Isotype & lockup" description="“s.” in an ink rounded square, for small sizes: favicons, app icons, avatars. On dark, use the lime tile." code={['<Logo variant="isotype" />', 'tone="reversed"']} stage="none">
+          <div class="grid overflow-hidden rounded-2xl border border-line md:grid-cols-2 xl:grid-cols-[1fr_1fr_1.2fr]">
+            <div class="bg-white p-6">
+              <div class="flex items-end gap-4" role="img" aria-label="Isotype at 64, 40, 24 and 16 pixels">
+                {
+                  [64, 40, 24, 16].map((h) => (
+                    <figure class="grid justify-items-center gap-2">
+                      <Logo variant="isotype" height={h} />
+                      <figcaption class="font-mono text-[11px] text-ink-500">{h}</figcaption>
+                    </figure>
+                  ))
+                }
+              </div>
+              <p class="mt-4 font-mono text-[11px] text-ink-500">isotype.svg</p>
+            </div>
+            <div class="bg-ink-950 p-6">
+              <div class="flex items-end gap-4" role="img" aria-label="Lime isotype at 64, 40, 24 and 16 pixels">
+                {
+                  [64, 40, 24, 16].map((h) => (
+                    <figure class="grid justify-items-center gap-2">
+                      <Logo variant="isotype" tone="reversed" height={h} />
+                      <figcaption class="font-mono text-[11px] text-ink-400">{h}</figcaption>
+                    </figure>
+                  ))
+                }
+              </div>
+              <p class="mt-4 font-mono text-[11px] text-ink-400">isotype-lime.svg</p>
+            </div>
+            <div class="grid content-between gap-6 border-t border-line bg-white p-6 md:col-span-2 xl:col-span-1 xl:border-t-0 xl:border-l">
+              <span class="inline-flex items-center gap-3.5" role="img" aria-label="Shurly horizontal lockup">
+                <img src="/brand/isotype.svg" width="48" height="48" alt="" draggable="false" />
+                <img src="/brand/wordmark.svg" width={wordmarkWidth(42)} height="42" alt="" draggable="false" />
+              </span>
+              <p class="font-mono text-[11px] text-ink-500">Horizontal and vertical lockups, plus PNG exports: design/brand/</p>
+            </div>
+          </div>
+        </Specimen>
+
+        <Specimen title="Clear space & minimum size" description="Keep at least the dot’s diameter (x) clear on every side. Never go below 16px tall." stage="white">
+          <div class="grid gap-10 md:grid-cols-[1.3fr_1fr] md:items-center">
+            <figure class="grid justify-items-center gap-4">
+              <div class="relative border border-dashed border-ink-400" style={`padding:${clearX}px`}>
+                <img src="/brand/wordmark.svg" width={wordmarkWidth(clearH)} height={clearH} alt="Shurly wordmark with its clear space marked" class="block outline outline-1 outline-ink-200" draggable="false" />
+                <span class="absolute top-0 left-1/2 -translate-x-1/2 rounded-full bg-brand-400" style={`width:${clearX}px;height:${clearX}px`} aria-hidden="true"></span>
+                <span class="absolute bottom-0 left-1/2 -translate-x-1/2 rounded-full bg-brand-400" style={`width:${clearX}px;height:${clearX}px`} aria-hidden="true"></span>
+                <span class="absolute top-1/2 left-0 -translate-y-1/2 rounded-full bg-brand-400" style={`width:${clearX}px;height:${clearX}px`} aria-hidden="true"></span>
+                <span class="absolute top-1/2 right-0 -translate-y-1/2 rounded-full bg-brand-400" style={`width:${clearX}px;height:${clearX}px`} aria-hidden="true"></span>
+              </div>
+              <figcaption class="text-center text-sm text-ink-500">x = the dot’s diameter, about a fifth of the wordmark’s height.</figcaption>
+            </figure>
+            <div class="grid gap-7">
+              <div>
+                <p class="label">Minimum size</p>
+                <div class="mt-3 flex items-end gap-8">
+                  <figure class="grid gap-2">
+                    <img src="/brand/wordmark.svg" width={wordmarkWidth(16)} height="16" alt="Wordmark at 16 pixels" draggable="false" />
+                    <figcaption class="font-mono text-[11px] text-ink-500">Wordmark · 16px</figcaption>
+                  </figure>
+                  <figure class="grid gap-2">
+                    <img src="/brand/isotype.svg" width="16" height="16" alt="Isotype at 16 pixels" draggable="false" />
+                    <figcaption class="font-mono text-[11px] text-ink-500">Isotype · 16px</figcaption>
+                  </figure>
+                </div>
+              </div>
+              <div>
+                <p class="label">The dot</p>
+                <div class="mt-3 flex items-center gap-4">
+                  <span class="relative flex size-4 shrink-0" aria-hidden="true">
+                    <span class="absolute inline-flex size-full animate-ping-dot rounded-full bg-brand-400"></span>
+                    <span class="relative size-4 rounded-full bg-brand-400"></span>
+                  </span>
+                  <p class="text-sm leading-6 text-ink-600">The period in “Surely.” and the click. In the product it pings when something is live or loading.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </Specimen>
+
+        <Specimen title="Misuse" description="The logo only comes in the files above. Everything else is a don’t." stage="none">
+          <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            <DoDont kind="dont" caption="recolor the dot. On light backgrounds it’s always lime." stage="bg-white">
+              <span class="relative inline-block">
+                <img src="/brand/wordmark.svg" width={wordmarkWidth(36)} height="36" alt="Wordmark with a pink dot" class="block" draggable="false" />
+                <span class="absolute aspect-square -translate-x-1/2 -translate-y-1/2 rounded-full bg-pink-500" style={dotStyle(1.12)} aria-hidden="true"></span>
+              </span>
+            </DoDont>
+            <DoDont kind="dont" caption="stretch, squash or rotate it. Scale it evenly." stage="bg-white">
+              <img src="/brand/wordmark.svg" width={wordmarkWidth(36)} height="36" alt="Wordmark stretched sideways" style="transform: scale(1.35, 0.78)" draggable="false" />
+            </DoDont>
+            <DoDont kind="dont" caption="put the full-color logo on lime. The dot vanishes; use mono ink." stage="bg-brand-400">
+              <img src="/brand/wordmark.svg" width={wordmarkWidth(36)} height="36" alt="Full-color wordmark on lime" draggable="false" />
+            </DoDont>
+            <DoDont kind="dont" caption="retype the name in another font. Use the SVG files." stage="bg-white">
+              <span class="font-sans text-[34px] leading-none font-bold tracking-normal text-ink-950">Shurly<span class="text-brand-500">.</span></span>
+            </DoDont>
+          </div>
+        </Specimen>
+      </Section>
+
+      <!-- 02 Color ======================================================= -->
+      <Section id="color" index={num('color')} title="Color" intro="Ink does the talking; lime does the clicking. Cool neutrals carry text and UI. Lime is the signature: a fill, never text on light surfaces.">
+        <Specimen title="Ink" description="A cool neutral for text, UI and primary buttons." code={['bg-ink-*', 'text-ink-*', 'border-ink-*']} stage="white">
+          <ColorScale tokens={ink} label="Ink scale" ink={INK_950} markers={{ 'ink-500': 'Min. text', 'ink-950': 'Buttons' }} />
+        </Specimen>
+
+        <Specimen title="Brand lime" description="The click dot. Bright shades are fills; darker ones draw charts and brand-colored text." code={['bg-brand-*', 'text-brand-700+']} stage="white">
+          <ColorScale tokens={brand} label="Brand lime scale" ink={INK_950} markers={{ 'brand-400': 'Signature', 'brand-600': 'Charts', 'brand-700': 'Min. text' }} />
+        </Specimen>
+
+        <Specimen title="Surfaces & lines" code={['bg-canvas', 'bg-surface', 'border-line', 'border-line-strong']}>
+          <ul class="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
+            {
+              surfaces.map((s) => (
+                <li class="overflow-hidden rounded-xl border border-line bg-white">
+                  {s.name.startsWith('line') ? (
+                    <div class="grid h-20 place-items-center bg-white px-6" aria-hidden="true">
+                      <span class="block h-0 w-full border-t-2" style={`border-color:${s.hex}`} />
+                    </div>
+                  ) : (
+                    <div class="h-20" style={`background-color:${s.hex}`} aria-hidden="true" />
+                  )}
+                  <div class="border-t border-line p-3">
+                    <p class="flex items-baseline justify-between gap-2">
+                      <span class="text-sm font-semibold text-ink-950">{s.name}</span>
+                      <span class="font-mono text-[11px] text-ink-500">{s.hex}</span>
+                    </p>
+                    <p class="mt-0.5 text-xs text-ink-500">{SURFACE_USE[s.name]?.use}</p>
+                    <p class="mt-2 font-mono text-[11px] text-ink-500">{SURFACE_USE[s.name]?.cls}</p>
+                  </div>
+                </li>
+              ))
+            }
+          </ul>
+        </Specimen>
+
+        <Specimen title="Text on white" description="Contrast is computed from the tokens. Anything under 4.5:1 is not for text." stage="white" class="overflow-hidden p-0!">
+          <div class="overflow-x-auto">
+            <table class="table">
+              <thead>
+                <tr><th scope="col">Sample</th><th scope="col">Token</th><th scope="col" class="text-right">Contrast</th><th scope="col">Use</th></tr>
+              </thead>
+              <tbody>
+                {
+                  textSamples.map((s) => (
+                    <tr>
+                      <td class:list={['text-base font-semibold whitespace-nowrap', s.cls]}>Know who opened it.</td>
+                      <td><Code>{s.cls}</Code></td>
+                      <td class="text-right whitespace-nowrap">
+                        <span class:list={['inline-flex items-center gap-1.5 font-medium', s.ok ? 'text-ink-900' : 'text-red-700']}>
+                          <Icon name={s.ok ? 'circle-check' : 'ban'} class={s.ok ? 'size-4 text-brand-700' : 'size-4 text-red-600'} />
+                          <span class="num">{s.ratio}</span>
+                          <span class="sr-only">{s.ok ? 'passes' : 'fails'}</span>
+                        </span>
+                      </td>
+                      <td class="min-w-56 text-ink-600">{s.use}</td>
+                    </tr>
+                  ))
+                }
+              </tbody>
+            </table>
+          </div>
+          <div class="flex flex-col gap-3 border-t border-line bg-ink-950 px-4 py-4 sm:flex-row sm:items-center sm:gap-6 sm:px-5">
+            <p class="text-base font-semibold text-brand-400">Know who opened it.</p>
+            <p class="text-sm text-ink-300">On ink, lime text is fine: {ratio(hexOf('brand-400'), INK_950)}. That’s where the marketing site uses it.</p>
+          </div>
+        </Specimen>
+
+        <Specimen title="Status" description="Red, amber and sky from Tailwind’s palette, plus lime for success. Status color never travels alone: always an icon and a label." code={['.badge-*', 'showAlert()']} stage="white">
+          <div class="grid gap-6 sm:grid-cols-2 xl:grid-cols-4">
+            {
+              statuses.map((s) => (
+                <div class="grid content-start gap-3">
+                  <p class="flex items-center justify-between gap-2">
+                    <span class="text-sm font-semibold text-ink-950">{s.name}</span>
+                    <span class:list={['badge', s.badge]}>
+                      <Icon name={s.icon} />
+                      {s.label}
+                    </span>
+                  </p>
+                  <p class:list={['flex gap-2 rounded-xl border px-3 py-2.5 text-sm', s.alert]}>
+                    <Icon name={s.icon} class={`mt-0.5 size-4 shrink-0 ${s.iconCls}`} />
+                    {s.message}
+                  </p>
+                  <p class="text-xs leading-5 text-ink-500">{s.use}</p>
+                  <p class="font-mono text-[11px] text-ink-500">{s.tokens}</p>
+                </div>
+              ))
+            }
+          </div>
+        </Specimen>
+
+        <Specimen title="Lime, in practice" description="Lime marks the click: success, focus, the live dot and one call to action per view. Keep it to small areas." stage="white">
+          <ul class="grid gap-x-8 gap-y-6 sm:grid-cols-2 xl:grid-cols-3">
+            <li class="flex items-center gap-4">
+              <button type="button" class="btn btn-accent btn-sm shrink-0" data-copy={`https://${SHORT}/q4-acme`}><span data-copy-icon><Icon name="copy" /></span><span data-copy-label>Copy</span></button>
+              <span class="text-sm leading-5 text-ink-600">Copy, and the one hero call to action</span>
+            </li>
+            <li class="flex items-center gap-4">
+              <span class="switch"><input type="checkbox" role="switch" checked aria-label="Example switch, on" /><span></span></span>
+              <span class="text-sm leading-5 text-ink-600">On states: the switch knob</span>
+            </li>
+            <li class="flex items-center gap-4">
+              <span class="grid w-10 shrink-0 place-items-center"><span class="spinner spinner-lg"></span></span>
+              <span class="text-sm leading-5 text-ink-600">Live and loading: the pinging dot</span>
+            </li>
+            <li class="flex items-center gap-4">
+              <span class="badge badge-brand shrink-0"><span class="status-dot text-brand-600"></span>Live</span>
+              <span class="text-sm leading-5 text-ink-600">Positive status, with a label</span>
+            </li>
+            <li class="flex items-center gap-4">
+              <span class="flex h-9 w-32 shrink-0 items-center rounded-lg border border-ink-950 bg-white px-3 text-sm text-ink-900 shadow-[0_0_0_1px_var(--color-ink-950),0_0_0_5px_var(--color-brand-200)]">acme-q4</span>
+              <span class="text-sm leading-5 text-ink-600">Focus halo on fields (brand-200)</span>
+            </li>
+            <li class="flex items-center gap-4">
+              <span class="flex h-9 shrink-0 items-end gap-1" aria-hidden="true">
+                <span class="h-4 w-2.5 rounded-t-[3px] bg-brand-600"></span><span class="h-7 w-2.5 rounded-t-[3px] bg-brand-600"></span><span class="h-5 w-2.5 rounded-t-[3px] bg-brand-600"></span><span class="h-9 w-2.5 rounded-t-[3px] bg-brand-700"></span>
+              </span>
+              <span class="text-sm leading-5 text-ink-600">Chart series in brand-600, hover in brand-700</span>
+            </li>
+          </ul>
+        </Specimen>
+      </Section>
+
+      <!-- 03 Typography ================================================== -->
+      <Section id="typography" index={num('typography')} title="Typography" intro="Three families, one job each: Bricolage Grotesque for headlines, Inter for everything you read and click, JetBrains Mono for short links.">
+        <Specimen title="Families" stage="none">
+          <div class="grid gap-4 lg:grid-cols-3">
+            {
+              families.map((f) => (
+                <div class="flex flex-col rounded-2xl border border-line bg-white p-6">
+                  <p class="eyebrow">{f.role}</p>
+                  <p class:list={['mt-4 text-6xl leading-none text-ink-950', f.aa]} aria-hidden="true">
+                    Aa
+                  </p>
+                  <p class:list={['mt-5 truncate text-ink-950', f.sampleCls]}>{f.sample}</p>
+                  <p class="mt-5 font-semibold text-ink-950">{f.name}</p>
+                  <p class="mt-1 flex-1 text-sm leading-6 text-ink-500">{f.use}</p>
+                  <div class="mt-4 flex flex-wrap gap-1.5">
+                    {f.code.map((c) => (
+                      <Code>{c}</Code>
+                    ))}
+                  </div>
+                </div>
+              ))
+            }
+          </div>
+        </Specimen>
+
+        <Specimen title="Display scale" description="Bricolage Grotesque at weight 750, tracked −0.03em, line-height 1–1.05." code={['.display', 'text-6xl → text-3xl']} stage="white" class="py-2!">
+          <ul class="divide-y divide-line">
+            {
+              displayScale.map((s) => (
+                <li class="grid gap-2 py-5 sm:grid-cols-[9rem_minmax(0,1fr)] sm:items-center sm:gap-6">
+                  <div>
+                    <p class="text-sm font-semibold text-ink-950">{s.px}px</p>
+                    <p class="font-mono text-[11px] text-ink-500">{s.cls}</p>
+                    <p class="text-xs text-ink-500">{s.use}</p>
+                  </div>
+                  <p class:list={['display py-1 break-words text-ink-950', s.cls]}>{s.sample}</p>
+                </li>
+              ))
+            }
+          </ul>
+        </Specimen>
+
+        <Specimen title="Interface scale" description="Inter for all UI text. 14px is the default; nothing smaller than 12px except chart axes and keyboard hints." code={['text-base', 'text-sm', 'text-xs']} stage="white" class="py-2!">
+          <ul class="divide-y divide-line">
+            {
+              uiScale.map((s) => (
+                <li class="grid gap-2 py-4 sm:grid-cols-[9rem_minmax(0,1fr)] sm:items-center sm:gap-6">
+                  <div>
+                    <p class="text-sm font-semibold text-ink-950">{s.px}px</p>
+                    <p class="font-mono text-[11px] text-ink-500">{s.cls}</p>
+                  </div>
+                  <div class="min-w-0">
+                    <p class:list={['text-ink-900', s.cls]}>{s.sample}</p>
+                    <p class="mt-0.5 text-xs text-ink-500">{s.use}</p>
+                  </div>
+                </li>
+              ))
+            }
+          </ul>
+        </Specimen>
+
+        <Specimen title="Weights" stage="white">
+          <div class="grid gap-x-6 gap-y-8 sm:grid-cols-2 xl:grid-cols-3">
+            {
+              weights.map((w) => (
+                <div>
+                  <p class:list={['text-2xl text-ink-950', w.cls]}>Link copied</p>
+                  <p class="mt-1 text-sm font-semibold text-ink-950">
+                    {w.name} <span class="font-normal text-ink-500">· {w.w}</span>
+                  </p>
+                  <p class="text-xs text-ink-500">{w.use}</p>
+                </div>
+              ))
+            }
+            <div>
+              <p class="display text-2xl text-ink-950">Link copied</p>
+              <p class="mt-1 text-sm font-semibold text-ink-950">Display <span class="font-normal text-ink-500">· 750</span></p>
+              <p class="text-xs text-ink-500">Bricolage, headlines</p>
+            </div>
+            <div>
+              <p class="font-display text-2xl font-extrabold tracking-[-0.04em] text-ink-950">shurly.</p>
+              <p class="mt-1 text-sm font-semibold text-ink-950">ExtraBold <span class="font-normal text-ink-500">· 800</span></p>
+              <p class="text-xs text-ink-500">Bricolage, the logo only</p>
+            </div>
+          </div>
+        </Specimen>
+
+        <Specimen title="Numbers" description="Big numbers are Inter semibold with proportional figures. Tabular figures only where numbers line up in a column." code={['.num', 'tabular-nums']} stage="white">
+          <div class="grid gap-8 md:grid-cols-[1fr_1.2fr]">
+            <div>
+              <p class="text-sm font-medium text-ink-500">Clicks, all time</p>
+              <p class="mt-3 text-[1.875rem] leading-none font-semibold tracking-tight text-ink-950">1,284</p>
+              <p class="mt-2 text-[13px] text-ink-500">Stat values: 30px, semibold, tracking-tight</p>
+            </div>
+            <div class="grid grid-cols-2 gap-4">
+              <div class="rounded-xl border border-line p-4">
+                <p class="text-xs font-semibold text-ink-500">Proportional</p>
+                <ul class="mt-2 grid gap-1 text-right text-sm text-ink-900">
+                  {figures.map((f) => <li>{f}</li>)}
+                </ul>
+              </div>
+              <div class="rounded-xl border border-ink-950 p-4">
+                <p class="text-xs font-semibold text-ink-950">Tabular · .num</p>
+                <ul class="num mt-2 grid gap-1 text-right text-sm text-ink-900">
+                  {figures.map((f) => <li>{f}</li>)}
+                </ul>
+              </div>
+            </div>
+          </div>
+        </Specimen>
+
+        <Specimen title="Text styles" description="Small helpers from global.css for the jobs text does over and over." stage="white" class="py-2!">
+          <dl class="divide-y divide-line">
+            <div class="grid gap-2 py-4 sm:grid-cols-[9rem_minmax(0,1fr)] sm:items-center sm:gap-6">
+              <dt><Code>.eyebrow</Code></dt>
+              <dd class="eyebrow">Why Shurly</dd>
+            </div>
+            <div class="grid gap-2 py-4 sm:grid-cols-[9rem_minmax(0,1fr)] sm:items-center sm:gap-6">
+              <dt><Code>.label</Code></dt>
+              <dd class="label">Destination <span class="font-normal text-ink-500">— where the link goes</span></dd>
+            </div>
+            <div class="grid gap-2 py-4 sm:grid-cols-[9rem_minmax(0,1fr)] sm:items-center sm:gap-6">
+              <dt><Code>.hint</Code></dt>
+              <dd class="hint">1200 × 630 px works everywhere.</dd>
+            </div>
+            <div class="grid gap-2 py-4 sm:grid-cols-[9rem_minmax(0,1fr)] sm:items-center sm:gap-6">
+              <dt><Code>.field-error</Code></dt>
+              <dd class="field-error">Enter a full link starting with https://</dd>
+            </div>
+            <div class="grid gap-2 py-4 sm:grid-cols-[9rem_minmax(0,1fr)] sm:items-center sm:gap-6">
+              <dt><Code>.link</Code></dt>
+              <dd class="text-sm text-ink-600">Want tags or a social preview? <a class="link" href="#forms">Use the full editor</a></dd>
+            </div>
+            <div class="grid gap-2 py-4 sm:grid-cols-[9rem_minmax(0,1fr)] sm:items-center sm:gap-6">
+              <dt><Code>.shortlink</Code></dt>
+              <dd class="shortlink text-[15px] text-ink-950">{SHORT}/q4-acme</dd>
+            </div>
+            <div class="grid gap-2 py-4 sm:grid-cols-[9rem_minmax(0,1fr)] sm:items-center sm:gap-6">
+              <dt><Code>.kbd</Code></dt>
+              <dd class="flex flex-wrap items-center gap-2 text-sm text-ink-600">
+                <span class="kbd">N</span> new link
+                <span class="kbd ml-3">/</span> search
+                <span class="kbd ml-3">Esc</span> close
+              </dd>
+            </div>
+          </dl>
+        </Specimen>
+      </Section>
+
+      <!-- 04 Layout ====================================================== -->
+      <Section id="layout" index={num('layout')} title="Layout" intro="A 4px grid, soft radii and five quiet levels of elevation. Surfaces stay flat until they need your attention.">
+        <Specimen title="Spacing" description="Tailwind’s 4px scale. These eight steps cover almost everything." code={['p-*', 'gap-*', 'space-y-*']} stage="white" class="py-3!">
+          <ul class="divide-y divide-line">
+            {
+              spacing.map((s) => (
+                <li class="grid grid-cols-[4.5rem_minmax(0,1fr)] items-center gap-4 py-2.5 sm:grid-cols-[4.5rem_5rem_minmax(0,1fr)]">
+                  <p class="text-sm font-semibold text-ink-950">
+                    {s.px}
+                    <span class="font-normal text-ink-500">px</span>
+                  </p>
+                  <span class="block h-4 rounded-[3px] bg-brand-400" style={`width:${s.px}px`} aria-hidden="true" />
+                  <p class="col-span-2 text-sm text-ink-600 sm:col-span-1">
+                    <span class="inline-block w-6 font-mono text-[11px] text-ink-500">{s.t}</span>
+                    {s.use}
+                  </p>
+                </li>
+              ))
+            }
+          </ul>
+        </Specimen>
+
+        <Specimen title="Radius" description="Corners grow with the size of the thing." code={['rounded-sm → rounded-3xl', 'rounded-full']}>
+          <ul class="grid grid-cols-2 gap-x-4 gap-y-6 sm:grid-cols-4 xl:grid-cols-7">
+            {
+              radiusTokens.map((r) => (
+                <li>
+                  <span class:list={['block size-16 border-2 border-ink-950 bg-white', RADIUS_CLS[r.name]]} aria-hidden="true" />
+                  <p class="mt-3 text-sm font-semibold text-ink-950">
+                    {r.name} <span class="font-normal text-ink-600">· {r.px}px</span>
+                  </p>
+                  <p class="text-xs leading-5 text-ink-600">{RADIUS_USE[r.name]}</p>
+                </li>
+              ))
+            }
+            <li>
+              <span class="block size-16 rounded-full border-2 border-ink-950 bg-white" aria-hidden="true" />
+              <p class="mt-3 text-sm font-semibold text-ink-950">full</p>
+              <p class="text-xs leading-5 text-ink-600">Badges, tags, switches</p>
+            </li>
+          </ul>
+        </Specimen>
+
+        <Specimen title="Elevation" description="Soft, ink-tinted shadows. Most things rest at xs; only what floats goes higher." code={['shadow-xs → shadow-xl']}>
+          <ul class="grid grid-cols-2 gap-5 sm:grid-cols-3 xl:grid-cols-5">
+            {
+              shadowTokens.map((s) => (
+                <li>
+                  <span class:list={['grid h-24 place-items-center rounded-2xl bg-white font-mono text-xs text-ink-600', SHADOW_CLS[s.name]]}>shadow-{s.name}</span>
+                  <p class="mt-3 text-xs leading-5 text-ink-600">{SHADOW_USE[s.name]}</p>
+                  <p class="mt-1 grid font-mono text-[10.5px] leading-4 text-ink-600">{s.layers.map((l) => <span>{l}</span>)}</p>
+                </li>
+              ))
+            }
+          </ul>
+        </Specimen>
+
+        <Specimen title="Containers & backgrounds" stage="none">
+          <div class="grid gap-4 xl:grid-cols-[1.4fr_1fr]">
+            <div class="overflow-x-auto rounded-2xl border border-line bg-white">
+              <table class="table">
+                <thead><tr><th scope="col">Rule</th><th scope="col">Use</th><th scope="col">Value</th></tr></thead>
+                <tbody>
+                  {
+                    containers.map((c) => (
+                      <tr>
+                        <td class="font-medium whitespace-nowrap text-ink-950">{c.name}</td>
+                        <td class="whitespace-nowrap"><Code>{c.code}</Code></td>
+                        <td class="text-ink-600">{c.value}</td>
+                      </tr>
+                    ))
+                  }
+                </tbody>
+              </table>
+            </div>
+            <div class="grid grid-cols-2 gap-4">
+              <figure class="flex flex-col overflow-hidden rounded-2xl border border-line">
+                <div class="bg-dots min-h-40 flex-1 bg-canvas"></div>
+                <figcaption class="border-t border-line bg-white px-4 py-3"><Code>bg-dots</Code><p class="mt-1 text-xs text-ink-500">Light artboards</p></figcaption>
+              </figure>
+              <figure class="flex flex-col overflow-hidden rounded-2xl border border-line">
+                <div class="bg-dots-dark min-h-40 flex-1 bg-ink-950"></div>
+                <figcaption class="border-t border-line bg-white px-4 py-3"><Code>bg-dots-dark</Code><p class="mt-1 text-xs text-ink-500">Dark heroes</p></figcaption>
+              </figure>
+            </div>
+          </div>
+        </Specimen>
+      </Section>
+
+      <!-- 05 Motion ====================================================== -->
+      <Section id="motion" index={num('motion')} title="Motion" intro="Quick and snappy, with a little spring where it earns it. Nothing waits on an animation, and everything respects reduced motion.">
+        <Specimen title="Easing" description="Two curves. Press play to compare them." code={easeTokens.map((e) => `ease-${e.name}`)} stage="white">
+          <div class="grid gap-5 md:grid-cols-2" id="sg-easing">
+            {
+              easeTokens.map((e) => (
+                <div class="rounded-xl border border-line p-4">
+                  <div class="flex gap-4">
+                    <svg viewBox="-8 -64 116 176" class="h-28 w-20 shrink-0 overflow-visible" aria-hidden="true">
+                      <rect x="0" y="0" width="100" height="100" fill="var(--color-ink-50)" stroke="var(--color-ink-200)" stroke-width="1" vector-effect="non-scaling-stroke" />
+                      <line x1="0" y1={100} x2={e.h1[0]} y2={e.h1[1]} stroke="var(--color-ink-300)" stroke-width="1.5" vector-effect="non-scaling-stroke" />
+                      <line x1="100" y1={0} x2={e.h2[0]} y2={e.h2[1]} stroke="var(--color-ink-300)" stroke-width="1.5" vector-effect="non-scaling-stroke" />
+                      <circle cx={e.h1[0]} cy={e.h1[1]} r="4" fill="#fff" stroke="var(--color-ink-400)" stroke-width="1.5" vector-effect="non-scaling-stroke" />
+                      <circle cx={e.h2[0]} cy={e.h2[1]} r="4" fill="#fff" stroke="var(--color-ink-400)" stroke-width="1.5" vector-effect="non-scaling-stroke" />
+                      <path d={e.d} fill="none" stroke="var(--color-ink-950)" stroke-width="2.5" stroke-linecap="round" vector-effect="non-scaling-stroke" />
+                      <circle cx="100" cy="0" r="5.5" fill="var(--color-brand-400)" stroke="var(--color-ink-950)" stroke-width="1.5" vector-effect="non-scaling-stroke" />
+                    </svg>
+                    <div class="min-w-0">
+                      <p class="font-mono text-sm font-medium text-ink-950">--ease-{e.name}</p>
+                      <p class="mt-0.5 font-mono text-[11px] text-ink-500">{e.value}</p>
+                      <p class="mt-2 text-sm leading-6 text-ink-600">{EASE_USE[e.name] ?? ''}</p>
+                    </div>
+                  </div>
+                  <div class="relative mt-4 h-6 rounded-full bg-ink-100" aria-hidden="true">
+                    <span class="sg-lane-dot absolute top-1 size-4 rounded-full bg-brand-500 ring-2 ring-white" style={`transition: left 700ms ${e.value}`} />
+                  </div>
+                </div>
+              ))
+            }
+          </div>
+          <button type="button" class="btn btn-secondary btn-sm mt-5" data-sg-play="sg-easing"><Icon name="arrow-right" />Play</button>
+        </Specimen>
+
+        <Specimen title="Duration" description="Short enough to feel instant, long enough to follow. All on the snappy curve." stage="white">
+          <ul class="grid gap-4" id="sg-durations">
+            {
+              durations.map((d) => (
+                <li class="grid items-center gap-2 sm:grid-cols-[12rem_minmax(0,1fr)] sm:gap-6">
+                  <p class="text-sm">
+                    <b class="font-semibold text-ink-950">{d.ms}ms</b> <span class="text-ink-500">· {d.name}</span>
+                    <span class="block text-xs text-ink-500">{d.use}</span>
+                  </p>
+                  <div class="relative h-6 rounded-full bg-ink-100" aria-hidden="true">
+                    <span class="sg-lane-dot absolute top-1 size-4 rounded-full bg-brand-500 ring-2 ring-white" style={`transition: left ${d.ms}ms ${snappy}`} />
+                  </div>
+                </li>
+              ))
+            }
+          </ul>
+          <button type="button" class="btn btn-secondary btn-sm mt-5" data-sg-play="sg-durations"><Icon name="arrow-right" />Play</button>
+        </Specimen>
+
+        <Specimen title="Moments" description="The animations that give Shurly its feel. Replay any of them." code={['animate-*', 'data-copy']} stage="none">
+          <ul class="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            <li class="flex flex-col overflow-hidden rounded-2xl border border-line bg-white">
+              <div class="grid h-32 place-items-center bg-canvas">
+                <span class="flex items-center gap-6" aria-hidden="true"><span class="spinner"></span><span class="spinner spinner-lg"></span></span>
+              </div>
+              <div class="border-t border-line p-4">
+                <p class="text-sm font-semibold text-ink-950">Spinner: the click dot, pinging</p>
+                <p class="mt-0.5 font-mono text-[11px] text-ink-500">.spinner · ping-dot {anim['ping-dot']}</p>
+              </div>
+            </li>
+            <li class="flex flex-col overflow-hidden rounded-2xl border border-line bg-white">
+              <div class="grid h-32 place-items-center bg-canvas">
+                <button type="button" class="btn btn-secondary" data-sg-toast="success"><Icon name="bell" />Show a toast</button>
+              </div>
+              <div class="border-t border-line p-4">
+                <p class="text-sm font-semibold text-ink-950">Toast: slides in from the right</p>
+                <p class="mt-0.5 font-mono text-[11px] text-ink-500">.toast · 320ms snappy, out in 200ms</p>
+              </div>
+            </li>
+            <li class="flex flex-col overflow-hidden rounded-2xl border border-line bg-white">
+              <div class="grid h-32 place-items-center bg-canvas">
+                <button type="button" class="btn btn-secondary" data-copy={`https://${SHORT}/q4-acme`}><span data-copy-icon><Icon name="copy" /></span><span data-copy-label>Copy link</span></button>
+              </div>
+              <div class="border-t border-line p-4">
+                <p class="text-sm font-semibold text-ink-950">Copy: lime with a check, for 2s</p>
+                <p class="mt-0.5 font-mono text-[11px] text-ink-500">data-copy · copyWithFeedback()</p>
+              </div>
+            </li>
+            <li class="flex flex-col overflow-hidden rounded-2xl border border-line bg-white">
+              <div class="grid h-32 place-items-center bg-canvas">
+                <span id="sg-anim-pop" data-sg-anim="animate-pop" class="grid size-10 animate-pop place-items-center rounded-full bg-brand-400 text-ink-950" aria-hidden="true"><Icon name="check" class="size-5" strokeWidth={3} /></span>
+              </div>
+              <div class="flex items-start justify-between gap-3 border-t border-line p-4">
+                <div>
+                  <p class="text-sm font-semibold text-ink-950">Pop: success checks</p>
+                  <p class="mt-0.5 font-mono text-[11px] text-ink-500">animate-pop · {anim.pop}</p>
+                </div>
+                <button type="button" class="btn btn-ghost btn-sm btn-icon -mt-1 -mr-1" data-sg-replay="sg-anim-pop" aria-label="Replay pop" data-tooltip="Replay" data-tooltip-align="end"><Icon name="refresh" /></button>
+              </div>
+            </li>
+            <li class="flex flex-col overflow-hidden rounded-2xl border border-line bg-white">
+              <div class="grid h-32 place-items-center bg-canvas px-6">
+                <span id="sg-anim-flash" data-sg-anim="animate-flash" class="card flex w-full max-w-60 animate-flash items-center gap-3 px-3 py-2.5" aria-hidden="true">
+                  <span class="grid size-7 place-items-center rounded-lg bg-orange-100 font-display text-sm font-bold text-orange-800">G</span>
+                  <span class="min-w-0 flex-1"><span class="block truncate text-sm font-semibold text-ink-950">Q4 proposal</span><span class="shortlink block text-xs text-ink-600">{SHORT}/q4-acme</span></span>
+                </span>
+              </div>
+              <div class="flex items-start justify-between gap-3 border-t border-line p-4">
+                <div>
+                  <p class="text-sm font-semibold text-ink-950">Flash: a new row, highlighted</p>
+                  <p class="mt-0.5 font-mono text-[11px] text-ink-500">animate-flash · {anim.flash}</p>
+                </div>
+                <button type="button" class="btn btn-ghost btn-sm btn-icon -mt-1 -mr-1" data-sg-replay="sg-anim-flash" aria-label="Replay flash" data-tooltip="Replay" data-tooltip-align="end"><Icon name="refresh" /></button>
+              </div>
+            </li>
+            <li class="flex flex-col overflow-hidden rounded-2xl border border-line bg-white">
+              <div class="grid h-32 place-items-center bg-canvas px-6">
+                <span id="sg-anim-fade-up" data-sg-anim="animate-fade-up" class="flex w-full max-w-60 animate-fade-up items-center gap-3 rounded-xl bg-ink-950 px-3 py-2.5 text-sm text-white" aria-hidden="true">
+                  <span class="grid size-6 place-items-center rounded-lg bg-brand-400 text-ink-950"><Icon name="rocket" class="size-3.5" /></span>You’re in.
+                </span>
+              </div>
+              <div class="flex items-start justify-between gap-3 border-t border-line p-4">
+                <div>
+                  <p class="text-sm font-semibold text-ink-950">Fade up: entrances</p>
+                  <p class="mt-0.5 font-mono text-[11px] text-ink-500">animate-fade-up · {anim['fade-up']}</p>
+                </div>
+                <button type="button" class="btn btn-ghost btn-sm btn-icon -mt-1 -mr-1" data-sg-replay="sg-anim-fade-up" aria-label="Replay fade up" data-tooltip="Replay" data-tooltip-align="end"><Icon name="refresh" /></button>
+              </div>
+            </li>
+            <li class="flex flex-col overflow-hidden rounded-2xl border border-line bg-white">
+              <div class="grid h-32 place-items-center bg-canvas px-6">
+                <span id="sg-anim-fade-in" data-sg-anim="animate-fade-in" class="menu block w-44 animate-fade-in shadow-lg" aria-hidden="true">
+                  <span class="menu-item"><Icon name="pencil" />Edit</span>
+                  <span class="menu-item"><Icon name="qr" />QR code</span>
+                </span>
+              </div>
+              <div class="flex items-start justify-between gap-3 border-t border-line p-4">
+                <div>
+                  <p class="text-sm font-semibold text-ink-950">Fade in: menus and backdrops</p>
+                  <p class="mt-0.5 font-mono text-[11px] text-ink-500">animate-fade-in · {anim['fade-in']}</p>
+                </div>
+                <button type="button" class="btn btn-ghost btn-sm btn-icon -mt-1 -mr-1" data-sg-replay="sg-anim-fade-in" aria-label="Replay fade in" data-tooltip="Replay" data-tooltip-align="end"><Icon name="refresh" /></button>
+              </div>
+            </li>
+            <li class="flex flex-col overflow-hidden rounded-2xl border border-line bg-white">
+              <div class="grid h-32 place-items-center bg-canvas">
+                <span class="grid size-10 animate-hop place-items-center rounded-full bg-white text-ink-700 shadow-sm ring-1 ring-ink-200" aria-hidden="true"><Icon name="arrow-right" class="size-5 rotate-90" /></span>
+              </div>
+              <div class="border-t border-line p-4">
+                <p class="text-sm font-semibold text-ink-950">Hop: a gentle nudge</p>
+                <p class="mt-0.5 font-mono text-[11px] text-ink-500">animate-hop · {anim.hop}</p>
+              </div>
+            </li>
+            <li class="flex flex-col overflow-hidden rounded-2xl border border-line bg-white">
+              <div class="grid h-32 content-center gap-2.5 bg-canvas px-8" aria-hidden="true">
+                <span class="skeleton block h-4 w-3/5"></span>
+                <span class="skeleton block h-3 w-2/5"></span>
+                <span class="skeleton block h-3 w-4/5"></span>
+              </div>
+              <div class="border-t border-line p-4">
+                <p class="text-sm font-semibold text-ink-950">Shimmer: skeletons</p>
+                <p class="mt-0.5 font-mono text-[11px] text-ink-500">.skeleton · shimmer {anim.shimmer}</p>
+              </div>
+            </li>
+          </ul>
+        </Specimen>
+
+        <Specimen title="Reduced motion" stage="white">
+          <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <p class="max-w-xl text-sm leading-6 text-ink-600">
+              With <Code>prefers-reduced-motion: reduce</Code>, animations run once in a blink and transitions are instant. Nothing important is ever animation-only.
+            </p>
+            <span class="badge badge-outline shrink-0"><Icon name="monitor" /><span data-sg-reduced-motion>Checking this device…</span></span>
+          </div>
+        </Specimen>
+      </Section>
+
+      <!-- 06 Buttons ===================================================== -->
+      <Section id="buttons" index={num('buttons')} title="Buttons" intro="Ink for the main action, lime for the moments that matter, white for everything else. Labels are sentence case and start with a verb.">
+        <Specimen title="Variants & sizes" code={['.btn', '.btn-{variant}', '.btn-sm', '.btn-lg']} stage="white" class="overflow-hidden p-0!">
+          <div class="overflow-x-auto">
+            <table class="w-full min-w-[40rem] text-sm">
+              <thead>
+                <tr class="border-b border-line text-left text-xs text-ink-500">
+                  <th scope="col" class="w-60 px-5 py-3 font-semibold">Variant</th>
+                  {
+                    buttonSizes.map((s) => (
+                      <th scope="col" class="px-5 py-3 font-semibold">
+                        {s.name} <span class="font-normal">· {s.px}px</span>
+                      </th>
+                    ))
+                  }
+                </tr>
+              </thead>
+              <tbody>
+                {
+                  buttonVariants.map((v) => (
+                    <tr class="border-b border-ink-100 last:border-0">
+                      <th scope="row" class="px-5 py-4 text-left align-middle font-normal">
+                        <p class="font-semibold text-ink-950">{v.name}</p>
+                        <p class="mt-0.5 max-w-48 text-xs leading-5 text-ink-500">{v.use}</p>
+                        <p class="mt-1 font-mono text-[11px] text-ink-500">.{v.cls}</p>
+                      </th>
+                      {buttonSizes.map((s) => (
+                        <td class="px-5 py-4 align-middle">
+                          <button type="button" class:list={['btn', v.cls, s.cls]}>
+                            <Icon name={v.icon} />
+                            {v.label}
+                          </button>
+                        </td>
+                      ))}
+                    </tr>
+                  ))
+                }
+              </tbody>
+            </table>
+          </div>
+        </Specimen>
+
+        <Specimen title="Icon-only" description="Square, with an aria-label and a tooltip that says the same thing." code={['.btn-icon', 'aria-label', 'data-tooltip']}>
+          <div class="flex flex-wrap items-center gap-3">
+            <button type="button" class="btn btn-secondary btn-icon" aria-label="QR code" data-tooltip="QR code"><Icon name="qr" /></button>
+            <button type="button" class="btn btn-secondary btn-sm btn-icon" aria-label="More actions" data-tooltip="More actions"><Icon name="more" /></button>
+            <button type="button" class="btn btn-ghost btn-sm btn-icon" aria-label="Refresh from page" data-tooltip="Refresh from page"><Icon name="refresh" /></button>
+            <button type="button" class="btn btn-ghost btn-sm btn-icon" aria-label="Edit preview" data-tooltip="Edit preview"><Icon name="pencil" /></button>
+            <button type="button" class="btn btn-primary btn-sm btn-icon" aria-label="New link" data-tooltip="New link"><Icon name="plus" /></button>
+            <button type="button" class="btn btn-danger-ghost btn-sm btn-icon" aria-label="Delete rule" data-tooltip="Delete rule"><Icon name="trash" /></button>
+            <span class="ml-2 text-sm text-ink-600">Hover or tab to see the tooltips.</span>
+          </div>
+        </Specimen>
+
+        <Specimen title="States" description="Loading keeps the button’s width and swaps in the branded spinner. Copy turns the button lime for two seconds." code={['setLoading()', 'data-copy', 'disabled']}>
+          <ul class="grid grid-cols-2 gap-6 sm:grid-cols-3 xl:grid-cols-5">
+            <li class="grid content-start justify-items-start gap-2">
+              <button type="button" class="btn btn-primary">Save changes</button>
+              <span class={cap}>Default</span>
+            </li>
+            <li class="grid content-start justify-items-start gap-2">
+              <span class="btn btn-primary outline-2 outline-offset-2 outline-ink-950" aria-hidden="true">Save changes</span>
+              <span class={cap}>Focus (ring)</span>
+            </li>
+            <li class="grid content-start justify-items-start gap-2">
+              <button type="button" class="btn btn-primary" disabled>Save changes</button>
+              <span class={cap}>disabled</span>
+            </li>
+            <li class="grid content-start justify-items-start gap-2">
+              <button type="button" class="btn btn-primary" data-sg-loading="Saving…">Save changes</button>
+              <span class={cap}>Loading: click it</span>
+            </li>
+            <li class="grid content-start justify-items-start gap-2">
+              <button type="button" class="btn btn-secondary" data-copy={`https://${SHORT}/q4-acme`}><span data-copy-icon><Icon name="copy" /></span><span data-copy-label>Copy</span></button>
+              <span class={cap}>Copied: click it</span>
+            </li>
+          </ul>
+        </Specimen>
+
+        <Specimen title="On dark" description="Marketing heroes: lime for the call to action, a quiet ghost for the second option." stage="dark" class="relative overflow-hidden">
+          <div class="bg-dots-dark absolute inset-0 opacity-60" aria-hidden="true"></div>
+          <div class="relative flex flex-col gap-3 sm:flex-row sm:items-center">
+            <button type="button" class="btn btn-accent btn-lg">Get started — it’s free<Icon name="arrow-right" /></button>
+            <button type="button" class="btn btn-lg text-ink-200 hover:bg-white/10 hover:text-white">See how it works</button>
+          </div>
+        </Specimen>
+
+        <Specimen title="Navigation" description="Header links mark the current page with an ink underline; tabs switch views in place. Try the arrow keys on the tabs." code={['.nav-link', '.tab', 'role="tablist"']} stage="white" class="overflow-hidden p-0!">
+          <div class="flex h-16 items-center gap-1 border-b border-line px-4 sm:px-5" data-sg-nav>
+            <a href="#buttons" class="nav-link" aria-current="page">Links</a>
+            <a href="#buttons" class="nav-link">Campaigns</a>
+            <a href="#buttons" class="nav-link">Analytics</a>
+          </div>
+          <div class="px-4 pt-5 pb-6 sm:px-5">
+            <div class="flex gap-6 border-b border-line" role="tablist" aria-label="Settings" data-sg-tabs>
+              <button type="button" class="tab" role="tab" id="sg-tab-profile" aria-selected="true" aria-controls="sg-panel-profile"><Icon name="user" />Profile</button>
+              <button type="button" class="tab" role="tab" id="sg-tab-tags" aria-selected="false" aria-controls="sg-panel-tags" tabindex="-1"><Icon name="tags" />Tags</button>
+              <button type="button" class="tab" role="tab" id="sg-tab-api" aria-selected="false" aria-controls="sg-panel-api" tabindex="-1"><Icon name="key" />API &amp; MCP</button>
+            </div>
+            <div id="sg-panel-profile" role="tabpanel" aria-labelledby="sg-tab-profile" class="pt-4 text-sm text-ink-600">Your email, password and plan.</div>
+            <div id="sg-panel-tags" role="tabpanel" aria-labelledby="sg-tab-tags" class="pt-4 text-sm text-ink-600" hidden>Rename, recolor or delete your tags.</div>
+            <div id="sg-panel-api" role="tabpanel" aria-labelledby="sg-tab-api" class="pt-4 text-sm text-ink-600" hidden>Your API key, and how to connect an AI assistant.</div>
+          </div>
+        </Specimen>
+      </Section>
+
+      <!-- 07 Forms ======================================================= -->
+      <Section id="forms" index={num('forms')} title="Forms" intro="Labels on top, hints below, errors in plain words right under the field. Focus gets an ink ring with a lime halo.">
+        <Specimen title="Text fields" code={['.label', '.input', '.input-lg', '.hint', '.field-error']} stage="white">
+          <div class="grid gap-x-6 gap-y-7 md:grid-cols-2">
+            <div class="grid gap-1.5">
+              <label for="sg-title" class="label">Title <span class="font-normal text-ink-500">— only you see this</span></label>
+              <input id="sg-title" class="input" placeholder="e.g. Q4 proposal — Acme Corp" />
+              <p class={cap}>Empty: placeholders start with “e.g.”</p>
+            </div>
+            <div class="grid gap-1.5">
+              <label for="sg-dest" class="label">Destination</label>
+              <input id="sg-dest" type="url" class="input" value="https://docs.google.com/presentation/d/1x9QkT7a/edit" />
+              <p class={cap}>Filled</p>
+            </div>
+            <div class="grid gap-1.5">
+              <label for="sg-dest-bad" class="label">Destination</label>
+              <input id="sg-dest-bad" type="url" class="input" value="docs.google" aria-invalid="true" aria-describedby="sg-dest-bad-error" />
+              <p id="sg-dest-bad-error" class="field-error">Enter a full link starting with https://</p>
+            </div>
+            <div class="grid gap-1.5">
+              <label for="sg-disabled" class="label">Back-half</label>
+              <input id="sg-disabled" class="input" value="m2q7zd" disabled aria-describedby="sg-disabled-hint" />
+              <p id="sg-disabled-hint" class="hint">Campaign links can’t be renamed.</p>
+            </div>
+            <div class="grid gap-1.5">
+              <label for="sg-readonly" class="label">API key</label>
+              <input id="sg-readonly" class="input font-mono" value="shurly_live_4f9c2a…e81b" readonly />
+              <p class={cap}>readonly</p>
+            </div>
+            <div class="grid gap-1.5">
+              <label for="sg-search" class="label">Search</label>
+              <div class="relative">
+                <span class="pointer-events-none absolute inset-y-0 left-3 flex items-center text-ink-400"><Icon name="search" /></span>
+                <input id="sg-search" type="search" class="input pr-9 pl-9" placeholder="Search title, link or destination" autocomplete="off" />
+                <span class="kbd pointer-events-none absolute inset-y-0 right-2.5 my-auto" aria-hidden="true">/</span>
+              </div>
+              <p class={cap}>With an icon and a shortcut</p>
+            </div>
+            <div class="grid gap-1.5 md:col-span-2">
+              <label for="sg-quick" class="label">Large <span class="font-normal text-ink-500">— the one field that matters on a screen</span></label>
+              <div class="relative">
+                <span class="pointer-events-none absolute inset-y-0 left-3.5 flex items-center text-ink-400"><Icon name="link" class="size-5" /></span>
+                <input id="sg-quick" type="url" class="input input-lg pl-11" placeholder="Paste a long link to shorten it…" />
+              </div>
+            </div>
+          </div>
+        </Specimen>
+
+        <Specimen title="Select, textarea & prefix group" code={['.select', '.textarea', '.input-group', '.addon']} stage="white">
+          <div class="grid gap-x-6 gap-y-7 md:grid-cols-2">
+            <div class="grid gap-1.5">
+              <label for="sg-select" class="label">When</label>
+              <select id="sg-select" class="select">
+                <option>Device</option>
+                <option>Browser language</option>
+                <option>Browser</option>
+                <option>Link has parameter</option>
+                <option>On or after date</option>
+                <option>Before date</option>
+              </select>
+            </div>
+            <div class="grid gap-1.5 md:row-span-2">
+              <label for="sg-textarea" class="label">Preview description</label>
+              <textarea id="sg-textarea" class="textarea" rows="4">Everything new this season, in one place.</textarea>
+              <p class="hint">Shown under the title when the link is shared.</p>
+            </div>
+            <div class="grid gap-1.5">
+              <label for="sg-backhalf" class="label">Back-half</label>
+              <div class="input-group">
+                <span class="addon shortlink">{SHORT}/</span>
+                <input id="sg-backhalf" value="acme-proposal" spellcheck="false" autocomplete="off" aria-describedby="sg-backhalf-hint" />
+              </div>
+              <p id="sg-backhalf-hint" class="hint">3–20 letters, numbers, hyphens or underscores.</p>
+            </div>
+            <div class="grid gap-1.5">
+              <label for="sg-backhalf-taken" class="label">Back-half</label>
+              <div class="input-group" data-invalid>
+                <span class="addon shortlink">{SHORT}/</span>
+                <input id="sg-backhalf-taken" value="pricing" spellcheck="false" autocomplete="off" aria-invalid="true" aria-describedby="sg-backhalf-taken-error" />
+              </div>
+              <p id="sg-backhalf-taken-error" class="field-error">That back-half is taken. Try another.</p>
+            </div>
+            <div class="grid gap-1.5">
+              <span class="label" id="sg-tagbox-label">Tags</span>
+              <div class="flex min-h-10 flex-wrap items-center gap-1.5 rounded-[var(--radius-lg)] border border-ink-200 bg-white px-2 py-1.5 shadow-xs transition-[border-color,box-shadow] focus-within:border-ink-950 focus-within:shadow-[0_0_0_1px_var(--color-ink-950),0_0_0_5px_var(--color-brand-200)] hover:border-ink-300" data-sg-removable>
+                <Fragment set:html={pill('email', 'blue-500', { removable: true })} />
+                <Fragment set:html={pill('q4-launch', 'gray-500', { removable: true })} />
+                <input type="text" class="h-7 min-w-32 flex-1 bg-transparent px-1 text-sm text-ink-900 outline-none placeholder:text-ink-500" placeholder="Add tags…" aria-labelledby="sg-tagbox-label" />
+              </div>
+              <p class={cap}>Tag field (static look of mountTagInput)</p>
+            </div>
+          </div>
+        </Specimen>
+
+        <Specimen title="Switches, segmented controls & checkboxes" code={['.switch', '.segmented', '.checkbox']} stage="white">
+          <div class="grid gap-8 lg:grid-cols-2">
+            <div class="grid content-start gap-3">
+              <label class="flex items-start justify-between gap-4 rounded-xl border border-line bg-white p-4">
+                <span>
+                  <span class="block text-sm font-medium text-ink-900">Forward query parameters</span>
+                  <span class="hint mt-0.5 block">Keeps ?utm_source=… from the short link on the destination.</span>
+                </span>
+                <span class="switch mt-0.5"><input type="checkbox" role="switch" checked /><span></span></span>
+              </label>
+              <label class="flex items-start justify-between gap-4 rounded-xl border border-line bg-white p-4">
+                <span>
+                  <span class="block text-sm font-medium text-ink-900">Let search engines index this link</span>
+                  <span class="hint mt-0.5 block">Off by default, so short links stay out of search results.</span>
+                </span>
+                <span class="switch mt-0.5"><input type="checkbox" role="switch" /><span></span></span>
+              </label>
+              <label class="flex items-start justify-between gap-4 rounded-xl border border-line bg-white p-4">
+                <span>
+                  <span class="block text-sm font-medium text-ink-900">Crawlable</span>
+                  <span class="hint mt-0.5 block">Disabled: campaign links are never indexed.</span>
+                </span>
+                <span class="switch mt-0.5"><input type="checkbox" role="switch" disabled /><span></span></span>
+              </label>
+            </div>
+            <div class="grid content-start gap-7">
+              <div class="grid justify-items-start gap-2">
+                <div class="segmented" role="radiogroup" aria-label="Back-half type">
+                  <label><input type="radio" name="sg-mode" value="random" checked /><span><Icon name="zap" />Random</span></label>
+                  <label><input type="radio" name="sg-mode" value="custom" /><span><Icon name="pencil" />Custom</span></label>
+                </div>
+                <span class={cap}>With icons</span>
+              </div>
+              <div class="grid justify-items-start gap-2">
+                <div class="flex flex-wrap items-center gap-3">
+                  <div class="segmented" role="radiogroup" aria-label="Period">
+                    <label><input type="radio" name="sg-range" value="7" checked /><span>7 days</span></label>
+                    <label><input type="radio" name="sg-range" value="8w" /><span>8 weeks</span></label>
+                    <label><input type="radio" name="sg-range" value="90" disabled /><span>90 days</span></label>
+                  </div>
+                  <ProBadge label="Coming soon" />
+                </div>
+                <span class={cap}>A disabled option for an unbuilt Pro range</span>
+              </div>
+              <fieldset class="grid gap-2.5">
+                <legend class="label mb-2.5">Checkboxes</legend>
+                <label class="flex items-center gap-2.5 text-sm text-ink-800"><input type="checkbox" class="checkbox" checked />Q4 proposal — Acme Corp</label>
+                <label class="flex items-center gap-2.5 text-sm text-ink-800"><input type="checkbox" class="checkbox" />Spring catalogue</label>
+                <label class="flex items-center gap-2.5 text-sm text-ink-500"><input type="checkbox" class="checkbox" disabled />Growth webinar (campaign link)</label>
+              </fieldset>
+            </div>
+          </div>
+        </Specimen>
+
+        <Specimen title="Password" description="Show and hide without losing focus. The toggle is a real button with a pressed state." code={['<PasswordField />']} stage="white">
+          <div class="max-w-sm">
+            <PasswordField id="sg-password" label="Password" autocomplete="new-password" minlength={8} hint="At least 8 characters.">
+              <a slot="label-end" class="text-sm font-medium text-ink-600 hover:text-ink-950" href="#sg-password">Forgot it?</a>
+            </PasswordField>
+          </div>
+        </Specimen>
+      </Section>
+
+      <!-- 08 Badges & tags =============================================== -->
+      <Section id="badges" index={num('badges')} title="Badges & tags" intro="Badges flag the exceptions: a normal, working link gets none. Tags are yours, color-coded by category, gray for the ones you make.">
+        <Specimen title="Badges" description="Short, with an icon when they describe a state." code={['.badge', '.badge-{variant}', '.status-dot']} stage="white">
+          <ul class="grid gap-x-6 gap-y-5 sm:grid-cols-2 xl:grid-cols-4">
+            {
+              badges.map((b) => (
+                <li class="grid justify-items-start gap-1.5">
+                  <span class:list={['badge', b.cls]}>
+                    {b.icon && <Icon name={b.icon} />}
+                    {b.dot && <span class:list={['status-dot', b.dot]} />}
+                    {b.label}
+                  </span>
+                  <span class="text-xs text-ink-500">{b.use}</span>
+                  <span class="font-mono text-[11px] text-ink-500">.{b.cls}</span>
+                </li>
+              ))
+            }
+            <li class="grid justify-items-start gap-1.5">
+              <span class="flex items-center gap-4 text-sm text-ink-800">
+                <span class="inline-flex items-center gap-1.5"><span class="status-dot text-brand-600"></span>Live</span>
+                <span class="inline-flex items-center gap-1.5"><span class="status-dot text-amber-500"></span>Paused</span>
+                <span class="inline-flex items-center gap-1.5"><span class="status-dot text-red-500"></span>Stopped</span>
+              </span>
+              <span class="text-xs text-ink-500">Status dots, always with a word</span>
+              <span class="font-mono text-[11px] text-ink-500">.status-dot · currentColor</span>
+            </li>
+          </ul>
+        </Specimen>
+
+        <Specimen title="Tag colors" description="Predefined categories arrive from the API as colors like blue-500 and map to a family. Your own tags are gray." code={['.tag[data-color]', 'tagPill()']} stage="white" class="py-2!">
+          <ul class="divide-y divide-line">
+            {
+              tagFamilies.map((f) => (
+                <li class="grid grid-cols-[8.5rem_minmax(0,1fr)] items-center gap-4 py-3 sm:grid-cols-[10rem_7rem_minmax(0,1fr)]">
+                  <p class="text-sm font-medium text-ink-900">{f.category}</p>
+                  <p class="hidden font-mono text-[11px] text-ink-500 sm:block">{f.family === 'gray' ? 'no data-color' : f.family === 'hex' ? '--tag-dot only' : `"${f.family}"`}</p>
+                  <div class="flex flex-wrap gap-1.5">
+                    {f.names.map((name) => (
+                      <Fragment set:html={pill(name, f.color)} />
+                    ))}
+                  </div>
+                </li>
+              ))
+            }
+          </ul>
+        </Specimen>
+
+        <Specimen title="Tag states" description="Filter chips toggle with aria-pressed. Removable tags live in editors; try removing one, then undo." stage="white">
+          <div class="grid gap-8 md:grid-cols-3">
+            <div class="grid content-start gap-3">
+              <p class="text-sm font-semibold text-ink-950">Filter chips</p>
+              <div class="flex flex-wrap gap-1.5" role="group" aria-label="Filter by tag" data-sg-chips>
+                <Fragment set:html={pill('email', 'blue-500', { button: true, pressed: true })} />
+                <Fragment set:html={pill('social', 'blue-500', { button: true })} />
+                <Fragment set:html={pill('b2b', 'orange-500', { button: true })} />
+                <Fragment set:html={pill('acme', 'gray-500', { button: true })} />
+              </div>
+              <p class="font-mono text-[11px] text-ink-500">tagPill(tag, &#123; button, pressed &#125;)</p>
+            </div>
+            <div class="grid content-start gap-3">
+              <p class="text-sm font-semibold text-ink-950">Removable</p>
+              <div class="flex flex-wrap gap-1.5" data-sg-removable>
+                <Fragment set:html={pill('webinar', 'gray-500', { removable: true })} />
+                <Fragment set:html={pill('social', 'blue-500', { removable: true })} />
+                <Fragment set:html={pill('awareness', 'green-500', { removable: true })} />
+              </div>
+              <p class="font-mono text-[11px] text-ink-500">tagPill(tag, &#123; removable &#125;) · .tag-remove</p>
+            </div>
+            <div class="grid content-start gap-3">
+              <p class="text-sm font-semibold text-ink-950">Long names truncate</p>
+              <div class="flex flex-wrap gap-1.5">
+                <Fragment set:html={pill('q4-enterprise-renewals-north-america', 'purple-500')} />
+              </div>
+              <p class="font-mono text-[11px] text-ink-500">max-width 14rem, ellipsis</p>
+            </div>
+          </div>
+        </Specimen>
+
+        <Specimen title="Pro features" description="Nothing that works today is blocked. Pro features wear the Pro badge; ones we haven’t built yet show up disabled, with “coming soon” copy." code={['<ProBadge />', 'label="Coming soon"']}>
+          <div class="grid gap-8 lg:grid-cols-[1fr_1.2fr]">
+            <div class="grid content-start gap-5">
+              <div class="flex flex-wrap items-center gap-3">
+                <ProBadge />
+                <ProBadge label="Coming soon" />
+              </div>
+              <ul class="grid gap-2.5 text-sm text-ink-700">
+                <li class="flex gap-2.5"><Icon name="check" class="mt-0.5 size-4 shrink-0 text-brand-700" strokeWidth={2.5} />Mark Pro features with the badge, next to their name.</li>
+                <li class="flex gap-2.5"><Icon name="check" class="mt-0.5 size-4 shrink-0 text-brand-700" strokeWidth={2.5} />In early access, everything that’s built is unlocked.</li>
+                <li class="flex gap-2.5"><Icon name="check" class="mt-0.5 size-4 shrink-0 text-brand-700" strokeWidth={2.5} />Unbuilt features: visible, disabled, “coming with Pro”.</li>
+                <li class="flex gap-2.5"><Icon name="x" class="mt-0.5 size-4 shrink-0 text-red-600" strokeWidth={2.5} />No upgrade walls, no nagging pop-ups.</li>
+              </ul>
+            </div>
+            <div class="grid content-start gap-3">
+              <div class="flex items-center gap-3 rounded-xl border border-dashed border-ink-300 bg-white px-4 py-3" aria-disabled="true">
+                <span class="grid size-8 shrink-0 place-items-center rounded-lg bg-ink-50 text-ink-500 ring-1 ring-ink-200"><Icon name="palette" /></span>
+                <div class="min-w-0 flex-1">
+                  <p class="flex items-center gap-2 text-sm font-medium text-ink-800">Brand colors & logo <ProBadge /></p>
+                  <p class="text-xs text-ink-500">Branded QR codes are coming with Pro.</p>
+                </div>
+              </div>
+              <label class="flex items-start justify-between gap-4 rounded-xl border border-line bg-white p-4">
+                <span>
+                  <span class="flex items-center gap-2 text-sm font-medium text-ink-900">Click notifications <ProBadge label="Coming soon" /></span>
+                  <span class="hint mt-0.5 block">A Slack or Telegram message when someone opens your link.</span>
+                </span>
+                <span class="switch mt-0.5"><input type="checkbox" role="switch" disabled /><span></span></span>
+              </label>
+            </div>
+          </div>
+        </Specimen>
+      </Section>
+
+      <!-- 09 Cards ======================================================= -->
+      <Section id="cards" index={num('cards')} title="Cards" intro="White surfaces on the canvas, 18px corners and a hairline border. They lift on hover only when the whole card is clickable.">
+        <Specimen title="Card & interactive card" code={['.card', '.card-interactive']} id="sg-cards-demo">
+          <div class="grid gap-4 md:grid-cols-2">
+            <article class="card p-5 sm:p-6">
+              <h4 class="font-semibold text-ink-950">Track email opens</h4>
+              <p class="mt-1 text-sm leading-6 text-ink-500">Paste this invisible image into an HTML email. Opens show up separately from clicks.</p>
+              <div class="mt-4 flex items-start gap-2 rounded-xl border border-line bg-ink-50 p-3">
+                <code class="min-w-0 flex-1 font-mono text-xs leading-5 break-all text-ink-700">&lt;img src="https://{SHORT}/q4-acme/track" width="1" height="1" alt=""&gt;</code>
+                <button type="button" class="btn btn-secondary btn-sm shrink-0" data-copy={`<img src="https://${SHORT}/q4-acme/track" width="1" height="1" alt="">`}><span data-copy-icon><Icon name="copy" /></span><span data-copy-label>Copy</span></button>
+              </div>
+            </article>
+            <a href="#sg-cards-demo" class="card card-interactive group flex items-center gap-4 p-5 sm:p-6">
+              <span class="grid size-11 shrink-0 place-items-center rounded-xl bg-ink-950 text-brand-400"><Icon name="megaphone" class="size-5" /></span>
+              <span class="min-w-0 flex-1">
+                <span class="block font-semibold text-ink-950">Growth webinar</span>
+                <span class="mt-0.5 block text-sm text-ink-500">50 links · 67% clicked · 2 days ago</span>
+                <span class="mt-2 block text-xs text-ink-500">Hover me: the border darkens and the card lifts.</span>
+              </span>
+              <Icon name="chevron-right" class="size-5 shrink-0 text-ink-400 transition-transform group-hover:translate-x-0.5" />
+            </a>
+          </div>
+        </Specimen>
+
+        <Specimen title="Stat cards" description="A skeleton until a script fills [data-stat]. The dark one leads each row." code={['<StatCard />', 'data-stat', 'data-stat-hint']}>
+          <div class="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
+            <StatCard label="Clicks, all time" stat="sg-total" icon="click" accent />
+            <StatCard label="Last 7 days" stat="sg-week" icon="activity" />
+            <StatCard label="Last 8 weeks" stat="sg-weeks" icon="trending" />
+            <StatCard label="Last click" stat="sg-waiting" icon="clock" hint="Still loading…" />
+          </div>
+          <p class="mt-3 text-xs text-ink-600">The last card is left unfilled, so you can see its loading state.</p>
+        </Specimen>
+
+        <Specimen title="Link card" description="renderLinkCard() with made-up links: the exact markup the dashboard uses. Try Copy and the ⋯ menu." code={['renderLinkCard(link)', 'src/utils/links.ts']}>
+          <ul class="grid gap-3" data-sg-links aria-label="Example links"></ul>
+        </Specimen>
+
+        <Specimen title="Disclosure" description="Native details and summary. The chevron turns; the body fades up." code={['.disclosure', '.disclosure-body', '.chevron']}>
+          <div class="grid gap-3">
+            <details class="disclosure card group px-5 py-4 sm:px-6 sm:py-5">
+              <summary class="justify-between text-left font-semibold text-ink-950">
+                What counts as a click?
+                <Icon name="chevron-down" class="chevron size-5 shrink-0 text-ink-400" />
+              </summary>
+              <p class="disclosure-body mt-3 text-[15px] leading-7 text-ink-500">A real person opening your link. Bots, link-preview crawlers and email-open pixels are filtered out, so the numbers mean what you think they mean.</p>
+            </details>
+            <details class="disclosure card" open>
+              <summary class="px-5 py-4 sm:px-6">
+                <Icon name="share" class="size-4 text-ink-500" />
+                <span class="text-sm font-semibold text-ink-900">Social preview</span>
+                <span class="badge badge-neutral">Automatic</span>
+                <Icon name="chevron-down" class="chevron ml-auto size-4 text-ink-400" />
+              </summary>
+              <div class="disclosure-body border-t border-line px-5 py-4 sm:px-6">
+                <p class="hint">We pull the title, description and image from the page. Override them if you want the link to look different when shared.</p>
+              </div>
+            </details>
+          </div>
+        </Specimen>
+      </Section>
+
+      <!-- 10 Feedback ==================================================== -->
+      <Section id="feedback" index={num('feedback')} title="Feedback" intro="Tell people what happened, right where it happened. Toasts for results, dialogs for decisions, tooltips for icon-only buttons.">
+        <Specimen title="Toasts" description="Top right, below the header. Success and info leave after 4 seconds, errors after 6; hovering pauses them." code={['toast(message, kind, { description, action })']}>
+          <div class="grid gap-8 lg:grid-cols-[1fr_24rem] lg:items-start">
+            <div class="flex flex-wrap gap-2">
+              <button type="button" class="btn btn-secondary" data-sg-toast="success"><Icon name="circle-check" />Success</button>
+              <button type="button" class="btn btn-secondary" data-sg-toast="error"><Icon name="circle-alert" />Error</button>
+              <button type="button" class="btn btn-secondary" data-sg-toast="info"><Icon name="info" />Info</button>
+              <button type="button" class="btn btn-secondary" data-sg-toast="action"><Icon name="refresh" />With undo</button>
+            </div>
+            <div class="grid gap-2">
+              <div class="toast" data-state="open">
+                <span class="mt-0.5 grid size-5 shrink-0 place-items-center rounded-full bg-brand-400 text-ink-950"><Icon name="check" class="size-3.5" strokeWidth={3} /></span>
+                <div class="min-w-0 flex-1"><p class="font-semibold">Link copied</p></div>
+                <span class="-mr-1 rounded-md p-1 text-ink-400" aria-hidden="true"><Icon name="x" /></span>
+              </div>
+              <div class="toast" data-state="open">
+                <span class="mt-0.5 grid size-5 shrink-0 place-items-center rounded-full bg-red-500 text-white"><Icon name="x" class="size-3.5" strokeWidth={3} /></span>
+                <div class="min-w-0 flex-1"><p class="font-semibold">Couldn’t save the link</p><p class="mt-0.5 text-ink-300">Check your connection and try again.</p></div>
+                <span class="-mr-1 rounded-md p-1 text-ink-400" aria-hidden="true"><Icon name="x" /></span>
+              </div>
+              <div class="toast" data-state="open">
+                <span class="mt-0.5 grid size-5 shrink-0 place-items-center rounded-full bg-ink-700 text-white"><Icon name="info" class="size-3.5" strokeWidth={2.5} /></span>
+                <div class="min-w-0 flex-1"><p class="font-semibold">This link expires in 3 days</p><p class="mt-0.5 text-ink-300">Edit it to pick a later date.</p></div>
+                <span class="-mr-1 rounded-md p-1 text-ink-400" aria-hidden="true"><Icon name="x" /></span>
+              </div>
+              <div class="toast" data-state="open">
+                <span class="mt-0.5 grid size-5 shrink-0 place-items-center rounded-full bg-brand-400 text-ink-950"><Icon name="check" class="size-3.5" strokeWidth={3} /></span>
+                <div class="min-w-0 flex-1"><p class="font-semibold">Link deleted</p></div>
+                <span class="rounded-md px-2 py-1 text-sm font-semibold text-brand-400">Undo</span>
+                <span class="-mr-1 rounded-md p-1 text-ink-400" aria-hidden="true"><Icon name="x" /></span>
+              </div>
+            </div>
+          </div>
+        </Specimen>
+
+        <Specimen title="Dialogs" description="Native dialog: Escape and the backdrop close it, focus comes back. Under 640px it becomes a bottom sheet." code={['confirmDialog()', '<Modal />', 'data-dialog-open']}>
+          <div class="flex flex-wrap gap-2">
+            <button type="button" class="btn btn-danger-ghost" data-sg-confirm="danger"><Icon name="trash" />Delete link…</button>
+            <button type="button" class="btn btn-secondary" data-sg-confirm="neutral"><Icon name="help" />Leave without saving?</button>
+            <button type="button" class="btn btn-secondary" data-dialog-open="sg-modal"><Icon name="tags" />Open a modal</button>
+          </div>
+          <p class="mt-4 text-sm text-ink-600">Destructive dialogs say exactly what will stop working, keep a loading state on the confirm button and stay open if it fails.</p>
+        </Specimen>
+
+        <Specimen title="Tooltips & menus" description="Tooltips label icon-only buttons after a short delay. Menus use the popover API and position themselves next to their trigger." code={['data-tooltip', 'popover', '.menu', '.menu-item']}>
+          <div class="flex flex-wrap items-center gap-3">
+            <button type="button" class="btn btn-secondary btn-icon" aria-label="QR code" data-tooltip="QR code"><Icon name="qr" /></button>
+            <button type="button" class="btn btn-primary btn-sm" data-tooltip="Shortcut: N"><Icon name="plus" />New link</button>
+            <button type="button" class="btn btn-secondary" popovertarget="sg-menu"><Icon name="more" />More actions</button>
+            <div id="sg-menu" popover class="menu" data-align="start">
+              <a class="menu-item" href="#feedback" data-sg-menu-item><Icon name="chart" />View details</a>
+              <button type="button" class="menu-item" data-sg-menu-item><Icon name="pencil" />Edit</button>
+              <button type="button" class="menu-item" data-sg-menu-item><Icon name="qr" />QR code</button>
+              <a class="menu-item" href="#feedback" data-sg-menu-item><Icon name="external-link" />Open short link</a>
+              <div class="menu-sep"></div>
+              <button type="button" class="menu-item" data-danger data-sg-menu-item><Icon name="trash" />Delete</button>
+              <span class="menu-item" aria-disabled="true" title="Campaign links are deleted with their campaign"><Icon name="lock" />Delete via campaign</span>
+            </div>
+          </div>
+        </Specimen>
+
+        <Specimen title="Inline alerts" description="Form-level messages, at the top of the form. Same colors as status, always with an icon." code={['showAlert(form, message, kind)', '[data-form-alert]']} stage="white">
+          <div class="grid gap-3">
+            <div class="flex gap-2.5 rounded-xl border border-red-200 bg-red-50 px-3.5 py-3 text-sm text-red-800" role="presentation">
+              <span class="mt-0.5 shrink-0 text-red-600"><Icon name="circle-alert" /></span>
+              <p>We couldn’t create your link. That back-half is already taken.</p>
+            </div>
+            <div class="flex gap-2.5 rounded-xl border border-ink-200 bg-ink-50 px-3.5 py-3 text-sm text-ink-800" role="presentation">
+              <span class="mt-0.5 shrink-0 text-ink-500"><Icon name="info" /></span>
+              <p>Campaign links are managed with their campaign, so they can’t be edited on their own.</p>
+            </div>
+            <div class="flex gap-2.5 rounded-xl border border-brand-200 bg-brand-50 px-3.5 py-3 text-sm text-brand-900" role="presentation">
+              <span class="mt-0.5 shrink-0 text-brand-700"><Icon name="circle-check" /></span>
+              <p>Password changed. You’ll use the new one next time you log in.</p>
+            </div>
+          </div>
+        </Specimen>
+      </Section>
+
+      <!-- 11 Loading & empty ============================================= -->
+      <Section id="loading" index={num('loading')} title="Loading & empty states" intro="Skeletons that match the layout, a pinging dot for short waits, and empty states that say what to do next.">
+        <Specimen title="Skeletons" description="Same shape as the content they stand in for, so nothing jumps when it arrives." code={['.skeleton', 'renderLinkSkeleton()']}>
+          <ul class="grid gap-3" data-sg-skeleton aria-label="Loading example"></ul>
+        </Specimen>
+
+        <Specimen title="Spinner" description="The click dot, pinging. For waits too short to deserve a skeleton." code={['.spinner', '.spinner-lg']} stage="white">
+          <ul class="flex flex-wrap items-center gap-x-10 gap-y-6">
+            <li class="grid justify-items-center gap-3"><span class="grid h-8 place-items-center"><span class="spinner"></span></span><span class="font-mono text-[11px] text-ink-500">.spinner · 10px</span></li>
+            <li class="grid justify-items-center gap-3"><span class="grid h-8 place-items-center"><span class="spinner spinner-lg"></span></span><span class="font-mono text-[11px] text-ink-500">.spinner-lg · 16px</span></li>
+            <li class="grid justify-items-center gap-3">
+              <span class="btn btn-primary cursor-progress opacity-85" aria-hidden="true"><span class="spinner"></span><span>Saving…</span></span>
+              <span class="font-mono text-[11px] text-ink-500">In a button · 8px</span>
+            </li>
+            <li class="grid justify-items-center gap-3">
+              <span class="flex h-8 items-center gap-2.5 text-sm text-ink-600"><span class="spinner"></span>Loading your links…</span>
+              <span class="font-mono text-[11px] text-ink-500">Inline, with words</span>
+            </li>
+          </ul>
+        </Specimen>
+
+        <Specimen title="Empty states" description="An illustration, a heading that says it all, one line of help and the next step." code={['<EmptyState />', 'compact']}>
+          <div class="grid gap-4 xl:grid-cols-3">
+            <div class="card">
+              <EmptyState compact illustration="links" title="Your links will live here" body="Paste a long link above — a Drive folder, a deck, a landing page.">
+                <a href="#loading" class="btn btn-secondary btn-sm"><Icon name="wand" />Open the full editor</a>
+              </EmptyState>
+            </div>
+            <div class="card">
+              <EmptyState compact illustration="search" title="No links match" body="Try a different search or clear the filters.">
+                <button type="button" class="btn btn-secondary btn-sm">Clear filters</button>
+              </EmptyState>
+            </div>
+            <div class="card">
+              <EmptyState compact illustration="error" title="We couldn’t load your links" body="Check your connection and try again.">
+                <button type="button" class="btn btn-primary btn-sm"><Icon name="refresh" />Try again</button>
+              </EmptyState>
+            </div>
+          </div>
+        </Specimen>
+      </Section>
+
+      <!-- 12 Data viz ==================================================== -->
+      <Section id="dataviz" index={num('dataviz')} title="Data viz" intro="One series, one color, no chartjunk. Every chart has a table twin and works with a keyboard.">
+        <Specimen title="Column chart" description="Hover or tab through the columns. The table button shows the same numbers." code={['columnChart()', 'dataTable()', 'bindChartTableToggle()']}>
+          <div class="grid gap-6 xl:grid-cols-[minmax(0,1fr)_17rem]">
+            <section class="card p-5 sm:p-6" aria-labelledby="sg-chart-title">
+              <div class="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h4 id="sg-chart-title" class="font-semibold text-ink-950">Clicks</h4>
+                  <p class="text-sm text-ink-500" data-sg-chart-sub>Per day, last 7 days</p>
+                </div>
+                <div class="flex items-center gap-2">
+                  <div class="segmented" role="radiogroup" aria-label="Period">
+                    <label><input type="radio" name="sg-chart-period" value="daily" checked /><span>7 days</span></label>
+                    <label><input type="radio" name="sg-chart-period" value="weekly" /><span>8 weeks</span></label>
+                  </div>
+                  <button type="button" class="btn btn-ghost btn-sm" data-sg-chart-toggle aria-pressed="false"><Icon name="list" /><span data-label>Table</span></button>
+                </div>
+              </div>
+              <div class="mt-6" data-sg-chart></div>
+              <div class="mt-4 max-h-80 overflow-auto rounded-xl border border-line" data-sg-chart-table hidden></div>
+            </section>
+            <ul class="grid content-start gap-3.5 text-sm text-ink-700">
+              <li class="flex gap-3"><span class="mt-1 size-3.5 shrink-0 rounded-[3px] bg-brand-600" aria-hidden="true"></span><span><b class="font-semibold text-ink-950">One series, brand-600.</b> {ratio(hexOf('brand-600'), WHITE)} on white: enough for marks, not for text.</span></li>
+              <li class="flex gap-3"><span class="mt-1 size-3.5 shrink-0 rounded-[3px] bg-brand-700" aria-hidden="true"></span><span><b class="font-semibold text-ink-950">Hover and focus</b> darken to brand-700.</span></li>
+              <li class="flex gap-3"><span class="mt-2.5 h-px w-3.5 shrink-0 bg-ink-300" aria-hidden="true"></span><span><b class="font-semibold text-ink-950">Hairline grid</b> in ink-100, baseline in ink-200. Three ticks, no more.</span></li>
+              <li class="flex gap-3"><span class="mt-0.5 flex h-4 w-3.5 shrink-0 items-end justify-center" aria-hidden="true"><span class="h-4 w-2.5 rounded-t-[4px] border-2 border-b-0 border-ink-500"></span></span><span><b class="font-semibold text-ink-950">Bars ≤ 24px</b>, 4px rounded at the data end, square at the baseline.</span></li>
+              <li class="flex gap-3"><Icon name="hash" class="mt-0.5 size-3.5 shrink-0 text-ink-500" /><span><b class="font-semibold text-ink-950">One direct label:</b> the maximum. Everything else is in the tooltip.</span></li>
+              <li class="flex gap-3"><Icon name="list" class="mt-0.5 size-3.5 shrink-0 text-ink-500" /><span><b class="font-semibold text-ink-950">Table twin</b> with exact values, for everyone.</span></li>
+            </ul>
+          </div>
+        </Specimen>
+
+        <Specimen title="Bar list, meter & sparkline" code={['barList()', 'meter()', 'sparkline()']}>
+          <div class="grid gap-4 xl:grid-cols-[1.4fr_1fr]">
+            <section class="card p-5 sm:p-6" aria-labelledby="sg-geo-title">
+              <h4 id="sg-geo-title" class="font-semibold text-ink-950">Top countries</h4>
+              <p class="text-sm text-ink-500">Ranked bars, the value at the tip. Last 30 days.</p>
+              <div class="mt-5" data-sg-barlist></div>
+            </section>
+            <div class="grid content-start gap-4">
+              <section class="card p-5 sm:p-6" aria-labelledby="sg-meter-title">
+                <div class="flex items-baseline justify-between gap-3">
+                  <h4 id="sg-meter-title" class="font-semibold text-ink-950">Click-through</h4>
+                  <p class="text-2xl font-semibold tracking-tight text-ink-950">68%</p>
+                </div>
+                <div class="mt-3" data-sg-meter></div>
+                <p class="mt-2 flex justify-between text-xs text-ink-500"><span>34 of 50 recipients</span><span>Track: brand-100</span></p>
+              </section>
+              <section class="card p-5 sm:p-6" aria-labelledby="sg-spark-title">
+                <h4 id="sg-spark-title" class="text-sm font-medium text-ink-500">Clicks this week</h4>
+                <div class="mt-2 flex items-end justify-between gap-4">
+                  <p class="text-[1.875rem] leading-none font-semibold tracking-tight text-ink-950">128</p>
+                  <span data-sg-spark></span>
+                </div>
+                <p class="mt-2 text-[13px] text-ink-500"><span class="font-medium text-brand-800">+24%</span> vs last week · line in ink-300, latest point in brand-600</p>
+              </section>
+            </div>
+          </div>
+        </Specimen>
+
+        <Specimen title="Table" description="Hairline rows, sticky header, tabular numbers in number columns, right-aligned." code={['.table', '.num', '.shortlink']} stage="none">
+          <div class="card overflow-hidden">
+            <div class="flex items-center gap-2 border-b border-line bg-ink-50 px-4 py-3 text-sm font-medium text-ink-600">
+              <Icon name="file-spreadsheet" class="size-4 text-ink-500" />recipients.csv
+              <span class="badge badge-brand ml-auto"><Icon name="check" />3 links created</span>
+            </div>
+            <div class="overflow-x-auto">
+              <table class="table">
+                <thead><tr><th scope="col">firstName</th><th scope="col">company</th><th scope="col">Short link</th><th scope="col" class="text-right">Clicks</th><th scope="col">Last click</th></tr></thead>
+                <tbody>
+                  <tr><td>Ana</td><td>Acme Corp</td><td class="shortlink text-ink-950">{SHORT}/k3x9pa</td><td class="num text-right font-medium">3</td><td class="text-ink-500">2h ago</td></tr>
+                  <tr><td>Luis</td><td>Northwind</td><td class="shortlink text-ink-950">{SHORT}/m2q7zd</td><td class="num text-right font-medium">1</td><td class="text-ink-500">Yesterday</td></tr>
+                  <tr><td>Marta</td><td>Globex</td><td class="shortlink text-ink-950">{SHORT}/t8w4hb</td><td class="num text-right font-medium text-ink-500">0</td><td><span class="badge badge-outline">Not yet</span></td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </Specimen>
+      </Section>
+
+      <!-- 13 Illustrations =============================================== -->
+      <Section id="illustrations" index={num('illustrations')} title="Illustrations" intro="Minimal 2px ink line-art with the lime dot as the only accent. Decorative, so they’re hidden from screen readers and always come with a heading.">
+        <Specimen title="Library" description="200 × 150 artboard. Ink-900 strokes, ink-100 and ink-200 fills, one lime dot." code={['<Illustration name />', '<EmptyState illustration />']} stage="none">
+          <ul class="grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-4">
+            {
+              illustrations.map((i) => (
+                <li class="rounded-2xl border border-line bg-white p-4">
+                  <div class="grid h-32 place-items-center">
+                    <Illustration name={i.name} class="h-28 w-auto" />
+                  </div>
+                  <p class="mt-3 font-mono text-xs font-medium text-ink-950">{i.name}</p>
+                  <p class="text-xs text-ink-500">{i.use}</p>
+                </li>
+              ))
+            }
+          </ul>
+        </Specimen>
+      </Section>
+
+      <!-- 14 Icons ======================================================= -->
+      <Section id="icons" index={num('icons')} title="Icons" intro="Lucide, at a 2px stroke with round caps and joins. One registry, so every screen draws from the same set.">
+        <Specimen title="Grid, sizes & stroke" description="Drawn on a 24px grid and sized in CSS. Icon-only buttons always get an aria-label." code={['<Icon name />', 'icon()', 'iconSvg()']} stage="white">
+          <div class="grid gap-8 md:grid-cols-[auto_1fr] md:items-center">
+            <figure class="grid justify-items-center gap-3">
+              <div class="relative size-36 overflow-hidden rounded-xl border border-line bg-white bg-[linear-gradient(to_right,var(--color-ink-100)_1px,transparent_1px),linear-gradient(to_bottom,var(--color-ink-100)_1px,transparent_1px)] bg-[size:6px_6px] text-ink-950" aria-hidden="true">
+                <span class="absolute inset-3 rounded-[3px] border border-dashed border-brand-600"></span>
+                <Icon name="link" class="absolute inset-0 size-full" />
+              </div>
+              <figcaption class="font-mono text-[11px] text-ink-500">24 × 24 · 2px keyline · 2px stroke</figcaption>
+            </figure>
+            <ul class="grid gap-4 sm:grid-cols-3">
+              {
+                iconSizes.map((s) => (
+                  <li class="rounded-xl border border-line p-4">
+                    <span class="grid h-8 place-items-start text-ink-950"><Icon name={s.name} class={s.cls} /></span>
+                    <p class="mt-3 text-sm font-semibold text-ink-950">
+                      {s.px}px <span class="font-mono text-[11px] font-normal text-ink-500">{s.cls}</span>
+                    </p>
+                    <p class="text-xs leading-5 text-ink-500">{s.use}</p>
+                  </li>
+                ))
+              }
+            </ul>
+          </div>
+        </Specimen>
+
+        <Specimen title="Registry" description="Everything in src/utils/icons.ts. Need a new one? Import it there. Click an icon to copy its name." stage="white">
+          <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div class="relative w-full sm:w-72">
+              <span class="pointer-events-none absolute inset-y-0 left-3 flex items-center text-ink-400"><Icon name="search" /></span>
+              <label for="sg-icon-filter" class="sr-only">Filter icons</label>
+              <input id="sg-icon-filter" type="search" class="input pl-9" placeholder={`Filter ${ICON_NAMES.length} icons`} autocomplete="off" data-sg-icon-filter />
+            </div>
+            <p class="text-sm text-ink-500" data-sg-icon-count aria-live="polite">{ICON_NAMES.length} icons</p>
+          </div>
+          <ul class="mt-5 grid grid-cols-[repeat(auto-fill,minmax(6rem,1fr))] gap-2 sm:grid-cols-[repeat(auto-fill,minmax(7.5rem,1fr))]">
+            {
+              ICON_NAMES.map((name) => (
+                <li data-icon-name={name}>
+                  <button type="button" class="btn btn-ghost h-auto w-full flex-col gap-2.5 rounded-xl px-2 py-4 font-normal whitespace-normal text-ink-900" data-copy={name} aria-label={`Copy icon name: ${name}`}>
+                    <span data-copy-icon class="grid size-5 place-items-center">
+                      <Icon name={name} class="size-5" />
+                    </span>
+                    <span data-copy-label class="font-mono text-[11px] leading-4 break-words text-ink-600">
+                      {name}
+                    </span>
+                  </button>
+                </li>
+              ))
+            }
+          </ul>
+          <p class="mt-4 text-sm text-ink-500" data-sg-icon-empty hidden>No icons match. It may need importing in src/utils/icons.ts.</p>
+        </Specimen>
+      </Section>
+
+      <!-- 15 Voice & tone ================================================ -->
+      <Section id="voice" index={num('voice')} title="Voice & tone" intro="We write like a sharp colleague: short, warm and specific. We say “link”, use sentence case and skip the emoji.">
+        <Specimen title="Principles" stage="none">
+          <ul class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            {
+              principles.map((p, i) => (
+                <li class="rounded-2xl border border-line bg-white p-5">
+                  <p class="font-mono text-xs text-ink-500">{pad(i + 1)}</p>
+                  <p class="mt-2 font-semibold text-ink-950">{p.title}</p>
+                  <p class="mt-1.5 text-sm leading-6 text-ink-500">{p.body}</p>
+                </li>
+              ))
+            }
+          </ul>
+        </Specimen>
+
+        <Specimen title="Say this, not that" stage="none">
+          <div class="grid gap-8">
+            <div>
+              <p class="eyebrow mb-3">Toasts</p>
+              <div class="grid gap-4 md:grid-cols-2">
+                <DoDont kind="do" caption="say what happened, in as few words as it takes.">
+                  <div class="toast w-full max-w-xs" data-state="open">
+                    <span class="mt-0.5 grid size-5 shrink-0 place-items-center rounded-full bg-brand-400 text-ink-950"><Icon name="check" class="size-3.5" strokeWidth={3} /></span>
+                    <p class="min-w-0 flex-1 font-semibold">Link copied</p>
+                  </div>
+                </DoDont>
+                <DoDont kind="dont" caption="narrate the system, shout, or say URL.">
+                  <div class="toast w-full max-w-xs" data-state="open">
+                    <span class="mt-0.5 grid size-5 shrink-0 place-items-center rounded-full bg-brand-400 text-ink-950"><Icon name="check" class="size-3.5" strokeWidth={3} /></span>
+                    <p class="min-w-0 flex-1 font-semibold">URL successfully copied to clipboard!</p>
+                  </div>
+                </DoDont>
+              </div>
+            </div>
+            <div>
+              <p class="eyebrow mb-3">Errors</p>
+              <div class="grid gap-4 md:grid-cols-2">
+                <DoDont kind="do" caption="say what went wrong and what to do next." stage="bg-white">
+                  <div class="text-center">
+                    <p class="display text-lg text-ink-950">We couldn’t load your links</p>
+                    <p class="mt-1 text-sm text-ink-500">Check your connection and try again.</p>
+                  </div>
+                </DoDont>
+                <DoDont kind="dont" caption="blame the user or show status codes." stage="bg-white">
+                  <div class="text-center">
+                    <p class="display text-lg text-ink-950">Error 500: Request failed</p>
+                    <p class="mt-1 text-sm text-ink-500">Invalid input or server exception.</p>
+                  </div>
+                </DoDont>
+              </div>
+            </div>
+            <div>
+              <p class="eyebrow mb-3">Confirmations</p>
+              <div class="grid gap-4 md:grid-cols-2">
+                <DoDont kind="do" caption="name the thing and the consequence. Label the button with the action.">
+                  <div class="w-full max-w-sm rounded-2xl bg-white p-5 text-left shadow-md">
+                    <p class="font-semibold text-ink-950">Delete this link?</p>
+                    <p class="mt-1 text-sm leading-6 text-ink-600">{SHORT}/q4-acme will stop working for everyone who has it.</p>
+                    <div class="mt-4 flex justify-end gap-2"><span class="btn btn-secondary btn-sm pointer-events-none">Cancel</span><span class="btn btn-danger btn-sm pointer-events-none">Delete link</span></div>
+                  </div>
+                </DoDont>
+                <DoDont kind="dont" caption="ask a vague question with vague buttons.">
+                  <div class="w-full max-w-sm rounded-2xl bg-white p-5 text-left shadow-md">
+                    <p class="font-semibold text-ink-950">Are you sure?</p>
+                    <p class="mt-1 text-sm leading-6 text-ink-600">This action cannot be undone.</p>
+                    <div class="mt-4 flex justify-end gap-2"><span class="btn btn-secondary btn-sm pointer-events-none">No</span><span class="btn btn-danger btn-sm pointer-events-none">Yes</span></div>
+                  </div>
+                </DoDont>
+              </div>
+            </div>
+            <div>
+              <p class="eyebrow mb-3">Buttons and Pro</p>
+              <div class="grid gap-4 md:grid-cols-2">
+                <DoDont kind="do" caption="use sentence case, and invite rather than push.">
+                  <div class="grid justify-items-center gap-3">
+                    <span class="btn btn-primary pointer-events-none"><Icon name="plus" />Create link</span>
+                    <span class="text-sm text-ink-600">Branded QR codes are coming with Pro.</span>
+                  </div>
+                </DoDont>
+                <DoDont kind="dont" caption="use Title Case, vague verbs or pressure.">
+                  <div class="grid justify-items-center gap-3">
+                    <span class="btn btn-primary pointer-events-none">Submit New Link</span>
+                    <span class="text-sm text-ink-600">UPGRADE NOW to unlock premium features!!</span>
+                  </div>
+                </DoDont>
+              </div>
+            </div>
+          </div>
+        </Specimen>
+
+        <Specimen title="Words we use" stage="white" class="overflow-hidden p-0!">
+          <div class="overflow-x-auto">
+            <table class="table">
+              <thead><tr><th scope="col">We say</th><th scope="col">Not</th><th scope="col">Because</th></tr></thead>
+              <tbody>
+                {
+                  words.map((w) => (
+                    <tr>
+                      <td class="font-semibold whitespace-nowrap text-ink-950">{w.say}</td>
+                      <td class="whitespace-nowrap text-ink-500 line-through decoration-ink-300">{w.not}</td>
+                      <td class="text-ink-600">{w.why}</td>
+                    </tr>
+                  ))
+                }
+              </tbody>
+            </table>
+          </div>
+        </Specimen>
+      </Section>
+    </main>
+  </div>
+
+  <footer class="border-t border-line bg-canvas">
+    <div class="mx-auto flex max-w-7xl flex-col gap-4 px-4 py-8 text-sm text-ink-600 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+      <p class="flex flex-wrap items-center gap-x-2 gap-y-1">
+        <Logo variant="isotype" height={20} />
+        <span>Tokens live in <Code>src/styles/global.css</Code>, components in <Code>src/components/ui/</Code>.</span>
+      </p>
+      <a href="#top" class="link self-start sm:self-auto">Back to top</a>
+    </div>
+  </footer>
+
+  <Modal id="sg-modal" title="Add tags" description="Tags are added to every selected link. Existing tags stay." width="30rem">
+    <div class="grid gap-2 px-6 py-5">
+      <span class="label" id="sg-modal-tags-label">Tags to add</span>
+      <div class="flex min-h-10 flex-wrap items-center gap-1.5 rounded-[var(--radius-lg)] border border-ink-200 bg-white px-2 py-1.5 shadow-xs focus-within:border-ink-950 focus-within:shadow-[0_0_0_1px_var(--color-ink-950),0_0_0_5px_var(--color-brand-200)]" data-sg-removable>
+        <Fragment set:html={pill('email', 'blue-500', { removable: true })} />
+        <Fragment set:html={pill('q4-launch', 'gray-500', { removable: true })} />
+        <input type="text" class="h-7 min-w-32 flex-1 bg-transparent px-1 text-sm text-ink-900 outline-none placeholder:text-ink-500" placeholder="Add tags…" aria-labelledby="sg-modal-tags-label" data-autofocus />
+      </div>
+      <p class="hint">Press Enter to add a tag. Tags are lowercase.</p>
+    </div>
+    <div class="flex flex-col-reverse gap-2 border-t border-line px-6 py-4 sm:flex-row sm:justify-end">
+      <button type="button" class="btn btn-secondary" data-dialog-close>Cancel</button>
+      <button type="button" class="btn btn-primary" data-sg-modal-apply>Add tags</button>
+    </div>
+  </Modal>
+</BaseLayout>
+
+<style is:global>
+  @media (prefers-reduced-motion: no-preference) {
+    html {
+      scroll-behavior: smooth;
+    }
+  }
+  /* Motion demo lanes: the dot travels when its group gets [data-playing]. */
+  .sg-lane-dot {
+    left: 0.25rem;
+  }
+  [data-playing] .sg-lane-dot {
+    left: calc(100% - 1.25rem);
+  }
+</style>
+
+<script>
+  import { barList, bindChartTableToggle, columnChart, dataTable, meter, sparkline, type ColumnDatum } from '@/utils/charts';
+  import { html, setHTML } from '@/utils/html';
+  import { renderLinkCard, renderLinkSkeleton } from '@/utils/links';
+  import { closeDialog, confirmDialog, hydrateTimes, setLoading, toast } from '@/utils/ui';
+  import type { ShortLink, Tag } from '@/utils/types';
+
+  const $ = <T extends HTMLElement = HTMLElement>(sel: string, root: ParentNode = document) => root.querySelector<T>(sel);
+  const $$ = <T extends HTMLElement = HTMLElement>(sel: string, root: ParentNode = document) => Array.from(root.querySelectorAll<T>(sel));
+  const wait = (ms: number) => new Promise<void>((resolve) => window.setTimeout(resolve, ms));
+
+  // ------------------------------------------------------------ Contents: scroll-spy
+  const sections = $$('[data-sg-section]');
+  const tocLinks = $$<HTMLAnchorElement>('[data-toc-link]');
+  let spyQueued = false;
+  function spy() {
+    spyQueued = false;
+    let current: string | undefined;
+    for (const s of sections) if (s.getBoundingClientRect().top <= 140) current = s.id;
+    if (current && window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 4) current = sections[sections.length - 1]?.id;
+    tocLinks.forEach((a) => (a.dataset.tocLink === current ? a.setAttribute('aria-current', 'true') : a.removeAttribute('aria-current')));
+  }
+  window.addEventListener(
+    'scroll',
+    () => {
+      if (spyQueued) return;
+      spyQueued = true;
+      requestAnimationFrame(spy);
+    },
+    { passive: true },
+  );
+  spy();
+
+  const tocMenu = $('#sg-toc-menu');
+  tocMenu?.addEventListener('click', (e) => {
+    if ((e.target as HTMLElement).closest('a')) tocMenu.hidePopover();
+  });
+
+  // ------------------------------------------------------------ Motion
+  $$<HTMLButtonElement>('[data-sg-play]').forEach((btn) =>
+    btn.addEventListener('click', () => document.getElementById(btn.dataset.sgPlay ?? '')?.toggleAttribute('data-playing')),
+  );
+  $$<HTMLButtonElement>('[data-sg-replay]').forEach((btn) =>
+    btn.addEventListener('click', () => {
+      const el = document.getElementById(btn.dataset.sgReplay ?? '');
+      const cls = el?.dataset.sgAnim;
+      if (!el || !cls) return;
+      el.classList.remove(cls);
+      void el.offsetWidth; // restart the animation
+      el.classList.add(cls);
+    }),
+  );
+  const reduced = window.matchMedia('(prefers-reduced-motion: reduce)');
+  const paintReduced = () => {
+    const el = $('[data-sg-reduced-motion]');
+    if (el) el.textContent = reduced.matches ? 'Reduced motion is on here' : 'Full motion on this device';
+  };
+  paintReduced();
+  reduced.addEventListener('change', paintReduced);
+
+  // ------------------------------------------------------------ Toasts, loading, dialogs
+  const toasts: Record<string, () => void> = {
+    success: () => toast('Link copied'),
+    error: () => toast('Couldn’t save the link', 'error', { description: 'Check your connection and try again.' }),
+    info: () => toast('This link expires in 3 days', 'info', { description: 'Edit it to pick a later date.' }),
+    action: () => toast('Link deleted', 'success', { action: { label: 'Undo', onClick: () => toast('Link restored') } }),
+  };
+  $$<HTMLButtonElement>('[data-sg-toast]').forEach((btn) => btn.addEventListener('click', () => toasts[btn.dataset.sgToast ?? '']?.()));
+
+  $$<HTMLButtonElement>('[data-sg-loading]').forEach((btn) =>
+    btn.addEventListener('click', async () => {
+      setLoading(btn, true, btn.dataset.sgLoading);
+      await wait(1600);
+      setLoading(btn, false);
+      toast('Changes saved');
+    }),
+  );
+
+  const confirmDelete = () =>
+    confirmDialog({
+      title: 'Delete this link?',
+      body: 's.griddo.io/q4-acme will stop working for everyone who has it, and its 128 clicks of history will be deleted. This can’t be undone.',
+      confirmLabel: 'Delete link',
+      danger: true,
+      onConfirm: () => wait(1200),
+    });
+  $('[data-sg-confirm="danger"]')?.addEventListener('click', async () => {
+    if (await confirmDelete()) toast('Link deleted', 'success', { description: 'Just a demo: nothing was deleted.' });
+  });
+  $('[data-sg-confirm="neutral"]')?.addEventListener('click', async () => {
+    const leave = await confirmDialog({ title: 'Leave without saving?', body: 'Your changes to this link will be lost.', confirmLabel: 'Leave', cancelLabel: 'Keep editing' });
+    if (leave) toast('Changes discarded', 'info');
+  });
+  $('[data-sg-modal-apply]')?.addEventListener('click', () => {
+    closeDialog(document.getElementById('sg-modal') as HTMLDialogElement | null);
+    toast('Tags added', 'success', { description: 'Added to 3 links.' });
+  });
+
+  $('#sg-menu')?.addEventListener('click', (e) => {
+    const item = (e.target as HTMLElement).closest<HTMLElement>('[data-sg-menu-item]');
+    if (!item) return;
+    e.preventDefault();
+    $('#sg-menu')?.hidePopover();
+    toast(`${item.textContent?.trim()}: just a demo`, 'info');
+  });
+
+  // ------------------------------------------------------------ Navigation demos
+  const navDemo = $('[data-sg-nav]');
+  navDemo?.addEventListener('click', (e) => {
+    const link = (e.target as HTMLElement).closest<HTMLAnchorElement>('a.nav-link');
+    if (!link) return;
+    e.preventDefault();
+    $$('a.nav-link', navDemo).forEach((a) => (a === link ? a.setAttribute('aria-current', 'page') : a.removeAttribute('aria-current')));
+  });
+
+  const tabs = $$<HTMLButtonElement>('[data-sg-tabs] [role="tab"]');
+  function selectTab(tab: HTMLButtonElement) {
+    tabs.forEach((t) => {
+      const on = t === tab;
+      t.setAttribute('aria-selected', String(on));
+      t.tabIndex = on ? 0 : -1;
+      const panel = document.getElementById(t.getAttribute('aria-controls') ?? '');
+      if (panel) panel.hidden = !on;
+    });
+    tab.focus();
+  }
+  tabs.forEach((tab, i) => {
+    tab.addEventListener('click', () => selectTab(tab));
+    tab.addEventListener('keydown', (e) => {
+      const keys: Record<string, number | undefined> = { ArrowRight: i + 1, ArrowLeft: i - 1, Home: 0, End: tabs.length - 1 };
+      const next = keys[e.key];
+      if (next === undefined) return;
+      e.preventDefault();
+      selectTab(tabs[(next + tabs.length) % tabs.length]);
+    });
+  });
+
+  // ------------------------------------------------------------ Tags
+  $$<HTMLButtonElement>('[data-sg-chips] button.tag').forEach((chip) =>
+    chip.addEventListener('click', () => chip.setAttribute('aria-pressed', String(chip.getAttribute('aria-pressed') !== 'true'))),
+  );
+
+  function removeTag(handle: HTMLElement) {
+    const pill = handle.closest<HTMLElement>('.tag');
+    const box = pill?.parentElement;
+    if (!pill || !box) return;
+    const handles = $$('[data-remove-tag]', box);
+    const index = handles.indexOf(handle);
+    const next = pill.nextSibling;
+    const name = pill.textContent?.trim() ?? 'tag';
+    pill.remove();
+    const rest = $$('[data-remove-tag]', box);
+    (rest[Math.min(index, rest.length - 1)] ?? $('input', box) ?? box).focus();
+    toast(`Removed “${name}”`, 'success', {
+      action: {
+        label: 'Undo',
+        onClick: () => (next && next.parentNode === box ? box.insertBefore(pill, next) : box.prepend(pill)),
+      },
+    });
+  }
+  $$('[data-sg-removable]').forEach((box) => {
+    box.addEventListener('click', (e) => {
+      const handle = (e.target as HTMLElement).closest<HTMLElement>('[data-remove-tag]');
+      if (handle) removeTag(handle);
+    });
+    box.addEventListener('keydown', (e) => {
+      const handle = (e.target as HTMLElement).closest<HTMLElement>('[data-remove-tag]');
+      if (!handle || (e.key !== 'Enter' && e.key !== ' ')) return;
+      e.preventDefault();
+      removeTag(handle);
+    });
+  });
+
+  // ------------------------------------------------------------ Cards
+  function fillStat(key: string, value: string, hint?: string | ReturnType<typeof html>) {
+    const valueEl = $(`[data-stat="${key}"]`);
+    const hintEl = $(`[data-stat-hint="${key}"]`);
+    if (valueEl) valueEl.textContent = value;
+    if (hintEl && hint !== undefined) {
+      if (typeof hint === 'string') hintEl.textContent = hint;
+      else setHTML(hintEl, hint);
+    }
+  }
+  const week = [12, 18, 9, 27, 21, 34, 16];
+  fillStat('sg-total', '1,284', 'Real people — bots excluded');
+  fillStat('sg-week', '137', html`<span class="flex items-center justify-between gap-2"><span>Per day</span>${sparkline(week, 72, 20)}</span>`);
+  fillStat('sg-weeks', '842', html`<span class="font-medium text-brand-800">+24%</span> this week vs last`);
+
+  const HOUR = 3_600_000;
+  const DAY = 24 * HOUR;
+  const at = (offset: number) => new Date(Date.now() + offset).toISOString();
+  const tag = (name: string, color: string, predefined = true): Tag => ({
+    id: `sg-${name}`,
+    name,
+    display_name: name,
+    color,
+    is_predefined: predefined,
+    usage_count: 4,
+    created_at: at(-40 * DAY),
+  });
+  const blank = {
+    og_title: null,
+    og_description: null,
+    og_image_url: null,
+    og_fetched_at: null,
+    valid_since: null,
+    valid_until: null,
+    max_visits: null,
+    crawlable: false,
+    campaign_id: null,
+    user_data: null,
+  };
+  const demoLinks: ShortLink[] = [
+    {
+      ...blank,
+      id: 'sg-link-1',
+      short_code: 'q4-acme',
+      short_url: 'https://s.griddo.io/q4-acme',
+      original_url: 'https://docs.google.com/presentation/d/1x9QkT7a/edit',
+      url_type: 'custom',
+      title: 'Q4 proposal — Acme Corp',
+      forward_parameters: true,
+      tags: [tag('email', 'blue-500'), tag('proposal', 'purple-500'), tag('acme', 'gray-500', false)],
+      click_count: 128,
+      last_click_at: at(-2 * HOUR),
+      created_at: at(-12 * DAY),
+      updated_at: at(-DAY),
+    },
+    {
+      ...blank,
+      id: 'sg-link-2',
+      short_code: 'k3x9pa',
+      short_url: 'https://s.griddo.io/k3x9pa',
+      original_url: 'https://www.acme.com/catalogue/spring-2026',
+      url_type: 'standard',
+      title: 'Spring catalogue',
+      forward_parameters: false,
+      valid_until: at(3 * DAY),
+      tags: [tag('social', 'blue-500'), tag('b2b', 'orange-500')],
+      click_count: 42,
+      last_click_at: at(-DAY),
+      created_at: at(-20 * DAY),
+      updated_at: at(-3 * DAY),
+    },
+    {
+      ...blank,
+      id: 'sg-link-3',
+      short_code: 'm2q7zd',
+      short_url: 'https://s.griddo.io/m2q7zd',
+      original_url: 'https://griddo.io/webinar/growth',
+      url_type: 'campaign',
+      title: 'Growth webinar — Luis, Northwind',
+      forward_parameters: true,
+      campaign_id: 'sg-campaign',
+      user_data: { firstName: 'Luis', company: 'Northwind' },
+      tags: [tag('onboarding', 'pink-500')],
+      click_count: 0,
+      last_click_at: null,
+      created_at: at(-HOUR),
+      updated_at: at(-HOUR),
+    },
+  ];
+
+  const linkList = $('[data-sg-links]');
+  if (linkList) {
+    setHTML(linkList, html`${demoLinks.map((link) => renderLinkCard(link))}`);
+    hydrateTimes(linkList);
+    const WHAT: Record<string, string> = { edit: 'opens the editor', qr: 'shows the QR code' };
+    linkList.addEventListener('click', async (e) => {
+      const target = e.target as HTMLElement;
+      const action = target.closest<HTMLElement>('[data-action]');
+      const anchor = target.closest<HTMLAnchorElement>('a[href]');
+      if (!action && !anchor) return;
+      e.preventDefault();
+      target.closest<HTMLElement>('[popover]')?.hidePopover();
+      if (action?.dataset.action === 'delete') {
+        const card = action.closest<HTMLElement>('li[data-link]');
+        if (card && (await confirmDelete())) {
+          const next = card.nextSibling;
+          card.remove();
+          toast('Link deleted', 'success', { action: { label: 'Undo', onClick: () => linkList.insertBefore(card, next && next.parentNode === linkList ? next : null) } });
+        }
+        return;
+      }
+      const what = action ? WHAT[action.dataset.action ?? ''] ?? 'does its thing' : anchor?.target === '_blank' ? 'opens in a new tab' : 'opens the link’s details';
+      toast('This card is a demo', 'info', { description: `In the app, this ${what}.` });
+    });
+  }
+  setHTML($('[data-sg-skeleton]'), renderLinkSkeleton(2));
+
+  // ------------------------------------------------------------ Data viz
+  const today = new Date();
+  const dayRows: ColumnDatum[] = week.map((value, i) => {
+    const d = new Date(today);
+    d.setDate(today.getDate() - (week.length - 1 - i));
+    return {
+      label: i === week.length - 1 ? 'Today' : d.toLocaleDateString('en-US', { weekday: 'short' }),
+      value,
+      title: d.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' }),
+    };
+  });
+  const weekly = [64, 88, 72, 110, 96, 134, 121, 157];
+  const weekRows: ColumnDatum[] = weekly.map((value, i) => {
+    const d = new Date(today);
+    d.setDate(today.getDate() - today.getDay() - 7 * (weekly.length - 1 - i));
+    return {
+      label: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+      value,
+      title: `Week of ${d.toLocaleDateString('en-US', { month: 'long', day: 'numeric' })}`,
+    };
+  });
+
+  const chartEl = $('[data-sg-chart]');
+  const tableEl = $('[data-sg-chart-table]');
+  const chartToggle = $<HTMLButtonElement>('[data-sg-chart-toggle]');
+  function drawChart(period: 'daily' | 'weekly') {
+    if (!chartEl || !tableEl) return;
+    const rows = period === 'daily' ? dayRows : weekRows;
+    const total = rows.reduce((sum, r) => sum + r.value, 0);
+    const span = period === 'daily' ? 'day, last 7 days' : 'week, last 8 weeks';
+    const sub = $('[data-sg-chart-sub]');
+    if (sub) sub.textContent = period === 'daily' ? 'Per day, last 7 days' : 'Per week, last 8 weeks';
+    columnChart(chartEl, rows, { ariaLabel: `Clicks per ${span}. Total ${total}.`, height: 240 });
+    setHTML(tableEl, dataTable(rows.map((r) => ({ label: r.title, value: r.value })), [period === 'daily' ? 'Day' : 'Week', 'Clicks']));
+  }
+  drawChart('daily');
+  $$<HTMLInputElement>('input[name="sg-chart-period"]').forEach((radio) => radio.addEventListener('change', () => drawChart(radio.value as 'daily' | 'weekly')));
+  if (chartToggle && chartEl && tableEl) bindChartTableToggle(chartToggle, chartEl, tableEl);
+
+  setHTML(
+    $('[data-sg-barlist]'),
+    barList([
+      { label: 'Spain', value: 412 },
+      { label: 'United States', value: 268 },
+      { label: 'Mexico', value: 131 },
+      { label: 'Germany', value: 64 },
+      { label: 'France', value: 38 },
+    ]),
+  );
+  setHTML($('[data-sg-meter]'), meter(34, 50, 'Click-through: 34 of 50 recipients'));
+  setHTML($('[data-sg-spark]'), sparkline([6, 9, 7, 12, 10, 15, 13, 18], 120, 36));
+
+  // ------------------------------------------------------------ Icons
+  const iconFilter = $<HTMLInputElement>('[data-sg-icon-filter]');
+  const iconTiles = $$('[data-icon-name]');
+  iconFilter?.addEventListener('input', () => {
+    const q = iconFilter.value.trim().toLowerCase();
+    let shown = 0;
+    iconTiles.forEach((tile) => {
+      const hit = !q || (tile.dataset.iconName ?? '').includes(q);
+      tile.hidden = !hit;
+      if (hit) shown++;
+    });
+    const count = $('[data-sg-icon-count]');
+    if (count) count.textContent = q ? `${shown} of ${iconTiles.length} icons` : `${iconTiles.length} icons`;
+    const empty = $('[data-sg-icon-empty]');
+    if (empty) empty.hidden = shown > 0;
+  });
+</script>

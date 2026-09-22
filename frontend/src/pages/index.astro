@@ -1,94 +1,357 @@
 ---
-import Layout from '@/layouts/Layout.astro';
-import Navbar from '@/components/Navbar.astro';
+import MarketingLayout from '@/layouts/MarketingLayout.astro';
+import Icon from '@/components/ui/Icon.astro';
+import ProBadge from '@/components/ui/ProBadge.astro';
+import { plans, site } from '@/config/site';
+
+const features = [
+  { icon: 'link', title: 'Custom back-halves', body: '…/acme-proposal reads better than …/x7hq2k.' },
+  { icon: 'qr', title: 'QR codes', body: 'Print it on the brochure. Track it like a link.' },
+  { icon: 'timer', title: 'Expiry & click caps', body: 'Links that retire themselves after a date or N clicks.' },
+  { icon: 'split', title: 'Smart redirects', body: 'Send iPhone, Android or Spanish-speaking visitors somewhere else.' },
+  { icon: 'mail-open', title: 'Email open pixel', body: 'Know when the email was opened, not just the link.' },
+  { icon: 'terminal', title: 'API & MCP', body: 'Automate it, or just ask your AI assistant.' },
+] as const;
+
+const faqs = [
+  {
+    q: 'What counts as a click?',
+    a: 'A real person opening your link. Bots, link-preview crawlers and email-open pixels are filtered out, so the numbers mean what you think they mean.',
+  },
+  {
+    q: 'Can I change where a link goes after I’ve sent it?',
+    a: 'Yes. Edit the destination any time — the short link you already shared keeps working and keeps its history.',
+  },
+  {
+    q: 'How do campaign links work?',
+    a: 'Upload a CSV with one row per recipient. Shurly creates one short link per row and passes that row’s data (name, company…) to your landing page when it’s opened.',
+  },
+  {
+    q: 'What about privacy?',
+    a: 'Visitor IP addresses are anonymized before they’re stored, and short links stay out of search engines unless you say otherwise.',
+  },
+];
 ---
 
-<Layout title="Shurly - URL Shortener">
-  <Navbar showAuth={true} />
+<MarketingLayout title="Shurly">
+  <!-- Hero ----------------------------------------------------------------->
+  <section data-hero class="relative overflow-hidden bg-ink-950 pt-28 pb-20 text-white sm:pt-36 sm:pb-28">
+    <div class="bg-dots-dark absolute inset-0 opacity-70" aria-hidden="true"></div>
+    <div class="absolute -top-40 right-[-12rem] size-[44rem] rounded-full bg-[radial-gradient(closest-side,rgb(184_240_62/0.22),transparent)]" aria-hidden="true"></div>
 
-  <main class="min-h-screen flex flex-col items-center justify-center p-4 bg-gradient-to-br from-blue-50 to-indigo-100">
-    <div class="w-full max-w-3xl">
-      <div class="text-center mb-12">
-        <h1 class="text-6xl font-bold text-gray-900 mb-4">
-          Shurly
+    <div class="relative mx-auto grid max-w-6xl grid-cols-1 items-center gap-14 px-4 sm:px-6 lg:grid-cols-[1.05fr_0.95fr]">
+      <div class="animate-fade-up">
+        <p class="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 py-1 pr-3 pl-1.5 text-[13px] text-ink-300">
+          <span class="rounded-full bg-brand-400 px-2 py-0.5 text-[11px] font-bold tracking-wide text-ink-950 uppercase">New</span>
+          One link per client, straight from a CSV
+        </p>
+        <h1 class="display mt-6 text-[2.75rem] sm:text-6xl lg:text-[4.25rem]">
+          Send the link.<br /><span class="text-brand-400">Know who opened it.</span>
         </h1>
-        <p class="text-2xl text-gray-600 mb-2">
-          A modern, fast URL shortener
+        <p class="mt-6 max-w-xl text-lg leading-8 text-ink-300">
+          Shurly turns your proposals, decks and landing pages into short links you can track — one per client if you like — so you always know who’s interested.
         </p>
-        <p class="text-gray-500">
-          Create short, memorable links in seconds
+        <div class="mt-9 flex flex-col gap-3 sm:flex-row sm:items-center">
+          <a href="/register/" class="btn btn-accent btn-lg">Get started — it’s free<Icon name="arrow-right" /></a>
+          <a href="#how" class="btn btn-lg text-ink-200 hover:bg-white/10 hover:text-white">See how it works</a>
+        </div>
+        <p class="mt-5 flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-ink-400">
+          <span class="inline-flex items-center gap-1.5"><Icon name="check" class="size-4 text-brand-400" />No credit card</span>
+          <span class="inline-flex items-center gap-1.5"><Icon name="check" class="size-4 text-brand-400" />Your first link in under a minute</span>
         </p>
       </div>
 
-      <div class="bg-white rounded-xl shadow-2xl p-8 md:p-12">
-        <div class="mb-8 text-center">
-          <h2 class="text-2xl font-semibold text-gray-900 mb-2">
-            Get Started Today
-          </h2>
-          <p class="text-gray-600">
-            Sign up for free to create and manage unlimited short URLs
-          </p>
-        </div>
-
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-          <div class="text-center p-6 rounded-lg bg-blue-50">
-            <div class="w-12 h-12 bg-blue-600 rounded-full flex items-center justify-center mx-auto mb-4">
-              <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
-              </svg>
+      <!-- Product visual -->
+      <div class="relative mx-auto w-full max-w-md animate-fade-up pb-24 [animation-delay:120ms] lg:max-w-none" aria-hidden="true">
+        <div class="rounded-3xl bg-white p-5 text-ink-900 shadow-xl ring-1 ring-white/10 sm:p-6">
+          <div class="flex items-start gap-3">
+            <div class="grid size-10 shrink-0 place-items-center rounded-xl bg-orange-100 font-display text-lg font-bold text-orange-800">G</div>
+            <div class="min-w-0 flex-1">
+              <p class="truncate font-semibold">Q4 proposal — Acme Corp</p>
+              <p class="shortlink mt-0.5 truncate text-sm text-ink-950">{site.shortDomain.includes('localhost') ? 's.griddo.io' : site.shortDomain}/q4-acme</p>
             </div>
-            <h3 class="font-semibold text-gray-900 mb-2">Fast & Easy</h3>
-            <p class="text-sm text-gray-600">Create short URLs in seconds</p>
+            <span class="btn btn-sm pointer-events-none bg-brand-400 text-ink-950"><Icon name="check" />Copied!</span>
           </div>
-
-          <div class="text-center p-6 rounded-lg bg-green-50">
-            <div class="w-12 h-12 bg-green-600 rounded-full flex items-center justify-center mx-auto mb-4">
-              <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-              </svg>
-            </div>
-            <h3 class="font-semibold text-gray-900 mb-2">Analytics</h3>
-            <p class="text-sm text-gray-600">Track clicks and engagement</p>
+          <p class="mt-3 flex items-center gap-1.5 truncate text-[13px] text-ink-500"><Icon name="corner-down-right" class="size-3.5 shrink-0" />docs.google.com/presentation/d/1x9…/edit</p>
+          <div class="mt-4 flex flex-wrap gap-1.5">
+            <span class="tag" data-color="blue"><span>email</span></span>
+            <span class="tag" data-color="purple"><span>proposal</span></span>
+            <span class="tag"><span>acme</span></span>
           </div>
-
-          <div class="text-center p-6 rounded-lg bg-purple-50">
-            <div class="w-12 h-12 bg-purple-600 rounded-full flex items-center justify-center mx-auto mb-4">
-              <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
-              </svg>
-            </div>
-            <h3 class="font-semibold text-gray-900 mb-2">Custom URLs</h3>
-            <p class="text-sm text-gray-600">Create branded short links</p>
-          </div>
+          <div class="divider my-5"></div>
+          <p class="eyebrow">Activity</p>
+          <ul class="mt-3 grid gap-3 text-sm">
+            <li class="flex items-center gap-3">
+              <span class="relative flex size-2.5"><span class="absolute inline-flex size-full animate-ping-dot rounded-full bg-brand-500"></span><span class="relative size-2.5 rounded-full bg-brand-500"></span></span>
+              <span class="flex-1"><b class="font-semibold">Ana · Acme Corp</b> opened it</span>
+              <span class="text-ink-500">just now</span>
+            </li>
+            <li class="flex items-center gap-3">
+              <span class="size-2.5 rounded-full bg-ink-300"></span>
+              <span class="flex-1"><b class="font-semibold">Luis · Northwind</b> opened it</span>
+              <span class="text-ink-500">2h ago</span>
+            </li>
+            <li class="flex items-center gap-3 text-ink-500">
+              <span class="size-2.5 rounded-full border-2 border-ink-300"></span>
+              <span class="flex-1"><b class="font-semibold text-ink-700">Marta · Globex</b> hasn’t opened it yet</span>
+            </li>
+          </ul>
         </div>
-
-        <div class="flex flex-col sm:flex-row gap-4 justify-center">
-          <a
-            href="/register"
-            class="inline-flex items-center justify-center px-8 py-4 border border-transparent text-lg font-medium rounded-lg text-white bg-blue-600 hover:bg-blue-700 transition-colors shadow-lg hover:shadow-xl"
-          >
-            <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
-            </svg>
-            Sign Up Free
-          </a>
-          <a
-            href="/login"
-            class="inline-flex items-center justify-center px-8 py-4 border-2 border-blue-600 text-lg font-medium rounded-lg text-blue-600 bg-white hover:bg-blue-50 transition-colors"
-          >
-            <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1" />
-            </svg>
-            Login
-          </a>
+        <div class="absolute bottom-2 -left-2 w-52 rounded-2xl bg-ink-900 p-4 text-white shadow-xl ring-1 ring-white/10 sm:-left-10">
+          <p class="text-xs text-ink-400">Clicks this week</p>
+          <div class="mt-1 flex items-end justify-between gap-3">
+            <p class="text-3xl font-semibold tracking-tight">128</p>
+            <svg width="84" height="30" viewBox="0 0 84 30" class="overflow-visible"><path d="M3 24L15 21 27 23 39 15 51 17 63 9 75 6" fill="none" stroke="#39414b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path><circle cx="75" cy="6" r="4" fill="#b8f03e" stroke="#141921" stroke-width="2"></circle></svg>
+          </div>
+          <p class="mt-1 text-xs font-medium text-brand-400">+24% vs last week</p>
         </div>
-      </div>
-
-      <div class="mt-12 text-center text-gray-600">
-        <p class="text-sm">
-          Built with FastAPI, Astro, and Tailwind CSS
-        </p>
       </div>
     </div>
-  </main>
-</Layout>
+  </section>
+
+  <!-- Value props ---------------------------------------------------------->
+  <section id="features" class="bg-canvas py-24 sm:py-28">
+    <div class="mx-auto max-w-6xl px-4 sm:px-6">
+      <div class="max-w-2xl">
+        <p class="eyebrow">Why Shurly</p>
+        <h2 class="display mt-3 text-4xl text-ink-950 sm:text-5xl">A short link that reports back.</h2>
+        <p class="mt-4 text-lg leading-8 text-ink-500">Everything a small marketing team needs to share with confidence — and nothing it doesn’t.</p>
+      </div>
+
+      <div class="mt-14 grid grid-cols-1 gap-5 md:grid-cols-2">
+        <article class="card p-7">
+          <span class="grid size-10 place-items-center rounded-xl bg-ink-950 text-brand-400"><Icon name="users" class="size-5" /></span>
+          <h3 class="mt-5 text-lg font-semibold text-ink-950">One link per client</h3>
+          <p class="mt-2 text-[15px] leading-7 text-ink-500">Upload a CSV and get a personal link for every recipient. See exactly who opened your proposal — not just how many.</p>
+          <div class="mt-6 overflow-hidden rounded-xl border border-line text-sm" aria-hidden="true">
+            <div class="grid grid-cols-[1fr_auto] gap-2 border-b border-line bg-ink-50 px-4 py-2 text-xs font-semibold text-ink-500"><span>Recipient</span><span>Opened</span></div>
+            <div class="grid grid-cols-[1fr_auto] items-center gap-2 border-b border-ink-100 px-4 py-2.5"><span><b class="font-medium">Ana</b> <span class="text-ink-500">· Acme Corp</span></span><span class="badge badge-brand"><Icon name="check" />3×</span></div>
+            <div class="grid grid-cols-[1fr_auto] items-center gap-2 border-b border-ink-100 px-4 py-2.5"><span><b class="font-medium">Luis</b> <span class="text-ink-500">· Northwind</span></span><span class="badge badge-brand"><Icon name="check" />1×</span></div>
+            <div class="grid grid-cols-[1fr_auto] items-center gap-2 px-4 py-2.5"><span><b class="font-medium">Marta</b> <span class="text-ink-500">· Globex</span></span><span class="badge badge-outline">Not yet</span></div>
+          </div>
+        </article>
+
+        <article class="card p-7">
+          <span class="grid size-10 place-items-center rounded-xl bg-ink-950 text-brand-400"><Icon name="chart" class="size-5" /></span>
+          <h3 class="mt-5 text-lg font-semibold text-ink-950">Know who’s interested</h3>
+          <p class="mt-2 text-[15px] leading-7 text-ink-500">Clicks by day, last click, top links. Bots and preview crawlers are filtered out, so a click means a person.</p>
+          <div class="mt-6 rounded-xl border border-line p-4" aria-hidden="true">
+            <div class="flex items-baseline justify-between"><p class="text-2xl font-semibold tracking-tight">42 <span class="text-sm font-normal text-ink-500">clicks</span></p><p class="text-xs text-ink-500">Last click 2h ago</p></div>
+            <svg viewBox="0 0 280 80" class="mt-3 w-full">
+              <line x1="0" x2="280" y1="71.5" y2="71.5" stroke="#e4e7eb" />
+              {[18, 30, 22, 44, 36, 58, 50].map((h, i) => (
+                <path d={`M${20 + i * 40},72V${76 - h}q0,-4 4,-4h10q4,0 4,4V72Z`} fill="#66a011" />
+              ))}
+              {['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((d, i) => (
+                <text x={29 + i * 40} y="80" text-anchor="middle" font-size="7" fill="#6b737d">{d}</text>
+              ))}
+            </svg>
+          </div>
+        </article>
+
+        <article class="card p-7">
+          <span class="grid size-10 place-items-center rounded-xl bg-ink-950 text-brand-400"><Icon name="share" class="size-5" /></span>
+          <h3 class="mt-5 text-lg font-semibold text-ink-950">Looks great when shared</h3>
+          <p class="mt-2 text-[15px] leading-7 text-ink-500">Shurly fetches the page’s title and image automatically, so your link unfurls nicely on LinkedIn, WhatsApp and Slack.</p>
+          <div class="mt-6 overflow-hidden rounded-xl border border-line" aria-hidden="true">
+            <div class="h-28 bg-[linear-gradient(135deg,#141921_0%,#39414b_60%,#4b7f11_100%)]"></div>
+            <div class="px-4 py-3">
+              <p class="text-xs text-ink-500 uppercase">acme.com</p>
+              <p class="mt-0.5 font-semibold text-ink-950">The 2026 Product Catalogue</p>
+              <p class="mt-0.5 line-clamp-1 text-sm text-ink-500">Everything new this season, in one place.</p>
+            </div>
+          </div>
+        </article>
+
+        <article class="card p-7">
+          <span class="grid size-10 place-items-center rounded-xl bg-ink-950 text-brand-400"><Icon name="tags" class="size-5" /></span>
+          <h3 class="mt-5 text-lg font-semibold text-ink-950">Organized from day one</h3>
+          <p class="mt-2 text-[15px] leading-7 text-ink-500">Color-coded tags for channels, intent and audience — plus your own — and filters to find any link in seconds.</p>
+          <div class="mt-6 flex flex-wrap gap-2" aria-hidden="true">
+            <span class="tag" data-color="blue"><span>email</span></span>
+            <span class="tag" data-color="blue"><span>social</span></span>
+            <span class="tag" data-color="green"><span>conversion</span></span>
+            <span class="tag" data-color="purple"><span>landing-page</span></span>
+            <span class="tag" data-color="orange"><span>b2b</span></span>
+            <span class="tag" data-color="pink"><span>onboarding</span></span>
+            <span class="tag"><span>q4-launch</span></span>
+            <span class="tag"><span>acme</span></span>
+          </div>
+        </article>
+      </div>
+
+      <ul class="mt-5 grid grid-cols-1 gap-px overflow-hidden rounded-2xl border border-line bg-line sm:grid-cols-2 lg:grid-cols-3">
+        {
+          features.map((f) => (
+            <li class="flex gap-4 bg-white p-6">
+              <span class="grid size-9 shrink-0 place-items-center rounded-lg bg-ink-100 text-ink-700">
+                <Icon name={f.icon} />
+              </span>
+              <div>
+                <p class="font-semibold text-ink-950">{f.title}</p>
+                <p class="mt-1 text-sm leading-6 text-ink-500">{f.body}</p>
+              </div>
+            </li>
+          ))
+        }
+      </ul>
+    </div>
+  </section>
+
+  <!-- How it works --------------------------------------------------------->
+  <section id="how" class="border-y border-line bg-white py-24 sm:py-28">
+    <div class="mx-auto max-w-6xl px-4 sm:px-6">
+      <div class="mx-auto max-w-2xl text-center">
+        <p class="eyebrow">How it works</p>
+        <h2 class="display mt-3 text-4xl text-ink-950 sm:text-5xl">Paste. Share. Know.</h2>
+      </div>
+      <ol class="mt-16 grid grid-cols-1 gap-10 md:grid-cols-3 md:gap-8">
+        <li class="relative">
+          <span class="display text-6xl text-ink-200">1</span>
+          <h3 class="mt-3 text-lg font-semibold text-ink-950">Paste a long link</h3>
+          <p class="mt-2 text-[15px] leading-7 text-ink-500">A Drive folder, a Dropbox deck, a landing page. Give it a name so you’ll recognise it later.</p>
+        </li>
+        <li class="relative">
+          <span class="display text-6xl text-ink-200">2</span>
+          <h3 class="mt-3 text-lg font-semibold text-ink-950">Share the short one</h3>
+          <p class="mt-2 text-[15px] leading-7 text-ink-500">It’s already on your clipboard. Drop it in an email, a proposal or a QR code.</p>
+        </li>
+        <li class="relative">
+          <span class="display text-6xl text-brand-600">3</span>
+          <h3 class="mt-3 text-lg font-semibold text-ink-950">Know who’s interested</h3>
+          <p class="mt-2 text-[15px] leading-7 text-ink-500">Watch the clicks come in and follow up with the people who opened it — while they’re still warm.</p>
+        </li>
+      </ol>
+    </div>
+  </section>
+
+  <!-- Campaign spotlight ---------------------------------------------------->
+  <section class="bg-canvas py-24 sm:py-28">
+    <div class="mx-auto grid max-w-6xl grid-cols-1 items-center gap-12 px-4 sm:px-6 lg:grid-cols-2">
+      <div>
+        <p class="eyebrow">Campaigns</p>
+        <h2 class="display mt-3 text-4xl text-ink-950 sm:text-5xl">50 clients. 50 links. One CSV.</h2>
+        <p class="mt-5 text-lg leading-8 text-ink-500">
+          Drop in a spreadsheet of recipients and Shurly creates a personal link for each one. When Ana from Acme opens hers, your landing page already knows her name.
+        </p>
+        <ul class="mt-7 grid gap-3 text-[15px] text-ink-700">
+          <li class="flex gap-3"><Icon name="check" class="mt-1 size-4 shrink-0 text-brand-700" />Any columns you like — name, company, region, deal ID</li>
+          <li class="flex gap-3"><Icon name="check" class="mt-1 size-4 shrink-0 text-brand-700" />See the click-through rate for the whole campaign</li>
+          <li class="flex gap-3"><Icon name="check" class="mt-1 size-4 shrink-0 text-brand-700" />Export every link back to CSV for your email tool</li>
+        </ul>
+      </div>
+      <div class="card overflow-hidden" aria-hidden="true">
+        <div class="flex items-center gap-2 border-b border-line bg-ink-50 px-4 py-3 text-sm font-medium text-ink-600">
+          <Icon name="file-spreadsheet" class="size-4 text-ink-500" />recipients.csv
+          <span class="ml-auto badge badge-brand">3 links created</span>
+        </div>
+        <table class="table">
+          <thead><tr><th>firstName</th><th>company</th><th>Short link</th><th class="text-right">Clicks</th></tr></thead>
+          <tbody>
+            <tr><td>Ana</td><td>Acme Corp</td><td class="shortlink text-ink-950">…/k3x9pa</td><td class="num text-right font-medium">3</td></tr>
+            <tr><td>Luis</td><td>Northwind</td><td class="shortlink text-ink-950">…/m2q7zd</td><td class="num text-right font-medium">1</td></tr>
+            <tr><td>Marta</td><td>Globex</td><td class="shortlink text-ink-950">…/t8w4hb</td><td class="num text-right text-ink-400">0</td></tr>
+          </tbody>
+        </table>
+        <div class="flex items-center gap-4 border-t border-line px-4 py-4">
+          <div class="flex-1">
+            <div class="flex justify-between text-xs"><span class="font-medium text-ink-700">Click-through</span><span class="text-ink-500">2 of 3 recipients</span></div>
+            <div class="mt-2 h-2 overflow-hidden rounded-full bg-brand-100"><div class="h-full w-2/3 rounded-full bg-brand-600"></div></div>
+          </div>
+          <p class="text-2xl font-semibold tracking-tight">67%</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Pricing -------------------------------------------------------------->
+  <section id="pricing" class="border-y border-line bg-white py-24 sm:py-28">
+    <div class="mx-auto max-w-6xl px-4 sm:px-6">
+      <div class="mx-auto max-w-2xl text-center">
+        <p class="eyebrow">Pricing</p>
+        <h2 class="display mt-3 text-4xl text-ink-950 sm:text-5xl">Start free. Stay free, even.</h2>
+        <p class="mt-4 text-lg text-ink-500">Shurly is in early access: every feature is unlocked while we get billing ready.</p>
+      </div>
+      <div class="mx-auto mt-14 grid grid-cols-1 max-w-4xl gap-5 md:grid-cols-2">
+        {
+          plans.map((plan) => (
+            <div class:list={['relative flex flex-col rounded-3xl p-8', plan.id === 'pro' ? 'bg-ink-950 text-white shadow-xl' : 'card']}>
+              <div class="flex items-center gap-3">
+                <h3 class="display text-2xl">{plan.name}</h3>
+                {plan.status === 'coming-soon' && <ProBadge label="Coming soon" />}
+              </div>
+              <p class:list={['mt-2 text-[15px]', plan.id === 'pro' ? 'text-ink-300' : 'text-ink-500']}>{plan.blurb}</p>
+              <p class="mt-6 flex h-12 items-baseline gap-2">
+                {plan.status === 'available' ? (
+                  <>
+                    <span class="text-5xl font-semibold tracking-tight">{plan.price}</span>
+                    {plan.cadence && <span class="text-sm text-ink-500">{plan.cadence}</span>}
+                  </>
+                ) : (
+                  <span class="self-center text-2xl font-semibold tracking-tight text-ink-200">Pricing announced soon</span>
+                )}
+              </p>
+              <ul class="mt-7 grid flex-1 gap-3 text-[15px]">
+                {plan.features.map((f) => (
+                  <li class="flex gap-3">
+                    <Icon name="check" class:list={['mt-0.5 size-5 shrink-0', plan.id === 'pro' ? 'text-brand-400' : 'text-brand-700']} />
+                    {f}
+                  </li>
+                ))}
+              </ul>
+              <a href="/register/" class:list={['btn btn-lg mt-8 w-full', plan.id === 'pro' ? 'btn-accent' : 'btn-primary']}>
+                {plan.id === 'pro' ? 'Start free, upgrade later' : 'Create free account'}
+              </a>
+            </div>
+          ))
+        }
+      </div>
+    </div>
+  </section>
+
+  <!-- FAQ ------------------------------------------------------------------>
+  <section class="bg-canvas py-24 sm:py-28">
+    <div class="mx-auto grid max-w-6xl grid-cols-1 gap-12 px-4 sm:px-6 lg:grid-cols-[0.8fr_1.2fr]">
+      <div>
+        <p class="eyebrow">Questions</p>
+        <h2 class="display mt-3 text-4xl text-ink-950">Good questions, straight answers.</h2>
+      </div>
+      <div class="grid gap-3">
+        {
+          faqs.map((f) => (
+            <details class="disclosure card group px-6 py-5">
+              <summary class="justify-between text-left font-semibold text-ink-950">
+                {f.q}
+                <Icon name="chevron-down" class="chevron size-5 shrink-0 text-ink-400" />
+              </summary>
+              <p class="disclosure-body mt-3 text-[15px] leading-7 text-ink-500">{f.a}</p>
+            </details>
+          ))
+        }
+      </div>
+    </div>
+  </section>
+
+  <!-- Final CTA ------------------------------------------------------------>
+  <section class="relative overflow-hidden bg-ink-950 py-24 text-white">
+    <div class="bg-dots-dark absolute inset-0 opacity-60" aria-hidden="true"></div>
+    <div class="relative mx-auto max-w-3xl px-4 text-center sm:px-6">
+      <h2 class="display text-4xl sm:text-5xl">Your next proposal deserves<br class="hidden sm:block" /> a link that reports back.</h2>
+      <p class="mt-5 text-lg text-ink-300">Create a free account and share your first Shurly link in under a minute.</p>
+      <div class="mt-9 flex flex-col justify-center gap-3 sm:flex-row">
+        <a href="/register/" class="btn btn-accent btn-lg">Get started — it’s free<Icon name="arrow-right" /></a>
+        <a href="/login/" class="btn btn-lg text-ink-200 hover:bg-white/10 hover:text-white">I already have an account</a>
+      </div>
+      {
+        (site.sourceUrl || site.sponsorUrl) && (
+          <p class="mt-10 text-sm text-ink-400">
+            Prefer to run it yourself? Shurly is open source.{' '}
+            {site.sourceUrl && <a class="font-medium text-white underline decoration-brand-400 decoration-2 underline-offset-4" href={site.sourceUrl}>Self-host it</a>}
+            {site.sourceUrl && site.sponsorUrl && ' · '}
+            {site.sponsorUrl && <a class="inline-flex items-center gap-1 font-medium text-white underline decoration-brand-400 decoration-2 underline-offset-4" href={site.sponsorUrl}><Icon name="coffee" class="size-4" />Buy us a coffee</a>}
+          </p>
+        )
+      }
+    </div>
+  </section>
+</MarketingLayout>
