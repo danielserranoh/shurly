@@ -186,6 +186,7 @@ docker compose up -d
 - `DISABLE_TRACK_PARAM=nostat` → `?nostat` skips visit logging but still redirects
 - `REDIRECT_STATUS_CODE=302` → `Cache-Control: private, max-age=0`
 - `DEFAULT_DOMAIN=shurl.griddo.io` → seeded at startup; legacy NULL `domain_id` URLs are matched as a fallback
+- `OG_FETCH_ALLOW_PRIVATE=false` → OG previews refuse destinations resolving to loopback/private/link-local IPs (SSRF guard), so `localhost` pages get empty previews unless this is set to `true` locally
 
 ### Git Workflow
 - **PRs target `dev`**; `main` is the release branch
