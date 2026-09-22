@@ -1,6 +1,6 @@
 ---
 /**
- * Shurly logo. The lime dot is the brand signature ("surely." / the click).
+ * Shurly logo. The brand-blue dot is the signature ("surely." / the click).
  * - variant: wordmark (default) | isotype
  * - tone: default (ink on light) | reversed (white on dark) | mono (single ink color)
  * Clear space: keep at least the dot's diameter free around the mark.
@@ -20,7 +20,7 @@ const { variant = 'wordmark', tone = 'default', height = 24, class: className = 
 const RATIO = { wordmark: 3069 / 904, isotype: 1 };
 const FILES = {
   wordmark: { default: 'wordmark.svg', reversed: 'wordmark-reversed.svg', mono: 'wordmark-mono-ink.svg' },
-  isotype: { default: 'isotype.svg', reversed: 'isotype-lime.svg', mono: 'isotype.svg' },
+  isotype: { default: 'isotype.svg', reversed: 'isotype-brand.svg', mono: 'isotype.svg' },
 };
 const src = `/brand/${FILES[variant][tone]}`;
 const width = Math.round(height * RATIO[variant]);

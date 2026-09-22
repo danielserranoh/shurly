@@ -4,7 +4,7 @@
   "description": "Trackable short links for small marketing teams.",
   "start_url": "/dashboard/",
   "display": "standalone",
-  "background_color": "#f5f6f8",
+  "background_color": "#faf9f6",
   "theme_color": "#090d13",
   "icons": [
     { "src": "/android-chrome-192x192.png", "sizes": "192x192", "type": "image/png" },

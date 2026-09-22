@@ -1,5 +1,5 @@
 // Lightweight, dependency-free charts rendered as SVG/HTML.
-// Specs (design/DESIGN_SYSTEM.md → Data viz): single series in brand-600 (3.2:1 on white),
+// Specs (design/DESIGN_SYSTEM.md → Data viz): single series in brand-400, Griddo blue (5.1:1 on white),
 // bars ≤ 24px with 4px rounded data-ends and square baselines, hairline solid grid,
 // one selective direct label (the max), hover/focus tooltip per column, table-view twin.
 
@@ -21,7 +21,7 @@ export interface ColumnChartOptions {
   emptyMessage?: string;
 }
 
-const SERIES = 'var(--color-brand-600)';
+const SERIES = 'var(--color-brand-400)';
 const GRID = 'var(--color-ink-100)';
 const BASELINE = 'var(--color-ink-200)';
 
@@ -156,7 +156,7 @@ export function barList(items: BarListItem[], unit: [string, string] = ['click',
       return html`<li class="grid grid-cols-[minmax(0,11rem)_1fr] items-center gap-4 text-sm max-sm:grid-cols-1 max-sm:gap-1.5">
         <div class="flex min-w-0 flex-col">${label}${item.sublabel ? html`<span class="truncate text-xs text-ink-500">${item.sublabel}</span>` : ''}</div>
         <div class="flex items-center gap-2.5" aria-label="${formatNumber(item.value)} ${item.value === 1 ? unit[0] : unit[1]}">
-          <span class="h-2.5 rounded-r-[4px] bg-brand-600" style="width:${pct.toFixed(1)}%"></span>
+          <span class="h-2.5 rounded-r-[4px] bg-brand-400" style="width:${pct.toFixed(1)}%"></span>
           <span class="num shrink-0 text-xs font-semibold text-ink-700">${formatNumber(item.value)}</span>
         </div>
       </li>`;
@@ -168,7 +168,7 @@ export function barList(items: BarListItem[], unit: [string, string] = ['click',
 export function meter(value: number, max: number, label: string): RawHTML {
   const pct = max > 0 ? Math.min(100, (value / max) * 100) : 0;
   return html`<div role="meter" aria-label="${label}" aria-valuemin="0" aria-valuemax="${max}" aria-valuenow="${value}" class="h-2 w-full overflow-hidden rounded-full bg-brand-100">
-    <div class="h-full rounded-full bg-brand-600 transition-[width] duration-700 ease-snappy" style="width:${pct.toFixed(1)}%"></div>
+    <div class="h-full rounded-full bg-brand-400 transition-[width] duration-700 ease-snappy" style="width:${pct.toFixed(1)}%"></div>
   </div>`;
 }
 
@@ -182,7 +182,7 @@ export function sparkline(values: number[], width = 96, height = 28): RawHTML {
   const [lx, ly] = pts[pts.length - 1];
   return html`<svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" aria-hidden="true" class="overflow-visible">
     <path d="${d}" fill="none" stroke="var(--color-ink-300)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-    <circle cx="${lx.toFixed(1)}" cy="${ly.toFixed(1)}" r="4" fill="var(--color-brand-600)" stroke="#fff" stroke-width="2"/>
+    <circle cx="${lx.toFixed(1)}" cy="${ly.toFixed(1)}" r="4" fill="var(--color-brand-400)" stroke="#fff" stroke-width="2"/>
   </svg>`;
 }
 

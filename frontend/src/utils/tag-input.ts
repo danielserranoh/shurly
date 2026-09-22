@@ -76,7 +76,7 @@ export function mountTagInput(root: HTMLElement): TagInputHandle {
         .map((opt, i) => {
           const common = `id="${id}-opt-${i}" role="option" data-index="${i}" aria-selected="${i === active}" class="flex cursor-pointer items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm ${i === active ? 'bg-ink-100' : ''} hover:bg-ink-100"`;
           if (opt.kind === 'create') {
-            return `<li ${common}><span class="grid size-5 place-items-center rounded-md bg-ink-950 text-brand-400">${iconSvg('plus', 'size-3.5', 2.5)}</span><span>Create <b class="font-semibold">“${escapeHtml(opt.name)}”</b></span></li>`;
+            return `<li ${common}><span class="grid size-5 place-items-center rounded-md bg-ink-950 text-brand-300">${iconSvg('plus', 'size-3.5', 2.5)}</span><span>Create <b class="font-semibold">“${escapeHtml(opt.name)}”</b></span></li>`;
           }
           const { family } = tagColorAttrs(opt.tag.color);
           const category = opt.tag.is_predefined && family ? CATEGORY_LABELS[family] : 'Your tag';

@@ -38,7 +38,7 @@ export function renderCampaignCard(c: Campaign): RawHTML {
   const menuId = `campaign-menu-${c.id}`;
   return html`<li class="card card-interactive flex flex-col gap-4 p-5" data-campaign="${c.id}">
     <div class="flex items-start gap-3">
-      <span class="grid size-10 shrink-0 place-items-center rounded-xl bg-ink-950 text-brand-400">${icon('megaphone', 'size-5')}</span>
+      <span class="grid size-10 shrink-0 place-items-center rounded-xl bg-ink-950 text-brand-300">${icon('megaphone', 'size-5')}</span>
       <div class="min-w-0 flex-1">
         <a href="${campaignHref(c.id)}" class="block truncate font-semibold text-ink-950 hover:underline decoration-ink-300 underline-offset-4">${c.name}</a>
         <p class="mt-0.5 flex min-w-0 items-center gap-1.5 text-[13px] text-ink-500">${icon('corner-down-right', 'size-3.5 shrink-0')}

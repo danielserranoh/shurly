@@ -28,7 +28,7 @@ A modern, full-stack URL shortener with analytics and campaign management, built
 ### Frontend
 - **Astro 7** (Vite 8), fully static output (`frontend/dist/` can be served from S3/any CDN), vanilla TypeScript islands
 - **Tailwind CSS 4** via **`@tailwindcss/vite`**. The design tokens live in `src/styles/global.css` (`@theme`)
-- **Lucide** icons, self-hosted **Inter / Bricolage Grotesque / JetBrains Mono** variable fonts, **uqr** for QR codes
+- **Lucide** icons, self-hosted **Figtree / JetBrains Mono** variable fonts (headlines in **Logical**, Griddo's typeface, when available), **uqr** for QR codes
 - Design system: [`design/DESIGN_SYSTEM.md`](design/DESIGN_SYSTEM.md) and the live styleguide at `/styleguide/`
 
 ## Prerequisites

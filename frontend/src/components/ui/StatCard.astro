@@ -17,7 +17,7 @@ const { label, stat, icon, hint, accent = false } = Astro.props;
 <div class:list={['card relative overflow-hidden p-5', accent && 'bg-ink-950 text-white']}>
   <div class="flex items-center justify-between">
     <p class:list={['text-sm font-medium', accent ? 'text-ink-300' : 'text-ink-500']}>{label}</p>
-    <span class:list={['grid size-8 place-items-center rounded-lg', accent ? 'bg-white/10 text-brand-400' : 'bg-ink-100 text-ink-600']}>
+    <span class:list={['grid size-8 place-items-center rounded-lg', accent ? 'bg-white/10 text-brand-300' : 'bg-ink-100 text-ink-600']}>
       <Icon name={icon} />
     </span>
   </div>

@@ -69,8 +69,8 @@ const textSamples = [
   { token: 'ink-700', cls: 'text-ink-700', use: 'Body copy' },
   { token: 'ink-500', cls: 'text-ink-500', use: 'Secondary text and hints. The lightest ink for text.' },
   { token: 'ink-400', cls: 'text-ink-400', use: 'Too light for text. Icons and decoration only.' },
-  { token: 'brand-700', cls: 'text-brand-700', use: 'Brand-colored text. The lightest lime allowed on white.' },
-  { token: 'brand-400', cls: 'text-brand-400', use: 'Never text on light surfaces. It’s a fill.' },
+  { token: 'brand-700', cls: 'text-brand-700', use: 'Dark brand text, for small sizes and dense UI.' },
+  { token: 'brand-400', cls: 'text-brand-400', use: 'Brand text and links on light surfaces. On ink, use brand-300.' },
 ].map((s) => ({ ...s, ratio: ratio(hexOf(s.token), WHITE), ok: contrast(hexOf(s.token), WHITE) >= 4.5 }));
 
 const statuses: { name: string; badge: string; icon: IconName; label: string; alert: string; iconCls: string; message: string; tokens: string; use: string }[] = [
@@ -90,10 +90,10 @@ const clearX = Math.round(clearH * DOT_RATIO * 10) / 10;
 const dotStyle = (scale = 1) => `left:97.13%;top:71.24%;width:${(5.735 * scale).toFixed(2)}%`;
 
 const logoTiles = [
-  { title: 'Primary', body: 'Ink and lime, on white and light surfaces.', file: 'wordmark.svg', code: '<Logo />', stage: 'bg-white', src: '/brand/wordmark.svg' },
-  { title: 'Reversed', body: 'White and lime, on ink and dark photos.', file: 'wordmark-reversed.svg', code: '<Logo tone="reversed" />', stage: 'bg-ink-950', src: '/brand/wordmark-reversed.svg' },
-  { title: 'Mono ink', body: 'On lime, and for one-color print.', file: 'wordmark-mono-ink.svg', code: '<Logo tone="mono" />', stage: 'bg-brand-400', src: '/brand/wordmark-mono-ink.svg' },
-  { title: 'Mono white', body: 'On busy or colored backgrounds.', file: 'wordmark-mono-white.svg', code: '<img>', stage: 'bg-[linear-gradient(135deg,#141921_0%,#39414b_55%,#4b7f11_100%)]', src: '/brand/wordmark-mono-white.svg' },
+  { title: 'Primary', body: 'Ink and Griddo blue, on white and light surfaces.', file: 'wordmark.svg', code: '<Logo />', stage: 'bg-white', src: '/brand/wordmark.svg' },
+  { title: 'Reversed', body: 'White and Griddo blue, on ink and dark photos.', file: 'wordmark-reversed.svg', code: '<Logo tone="reversed" />', stage: 'bg-ink-950', src: '/brand/wordmark-reversed.svg' },
+  { title: 'Mono ink', body: 'On light tints, and for one-color print.', file: 'wordmark-mono-ink.svg', code: '<Logo tone="mono" />', stage: 'bg-brand-100', src: '/brand/wordmark-mono-ink.svg' },
+  { title: 'Mono white', body: 'On brand blue, busy or colored backgrounds.', file: 'wordmark-mono-white.svg', code: '<img>', stage: 'bg-[linear-gradient(135deg,#141921_0%,#39414b_55%,#5057ff_100%)]', src: '/brand/wordmark-mono-white.svg' },
 ];
 
 // ---------------------------------------------------------------- Typography
@@ -102,20 +102,20 @@ const features = bodyFeatures();
 const families = [
   {
     role: 'Display',
-    name: fonts.display ?? 'Bricolage Grotesque',
+    name: fonts.display ?? 'Logical',
     aa: 'display',
     sample: 'Send the link.',
     sampleCls: 'display text-[1.75rem]',
-    use: 'Page titles, marketing headlines, empty-state titles. Weight 750, tracked −0.03em. The logo uses its ExtraBold at −0.04em.',
+    use: 'Griddo’s typeface. Page titles, marketing headlines, empty-state titles. Weight 750, tracked −0.03em. Falls back to Figtree until its web font is added.',
     code: ['.display', 'font-display'],
   },
   {
     role: 'Interface',
-    name: fonts.sans ?? 'Inter',
+    name: fonts.sans ?? 'Figtree',
     aa: 'font-semibold',
     sample: 'Know who opened it.',
     sampleCls: 'text-2xl font-semibold tracking-tight',
-    use: 'Everything you read and click, numbers and stat values included. Weights 400–600, with open 4 6 9 and a single-storey a.',
+    use: 'Everything you read and click, numbers and stat values included. Weights 400–600, tabular figures in tables.',
     code: ['font-sans', ...features],
   },
   {
@@ -211,8 +211,8 @@ const anim = Object.fromEntries(animations().map((a) => [a.name, a.value.replace
 
 // ---------------------------------------------------------------- Buttons
 const buttonVariants: { cls: string; name: string; use: string; icon: IconName; label: string }[] = [
-  { cls: 'btn-primary', name: 'Primary', use: 'The main action on a screen. Ink, not lime.', icon: 'plus', label: 'New link' },
-  { cls: 'btn-accent', name: 'Accent', use: 'Lime moments: Copy, and one hero call to action.', icon: 'copy', label: 'Copy' },
+  { cls: 'btn-primary', name: 'Primary', use: 'The main action on a screen. Ink, not blue.', icon: 'plus', label: 'New link' },
+  { cls: 'btn-accent', name: 'Accent', use: 'Brand moments: Copy, and one hero call to action.', icon: 'copy', label: 'Copy' },
   { cls: 'btn-secondary', name: 'Secondary', use: 'Everything else.', icon: 'pencil', label: 'Edit' },
   { cls: 'btn-ghost', name: 'Ghost', use: 'Toolbars, dismiss, low emphasis.', icon: 'list', label: 'Table' },
   { cls: 'btn-danger', name: 'Danger', use: 'Confirming a destructive action.', icon: 'trash', label: 'Delete link' },
@@ -323,7 +323,7 @@ const colorCount = allColors.length;
   <!-- Hero ----------------------------------------------------------------->
   <div class="relative overflow-hidden bg-ink-950 text-white">
     <div class="bg-dots-dark absolute inset-0 opacity-60" aria-hidden="true"></div>
-    <div class="absolute -top-56 right-[-14rem] size-[44rem] rounded-full bg-[radial-gradient(closest-side,rgb(184_240_62/0.18),transparent)]" aria-hidden="true"></div>
+    <div class="absolute -top-56 right-[-14rem] size-[44rem] rounded-full bg-[radial-gradient(closest-side,rgb(80_87_255/0.36),transparent)]" aria-hidden="true"></div>
     <div class="relative mx-auto grid max-w-7xl items-center gap-12 px-4 pt-16 pb-14 sm:px-6 sm:pt-20 lg:grid-cols-[1.1fr_0.9fr] lg:pb-20">
       <div class="animate-fade-up">
         <p class="eyebrow text-ink-400">Shurly design system</p>
@@ -428,7 +428,7 @@ const colorCount = allColors.length;
 
         <Specimen
           title="Logo"
-          description="The wordmark is set in Bricolage Grotesque ExtraBold, tracked −0.04em. Its lime dot is the period of “Surely.” — and the click."
+          description="The wordmark is set in Bricolage Grotesque ExtraBold, tracked −0.04em. Its Griddo-blue dot is the period of “Surely.” — and the click."
           code={['<Logo />', 'public/brand/', 'design/brand/']}
           stage="none"
         >
@@ -452,7 +452,7 @@ const colorCount = allColors.length;
           </div>
         </Specimen>
 
-        <Specimen title="Isotype & lockup" description="“s.” in an ink rounded square, for small sizes: favicons, app icons, avatars. On dark, use the lime tile." code={['<Logo variant="isotype" />', 'tone="reversed"']} stage="none">
+        <Specimen title="Isotype & lockup" description="“s.” in an ink rounded square, for small sizes: favicons, app icons, avatars. On dark, use the blue tile." code={['<Logo variant="isotype" />', 'tone="reversed"']} stage="none">
           <div class="grid overflow-hidden rounded-2xl border border-line md:grid-cols-2 xl:grid-cols-[1fr_1fr_1.2fr]">
             <div class="bg-white p-6">
               <div class="flex items-end gap-4" role="img" aria-label="Isotype at 64, 40, 24 and 16 pixels">
@@ -468,7 +468,7 @@ const colorCount = allColors.length;
               <p class="mt-4 font-mono text-[11px] text-ink-500">isotype.svg</p>
             </div>
             <div class="bg-ink-950 p-6">
-              <div class="flex items-end gap-4" role="img" aria-label="Lime isotype at 64, 40, 24 and 16 pixels">
+              <div class="flex items-end gap-4" role="img" aria-label="Blue isotype at 64, 40, 24 and 16 pixels">
                 {
                   [64, 40, 24, 16].map((h) => (
                     <figure class="grid justify-items-center gap-2">
@@ -478,7 +478,7 @@ const colorCount = allColors.length;
                   ))
                 }
               </div>
-              <p class="mt-4 font-mono text-[11px] text-ink-400">isotype-lime.svg</p>
+              <p class="mt-4 font-mono text-[11px] text-ink-400">isotype-brand.svg</p>
             </div>
             <div class="grid content-between gap-6 border-t border-line bg-white p-6 md:col-span-2 xl:col-span-1 xl:border-t-0 xl:border-l">
               <span class="inline-flex items-center gap-3.5" role="img" aria-label="Shurly horizontal lockup">
@@ -532,7 +532,7 @@ const colorCount = allColors.length;
 
         <Specimen title="Misuse" description="The logo only comes in the files above. Everything else is a don’t." stage="none">
           <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            <DoDont kind="dont" caption="recolor the dot. On light backgrounds it’s always lime." stage="bg-white">
+            <DoDont kind="dont" caption="recolor the dot. On light backgrounds it’s always Griddo blue." stage="bg-white">
               <span class="relative inline-block">
                 <img src="/brand/wordmark.svg" width={wordmarkWidth(36)} height="36" alt="Wordmark with a pink dot" class="block" draggable="false" />
                 <span class="absolute aspect-square -translate-x-1/2 -translate-y-1/2 rounded-full bg-pink-500" style={dotStyle(1.12)} aria-hidden="true"></span>
@@ -541,8 +541,8 @@ const colorCount = allColors.length;
             <DoDont kind="dont" caption="stretch, squash or rotate it. Scale it evenly." stage="bg-white">
               <img src="/brand/wordmark.svg" width={wordmarkWidth(36)} height="36" alt="Wordmark stretched sideways" style="transform: scale(1.35, 0.78)" draggable="false" />
             </DoDont>
-            <DoDont kind="dont" caption="put the full-color logo on lime. The dot vanishes; use mono ink." stage="bg-brand-400">
-              <img src="/brand/wordmark.svg" width={wordmarkWidth(36)} height="36" alt="Full-color wordmark on lime" draggable="false" />
+            <DoDont kind="dont" caption="put the full-color logo on brand blue. The dot vanishes; use mono white." stage="bg-brand-400">
+              <img src="/brand/wordmark.svg" width={wordmarkWidth(36)} height="36" alt="Full-color wordmark on brand blue" draggable="false" />
             </DoDont>
             <DoDont kind="dont" caption="retype the name in another font. Use the SVG files." stage="bg-white">
               <span class="font-sans text-[34px] leading-none font-bold tracking-normal text-ink-950">Shurly<span class="text-brand-500">.</span></span>
@@ -552,13 +552,13 @@ const colorCount = allColors.length;
       </Section>
 
       <!-- 02 Color ======================================================= -->
-      <Section id="color" index={num('color')} title="Color" intro="Ink does the talking; lime does the clicking. Cool neutrals carry text and UI. Lime is the signature: a fill, never text on light surfaces.">
+      <Section id="color" index={num('color')} title="Color" intro="Ink does the talking; blue does the clicking. Cool neutrals carry text and UI. Griddo blue is the signature: fills, links, charts and the click dot.">
         <Specimen title="Ink" description="A cool neutral for text, UI and primary buttons." code={['bg-ink-*', 'text-ink-*', 'border-ink-*']} stage="white">
           <ColorScale tokens={ink} label="Ink scale" ink={INK_950} markers={{ 'ink-500': 'Min. text', 'ink-950': 'Buttons' }} />
         </Specimen>
 
-        <Specimen title="Brand lime" description="The click dot. Bright shades are fills; darker ones draw charts and brand-colored text." code={['bg-brand-*', 'text-brand-700+']} stage="white">
-          <ColorScale tokens={brand} label="Brand lime scale" ink={INK_950} markers={{ 'brand-400': 'Signature', 'brand-600': 'Charts', 'brand-700': 'Min. text' }} />
+        <Specimen title="Brand blue" description="Griddo blue, #5057ff, is the click dot. It fills buttons, draws charts and colors links; tints are backgrounds; brand-300 is for text on ink." code={['bg-brand-*', 'text-brand-400+']} stage="white">
+          <ColorScale tokens={brand} label="Brand blue scale" ink={INK_950} markers={{ 'brand-300': 'On ink', 'brand-400': 'Signature', 'brand-500': 'Hover' }} />
         </Specimen>
 
         <Specimen title="Surfaces & lines" code={['bg-canvas', 'bg-surface', 'border-line', 'border-line-strong']}>
@@ -614,12 +614,12 @@ const colorCount = allColors.length;
             </table>
           </div>
           <div class="flex flex-col gap-3 border-t border-line bg-ink-950 px-4 py-4 sm:flex-row sm:items-center sm:gap-6 sm:px-5">
-            <p class="text-base font-semibold text-brand-400">Know who opened it.</p>
-            <p class="text-sm text-ink-300">On ink, lime text is fine: {ratio(hexOf('brand-400'), INK_950)}. That’s where the marketing site uses it.</p>
+            <p class="text-base font-semibold text-brand-300">Know who opened it.</p>
+            <p class="text-sm text-ink-300">On ink, brand text uses brand-300: {ratio(hexOf('brand-300'), INK_950)}. Brand-400 ({ratio(hexOf('brand-400'), INK_950)}) is for large headlines only.</p>
           </div>
         </Specimen>
 
-        <Specimen title="Status" description="Red, amber and sky from Tailwind’s palette, plus lime for success. Status color never travels alone: always an icon and a label." code={['.badge-*', 'showAlert()']} stage="white">
+        <Specimen title="Status" description="Red, amber and sky from Tailwind’s palette, plus brand blue for success. Status color never travels alone: always an icon and a label." code={['.badge-*', 'showAlert()']} stage="white">
           <div class="grid gap-6 sm:grid-cols-2 xl:grid-cols-4">
             {
               statuses.map((s) => (
@@ -643,7 +643,7 @@ const colorCount = allColors.length;
           </div>
         </Specimen>
 
-        <Specimen title="Lime, in practice" description="Lime marks the click: success, focus, the live dot and one call to action per view. Keep it to small areas." stage="white">
+        <Specimen title="Blue, in practice" description="Blue marks the click: success, focus, the live dot and one call to action per view. Keep it to small areas." stage="white">
           <ul class="grid gap-x-8 gap-y-6 sm:grid-cols-2 xl:grid-cols-3">
             <li class="flex items-center gap-4">
               <button type="button" class="btn btn-accent btn-sm shrink-0" data-copy={`https://${SHORT}/q4-acme`}><span data-copy-icon><Icon name="copy" /></span><span data-copy-label>Copy</span></button>
@@ -667,16 +667,16 @@ const colorCount = allColors.length;
             </li>
             <li class="flex items-center gap-4">
               <span class="flex h-9 shrink-0 items-end gap-1" aria-hidden="true">
-                <span class="h-4 w-2.5 rounded-t-[3px] bg-brand-600"></span><span class="h-7 w-2.5 rounded-t-[3px] bg-brand-600"></span><span class="h-5 w-2.5 rounded-t-[3px] bg-brand-600"></span><span class="h-9 w-2.5 rounded-t-[3px] bg-brand-700"></span>
+                <span class="h-4 w-2.5 rounded-t-[3px] bg-brand-400"></span><span class="h-7 w-2.5 rounded-t-[3px] bg-brand-400"></span><span class="h-5 w-2.5 rounded-t-[3px] bg-brand-400"></span><span class="h-9 w-2.5 rounded-t-[3px] bg-brand-600"></span>
               </span>
-              <span class="text-sm leading-5 text-ink-600">Chart series in brand-600, hover in brand-700</span>
+              <span class="text-sm leading-5 text-ink-600">Chart series in brand-400, hover in brand-600</span>
             </li>
           </ul>
         </Specimen>
       </Section>
 
       <!-- 03 Typography ================================================== -->
-      <Section id="typography" index={num('typography')} title="Typography" intro="Three families, one job each: Bricolage Grotesque for headlines, Inter for everything you read and click, JetBrains Mono for short links.">
+      <Section id="typography" index={num('typography')} title="Typography" intro="Three families, one job each: Logical, Griddo’s typeface, for headlines; Figtree for everything you read and click; JetBrains Mono for short links.">
         <Specimen title="Families" stage="none">
           <div class="grid gap-4 lg:grid-cols-3">
             {
@@ -700,7 +700,7 @@ const colorCount = allColors.length;
           </div>
         </Specimen>
 
-        <Specimen title="Display scale" description="Bricolage Grotesque at weight 750, tracked −0.03em, line-height 1–1.05." code={['.display', 'text-6xl → text-3xl']} stage="white" class="py-2!">
+        <Specimen title="Display scale" description="Logical at weight 750, tracked −0.03em, line-height 1–1.05. Figtree stands in until the Logical web font is added." code={['.display', 'text-6xl → text-3xl']} stage="white" class="py-2!">
           <ul class="divide-y divide-line">
             {
               displayScale.map((s) => (
@@ -717,7 +717,7 @@ const colorCount = allColors.length;
           </ul>
         </Specimen>
 
-        <Specimen title="Interface scale" description="Inter for all UI text. 14px is the default; nothing smaller than 12px except chart axes and keyboard hints." code={['text-base', 'text-sm', 'text-xs']} stage="white" class="py-2!">
+        <Specimen title="Interface scale" description="Figtree for all UI text. 14px is the default; nothing smaller than 12px except chart axes and keyboard hints." code={['text-base', 'text-sm', 'text-xs']} stage="white" class="py-2!">
           <ul class="divide-y divide-line">
             {
               uiScale.map((s) => (
@@ -752,17 +752,17 @@ const colorCount = allColors.length;
             <div>
               <p class="display text-2xl text-ink-950">Link copied</p>
               <p class="mt-1 text-sm font-semibold text-ink-950">Display <span class="font-normal text-ink-500">· 750</span></p>
-              <p class="text-xs text-ink-500">Bricolage, headlines</p>
+              <p class="text-xs text-ink-500">Logical, headlines</p>
             </div>
             <div>
-              <p class="font-display text-2xl font-extrabold tracking-[-0.04em] text-ink-950">shurly.</p>
-              <p class="mt-1 text-sm font-semibold text-ink-950">ExtraBold <span class="font-normal text-ink-500">· 800</span></p>
-              <p class="text-xs text-ink-500">Bricolage, the logo only</p>
+              <img src="/brand/wordmark.svg" width={wordmarkWidth(24)} height="24" alt="shurly." class="block h-6 w-auto" draggable="false" />
+              <p class="mt-1 text-sm font-semibold text-ink-950">Logo <span class="font-normal text-ink-500">· SVG</span></p>
+              <p class="text-xs text-ink-500">Bricolage ExtraBold, outlined</p>
             </div>
           </div>
         </Specimen>
 
-        <Specimen title="Numbers" description="Big numbers are Inter semibold with proportional figures. Tabular figures only where numbers line up in a column." code={['.num', 'tabular-nums']} stage="white">
+        <Specimen title="Numbers" description="Big numbers are Figtree semibold with proportional figures. Tabular figures only where numbers line up in a column." code={['.num', 'tabular-nums']} stage="white">
           <div class="grid gap-8 md:grid-cols-[1fr_1.2fr]">
             <div>
               <p class="text-sm font-medium text-ink-500">Clicks, all time</p>
@@ -990,13 +990,13 @@ const colorCount = allColors.length;
                 <button type="button" class="btn btn-secondary" data-copy={`https://${SHORT}/q4-acme`}><span data-copy-icon><Icon name="copy" /></span><span data-copy-label>Copy link</span></button>
               </div>
               <div class="border-t border-line p-4">
-                <p class="text-sm font-semibold text-ink-950">Copy: lime with a check, for 2s</p>
+                <p class="text-sm font-semibold text-ink-950">Copy: blue with a check, for 2s</p>
                 <p class="mt-0.5 font-mono text-[11px] text-ink-500">data-copy · copyWithFeedback()</p>
               </div>
             </li>
             <li class="flex flex-col overflow-hidden rounded-2xl border border-line bg-white">
               <div class="grid h-32 place-items-center bg-canvas">
-                <span id="sg-anim-pop" data-sg-anim="animate-pop" class="grid size-10 animate-pop place-items-center rounded-full bg-brand-400 text-ink-950" aria-hidden="true"><Icon name="check" class="size-5" strokeWidth={3} /></span>
+                <span id="sg-anim-pop" data-sg-anim="animate-pop" class="grid size-10 animate-pop place-items-center rounded-full bg-brand-400 text-white" aria-hidden="true"><Icon name="check" class="size-5" strokeWidth={3} /></span>
               </div>
               <div class="flex items-start justify-between gap-3 border-t border-line p-4">
                 <div>
@@ -1024,7 +1024,7 @@ const colorCount = allColors.length;
             <li class="flex flex-col overflow-hidden rounded-2xl border border-line bg-white">
               <div class="grid h-32 place-items-center bg-canvas px-6">
                 <span id="sg-anim-fade-up" data-sg-anim="animate-fade-up" class="flex w-full max-w-60 animate-fade-up items-center gap-3 rounded-xl bg-ink-950 px-3 py-2.5 text-sm text-white" aria-hidden="true">
-                  <span class="grid size-6 place-items-center rounded-lg bg-brand-400 text-ink-950"><Icon name="rocket" class="size-3.5" /></span>You’re in.
+                  <span class="grid size-6 place-items-center rounded-lg bg-brand-400 text-white"><Icon name="rocket" class="size-3.5" /></span>You’re in.
                 </span>
               </div>
               <div class="flex items-start justify-between gap-3 border-t border-line p-4">
@@ -1084,7 +1084,7 @@ const colorCount = allColors.length;
       </Section>
 
       <!-- 06 Buttons ===================================================== -->
-      <Section id="buttons" index={num('buttons')} title="Buttons" intro="Ink for the main action, lime for the moments that matter, white for everything else. Labels are sentence case and start with a verb.">
+      <Section id="buttons" index={num('buttons')} title="Buttons" intro="Ink for the main action, blue for the moments that matter, white for everything else. Labels are sentence case and start with a verb.">
         <Specimen title="Variants & sizes" code={['.btn', '.btn-{variant}', '.btn-sm', '.btn-lg']} stage="white" class="overflow-hidden p-0!">
           <div class="overflow-x-auto">
             <table class="w-full min-w-[40rem] text-sm">
@@ -1137,7 +1137,7 @@ const colorCount = allColors.length;
           </div>
         </Specimen>
 
-        <Specimen title="States" description="Loading keeps the button’s width and swaps in the branded spinner. Copy turns the button lime for two seconds." code={['setLoading()', 'data-copy', 'disabled']}>
+        <Specimen title="States" description="Loading keeps the button’s width and swaps in the branded spinner. Copy turns the button blue for two seconds." code={['setLoading()', 'data-copy', 'disabled']}>
           <ul class="grid grid-cols-2 gap-6 sm:grid-cols-3 xl:grid-cols-5">
             <li class="grid content-start justify-items-start gap-2">
               <button type="button" class="btn btn-primary">Save changes</button>
@@ -1162,7 +1162,7 @@ const colorCount = allColors.length;
           </ul>
         </Specimen>
 
-        <Specimen title="On dark" description="Marketing heroes: lime for the call to action, a quiet ghost for the second option." stage="dark" class="relative overflow-hidden">
+        <Specimen title="On dark" description="Marketing heroes: blue for the call to action, a quiet ghost for the second option." stage="dark" class="relative overflow-hidden">
           <div class="bg-dots-dark absolute inset-0 opacity-60" aria-hidden="true"></div>
           <div class="relative flex flex-col gap-3 sm:flex-row sm:items-center">
             <button type="button" class="btn btn-accent btn-lg">Get started — it’s free<Icon name="arrow-right" /></button>
@@ -1190,7 +1190,7 @@ const colorCount = allColors.length;
       </Section>
 
       <!-- 07 Forms ======================================================= -->
-      <Section id="forms" index={num('forms')} title="Forms" intro="Labels on top, hints below, errors in plain words right under the field. Focus gets an ink ring with a lime halo.">
+      <Section id="forms" index={num('forms')} title="Forms" intro="Labels on top, hints below, errors in plain words right under the field. Focus gets an ink ring with a blue halo.">
         <Specimen title="Text fields" code={['.label', '.input', '.input-lg', '.hint', '.field-error']} stage="white">
           <div class="grid gap-x-6 gap-y-7 md:grid-cols-2">
             <div class="grid gap-1.5">
@@ -1471,7 +1471,7 @@ const colorCount = allColors.length;
               </div>
             </article>
             <a href="#sg-cards-demo" class="card card-interactive group flex items-center gap-4 p-5 sm:p-6">
-              <span class="grid size-11 shrink-0 place-items-center rounded-xl bg-ink-950 text-brand-400"><Icon name="megaphone" class="size-5" /></span>
+              <span class="grid size-11 shrink-0 place-items-center rounded-xl bg-ink-950 text-brand-300"><Icon name="megaphone" class="size-5" /></span>
               <span class="min-w-0 flex-1">
                 <span class="block font-semibold text-ink-950">Growth webinar</span>
                 <span class="mt-0.5 block text-sm text-ink-500">50 links · 67% clicked · 2 days ago</span>
@@ -1532,7 +1532,7 @@ const colorCount = allColors.length;
             </div>
             <div class="grid gap-2">
               <div class="toast" data-state="open">
-                <span class="mt-0.5 grid size-5 shrink-0 place-items-center rounded-full bg-brand-400 text-ink-950"><Icon name="check" class="size-3.5" strokeWidth={3} /></span>
+                <span class="mt-0.5 grid size-5 shrink-0 place-items-center rounded-full bg-brand-400 text-white"><Icon name="check" class="size-3.5" strokeWidth={3} /></span>
                 <div class="min-w-0 flex-1"><p class="font-semibold">Link copied</p></div>
                 <span class="-mr-1 rounded-md p-1 text-ink-400" aria-hidden="true"><Icon name="x" /></span>
               </div>
@@ -1547,9 +1547,9 @@ const colorCount = allColors.length;
                 <span class="-mr-1 rounded-md p-1 text-ink-400" aria-hidden="true"><Icon name="x" /></span>
               </div>
               <div class="toast" data-state="open">
-                <span class="mt-0.5 grid size-5 shrink-0 place-items-center rounded-full bg-brand-400 text-ink-950"><Icon name="check" class="size-3.5" strokeWidth={3} /></span>
+                <span class="mt-0.5 grid size-5 shrink-0 place-items-center rounded-full bg-brand-400 text-white"><Icon name="check" class="size-3.5" strokeWidth={3} /></span>
                 <div class="min-w-0 flex-1"><p class="font-semibold">Link deleted</p></div>
-                <span class="rounded-md px-2 py-1 text-sm font-semibold text-brand-400">Undo</span>
+                <span class="rounded-md px-2 py-1 text-sm font-semibold text-brand-300">Undo</span>
                 <span class="-mr-1 rounded-md p-1 text-ink-400" aria-hidden="true"><Icon name="x" /></span>
               </div>
             </div>
@@ -1664,8 +1664,8 @@ const colorCount = allColors.length;
               <div class="mt-4 max-h-80 overflow-auto rounded-xl border border-line" data-sg-chart-table hidden></div>
             </section>
             <ul class="grid content-start gap-3.5 text-sm text-ink-700">
-              <li class="flex gap-3"><span class="mt-1 size-3.5 shrink-0 rounded-[3px] bg-brand-600" aria-hidden="true"></span><span><b class="font-semibold text-ink-950">One series, brand-600.</b> {ratio(hexOf('brand-600'), WHITE)} on white: enough for marks, not for text.</span></li>
-              <li class="flex gap-3"><span class="mt-1 size-3.5 shrink-0 rounded-[3px] bg-brand-700" aria-hidden="true"></span><span><b class="font-semibold text-ink-950">Hover and focus</b> darken to brand-700.</span></li>
+              <li class="flex gap-3"><span class="mt-1 size-3.5 shrink-0 rounded-[3px] bg-brand-400" aria-hidden="true"></span><span><b class="font-semibold text-ink-950">One series, brand-400.</b> Griddo blue, {ratio(hexOf('brand-400'), WHITE)} on white: strong enough for marks and for text.</span></li>
+              <li class="flex gap-3"><span class="mt-1 size-3.5 shrink-0 rounded-[3px] bg-brand-600" aria-hidden="true"></span><span><b class="font-semibold text-ink-950">Hover and focus</b> darken to brand-600.</span></li>
               <li class="flex gap-3"><span class="mt-2.5 h-px w-3.5 shrink-0 bg-ink-300" aria-hidden="true"></span><span><b class="font-semibold text-ink-950">Hairline grid</b> in ink-100, baseline in ink-200. Three ticks, no more.</span></li>
               <li class="flex gap-3"><span class="mt-0.5 flex h-4 w-3.5 shrink-0 items-end justify-center" aria-hidden="true"><span class="h-4 w-2.5 rounded-t-[4px] border-2 border-b-0 border-ink-500"></span></span><span><b class="font-semibold text-ink-950">Bars ≤ 24px</b>, 4px rounded at the data end, square at the baseline.</span></li>
               <li class="flex gap-3"><Icon name="hash" class="mt-0.5 size-3.5 shrink-0 text-ink-500" /><span><b class="font-semibold text-ink-950">One direct label:</b> the maximum. Everything else is in the tooltip.</span></li>
@@ -1696,7 +1696,7 @@ const colorCount = allColors.length;
                   <p class="text-[1.875rem] leading-none font-semibold tracking-tight text-ink-950">128</p>
                   <span data-sg-spark></span>
                 </div>
-                <p class="mt-2 text-[13px] text-ink-500"><span class="font-medium text-brand-800">+24%</span> vs last week · line in ink-300, latest point in brand-600</p>
+                <p class="mt-2 text-[13px] text-ink-500"><span class="font-medium text-brand-800">+24%</span> vs last week · line in ink-300, latest point in brand-400</p>
               </section>
             </div>
           </div>
@@ -1723,8 +1723,8 @@ const colorCount = allColors.length;
       </Section>
 
       <!-- 13 Illustrations =============================================== -->
-      <Section id="illustrations" index={num('illustrations')} title="Illustrations" intro="Minimal 2px ink line-art with the lime dot as the only accent. Decorative, so they’re hidden from screen readers and always come with a heading.">
-        <Specimen title="Library" description="200 × 150 artboard. Ink-900 strokes, ink-100 and ink-200 fills, one lime dot." code={['<Illustration name />', '<EmptyState illustration />']} stage="none">
+      <Section id="illustrations" index={num('illustrations')} title="Illustrations" intro="Minimal 2px ink line-art with the blue dot as the only accent. Decorative, so they’re hidden from screen readers and always come with a heading.">
+        <Specimen title="Library" description="200 × 150 artboard. Ink-900 strokes, ink-100 and ink-200 fills, one blue dot." code={['<Illustration name />', '<EmptyState illustration />']} stage="none">
           <ul class="grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-4">
             {
               illustrations.map((i) => (
@@ -1820,13 +1820,13 @@ const colorCount = allColors.length;
               <div class="grid gap-4 md:grid-cols-2">
                 <DoDont kind="do" caption="say what happened, in as few words as it takes.">
                   <div class="toast w-full max-w-xs" data-state="open">
-                    <span class="mt-0.5 grid size-5 shrink-0 place-items-center rounded-full bg-brand-400 text-ink-950"><Icon name="check" class="size-3.5" strokeWidth={3} /></span>
+                    <span class="mt-0.5 grid size-5 shrink-0 place-items-center rounded-full bg-brand-400 text-white"><Icon name="check" class="size-3.5" strokeWidth={3} /></span>
                     <p class="min-w-0 flex-1 font-semibold">Link copied</p>
                   </div>
                 </DoDont>
                 <DoDont kind="dont" caption="narrate the system, shout, or say URL.">
                   <div class="toast w-full max-w-xs" data-state="open">
-                    <span class="mt-0.5 grid size-5 shrink-0 place-items-center rounded-full bg-brand-400 text-ink-950"><Icon name="check" class="size-3.5" strokeWidth={3} /></span>
+                    <span class="mt-0.5 grid size-5 shrink-0 place-items-center rounded-full bg-brand-400 text-white"><Icon name="check" class="size-3.5" strokeWidth={3} /></span>
                     <p class="min-w-0 flex-1 font-semibold">URL successfully copied to clipboard!</p>
                   </div>
                 </DoDont>

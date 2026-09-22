@@ -94,7 +94,7 @@ export function fontFamilies(): Record<string, string> {
   return out;
 }
 
-/** OpenType features switched on for body text (Inter alternates). */
+/** OpenType features switched on for body text, if any. */
 export function bodyFeatures(): string[] {
   const m = css.match(/body\s*\{[^}]*font-feature-settings:\s*([^;]+);/);
   return m ? [...m[1].matchAll(/"([^"]+)"/g)].map((f) => f[1]) : [];

@@ -1,10 +1,8 @@
 ---
-import '@fontsource-variable/inter';
-import '@fontsource-variable/bricolage-grotesque';
+import '@fontsource-variable/figtree';
 import '@fontsource-variable/jetbrains-mono';
 import '@/styles/global.css';
-import interLatin from '@fontsource-variable/inter/files/inter-latin-wght-normal.woff2?url';
-import bricolageLatin from '@fontsource-variable/bricolage-grotesque/files/bricolage-grotesque-latin-wght-normal.woff2?url';
+import figtreeLatin from '@fontsource-variable/figtree/files/figtree-latin-wght-normal.woff2?url';
 
 interface Props {
   title: string;
@@ -22,7 +20,7 @@ const {
   description = 'Trackable short links for small marketing teams. Send the link, know who opened it.',
   protected: isProtected = false,
   guestOnly = false,
-  themeColor = '#f5f6f8',
+  themeColor = '#faf9f6',
   bodyClass = '',
 } = Astro.props;
 
@@ -44,8 +42,7 @@ const ogImage = new URL('/og-image.png', Astro.site ?? Astro.url).href;
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <link rel="manifest" href="/site.webmanifest" />
-    <link rel="preload" as="font" type="font/woff2" href={interLatin} crossorigin />
-    <link rel="preload" as="font" type="font/woff2" href={bricolageLatin} crossorigin />
+    <link rel="preload" as="font" type="font/woff2" href={figtreeLatin} crossorigin />
 
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="Shurly" />

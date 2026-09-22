@@ -26,6 +26,16 @@ implementation lifecycle and is independent of the URL version segment.
 
 ## [Unreleased]
 
+### Changed — Griddo palette and type (trial)
+- Brand colour is Griddo blue `#5057ff` (was lime `#b8f03e`): new `brand-50…950`
+  scale with the signature at `brand-400`. Brand fills now carry white text,
+  brand text/icons on ink use `brand-300`, charts draw in `brand-400`. Logo dot,
+  favicons, app icons and the OG card are regenerated in blue.
+- Page canvas is warm off-white `#faf9f6` (was `#f5f6f8`).
+- Interface typeface is Figtree (was Inter). Headlines use Logical, Griddo's
+  typeface, when available and fall back to Figtree until its web font files are
+  added (was Bricolage Grotesque, which the wordmark SVG still uses).
+
 ### Security
 - **SSRF hardening for the Open Graph fetcher.** Link previews are fetched
   server-side from user-supplied URLs (`POST /api/v1/urls`,
