@@ -91,6 +91,12 @@ class Settings(BaseSettings):
             )
         return v
 
+    # SSRF guard for the Open Graph fetcher. Destination URLs are user-supplied, so link
+    # previews refuse any host that resolves to a loopback, private, link-local (cloud
+    # metadata) or otherwise non-public address. Set true ONLY in local development to
+    # preview pages served from localhost — never in production.
+    og_fetch_allow_private: bool = False
+
     # Lambda/AWS settings
     is_lambda: bool = False  # Set to True when running in Lambda
     db_pool_size: int = 10  # Smaller for Lambda (2-5), larger for local (10)
