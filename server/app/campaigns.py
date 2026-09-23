@@ -4,9 +4,10 @@ import csv
 import io
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
-from sqlalchemy.orm import Session
+from sqlalchemy import func
+from sqlalchemy.orm import Session, selectinload
 
 from server.core import get_db
 from server.core.auth import get_current_user
@@ -141,14 +142,16 @@ def create_campaign(
     response_model=CampaignListResponse,
     responses={
         200: {"description": "List of campaigns retrieved successfully"},
-        **get_responses(401),
+        **get_responses(401, 422),
     },
 )
 def list_campaigns(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
-    skip: int = 0,
-    limit: int = 100,
+    skip: int = Query(0, ge=0, description="Number of campaigns to skip, for pagination"),
+    limit: int = Query(
+        100, ge=1, le=100, description="Maximum number of campaigns to return (1-100)"
+    ),
 ):
     """
     List all campaigns created by the current user.
@@ -158,15 +161,19 @@ def list_campaigns(
     **Authentication:** Required (JWT Bearer token)
 
     **Query Parameters:**
-    - **skip**: Number of records to skip for pagination (default: 0)
-    - **limit**: Maximum number of records to return (default: 100, max: 100)
+    - **skip**: Number of records to skip for pagination (default: 0, min: 0)
+    - **limit**: Maximum number of records to return (default: 100, min: 1, max: 100).
+      Out-of-range values are rejected with 422, not clamped: to read more than 100
+      campaigns, page through them with `skip` until you have `total`.
 
     **Responses:**
     - **200**: List of campaigns retrieved successfully with pagination info
     - **401**: Authentication required or invalid token
+    - **422**: `skip` or `limit` out of range
     """
     campaigns = (
         db.query(Campaign)
+        .options(selectinload(Campaign.tags))
         .filter(Campaign.created_by == current_user.id)
         .order_by(Campaign.created_at.desc())
         .offset(skip)
@@ -176,17 +183,24 @@ def list_campaigns(
 
     total = db.query(Campaign).filter(Campaign.created_by == current_user.id).count()
 
+    # URL counts for the whole page in one grouped query (no N+1)
+    url_counts = dict(
+        db.query(URL.campaign_id, func.count(URL.id))
+        .filter(URL.campaign_id.in_([campaign.id for campaign in campaigns]))
+        .group_by(URL.campaign_id)
+        .all()
+    )
+
     # Build responses with URL counts and tags
     campaign_responses = []
     for campaign in campaigns:
-        url_count = db.query(URL).filter(URL.campaign_id == campaign.id).count()
         # Convert to dict and add url_count
         campaign_dict = {
             "id": campaign.id,
             "name": campaign.name,
             "original_url": campaign.original_url,
             "csv_columns": campaign.csv_columns,
-            "url_count": url_count,
+            "url_count": url_counts.get(campaign.id, 0),
             "created_at": campaign.created_at,
             "tags": campaign.tags,  # Include tags from relationship
         }
@@ -510,8 +524,11 @@ def update_campaign_tags(
     # Update campaign tags
     campaign.tags = tags
 
-    # Apply to all campaign URLs
-    campaign_urls = db.query(URL).filter(URL.campaign_id == campaign.id).all()
+    # Apply to all campaign URLs. Replacing a collection loads its current contents
+    # first (to delete the stale url_tags rows), so load them all in one query (no N+1).
+    campaign_urls = (
+        db.query(URL).options(selectinload(URL.tags)).filter(URL.campaign_id == campaign.id).all()
+    )
     for url in campaign_urls:
         url.tags = tags
 

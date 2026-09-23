@@ -26,6 +26,24 @@ implementation lifecycle and is independent of the URL version segment.
 
 ## [Unreleased]
 
+### Fixed — pagination bounds and N+1 queries
+- **`GET /api/v1/urls` and `GET /api/v1/campaigns` enforce their documented page
+  size.** `limit` must be 1–100 and `skip` ≥ 0; anything else now returns `422`
+  instead of reaching the database (`limit=100000` returned every row, and a
+  negative `skip` or `limit` was a PostgreSQL error, i.e. a `500`). Out-of-range
+  values are rejected, not clamped: to read more than 100 rows, page with `skip`
+  until you have `total`. The bounds are in the OpenAPI schema, so the MCP
+  `list_urls` and `list_campaigns` tools advertise them too. The frontend never
+  asks for more than 100.
+- **Multi-URL endpoints run a constant number of SQL statements** instead of one
+  or two more per row (e.g. `GET /api/v1/urls` with 100 tagged URLs: 104 → 5):
+  - `GET /api/v1/urls` loads the page's tags in one query;
+  - `GET /api/v1/campaigns` loads the page's tags and URL counts in one query each;
+  - `POST /api/v1/urls/bulk/tags` and `PATCH /api/v1/campaigns/{id}/tags` load the
+    URLs' current tags in one query;
+  - `GET /api/v1/analytics/campaigns/{id}/users` (campaign recipients) computes
+    every URL's clicks, unique IPs and last click in one grouped query.
+
 ### Changed — Griddo palette and type (trial)
 - Brand colour is Griddo blue `#5057ff` (was lime `#b8f03e`): new `brand-50…950`
   scale with the signature at `brand-400`. Brand fills now carry white text,

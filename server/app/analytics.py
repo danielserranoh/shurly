@@ -498,23 +498,33 @@ def get_campaign_users(
     # Get all URLs with their visit stats
     campaign_urls = db.query(URL).filter(URL.campaign_id == campaign_uuid).all()
 
-    users = []
-    for url in campaign_urls:
-        # Get stats for this URL
-        stats_q = db.query(
+    # Stats for every campaign URL in one grouped query (no N+1); URLs without
+    # visits are absent from the result
+    stats_q = (
+        db.query(
+            Visitor.url_id,
             func.count(Visitor.id).label("click_count"),
             func.count(func.distinct(Visitor.ip)).label("unique_ips"),
             func.max(Visitor.visited_at).label("last_clicked"),
-        ).filter(Visitor.url_id == url.id)
-        stats = _exclude_bots(stats_q, include_bots).first()
+        )
+        .join(URL, URL.id == Visitor.url_id)
+        .filter(URL.campaign_id == campaign_uuid)
+    )
+    stats_by_url = {
+        row.url_id: row
+        for row in _exclude_bots(stats_q, include_bots).group_by(Visitor.url_id).all()
+    }
 
+    users = []
+    for url in campaign_urls:
+        stats = stats_by_url.get(url.id)
         users.append(
             CampaignUserStat(
                 user_data=url.user_data or {},
                 short_code=url.short_code,
-                clicks=stats.click_count or 0,
-                unique_ips=stats.unique_ips or 0,
-                last_clicked=stats.last_clicked,
+                clicks=stats.click_count if stats else 0,
+                unique_ips=stats.unique_ips if stats else 0,
+                last_clicked=stats.last_clicked if stats else None,
             )
         )
 
