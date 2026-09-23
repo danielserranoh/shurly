@@ -26,6 +26,25 @@ implementation lifecycle and is independent of the URL version segment.
 
 ## [Unreleased]
 
+### Changed — Griddo palette and type (trial)
+- Brand colour is Griddo blue `#5057ff` (was lime `#b8f03e`): new `brand-50…950`
+  scale with the signature at `brand-400`. Brand fills now carry white text,
+  brand text/icons on ink use `brand-300`, charts draw in `brand-400`. Logo dot,
+  favicons, app icons and the OG card are regenerated in blue.
+- Page canvas is warm off-white `#faf9f6` (was `#f5f6f8`).
+- Ink scale is Griddo navy: `ink-950` `#001b3c`, `ink-900` `#022958`, the rest
+  regenerated in the same hue with the same contrast roles (`ink-500` still the
+  lightest text, 4.5:1+ on white, canvas and `ink-100`). Logo letters, isotype
+  tile, shadows and the modal backdrop follow. Brand marks on `ink-900` use
+  `brand-300` (`brand-400` there is 2.8:1).
+- Headlines (`.display`) drop from weight 750 to 500: Logical works best light.
+- Eyebrows (`.eyebrow`) are handwritten in Shadows Into Light Two (OFL): always
+  uppercase (the `font-hand` utility enforces it too), 14 px, tracked 0.05em, brand
+  blue (`brand-300` on ink), one weight (was uppercase Inter 12 px in ink-500).
+- Interface typeface is Figtree (was Inter). Headlines use Logical, Griddo's
+  typeface, when available and fall back to Figtree until its web font files are
+  added (was Bricolage Grotesque, which the wordmark SVG still uses).
+
 ### Security
 - **SSRF hardening for the Open Graph fetcher.** Link previews are fetched
   server-side from user-supplied URLs (`POST /api/v1/urls`,

@@ -24,7 +24,7 @@ import { site } from '@/config/site';
 
       <!-- No key yet -->
       <div class="flex flex-col items-start gap-4 p-5 sm:flex-row sm:items-center sm:p-6" data-key-empty hidden>
-        <span class="grid size-10 shrink-0 place-items-center rounded-xl bg-ink-950 text-brand-400"><Icon name="key" class="size-5" /></span>
+        <span class="grid size-10 shrink-0 place-items-center rounded-xl bg-ink-950 text-brand-300"><Icon name="key" class="size-5" /></span>
         <div class="min-w-0 flex-1">
           <p class="font-semibold text-ink-950">You don’t have an API key yet</p>
           <p class="mt-0.5 text-sm text-ink-500">Generate one when you’re ready. You can revoke it any time.</p>
@@ -36,7 +36,7 @@ import { site } from '@/config/site';
       <div data-key-present hidden>
         <div class="grid gap-3 p-5 sm:p-6">
           <div class="flex animate-fade-up items-start gap-3 rounded-xl border border-brand-200 bg-brand-50 p-3 text-sm text-brand-900" role="status" data-key-notice hidden>
-            <span class="grid size-5 shrink-0 animate-pop place-items-center rounded-full bg-brand-400 text-ink-950"><Icon name="check" class="size-3.5" strokeWidth={3} /></span>
+            <span class="grid size-5 shrink-0 animate-pop place-items-center rounded-full bg-brand-400 text-white"><Icon name="check" class="size-3.5" strokeWidth={3} /></span>
             <p class="min-w-0 flex-1"><b class="font-semibold">Here’s your new key.</b> Copy it now and keep it somewhere safe.</p>
             <button type="button" class="-m-1 rounded-md p-1 text-brand-800 hover:bg-brand-100" data-key-notice-close aria-label="Dismiss"><Icon name="x" /></button>
           </div>
@@ -131,7 +131,7 @@ import { site } from '@/config/site';
     const shown = key ? (revealed ? key : masked(key)) : PLACEHOLDER;
     setHTML(
       snippet,
-      html`<span class="text-ink-500 select-none">$ </span><span class="text-brand-400">curl</span> -H <span class="text-ink-300">"Authorization: Bearer ${shown}"</span> \\\n    <span class="text-ink-300">${LIST_URL}</span>`,
+      html`<span class="text-ink-500 select-none">$ </span><span class="text-brand-300">curl</span> -H <span class="text-ink-300">"Authorization: Bearer ${shown}"</span> \\\n    <span class="text-ink-300">${LIST_URL}</span>`,
     );
     snippetCopy.dataset.copy = `curl -H "Authorization: Bearer ${key ?? PLACEHOLDER}" \\\n  ${LIST_URL}`;
     const hint = !loaded ? '' : key ? (revealed ? '' : 'Copying includes your full key.') : `Swap ${PLACEHOLDER} for your key once you’ve generated one.`;

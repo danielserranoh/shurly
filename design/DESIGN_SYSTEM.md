@@ -25,15 +25,20 @@ available as utilities (`bg-ink-950`, `text-brand-700`, `rounded-xl`, `shadow-md
 
 | Scale | Use | Rules |
 |---|---|---|
-| `ink-50…950` (cool neutral) | text, surfaces, borders, primary buttons | `ink-500` is the lightest text shade: at least 4.5:1 on white, canvas and `ink-100`. `ink-400` is for icons and text on dark ink only |
-| `brand-50…950` (lime) | the click dot, accent fills, focus halo, success | `brand-400` `#b8f03e` is the signature: **fill only, never text on light**. `brand-700` is the lightest brand text on white (4.8:1). `brand-600` is the chart series colour (3.2:1, graphics only) |
-| Surfaces | `canvas #f5f6f8` page, `surface #fff` cards, `line` / `line-strong` borders | |
+| `ink-50…950` (Griddo navy: 900 `#022958`, 950 `#001b3c`) | text, surfaces, borders, primary buttons | `ink-500` is the lightest text shade: at least 4.5:1 on white, canvas and `ink-100`. `ink-400` is for icons and text on dark ink only. Brand marks on `ink-900` use `brand-300` (`brand-400` there is 2.8:1) |
+| `brand-50…950` (Griddo blue) | the click dot, accent fills, links, charts, focus halo, success | `brand-400` `#5057ff` is the signature: white text on it (5.1:1), and fine as text on light (5.1:1 on white). Hover is `brand-500`. **On ink, use `brand-300`** for text and icons (10.6:1); `brand-400` on ink (3.9:1) only for large headlines |
+| Surfaces | `canvas #faf9f6` page (warm off-white), `surface #fff` cards, `line` / `line-strong` borders | |
 | Status | Tailwind `red` (error/danger), `amber` (warning), `blue` (info) | always paired with an icon and words |
 
-**Type.** Bricolage Grotesque (`font-display`, the `.display` class) for page
-titles and marketing headlines. Inter (`font-sans`) for all UI text and numbers.
-JetBrains Mono (`font-mono`, the `.shortlink` class) for short links and codes.
-All three are self-hosted variable fonts (`@fontsource-variable/*`).
+**Type.** Logical, Griddo's typeface (`font-display`, the `.display` class, weight 500), for page
+titles and marketing headlines. Figtree (`font-sans`) for all UI text and numbers, with
+tabular figures in tables. Shadows Into Light Two (`font-hand`, the `.eyebrow` class) for
+eyebrows only: a handwritten note above a heading, **always uppercase**, 14 px, tracked
+0.05em, in brand blue (`brand-300` on ink), one weight.
+JetBrains Mono (`font-mono`, the `.shortlink` class) for short links and codes. Figtree,
+Shadows Into Light Two and JetBrains Mono are self-hosted (`@fontsource*`).
+Logical is used when the browser has it and falls back to Figtree until its web font
+files are added. The wordmark is Bricolage Grotesque, outlined in the SVG.
 
 **Shape and depth.** Radius `sm 6 / md 8 / lg 10 / xl 14 / 2xl 18 / 3xl 24 px`:
 inputs and buttons `lg`, cards `2xl`, dialogs `3xl`. Shadows `xs…xl`: cards sit
@@ -64,7 +69,7 @@ escaping `html` template tag (`html.ts`).
 ## Patterns
 
 - **Loading.** Skeletons shaped like the content for first loads. Later reloads dim the list
-  in place. The spinner is a pinging lime dot.
+  in place. The spinner is a pinging brand-blue dot.
 - **Empty.** Illustration, one sentence on what goes here, and the action that fills it.
   "No results" is a different state from "nothing yet" and offers a way to clear the filters.
 - **Errors, by severity.** Field problems appear inline under the field (focus moves to the first one, and
@@ -72,12 +77,12 @@ escaping `html` template tag (`html.ts`).
   async failures show a toast. A page that fails to load gets an error state with **Try again**.
 - **Destructive actions** use a confirm dialog that names the consequence ("…will stop working for everyone
   who has it") and a red, specific button ("Delete link").
-- **Copy.** The button turns lime and reads "Copied!" for 2 s. A toast is added only when the button
+- **Copy.** The button turns blue and reads "Copied!" for 2 s. A toast is added only when the button
   isn't where you're looking (auto-copy after quick create, bulk copy).
 - **Toasts** appear top-right under the header: 4 s, or 6 s for errors.
 - **Dialogs** fade and scale in and become bottom sheets under 640 px. **Menus** use the Popover API.
 - **Keyboard.** `N` opens a new link and `/` focuses search. Every control has a visible focus ring
-  (ink ring + lime halo).
+  (ink ring + blue halo).
 - **Responsive.** Desktop-first, checked at 1440 and 390 px. Under `md` the nav moves into a menu dialog.
 
 ## Paywall
@@ -94,7 +99,7 @@ yet (pricing reads "announced soon") and the API has no billing, so nothing is e
 
 ## Charts
 
-One series in `brand-600` (validated for contrast and colour-vision deficiency). Bars are 24 px
+One series in `brand-400`, Griddo blue (validated for contrast and colour-vision deficiency; hover `brand-600`). Bars are 24 px
 or thinner with a 4 px rounded data end. Grid lines are hairlines. Only the maximum is
 labelled, and every mark has a hover/focus tooltip. Each chart has a **Table** toggle
 showing the same data. Stat numbers use the UI sans, not the display face.
@@ -103,9 +108,9 @@ showing the same data. Stat numbers use the UI sans, not the display face.
 
 | # | Question | Decision |
 |---|---|---|
-| 1 | Wordmark or symbol? | Both. The wordmark with the lime click dot is primary. The "s." isotype is for favicons, app icons and avatars. |
-| 2 | Vibrant or sober? | Sober ink base, one vibrant accent. Lime is rationed so it always means "this is the action / this worked". |
-| 3 | Illustration style | Minimal line-art in ink with lime accent fills, drawn as inline SVG (`Illustration.astro`). |
+| 1 | Wordmark or symbol? | Both. The wordmark with the blue click dot is primary. The "s." isotype is for favicons, app icons and avatars. |
+| 2 | Vibrant or sober? | Sober ink base, one vibrant accent. Griddo blue is rationed so it always means "this is the action / this worked". |
+| 3 | Illustration style | Minimal line-art in ink with brand-blue accent fills, drawn as inline SVG (`Illustration.astro`). |
 | 4 | Hero message | "Send the link. Know who opened it." It is concrete, fits B2B outreach, and campaigns follow from it. |
 | 5 | Tag colours | A fixed colour per category for predefined tags (blue channel, green intent, purple content type, orange audience, pink lifecycle). Your own tags are neutral gray. No hash colours, so the colour always means something. |
 | 6 | Link preview card | Live in Create (as you type), full on the link details page, and collapsed to a thumbnail on dashboard cards. |

@@ -88,7 +88,7 @@ const TINTS = [
 export function linkThumb(link: Pick<ShortLink, 'og_image_url' | 'original_url'>, size = 'size-11'): RawHTML {
   const host = hostname(link.original_url) || '?';
   const tint = TINTS[hashIndex(host, TINTS.length)];
-  const monogram = html`<span class="grid ${size} shrink-0 place-items-center rounded-xl font-display text-lg font-bold ${tint}">${initials(host)}</span>`;
+  const monogram = html`<span class="grid ${size} shrink-0 place-items-center rounded-xl font-display text-lg font-medium ${tint}">${initials(host)}</span>`;
   if (!link.og_image_url) return monogram;
   return html`<span class="relative block ${size} shrink-0 overflow-hidden rounded-xl bg-ink-100 ring-1 ring-ink-200">
     <img src="${safeUrl(link.og_image_url)}" alt="" loading="lazy" referrerpolicy="no-referrer" class="size-full object-cover" data-fallback />

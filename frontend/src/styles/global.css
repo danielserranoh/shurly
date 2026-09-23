@@ -7,44 +7,47 @@
 
 @theme {
   /* ---- Typography ---------------------------------------------------------- */
-  --font-sans: "Inter Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  --font-display: "Bricolage Grotesque Variable", "Inter Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Figtree Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  /* Logical is Griddo's typeface: used when the browser has it, Figtree otherwise. */
+  --font-display: "Logical Var", "Logical", "Figtree Variable", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "JetBrains Mono Variable", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  /* Handwritten accent for eyebrows only: always uppercase, single weight (400). */
+  --font-hand: "Shadows Into Light Two", "Figtree Variable", cursive;
 
   --text-2xs: 0.6875rem;
   --text-2xs--line-height: 1rem;
 
-  /* ---- Color: Ink (cool neutral) ------------------------------------------- */
-  --color-ink-50: #f9fafb;
-  --color-ink-100: #f3f4f6;
-  --color-ink-200: #e4e7eb;
-  --color-ink-300: #d1d5db;
-  --color-ink-400: #9da4ac;
-  --color-ink-500: #68707a; /* lowest ink allowed for text: 4.5:1+ on white, canvas and ink-100 */
-  --color-ink-600: #4f5761;
-  --color-ink-700: #39414b;
-  --color-ink-800: #222932;
-  --color-ink-900: #141921;
-  --color-ink-950: #090d13;
+  /* ---- Color: Ink — Griddo navy neutral (900 #022958, 950 #001b3c) --------- */
+  --color-ink-50: #f8fafc;
+  --color-ink-100: #f0f3f8;
+  --color-ink-200: #e0e6ef;
+  --color-ink-300: #c9d2df;
+  --color-ink-400: #95a4b9;
+  --color-ink-500: #5c708c; /* lowest ink allowed for text: 4.5:1+ on white, canvas and ink-100 */
+  --color-ink-600: #425b7c;
+  --color-ink-700: #2a476e;
+  --color-ink-800: #143663;
+  --color-ink-900: #022958;
+  --color-ink-950: #001b3c;
 
-  /* ---- Color: Brand lime — "the click dot" --------------------------------- */
-  --color-brand-50: #f7fee4;
-  --color-brand-100: #ecfcc4;
-  --color-brand-200: #daf995;
-  --color-brand-300: #caf564;
-  --color-brand-400: #b8f03e; /* signature. Fill only: never text on light surfaces */
-  --color-brand-500: #9fe132;
-  --color-brand-600: #66a011; /* chart series + small UI marks (3.2:1 on white) */
-  --color-brand-700: #4b7f11; /* lightest brand shade allowed for text on white (4.8:1) */
-  --color-brand-800: #3b6519;
-  --color-brand-900: #2c4e14;
-  --color-brand-950: #172d0a;
+  /* ---- Color: Brand — Griddo blue, "the click dot" ------------------------- */
+  --color-brand-50: #f3f7ff;
+  --color-brand-100: #e7edff;
+  --color-brand-200: #d1dcff;
+  --color-brand-300: #acbdff; /* brand text and icons on ink (10.6:1 on ink-950) */
+  --color-brand-400: #5057ff; /* signature. White text on it (5.1:1); text on light (5.1:1 on white) */
+  --color-brand-500: #4344e5; /* hover for signature fills */
+  --color-brand-600: #393ac2;
+  --color-brand-700: #3030a0;
+  --color-brand-800: #25267b;
+  --color-brand-900: #1c1e5a;
+  --color-brand-950: #0f1236;
 
   /* ---- Color: surfaces ----------------------------------------------------- */
-  --color-canvas: #f5f6f8;
+  --color-canvas: #faf9f6;
   --color-surface: #ffffff;
-  --color-line: #e4e7eb;
-  --color-line-strong: #d1d5db;
+  --color-line: #e0e6ef;
+  --color-line-strong: #c9d2df;
 
   /* ---- Radius -------------------------------------------------------------- */
   --radius-sm: 0.375rem;
@@ -55,11 +58,11 @@
   --radius-3xl: 1.5rem;
 
   /* ---- Elevation (4 levels + overlay) -------------------------------------- */
-  --shadow-xs: 0 1px 2px rgb(9 13 19 / 0.05);
-  --shadow-sm: 0 1px 2px rgb(9 13 19 / 0.04), 0 1px 3px rgb(9 13 19 / 0.07);
-  --shadow-md: 0 6px 12px -4px rgb(9 13 19 / 0.1), 0 2px 4px -2px rgb(9 13 19 / 0.06);
-  --shadow-lg: 0 16px 32px -8px rgb(9 13 19 / 0.16), 0 4px 8px -4px rgb(9 13 19 / 0.06);
-  --shadow-xl: 0 28px 56px -12px rgb(9 13 19 / 0.28);
+  --shadow-xs: 0 1px 2px rgb(0 27 60 / 0.05);
+  --shadow-sm: 0 1px 2px rgb(0 27 60 / 0.04), 0 1px 3px rgb(0 27 60 / 0.07);
+  --shadow-md: 0 6px 12px -4px rgb(0 27 60 / 0.1), 0 2px 4px -2px rgb(0 27 60 / 0.06);
+  --shadow-lg: 0 16px 32px -8px rgb(0 27 60 / 0.16), 0 4px 8px -4px rgb(0 27 60 / 0.06);
+  --shadow-xl: 0 28px 56px -12px rgb(0 27 60 / 0.28);
 
   /* ---- Motion -------------------------------------------------------------- */
   --ease-snappy: cubic-bezier(0.2, 0.8, 0.2, 1);
@@ -119,8 +122,6 @@
     background-color: var(--color-canvas);
     color: var(--color-ink-900);
     font-family: var(--font-sans);
-    /* Inter alternates that soften it next to Bricolage: open 4/6/9, single-storey a */
-    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
   }
 
   ::selection {
@@ -169,16 +170,25 @@
   /* ---- Type helpers ------------------------------------------------------- */
   .display {
     font-family: var(--font-display);
-    font-weight: 750;
+    font-weight: 500;
     letter-spacing: -0.03em;
     line-height: 1.05;
   }
+  /* Handwritten note above a heading. Shadows Into Light Two is always set in capitals
+     (part of the style), single 400 weight, lightly tracked, in brand blue
+     (4.8:1 on canvas). On ink, pair it with text-brand-300. */
   .eyebrow {
-    font-size: var(--text-xs);
-    font-weight: 600;
-    letter-spacing: 0.08em;
+    font-family: var(--font-hand);
+    font-size: 0.875rem;
+    line-height: 1.25rem;
+    font-weight: 400;
+    letter-spacing: 0.05em;
     text-transform: uppercase;
-    color: var(--color-ink-500);
+    color: var(--color-brand-400);
+  }
+  /* The handwritten face is never set in lower case, wherever it's used. */
+  .font-hand {
+    text-transform: uppercase;
   }
   .shortlink {
     font-family: var(--font-mono);
@@ -242,11 +252,11 @@
   }
   .btn-accent {
     background: var(--color-brand-400);
-    color: var(--color-ink-950);
-    box-shadow: var(--shadow-xs), inset 0 -1px 0 rgb(9 13 19 / 0.12);
+    color: #fff;
+    box-shadow: var(--shadow-xs), inset 0 -1px 0 rgb(0 27 60 / 0.12);
   }
   .btn-accent:hover:not(:disabled) {
-    background: var(--color-brand-300);
+    background: var(--color-brand-500);
   }
   .btn-secondary {
     background: #fff;
@@ -298,10 +308,10 @@
   .btn-sm.btn-icon {
     width: 2rem;
   }
-  /* Copy feedback: the button briefly becomes a lime "sure!" */
+  /* Copy feedback: the button briefly turns brand blue — "sure!" */
   .btn[data-copied] {
     background: var(--color-brand-400) !important;
-    color: var(--color-ink-950) !important;
+    color: #fff !important;
     box-shadow: var(--shadow-xs) !important;
   }
 
@@ -451,7 +461,7 @@
     cursor: pointer;
   }
 
-  /* Switch: ink track + lime knob when on */
+  /* Switch: ink track + brand knob when on */
   .switch {
     position: relative;
     display: inline-flex;
@@ -607,7 +617,7 @@
     padding: 0 0.375rem;
     border-radius: 0.3125rem;
     background: var(--color-ink-950);
-    color: var(--color-brand-400);
+    color: var(--color-brand-300);
     font-size: 0.625rem;
     font-weight: 700;
     letter-spacing: 0.08em;
@@ -683,7 +693,7 @@
   .tag[data-color="pink"] { --tag-bg: var(--color-pink-50); --tag-fg: var(--color-pink-800); --tag-bd: var(--color-pink-200); --tag-dot: var(--color-pink-500); }
   .tag[data-color="red"] { --tag-bg: var(--color-red-50); --tag-fg: var(--color-red-800); --tag-bd: var(--color-red-200); --tag-dot: var(--color-red-500); }
   .tag[data-color="amber"] { --tag-bg: var(--color-amber-50); --tag-fg: var(--color-amber-800); --tag-bd: var(--color-amber-200); --tag-dot: var(--color-amber-500); }
-  .tag[data-color="lime"] { --tag-bg: var(--color-brand-50); --tag-fg: var(--color-brand-900); --tag-bd: var(--color-brand-200); --tag-dot: var(--color-brand-500); }
+  .tag[data-color="lime"] { --tag-bg: var(--color-lime-50); --tag-fg: var(--color-lime-800); --tag-bd: var(--color-lime-200); --tag-dot: var(--color-lime-500); }
 
   /* ---- Keyboard hint ------------------------------------------------------ */
   .kbd {
@@ -895,11 +905,11 @@
     place-items: center;
   }
   dialog.modal::backdrop {
-    background: rgb(9 13 19 / 0);
+    background: rgb(0 27 60 / 0);
     transition: background-color 0.15s ease-out;
   }
   dialog.modal[data-state="open"]::backdrop {
-    background: rgb(9 13 19 / 0.5);
+    background: rgb(0 27 60 / 0.5);
   }
   .modal-panel {
     position: relative;
@@ -997,7 +1007,7 @@
   }
   .chart-col:hover .chart-bar,
   .chart-col:focus-visible .chart-bar {
-    fill: var(--color-brand-700);
+    fill: var(--color-brand-600);
   }
   .chart-col:focus-visible > rect:first-child {
     stroke: var(--color-ink-950);

@@ -36,7 +36,7 @@ function toastRegion(): HTMLElement {
 }
 
 const TOAST_ICON: Record<ToastKind, string> = {
-  success: `<span class="mt-0.5 grid size-5 shrink-0 place-items-center rounded-full bg-brand-400 text-ink-950 animate-pop">${iconSvg('check', 'size-3.5', 3)}</span>`,
+  success: `<span class="mt-0.5 grid size-5 shrink-0 place-items-center rounded-full bg-brand-400 text-white animate-pop">${iconSvg('check', 'size-3.5', 3)}</span>`,
   error: `<span class="mt-0.5 grid size-5 shrink-0 place-items-center rounded-full bg-red-500 text-white">${iconSvg('x', 'size-3.5', 3)}</span>`,
   info: `<span class="mt-0.5 grid size-5 shrink-0 place-items-center rounded-full bg-ink-700 text-white">${iconSvg('info', 'size-3.5', 2.5)}</span>`,
 };
@@ -51,7 +51,7 @@ export function toast(message: string, kind: ToastKind = 'success', opts: ToastO
       <p class="font-semibold">${escapeHtml(message)}</p>
       ${opts.description ? `<p class="mt-0.5 text-ink-300">${escapeHtml(opts.description)}</p>` : ''}
     </div>
-    ${opts.action ? `<button type="button" data-toast-action class="rounded-md px-2 py-1 text-sm font-semibold text-brand-400 hover:bg-white/10">${escapeHtml(opts.action.label)}</button>` : ''}
+    ${opts.action ? `<button type="button" data-toast-action class="rounded-md px-2 py-1 text-sm font-semibold text-brand-300 hover:bg-white/10">${escapeHtml(opts.action.label)}</button>` : ''}
     <button type="button" data-toast-close aria-label="Dismiss" class="-mr-1 rounded-md p-1 text-ink-400 hover:bg-white/10 hover:text-white">${iconSvg('x', 'size-4')}</button>`;
   region.appendChild(el);
   requestAnimationFrame(() => requestAnimationFrame(() => (el.dataset.state = 'open')));
@@ -99,7 +99,7 @@ export async function writeClipboard(text: string): Promise<boolean> {
 }
 
 /**
- * Copy with in-place feedback: the button turns lime, its icon becomes a check and
+ * Copy with in-place feedback: the button turns brand blue, its icon becomes a check and
  * its label (if it has one in [data-copy-label]) reads "Copied!" for 2s.
  */
 export async function copyWithFeedback(text: string, button?: HTMLElement | null, toastMessage?: string): Promise<boolean> {

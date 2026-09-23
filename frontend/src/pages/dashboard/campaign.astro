@@ -189,7 +189,7 @@ import QrModal from '@/components/app/QrModal.astro';
       $('[data-top]'),
       top.length
         ? html`${top.map((p, i) => html`<li class="flex items-center gap-3">
-            <span class="grid size-7 shrink-0 place-items-center rounded-full ${i === 0 ? 'bg-brand-400 text-ink-950' : 'bg-ink-100 text-ink-600'} text-xs font-bold">${i + 1}</span>
+            <span class="grid size-7 shrink-0 place-items-center rounded-full ${i === 0 ? 'bg-brand-400 text-white' : 'bg-ink-100 text-ink-600'} text-xs font-bold">${i + 1}</span>
             <div class="min-w-0 flex-1">
               <p class="truncate text-sm font-medium text-ink-900">${personLabel(p.user_data)}</p>
               <p class="truncate text-xs text-ink-500">${secondaryLabel(p.user_data)}</p>

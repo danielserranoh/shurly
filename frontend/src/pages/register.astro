@@ -40,11 +40,11 @@ import PasswordField from '@/components/ui/PasswordField.astro';
   const passwordInput = form.elements.namedItem('password') as HTMLInputElement;
   const hint = form.querySelector<HTMLElement>('[data-password-hint]')!;
 
-  // Live length check: the hint earns a lime check once the rule is met.
+  // Live length check: the hint earns a brand check once the rule is met.
   const renderHint = () => {
     const ok = passwordInput.value.length >= 8;
     hint.innerHTML = ok
-      ? `<span class="grid size-4 place-items-center rounded-full bg-brand-400 text-ink-950">${iconSvg('check', 'size-3', 3)}</span><span class="text-ink-700">At least 8 characters</span>`
+      ? `<span class="grid size-4 place-items-center rounded-full bg-brand-400 text-white">${iconSvg('check', 'size-3', 3)}</span><span class="text-ink-700">At least 8 characters</span>`
       : `<span class="size-4 rounded-full border-2 border-ink-300"></span><span>At least 8 characters</span>`;
   };
   renderHint();

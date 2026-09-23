@@ -1,7 +1,7 @@
 ---
 /**
  * Spot illustrations for empty, error and success states.
- * Style: 2px ink line-art on white, soft ink-100 shading, and the lime "click dot"
+ * Style: 2px ink line-art on white, soft ink-100 shading, and the brand-blue "click dot"
  * as the one accent. Decorative only (aria-hidden) — always pair with a heading.
  */
 interface Props {
@@ -10,10 +10,10 @@ interface Props {
 }
 
 const { name, class: className = 'h-28 w-auto' } = Astro.props;
-const ink = '#141921';
-const soft = '#f3f4f6';
-const line = '#e4e7eb';
-const lime = '#b8f03e';
+const ink = '#022958';
+const soft = '#f0f3f8';
+const line = '#e0e6ef';
+const accent = '#5057ff'; // brand-400, Griddo blue
 ---
 
 <svg viewBox="0 0 200 150" class={className} fill="none" aria-hidden="true" focusable="false" stroke-linecap="round" stroke-linejoin="round">
@@ -27,8 +27,8 @@ const lime = '#b8f03e';
         <rect x="80" y="60" width="54" height="7" rx="3.5" fill={ink} />
         <rect x="80" y="73" width="36" height="6" rx="3" fill={line} />
         <rect x="48" y="90" width="100" height="5" rx="2.5" fill={soft} />
-        <circle cx="154" cy="44" r="7" fill={lime} stroke={ink} stroke-width="2" />
-        <circle cx="154" cy="44" r="15" stroke={lime} stroke-width="2" opacity=".55" />
+        <circle cx="154" cy="44" r="7" fill={accent} stroke={ink} stroke-width="2" />
+        <circle cx="154" cy="44" r="15" stroke={accent} stroke-width="2" opacity=".55" />
         <path d="M118 104l10 22 4-9 9-4-23-9z" fill="#fff" stroke={ink} stroke-width="2" />
       </g>
     )
@@ -43,8 +43,8 @@ const lime = '#b8f03e';
         <rect x="88" y="56" width="46" height="6" rx="3" fill={ink} />
         <rect x="88" y="67" width="30" height="5" rx="2.5" fill={line} />
         <rect x="64" y="82" width="72" height="8" rx="4" fill={soft} />
-        <circle cx="150" cy="40" r="7" fill={lime} stroke={ink} stroke-width="2" />
-        <circle cx="150" cy="40" r="15" stroke={lime} stroke-width="2" opacity=".55" />
+        <circle cx="150" cy="40" r="7" fill={accent} stroke={ink} stroke-width="2" />
+        <circle cx="150" cy="40" r="15" stroke={accent} stroke-width="2" opacity=".55" />
       </g>
     )
   }
@@ -56,7 +56,7 @@ const lime = '#b8f03e';
         <rect x="56" y="80" width="12" height="24" rx="3" fill={soft} stroke={ink} stroke-width="2" />
         <rect x="76" y="66" width="12" height="38" rx="3" fill={soft} stroke={ink} stroke-width="2" />
         <rect x="96" y="72" width="12" height="32" rx="3" fill={soft} stroke={ink} stroke-width="2" />
-        <rect x="116" y="50" width="12" height="54" rx="3" fill={lime} stroke={ink} stroke-width="2" />
+        <rect x="116" y="50" width="12" height="54" rx="3" fill={accent} stroke={ink} stroke-width="2" />
         <rect x="136" y="84" width="12" height="20" rx="3" fill={soft} stroke={ink} stroke-width="2" />
         <circle cx="122" cy="38" r="4" fill={ink} />
       </g>
@@ -71,7 +71,7 @@ const lime = '#b8f03e';
         <rect x="54" y="83" width="36" height="5" rx="2.5" fill={soft} />
         <circle cx="130" cy="76" r="22" fill="#fff" stroke={ink} stroke-width="2.5" />
         <path d="M146 92l16 16" stroke={ink} stroke-width="5" />
-        <circle cx="130" cy="76" r="4" fill={lime} stroke={ink} stroke-width="2" />
+        <circle cx="130" cy="76" r="4" fill={accent} stroke={ink} stroke-width="2" />
       </g>
     )
   }
@@ -83,7 +83,7 @@ const lime = '#b8f03e';
         <path d="M116 94l14-14a17 17 0 0 0-24-24l-6 6" stroke={ink} stroke-width="9" />
         <path d="M116 94l14-14a17 17 0 0 0-24-24l-6 6" stroke="#fff" stroke-width="4" />
         <path d="M96 40v10M112 104v10M76 104l-6 7M126 44l6-7" stroke={ink} stroke-width="2" />
-        <circle cx="100" cy="75" r="5" fill={lime} stroke={ink} stroke-width="2" />
+        <circle cx="100" cy="75" r="5" fill={accent} stroke={ink} stroke-width="2" />
       </g>
     )
   }
@@ -93,18 +93,18 @@ const lime = '#b8f03e';
         <path d="M64 96c-10-26 8-58 36-58s46 32 36 58" stroke={ink} stroke-width="2" stroke-dasharray="4 7" />
         <circle cx="64" cy="98" r="9" fill="#fff" stroke={ink} stroke-width="2" />
         <circle cx="136" cy="98" r="9" fill={soft} stroke={ink} stroke-width="2" stroke-dasharray="3 4" />
-        <text x="130.5" y="103" font-family="Bricolage Grotesque Variable, sans-serif" font-weight="800" font-size="15" fill={ink}>?</text>
-        <circle cx="100" cy="38" r="7" fill={lime} stroke={ink} stroke-width="2" />
+        <text x="130.5" y="103" style="font-family: var(--font-display)" font-weight="800" font-size="15" fill={ink}>?</text>
+        <circle cx="100" cy="38" r="7" fill={accent} stroke={ink} stroke-width="2" />
       </g>
     )
   }
   {
     name === 'success' && (
       <g>
-        <circle cx="100" cy="72" r="36" fill={lime} stroke={ink} stroke-width="2" />
+        <circle cx="100" cy="72" r="36" fill={accent} stroke={ink} stroke-width="2" />
         <path d="M84 72l11 11 22-24" stroke={ink} stroke-width="5" />
         <circle cx="50" cy="44" r="4" fill={ink} />
-        <circle cx="152" cy="40" r="5" fill={lime} stroke={ink} stroke-width="2" />
+        <circle cx="152" cy="40" r="5" fill={accent} stroke={ink} stroke-width="2" />
         <path d="M150 104l8 4M42 96l-8 5M60 22l3 8M142 16l-2 8" stroke={ink} stroke-width="2" />
       </g>
     )
@@ -113,7 +113,7 @@ const lime = '#b8f03e';
     name === 'tags' && (
       <g>
         <path d="M52 50h56l36 30-36 30H52a8 8 0 0 1-8-8V58a8 8 0 0 1 8-8z" fill="#fff" stroke={ink} stroke-width="2" transform="rotate(-10 100 80)" />
-        <circle cx="112" cy="72" r="7" fill={lime} stroke={ink} stroke-width="2" />
+        <circle cx="112" cy="72" r="7" fill={accent} stroke={ink} stroke-width="2" />
         <rect x="58" y="70" width="36" height="6" rx="3" fill={line} transform="rotate(-10 100 80)" />
         <rect x="58" y="82" width="24" height="5" rx="2.5" fill={soft} transform="rotate(-10 100 80)" />
       </g>
@@ -124,7 +124,7 @@ const lime = '#b8f03e';
       <g>
         <path d="M78 64V52a22 22 0 0 1 44 0v12" stroke={ink} stroke-width="2.5" />
         <rect x="64" y="62" width="72" height="56" rx="12" fill="#fff" stroke={ink} stroke-width="2" />
-        <circle cx="100" cy="86" r="7" fill={lime} stroke={ink} stroke-width="2" />
+        <circle cx="100" cy="86" r="7" fill={accent} stroke={ink} stroke-width="2" />
         <path d="M100 93v10" stroke={ink} stroke-width="3" />
         <path d="M150 50l6-4M152 64h8M44 58l-7-3" stroke={ink} stroke-width="2" />
       </g>
@@ -136,7 +136,7 @@ const lime = '#b8f03e';
         <path d="M66 28h48l20 20v70a8 8 0 0 1-8 8H66a8 8 0 0 1-8-8V36a8 8 0 0 1 8-8z" fill="#fff" stroke={ink} stroke-width="2" />
         <path d="M114 28v20h20" stroke={ink} stroke-width="2" />
         <path d="M70 62h52M70 76h52M70 90h52M88 56v44M106 56v44" stroke={line} stroke-width="2" />
-        <circle cx="134" cy="108" r="16" fill={lime} stroke={ink} stroke-width="2" />
+        <circle cx="134" cy="108" r="16" fill={accent} stroke={ink} stroke-width="2" />
         <path d="M134 116v-15M128 106l6-6 6 6" stroke={ink} stroke-width="2.5" />
       </g>
     )
@@ -144,7 +144,7 @@ const lime = '#b8f03e';
   {
     name === 'rules' && (
       <g>
-        <circle cx="52" cy="76" r="9" fill={lime} stroke={ink} stroke-width="2" />
+        <circle cx="52" cy="76" r="9" fill={accent} stroke={ink} stroke-width="2" />
         <path d="M61 76h26c10 0 12-26 26-26h22M87 76c10 0 12 26 26 26h22M61 76h74" stroke={ink} stroke-width="2" />
         <rect x="136" y="40" width="24" height="20" rx="6" fill="#fff" stroke={ink} stroke-width="2" />
         <rect x="136" y="66" width="24" height="20" rx="6" fill={soft} stroke={ink} stroke-width="2" />

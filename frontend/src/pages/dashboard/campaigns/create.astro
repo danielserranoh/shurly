@@ -174,7 +174,7 @@ const steps = ['Details', 'Recipients', 'Review', 'Create'];
       if (i === n) li.setAttribute('aria-current', 'step');
       else li.removeAttribute('aria-current');
       dot.className = `grid size-7 shrink-0 place-items-center rounded-full text-xs font-semibold transition-colors ${
-        i < n ? 'bg-brand-400 text-ink-950' : i === n ? 'bg-ink-950 text-white' : 'bg-ink-100 text-ink-500'
+        i < n ? 'bg-brand-400 text-white' : i === n ? 'bg-ink-950 text-white' : 'bg-ink-100 text-ink-500'
       }`;
       dot.innerHTML = i < n ? iconSvg('check', 'size-3.5', 3) : String(i);
       if (label) label.className = `hidden text-sm font-medium sm:inline ${i <= n ? 'text-ink-950' : 'text-ink-500'}`;

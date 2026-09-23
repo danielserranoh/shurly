@@ -13,7 +13,7 @@ import QrModal from '@/components/app/QrModal.astro';
   <PageHeader title="Links" description="Every short link you’ve made — and who’s clicking." />
 
   <div id="welcome" hidden class="mb-5 flex animate-fade-up items-start gap-4 rounded-2xl bg-ink-950 p-5 text-white">
-    <span class="grid size-10 shrink-0 place-items-center rounded-xl bg-brand-400 text-ink-950"><Icon name="rocket" class="size-5" /></span>
+    <span class="grid size-10 shrink-0 place-items-center rounded-xl bg-brand-400 text-white"><Icon name="rocket" class="size-5" /></span>
     <div class="flex-1">
       <p class="font-semibold">You’re in. Let’s make your first link.</p>
       <p class="mt-1 text-sm text-ink-300">Paste any long link below and press Enter — we’ll copy the short one for you.</p>
@@ -34,7 +34,7 @@ import QrModal from '@/components/app/QrModal.astro';
     </form>
     <p id="quick-error" class="field-error px-3 pt-1" data-error-for="url" hidden></p>
     <div id="quick-result" hidden class="m-1 mt-2 flex animate-fade-up flex-col gap-3 rounded-xl border border-brand-200 bg-brand-50 p-3 sm:flex-row sm:items-center">
-      <span class="grid size-8 shrink-0 animate-pop place-items-center rounded-full bg-brand-400 text-ink-950"><Icon name="check" strokeWidth={3} /></span>
+      <span class="grid size-8 shrink-0 animate-pop place-items-center rounded-full bg-brand-400 text-white"><Icon name="check" strokeWidth={3} /></span>
       <div class="min-w-0 flex-1">
         <p class="text-sm font-semibold text-ink-950" data-result-title>Your link is ready</p>
         <a class="shortlink block truncate text-[15px] text-ink-950 hover:underline" target="_blank" rel="noopener" data-result-link></a>
