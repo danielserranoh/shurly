@@ -79,6 +79,7 @@ def generate_campaign_urls(
     rows: list[dict],
     original_url: str,
     created_by: UUID,
+    domain_id: UUID,
     db_session,
 ) -> list[URL]:
     """
@@ -89,12 +90,15 @@ def generate_campaign_urls(
         rows: List of row dictionaries with user data
         original_url: Base URL to redirect to
         created_by: UUID of user creating the campaign
+        domain_id: UUID of the domain the short codes are unique within
         db_session: SQLAlchemy session for checking short code uniqueness
 
     Returns:
         List of URL objects (not yet committed to DB)
     """
     urls = []
+    # Codes issued earlier in this batch aren't in the DB yet, so the query below can't see them
+    issued = set()
 
     for row in rows:
         # Generate unique short code
@@ -103,18 +107,26 @@ def generate_campaign_urls(
 
         for _ in range(max_attempts):
             candidate = generate_short_code(length=6)
-            # Check if code already exists in DB
-            existing = db_session.query(URL).filter(URL.short_code == candidate).first()
+            if candidate in issued:
+                continue
+            # Phase 3.10.1 — uniqueness is per-domain, as for standard/custom URLs
+            existing = (
+                db_session.query(URL)
+                .filter(URL.domain_id == domain_id, URL.short_code == candidate)
+                .first()
+            )
             if not existing:
                 short_code = candidate
                 break
 
         if not short_code:
             raise RuntimeError("Failed to generate unique short code after multiple attempts")
+        issued.add(short_code)
 
         # Create URL with user data from CSV row
         url = URL(
             short_code=short_code,
+            domain_id=domain_id,
             original_url=original_url,
             url_type=URLType.CAMPAIGN,
             campaign_id=campaign_id,

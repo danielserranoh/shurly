@@ -49,6 +49,7 @@ from server.utils.campaign import (
     parse_csv,
     validate_csv,
 )
+from server.utils.domain import get_or_create_default_domain
 from server.utils.url import is_valid_url
 
 # ---------------------------------------------------------------------------
@@ -96,6 +97,9 @@ def create_campaign_from_rows(
     if not is_valid:
         raise ValueError(f"CSV validation error: {error}")
 
+    # Before the flush, as in the endpoint: creating the default domain commits.
+    domain = get_or_create_default_domain(db)
+
     campaign = Campaign(
         name=name,
         original_url=original_url,
@@ -110,6 +114,7 @@ def create_campaign_from_rows(
         rows=parsed,
         original_url=original_url,
         created_by=user.id,
+        domain_id=domain.id,
         db_session=db,
     )
     db.add_all(urls)

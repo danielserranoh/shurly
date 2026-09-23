@@ -46,6 +46,14 @@ implementation lifecycle and is independent of the URL version segment.
   added (was Bricolage Grotesque, which the wordmark SVG still uses).
 
 ### Security
+- **Campaign links could be taken over with a custom URL.** Campaign URLs were
+  stored with a NULL `domain_id`, and standard/custom URL creation only checks
+  the default domain for a clashing code. Any user could create a custom URL
+  with the code of someone else's campaign link, and because the resolver
+  prefers the default-domain row, the campaign link then redirected to the new
+  destination. Campaign URLs now live on the default domain and existing ones
+  are moved there at startup (see Fixed), so the clash is detected and the
+  custom code gets a random suffix, as for any taken code.
 - **SSRF hardening for the Open Graph fetcher.** Link previews are fetched
   server-side from user-supplied URLs (`POST /api/v1/urls`,
   `POST /api/v1/urls/custom`, `POST /api/v1/urls/{code}/refresh-preview`, and since
@@ -124,6 +132,35 @@ implementation lifecycle and is independent of the URL version segment.
   now returns `{api_key, scope}`.
 
 ### Fixed
+- **Campaign URLs are bound to the default domain.** `POST /api/v1/campaigns`
+  and the MCP `create_campaign_from_rows` tool left `domain_id` NULL, so:
+  - the `(domain_id, short_code)` UNIQUE never covered them (PostgreSQL treats
+    NULLs as distinct);
+  - the tracking pixel (`/{code}/track`), which matches by domain only,
+    returned `404` for every campaign link;
+  - the resolver's legacy NULL fallback served them on every host.
+  Campaign short codes are now unique per domain, like standard and custom
+  codes. `generate_campaign_urls()` takes a required `domain_id`.
+- **Two rows of one campaign could get the same short code.** Codes were only
+  checked against the database, where the batch isn't yet, so the odds grew
+  with the CSV (about 2% at 10,000 rows, 44% at 50,000). Both recipients got
+  the same link, which resolved to one of the two rows, so one of them landed
+  on a URL personalized with the other's data. The generator now skips codes
+  it already issued in the batch.
+- **Existing campaign URLs are repaired at startup.** `_seed_database()` runs
+  `backfill_campaign_url_domains()`, which moves NULL-domain campaign URLs to
+  the default domain. It is idempotent and keeps `updated_at`. A row whose move
+  would violate the UNIQUE (its code is already taken on the default domain,
+  or another NULL-domain row shares it) stays NULL and keeps resolving through
+  the legacy fallback; startup logs a warning with the count. To review them:
+  ```sql
+  SELECT id, short_code, campaign_id, created_by, created_at
+  FROM urls
+  WHERE domain_id IS NULL AND url_type = 'CAMPAIGN'
+  ORDER BY short_code;
+  ```
+  `url_type` stores enum member names, so the literal is `'CAMPAIGN'`;
+  `'campaign'` fails with `invalid input value for enum urltype`.
 - bcrypt 5.0 strict 72-byte input limit handled in `hash_password` /
   `verify_password` by pre-truncating at the byte boundary; runtime dependency
   pinned to `bcrypt<5` until passlib ships an upstream fix.

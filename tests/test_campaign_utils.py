@@ -3,7 +3,9 @@
 import pytest
 from sqlalchemy.orm import Session
 
+from server.core.models import URL, Domain, URLType
 from server.utils.campaign import generate_campaign_urls, parse_csv, validate_csv
+from server.utils.domain import get_or_create_default_domain
 
 
 class TestParseCSV:
@@ -156,6 +158,7 @@ class TestGenerateCampaignURLs:
         import uuid
 
         campaign_id = uuid.uuid4()
+        domain = get_or_create_default_domain(db_session)
         rows = [
             {"firstName": "John", "lastName": "Doe"},
             {"firstName": "Jane", "lastName": "Smith"},
@@ -166,6 +169,7 @@ class TestGenerateCampaignURLs:
             rows=rows,
             original_url="https://example.com/landing",
             created_by=test_user.id,
+            domain_id=domain.id,
             db_session=db_session,
         )
 
@@ -179,6 +183,7 @@ class TestGenerateCampaignURLs:
         assert urls[0].campaign_id == campaign_id
         assert urls[0].user_data == {"firstName": "John", "lastName": "Doe"}
         assert urls[0].created_by == test_user.id
+        assert urls[0].domain_id == domain.id
 
         # Check second URL
         assert urls[1].short_code is not None
@@ -196,6 +201,7 @@ class TestGenerateCampaignURLs:
             rows=[],
             original_url="https://example.com",
             created_by=test_user.id,
+            domain_id=get_or_create_default_domain(db_session).id,
             db_session=db_session,
         )
 
@@ -219,6 +225,7 @@ class TestGenerateCampaignURLs:
             rows=rows,
             original_url="https://example.com",
             created_by=test_user.id,
+            domain_id=get_or_create_default_domain(db_session).id,
             db_session=db_session,
         )
 
@@ -229,3 +236,63 @@ class TestGenerateCampaignURLs:
             "tracking_id": "ABC123",
             "special_chars": "test@#$%",
         }
+
+    def test_generate_campaign_urls_checks_uniqueness_within_domain(
+        self, db_session: Session, test_user, monkeypatch
+    ):
+        """A code taken on this domain is retried; the same code on another domain is not."""
+        import uuid
+
+        domain = get_or_create_default_domain(db_session)
+        other = Domain(hostname="alt.example.com", is_default=False)
+        db_session.add(other)
+        db_session.flush()
+        for code, domain_id in (("taken1", domain.id), ("other1", other.id)):
+            db_session.add(
+                URL(
+                    short_code=code,
+                    domain_id=domain_id,
+                    original_url="https://example.com",
+                    url_type=URLType.STANDARD,
+                    created_by=test_user.id,
+                )
+            )
+        db_session.commit()
+
+        codes = iter(["taken1", "other1"])
+        monkeypatch.setattr(
+            "server.utils.campaign.generate_short_code", lambda length=6: next(codes)
+        )
+
+        urls = generate_campaign_urls(
+            campaign_id=uuid.uuid4(),
+            rows=[{"email": "test@example.com"}],
+            original_url="https://example.com",
+            created_by=test_user.id,
+            domain_id=domain.id,
+            db_session=db_session,
+        )
+
+        assert urls[0].short_code == "other1"
+
+    def test_generate_campaign_urls_never_reuses_a_code_within_the_batch(
+        self, db_session: Session, test_user, monkeypatch
+    ):
+        """Codes issued earlier in the batch aren't in the DB yet, so the query can't see them."""
+        import uuid
+
+        codes = iter(["dup001", "dup001", "uniq01"])
+        monkeypatch.setattr(
+            "server.utils.campaign.generate_short_code", lambda length=6: next(codes)
+        )
+
+        urls = generate_campaign_urls(
+            campaign_id=uuid.uuid4(),
+            rows=[{"email": "a@example.com"}, {"email": "b@example.com"}],
+            original_url="https://example.com",
+            created_by=test_user.id,
+            domain_id=get_or_create_default_domain(db_session).id,
+            db_session=db_session,
+        )
+
+        assert [url.short_code for url in urls] == ["dup001", "uniq01"]
