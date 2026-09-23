@@ -2,10 +2,15 @@
 
 from __future__ import annotations
 
-from sqlalchemy.orm import Session
+import logging
+
+from sqlalchemy import exists, update
+from sqlalchemy.orm import Session, aliased
 
 from server.core.config import settings
-from server.core.models import Domain
+from server.core.models import URL, Domain, URLType
+
+logger = logging.getLogger(__name__)
 
 
 def get_or_create_default_domain(db: Session) -> Domain:
@@ -52,3 +57,45 @@ def resolve_domain_for_host(db: Session, host_header: str | None) -> Domain:
         if match:
             return match
     return get_or_create_default_domain(db)
+
+
+def backfill_campaign_url_domains(db: Session) -> int:
+    """
+    Bind campaign URLs stored with a NULL `domain_id` to the default domain.
+
+    The campaign generator used to leave `domain_id` NULL, so those rows escaped
+    the `(domain_id, short_code)` UNIQUE (PostgreSQL treats NULLs as distinct)
+    and the resolver's legacy fallback served them on every host. Idempotent, so
+    it runs at every startup; returns the number of rows moved.
+
+    A row stays NULL when moving it would violate the constraint: its code is
+    already taken on the default domain, or another NULL-domain row shares it.
+    Those keep resolving through the legacy fallback and are logged for review.
+    """
+    default = get_or_create_default_domain(db)
+    other = aliased(URL)
+    taken_on_default = exists().where(
+        other.domain_id == default.id, other.short_code == URL.short_code
+    )
+    shared_with_legacy_row = exists().where(
+        other.domain_id.is_(None), other.short_code == URL.short_code, other.id != URL.id
+    )
+    legacy = (URL.domain_id.is_(None), URL.url_type == URLType.CAMPAIGN)
+
+    moved = db.execute(
+        update(URL)
+        .where(*legacy, ~taken_on_default, ~shared_with_legacy_row)
+        # A repair, not an edit: keep updated_at as it was
+        .values(domain_id=default.id, updated_at=URL.updated_at)
+        .execution_options(synchronize_session=False)
+    ).rowcount
+    db.commit()
+
+    left = db.query(URL).filter(*legacy).count()
+    if left:
+        logger.warning(
+            f"{left} campaign URL(s) kept a NULL domain_id: their short code is taken on "
+            f"{default.hostname} or shared with another NULL-domain row. They still resolve "
+            "via the legacy fallback; review them by hand (query in CHANGELOG.md)."
+        )
+    return moved

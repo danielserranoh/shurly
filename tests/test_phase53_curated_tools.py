@@ -64,6 +64,20 @@ def test_create_campaign_from_rows_creates_one_url_per_row(db_session, test_user
     assert user_data_companies == ["Acme", "TechCorp"]
 
 
+def test_create_campaign_from_rows_binds_urls_to_default_domain(db_session, test_user):
+    curated.create_campaign_from_rows(
+        db_session,
+        test_user,
+        name="Domain Outreach",
+        original_url="https://example.com/landing",
+        rows=[{"email": "a@example.com"}, {"email": "b@example.com"}],
+    )
+    default_domain = get_or_create_default_domain(db_session)
+    urls = db_session.query(URL).filter(URL.url_type == URLType.CAMPAIGN).all()
+    assert len(urls) == 2
+    assert {u.domain_id for u in urls} == {default_domain.id}
+
+
 def test_create_campaign_from_rows_rejects_invalid_url(db_session, test_user):
     with pytest.raises(ValueError, match="valid http/https URL"):
         curated.create_campaign_from_rows(

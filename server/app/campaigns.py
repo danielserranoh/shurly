@@ -21,6 +21,7 @@ from server.schemas.campaign import (
 from server.schemas.responses import get_responses
 from server.schemas.tag import TagResponse
 from server.utils.campaign import generate_campaign_urls, parse_csv, validate_csv
+from server.utils.domain import get_or_create_default_domain
 
 # Phase 3.11 — campaign short URLs (detail + CSV export) use the shared resolver
 # (BASE_URL → https://DEFAULT_DOMAIN → localhost) instead of a hard-coded host.
@@ -92,6 +93,11 @@ def create_campaign(
             detail=f"CSV validation error: {error_msg}",
         )
 
+    # Phase 3.10.1 — campaign URLs live on the default domain, like standard and
+    # custom URLs. Resolve it before the flush below: creating the domain commits,
+    # which would also commit a flushed campaign that the rollback can't undo.
+    domain = get_or_create_default_domain(db)
+
     # Create campaign record
     campaign = Campaign(
         name=campaign_data.name,
@@ -110,6 +116,7 @@ def create_campaign(
             rows=rows,
             original_url=campaign_data.original_url,
             created_by=current_user.id,
+            domain_id=domain.id,
             db_session=db,
         )
     except RuntimeError as e:

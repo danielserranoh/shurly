@@ -68,7 +68,8 @@ def _try_build_mcp_app(fastapi_app):
 
 def _seed_database():
     """
-    Create the schema if missing, then seed the default domain and predefined tag set.
+    Create the schema if missing, then seed the default domain and predefined tag set,
+    and bind legacy campaign URLs (NULL `domain_id`) to the default domain.
 
     `Base.metadata.create_all()` is idempotent — only creates tables that don't
     exist. Safe on every container start. Switch to Alembic when migrations
@@ -86,7 +87,7 @@ def _seed_database():
         User,
         Visitor,
     )
-    from server.utils.domain import get_or_create_default_domain
+    from server.utils.domain import backfill_campaign_url_domains, get_or_create_default_domain
     from server.utils.tags import initialize_predefined_tags
 
     Base.metadata.create_all(bind=engine)
@@ -95,6 +96,7 @@ def _seed_database():
     try:
         initialize_predefined_tags(db)
         get_or_create_default_domain(db)
+        backfill_campaign_url_domains(db)
     finally:
         db.close()
 
