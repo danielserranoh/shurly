@@ -11,7 +11,7 @@
   /* Logical is Griddo's typeface: used when the browser has it, Figtree otherwise. */
   --font-display: "Logical Var", "Logical", "Figtree Variable", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "JetBrains Mono Variable", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  /* Handwritten accent for eyebrows only (single weight, 400). */
+  /* Handwritten accent for eyebrows only: always uppercase, single weight (400). */
   --font-hand: "Shadows Into Light Two", "Figtree Variable", cursive;
 
   --text-2xs: 0.6875rem;
@@ -174,14 +174,21 @@
     letter-spacing: -0.03em;
     line-height: 1.05;
   }
-  /* Handwritten note above a heading. Sentence case as written: the face is a single
-     400 weight and reads small, so no caps, no tracking, a larger size. */
+  /* Handwritten note above a heading. Shadows Into Light Two is always set in capitals
+     (part of the style), single 400 weight, lightly tracked, in brand blue
+     (4.8:1 on canvas). On ink, pair it with text-brand-300. */
   .eyebrow {
     font-family: var(--font-hand);
-    font-size: 1.25rem;
-    line-height: 1.5rem;
+    font-size: 0.875rem;
+    line-height: 1.25rem;
     font-weight: 400;
-    color: var(--color-ink-700);
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--color-brand-400);
+  }
+  /* The handwritten face is never set in lower case, wherever it's used. */
+  .font-hand {
+    text-transform: uppercase;
   }
   .shortlink {
     font-family: var(--font-mono);
