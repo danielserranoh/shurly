@@ -7,7 +7,7 @@ analytics, and Shlink-inspired hardening (multi-domain, redirect rules, GDPR).
 
 This project follows a **pragmatic, TDD-driven** development philosophy:
 
-- **Test-Driven Development**: Write tests first, then implement features. **All 449 tests must pass.**
+- **Test-Driven Development**: Write tests first, then implement features. The suite must stay green.
 - **Incremental Progress**: Complete features end-to-end before moving to the next.
 - **Clear Documentation**: Code is the truth, docs explain the why.
 - **Production-Ready**: Every commit should maintain a working application.
@@ -23,11 +23,9 @@ Read [README.md](README.md) to understand:
 - How to run locally
 
 ### 2. **Development Roadmap** (10 min)
-Review [_pm/ROADMAP.md](_pm/ROADMAP.md) for:
-- **Current Status**: Phase 3 (incl. 3.11 brand + frontend redesign) and 5.3–5.5 complete (449 tests passing)
-- Use cases (standard URLs, custom URLs, campaigns, multi-domain)
-- Phase 1–3.10 completion status (✅)
-- Phase 4–6 next steps (AWS Lambda + RDS, deployment hardening, docs)
+Review [_pm/ROADMAP.md](_pm/ROADMAP.md) — the single source of truth for project
+status: use cases, phase breakdowns, what's done and what's next. Status is
+tracked *there*, not here; this guide stays about how to work in the codebase.
 
 ### 3. **Testing Guide** (as needed)
 Check [docs/TESTING.md](docs/TESTING.md) when you need to:
@@ -91,7 +89,7 @@ Backend (FastAPI)               Frontend (Astro 7 + Tailwind 4)
 1. **Understand the context**: Check related code and tests first.
 2. **Write tests**: Add/update tests before implementing (TDD).
 3. **Implement**: Make changes to pass the tests.
-4. **Verify**: Run `uv run pytest` — all 449 tests must pass.
+4. **Verify**: Run `uv run pytest` — the whole suite must pass.
 5. **Lint**: `uv run ruff check server tests main.py` (focus on the files you touched).
 6. **Commit**: Use clear, descriptive commit messages following the existing pattern (`feat: Phase X.Y.Z — …`).
 
@@ -161,7 +159,7 @@ Backend (FastAPI)               Frontend (Astro 7 + Tailwind 4)
 
 ### Running Tests
 ```bash
-# All tests (should show 449 passed; MCP suites skip without `--extra mcp`)
+# All tests (MCP suites skip without `--extra mcp`)
 uv run pytest
 
 # With coverage
@@ -185,13 +183,6 @@ docker compose up -d
 
 ## Important Notes
 
-### Phase Status
-- ✅ **Phase 1–3**: Backend + Frontend + Analytics + Tags
-- ✅ **Phase 3.9**: API versioning, validity window, bot detection, robots.txt, GDPR, X-Request-Id, SHORT_URL_MODE, TRUSTED_PROXIES, OG charset, API key scope
-- ✅ **Phase 3.10**: Multi-domain, redirect rules, tracking pixel, orphan visits, CSV export, configurable redirect
-- ✅ **Phase 3.11**: Brand identity + design system + full frontend redesign (static build)
-- ⏳ **Phase 4**: AWS deployment (next)
-
 ### Defaults Worth Knowing
 - `SHORT_URL_MODE=loose` → all generated codes and custom slugs are lowercased
 - `ANONYMIZE_REMOTE_ADDR=true` → IPv4 truncated to /24, IPv6 to /64
@@ -203,15 +194,8 @@ docker compose up -d
 
 ### Git Workflow
 - **PRs target `dev`**; `main` is the release branch
-- Phase 3.9 PR: stacked feature branches → `dev` (`feat/phase-3.9.3-3.9.6-shlink-hardening`)
-- Phase 3.10 PR: stacked on the 3.9 branch (`feat/phase-3.10-shlink-medium`)
 - Always `git pull origin dev` before starting new work
 - Commit messages follow `feat: Phase X.Y.Z — short description` style
-
-### Testing Status
-- ✅ **449 backend tests passing**
-- ✅ Frontend builds clean (`npm run build`); `npm audit` 0 vulnerabilities
-- ⏳ Manual smoke testing for production deploy (Phase 4)
 
 ## Philosophy Summary
 
