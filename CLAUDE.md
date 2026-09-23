@@ -7,7 +7,7 @@ analytics, and Shlink-inspired hardening (multi-domain, redirect rules, GDPR).
 
 This project follows a **pragmatic, TDD-driven** development philosophy:
 
-- **Test-Driven Development**: Write tests first, then implement features. **All 388 tests must pass.**
+- **Test-Driven Development**: Write tests first, then implement features. **All 398 tests must pass.**
 - **Incremental Progress**: Complete features end-to-end before moving to the next.
 - **Clear Documentation**: Code is the truth, docs explain the why.
 - **Production-Ready**: Every commit should maintain a working application.
@@ -24,7 +24,7 @@ Read [README.md](README.md) to understand:
 
 ### 2. **Development Roadmap** (10 min)
 Review [_pm/ROADMAP.md](_pm/ROADMAP.md) for:
-- **Current Status**: Phase 3 (incl. 3.11 brand + frontend redesign) and 5.3–5.5 complete (388 tests passing)
+- **Current Status**: Phase 3 (incl. 3.11 brand + frontend redesign) and 5.3–5.5 complete (398 tests passing)
 - Use cases (standard URLs, custom URLs, campaigns, multi-domain)
 - Phase 1–3.10 completion status (✅)
 - Phase 4–6 next steps (AWS Lambda + RDS, deployment hardening, docs)
@@ -91,7 +91,7 @@ Backend (FastAPI)               Frontend (Astro 7 + Tailwind 4)
 1. **Understand the context**: Check related code and tests first.
 2. **Write tests**: Add/update tests before implementing (TDD).
 3. **Implement**: Make changes to pass the tests.
-4. **Verify**: Run `uv run pytest` — all 388 tests must pass.
+4. **Verify**: Run `uv run pytest` — all 398 tests must pass.
 5. **Lint**: `uv run ruff check server tests main.py` (focus on the files you touched).
 6. **Commit**: Use clear, descriptive commit messages following the existing pattern (`feat: Phase X.Y.Z — …`).
 
@@ -126,7 +126,7 @@ Backend (FastAPI)               Frontend (Astro 7 + Tailwind 4)
 
 ### Key Files to Know
 
-- `main.py` — FastAPI app, CORS, `RequestIdMiddleware`, startup seeders (default domain + predefined tags + campaign-URL domain backfill)
+- `main.py` — FastAPI app, CORS, `RequestIdMiddleware`, startup seeders (default domain + predefined tags)
 - `server/core/config.py` — All settings (CORS, GDPR, redirect, multi-domain, SHORT_URL_MODE, …)
 - `server/core/models/` — SQLAlchemy models (8 files; register new ones in `__init__.py`)
 - `server/app/urls.py` — URL CRUD, redirect resolver, robots.txt, tracking pixel, redirect-rule CRUD
@@ -161,7 +161,7 @@ Backend (FastAPI)               Frontend (Astro 7 + Tailwind 4)
 
 ### Running Tests
 ```bash
-# All tests (should show 388 passed; MCP suites skip without `--extra mcp`)
+# All tests (should show 398 passed; MCP suites skip without `--extra mcp`)
 uv run pytest
 
 # With coverage
@@ -198,7 +198,7 @@ docker compose up -d
 - `TRUSTED_PROXIES=[]` → **never trust** `X-Forwarded-For` until configured
 - `DISABLE_TRACK_PARAM=nostat` → `?nostat` skips visit logging but still redirects
 - `REDIRECT_STATUS_CODE=302` → `Cache-Control: private, max-age=0`
-- `DEFAULT_DOMAIN=shurl.griddo.io` → seeded at startup, which also moves legacy NULL-`domain_id` campaign URLs onto it; NULL `domain_id` URLs that remain are matched as a fallback
+- `DEFAULT_DOMAIN=shurl.griddo.io` → seeded at startup; legacy NULL `domain_id` URLs are matched as a fallback
 - `OG_FETCH_ALLOW_PRIVATE=false` → OG previews refuse destinations resolving to loopback/private/link-local IPs (SSRF guard), so `localhost` pages get empty previews unless this is set to `true` locally
 
 ### Git Workflow
@@ -209,7 +209,7 @@ docker compose up -d
 - Commit messages follow `feat: Phase X.Y.Z — short description` style
 
 ### Testing Status
-- ✅ **388 backend tests passing**
+- ✅ **398 backend tests passing**
 - ✅ Frontend builds clean (`npm run build`); `npm audit` 0 vulnerabilities
 - ⏳ Manual smoke testing for production deploy (Phase 4)
 

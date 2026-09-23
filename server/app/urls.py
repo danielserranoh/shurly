@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response,
 from fastapi.responses import PlainTextResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import func, or_
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from server.app.analytics import _exclude_bots
 from server.core import get_db
@@ -378,8 +378,8 @@ def list_urls(
     ),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
-    skip: int = 0,
-    limit: int = 100,
+    skip: int = Query(0, ge=0, description="Number of URLs to skip, for pagination"),
+    limit: int = Query(100, ge=1, le=100, description="Maximum number of URLs to return (1-100)"),
 ):
     """
     List all URLs created by the current user.
@@ -391,8 +391,10 @@ def list_urls(
     **Authentication:** Required (JWT Bearer token)
 
     **Query Parameters:**
-    - **skip**: Number of records to skip for pagination (default: 0)
-    - **limit**: Maximum number of records to return (default: 100, max: 100)
+    - **skip**: Number of records to skip for pagination (default: 0, min: 0)
+    - **limit**: Maximum number of records to return (default: 100, min: 1, max: 100).
+      Out-of-range values are rejected with 422, not clamped: to read more than 100
+      URLs, page through them with `skip` until you have `total`.
     - **tags**: Comma-separated tag IDs to filter by
     - **tag_filter**: 'all' (AND) or 'any' (OR) for multiple tags (default: 'any')
     - **q**: Case-insensitive substring search over title, destination URL and short code (`%` and `_` match literally; surrounding whitespace is ignored)
@@ -404,7 +406,7 @@ def list_urls(
     - **200**: List of URLs retrieved successfully with pagination info
     - **400**: Invalid tag ID format
     - **401**: Authentication required or invalid token
-    - **422**: Validation error (invalid `url_type`)
+    - **422**: Validation error (invalid `url_type`, or `skip` / `limit` out of range)
     """
     from server.core.models import Tag
 
@@ -444,7 +446,14 @@ def list_urls(
     if url_type:
         query = query.filter(URL.url_type.in_(url_type))
 
-    urls = query.order_by(URL.created_at.desc()).offset(skip).limit(limit).all()
+    # Tags for the whole page in one query (no N+1 lazy load per URL)
+    urls = (
+        query.options(selectinload(URL.tags))
+        .order_by(URL.created_at.desc())
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )
 
     total = query.offset(0).limit(None).count()
 
@@ -726,11 +735,13 @@ def bulk_tag_urls(
     except (ValueError, AttributeError) as e:
         raise HTTPException(status_code=400, detail=f"Invalid tag ID format: {str(e)}") from e
 
-    # Fetch URLs (only user's own URLs)
-    urls = db.query(URL).filter(
-        URL.short_code.in_(short_codes),
-        URL.created_by == current_user.id
-    ).all()
+    # Fetch URLs (only user's own URLs) with their current tags in one query (no N+1)
+    urls = (
+        db.query(URL)
+        .options(selectinload(URL.tags))
+        .filter(URL.short_code.in_(short_codes), URL.created_by == current_user.id)
+        .all()
+    )
 
     # Fetch tags
     tags = db.query(Tag).filter(Tag.id.in_(tag_ids)).all()
