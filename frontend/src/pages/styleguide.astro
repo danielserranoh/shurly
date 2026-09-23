@@ -127,6 +127,15 @@ const families = [
     use: 'Short links, back-halves, codes and snippets. Weight 500, tracked −0.01em.',
     code: ['.shortlink', 'font-mono'],
   },
+  {
+    role: 'Notes',
+    name: fonts.hand ?? 'Shadows Into Light Two',
+    aa: 'font-hand',
+    sample: 'Why Shurly',
+    sampleCls: 'font-hand text-3xl text-ink-700',
+    use: 'Eyebrows only: the handwritten note above a heading. One weight (400), sentence case, 20px, ink-700.',
+    code: ['.eyebrow', 'font-hand'],
+  },
 ];
 
 const displayScale = [
@@ -140,7 +149,7 @@ const uiScale = [
   { px: 15, cls: 'text-[15px] leading-7', sample: 'Every short link you’ve made — and who’s clicking.', use: 'Page descriptions, marketing body' },
   { px: 14, cls: 'text-sm', sample: 'Forward query parameters', use: 'Default UI: buttons, inputs, menus, tables' },
   { px: 13, cls: 'text-[13px]', sample: 'Created Sep 12 · Updated 2h ago', use: 'Meta rows, small buttons' },
-  { px: 12, cls: 'text-xs', sample: '3–20 letters, numbers, hyphens or underscores.', use: 'Hints, badges, errors, eyebrows' },
+  { px: 12, cls: 'text-xs', sample: '3–20 letters, numbers, hyphens or underscores.', use: 'Hints, badges, errors' },
 ];
 const weights = [
   { w: '400', cls: 'font-normal', name: 'Regular', use: 'Body text' },
@@ -676,9 +685,9 @@ const colorCount = allColors.length;
       </Section>
 
       <!-- 03 Typography ================================================== -->
-      <Section id="typography" index={num('typography')} title="Typography" intro="Three families, one job each: Logical, Griddo’s typeface, for headlines; Figtree for everything you read and click; JetBrains Mono for short links.">
+      <Section id="typography" index={num('typography')} title="Typography" intro="Four families, one job each: Logical, Griddo’s typeface, for headlines; Figtree for everything you read and click; Shadows Into Light Two for eyebrows; JetBrains Mono for short links.">
         <Specimen title="Families" stage="none">
-          <div class="grid gap-4 lg:grid-cols-3">
+          <div class="grid gap-4 md:grid-cols-2">
             {
               families.map((f) => (
                 <div class="flex flex-col rounded-2xl border border-line bg-white p-6">

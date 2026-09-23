@@ -38,6 +38,8 @@ implementation lifecycle and is independent of the URL version segment.
   tile, shadows and the modal backdrop follow. Brand marks on `ink-900` use
   `brand-300` (`brand-400` there is 2.8:1).
 - Headlines (`.display`) drop from weight 750 to 500: Logical works best light.
+- Eyebrows (`.eyebrow`) are handwritten in Shadows Into Light Two (OFL): sentence
+  case as written, 20 px, `ink-700`, one weight (was uppercase Inter 12 px, tracked).
 - Interface typeface is Figtree (was Inter). Headlines use Logical, Griddo's
   typeface, when available and fall back to Figtree until its web font files are
   added (was Bricolage Grotesque, which the wordmark SVG still uses).

@@ -11,6 +11,8 @@
   /* Logical is Griddo's typeface: used when the browser has it, Figtree otherwise. */
   --font-display: "Logical Var", "Logical", "Figtree Variable", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "JetBrains Mono Variable", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  /* Handwritten accent for eyebrows only (single weight, 400). */
+  --font-hand: "Shadows Into Light Two", "Figtree Variable", cursive;
 
   --text-2xs: 0.6875rem;
   --text-2xs--line-height: 1rem;
@@ -172,12 +174,14 @@
     letter-spacing: -0.03em;
     line-height: 1.05;
   }
+  /* Handwritten note above a heading. Sentence case as written: the face is a single
+     400 weight and reads small, so no caps, no tracking, a larger size. */
   .eyebrow {
-    font-size: var(--text-xs);
-    font-weight: 600;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    color: var(--color-ink-500);
+    font-family: var(--font-hand);
+    font-size: 1.25rem;
+    line-height: 1.5rem;
+    font-weight: 400;
+    color: var(--color-ink-700);
   }
   .shortlink {
     font-family: var(--font-mono);

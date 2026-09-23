@@ -32,8 +32,10 @@ available as utilities (`bg-ink-950`, `text-brand-700`, `rounded-xl`, `shadow-md
 
 **Type.** Logical, Griddo's typeface (`font-display`, the `.display` class, weight 500), for page
 titles and marketing headlines. Figtree (`font-sans`) for all UI text and numbers, with
-tabular figures in tables. JetBrains Mono (`font-mono`, the `.shortlink` class) for short
-links and codes. Figtree and JetBrains Mono are self-hosted (`@fontsource-variable/*`).
+tabular figures in tables. Shadows Into Light Two (`font-hand`, the `.eyebrow` class) for
+eyebrows only: a handwritten note above a heading, sentence case, 20 px, one weight.
+JetBrains Mono (`font-mono`, the `.shortlink` class) for short links and codes. Figtree,
+Shadows Into Light Two and JetBrains Mono are self-hosted (`@fontsource*`).
 Logical is used when the browser has it and falls back to Figtree until its web font
 files are added. The wordmark is Bricolage Grotesque, outlined in the SVG.
 
