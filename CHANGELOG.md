@@ -26,10 +26,56 @@ implementation lifecycle and is independent of the URL version segment.
 
 ## [Unreleased]
 
+### Fixed — pagination bounds and N+1 queries
+- **`GET /api/v1/urls` and `GET /api/v1/campaigns` enforce their documented page
+  size.** `limit` must be 1–100 and `skip` ≥ 0; anything else now returns `422`
+  instead of reaching the database (`limit=100000` returned every row, and a
+  negative `skip` or `limit` was a PostgreSQL error, i.e. a `500`). Out-of-range
+  values are rejected, not clamped: to read more than 100 rows, page with `skip`
+  until you have `total`. The bounds are in the OpenAPI schema, so the MCP
+  `list_urls` and `list_campaigns` tools advertise them too. The frontend never
+  asks for more than 100.
+- **Multi-URL endpoints run a constant number of SQL statements** instead of one
+  or two more per row (e.g. `GET /api/v1/urls` with 100 tagged URLs: 104 → 5):
+  - `GET /api/v1/urls` loads the page's tags in one query;
+  - `GET /api/v1/campaigns` loads the page's tags and URL counts in one query each;
+  - `POST /api/v1/urls/bulk/tags` and `PATCH /api/v1/campaigns/{id}/tags` load the
+    URLs' current tags in one query;
+  - `GET /api/v1/analytics/campaigns/{id}/users` (campaign recipients) computes
+    every URL's clicks, unique IPs and last click in one grouped query.
+
+### Changed — Griddo palette and type (trial)
+- Brand colour is Griddo blue `#5057ff` (was lime `#b8f03e`): new `brand-50…950`
+  scale with the signature at `brand-400`. Brand fills now carry white text,
+  brand text/icons on ink use `brand-300`, charts draw in `brand-400`. Logo dot,
+  favicons, app icons and the OG card are regenerated in blue.
+- Page canvas is warm off-white `#faf9f6` (was `#f5f6f8`).
+- Ink scale is Griddo navy: `ink-950` `#001b3c`, `ink-900` `#022958`, the rest
+  regenerated in the same hue with the same contrast roles (`ink-500` still the
+  lightest text, 4.5:1+ on white, canvas and `ink-100`). Logo letters, isotype
+  tile, shadows and the modal backdrop follow. Brand marks on `ink-900` use
+  `brand-300` (`brand-400` there is 2.8:1).
+- Headlines (`.display`) drop from weight 750 to 500: Logical works best light.
+- Eyebrows (`.eyebrow`) are handwritten in Shadows Into Light Two (OFL): always
+  uppercase (the `font-hand` utility enforces it too), 14 px, tracked 0.05em, brand
+  blue (`brand-300` on ink), one weight (was uppercase Inter 12 px in ink-500).
+- Interface typeface is Figtree (was Inter). Headlines use Logical, Griddo's
+  typeface, when available and fall back to Figtree until its web font files are
+  added (was Bricolage Grotesque, which the wordmark SVG still uses).
+
 ### Security
+- **Campaign links could be taken over with a custom URL.** Campaign URLs were
+  stored with a NULL `domain_id`, and standard/custom URL creation only checks
+  the default domain for a clashing code. Any user could create a custom URL
+  with the code of someone else's campaign link, and because the resolver
+  prefers the default-domain row, the campaign link then redirected to the new
+  destination. Campaign URLs now live on the default domain and existing ones
+  are moved there at startup (see Fixed), so the clash is detected and the
+  custom code gets a random suffix, as for any taken code.
 - **SSRF hardening for the Open Graph fetcher.** Link previews are fetched
   server-side from user-supplied URLs (`POST /api/v1/urls`,
-  `POST /api/v1/urls/custom`, `POST /api/v1/urls/{code}/refresh-preview`), so any
+  `POST /api/v1/urls/custom`, `POST /api/v1/urls/{code}/refresh-preview`, and since
+  Phase 3.11 `POST /api/v1/urls/fetch-metadata`), so any
   authenticated user could make the API request internal addresses (loopback,
   RFC 1918, the link-local cloud metadata endpoints `169.254.169.254` /
   `169.254.170.2`) and read page titles and descriptions back.
@@ -104,6 +150,35 @@ implementation lifecycle and is independent of the URL version segment.
   now returns `{api_key, scope}`.
 
 ### Fixed
+- **Campaign URLs are bound to the default domain.** `POST /api/v1/campaigns`
+  and the MCP `create_campaign_from_rows` tool left `domain_id` NULL, so:
+  - the `(domain_id, short_code)` UNIQUE never covered them (PostgreSQL treats
+    NULLs as distinct);
+  - the tracking pixel (`/{code}/track`), which matches by domain only,
+    returned `404` for every campaign link;
+  - the resolver's legacy NULL fallback served them on every host.
+  Campaign short codes are now unique per domain, like standard and custom
+  codes. `generate_campaign_urls()` takes a required `domain_id`.
+- **Two rows of one campaign could get the same short code.** Codes were only
+  checked against the database, where the batch isn't yet, so the odds grew
+  with the CSV (about 2% at 10,000 rows, 44% at 50,000). Both recipients got
+  the same link, which resolved to one of the two rows, so one of them landed
+  on a URL personalized with the other's data. The generator now skips codes
+  it already issued in the batch.
+- **Existing campaign URLs are repaired at startup.** `_seed_database()` runs
+  `backfill_campaign_url_domains()`, which moves NULL-domain campaign URLs to
+  the default domain. It is idempotent and keeps `updated_at`. A row whose move
+  would violate the UNIQUE (its code is already taken on the default domain,
+  or another NULL-domain row shares it) stays NULL and keeps resolving through
+  the legacy fallback; startup logs a warning with the count. To review them:
+  ```sql
+  SELECT id, short_code, campaign_id, created_by, created_at
+  FROM urls
+  WHERE domain_id IS NULL AND url_type = 'CAMPAIGN'
+  ORDER BY short_code;
+  ```
+  `url_type` stores enum member names, so the literal is `'CAMPAIGN'`;
+  `'campaign'` fails with `invalid input value for enum urltype`.
 - bcrypt 5.0 strict 72-byte input limit handled in `hash_password` /
   `verify_password` by pre-truncating at the byte boundary; runtime dependency
   pinned to `bcrypt<5` until passlib ships an upstream fix.
@@ -146,6 +221,51 @@ implementation lifecycle and is independent of the URL version segment.
   (default `0`, emits `private, max-age=0`; positive values emit
   `public, max-age=N`). Settings validate up-front so a typo at deploy time
   fails fast.
+
+### Added (Phase 3.11 — Brand & frontend redesign)
+- **Brand identity**: wordmark with the lime "click dot", "s." isotype,
+  horizontal/vertical lockups, favicon pack and OG card
+  (`design/brand/`, usage in `design/brand/README.md`).
+- **Design system**: Tailwind 4 `@theme` tokens (ink + lime scales, type,
+  radius, elevation, motion), component classes and patterns, documented in
+  `design/DESIGN_SYSTEM.md` and rendered live at `/styleguide/`.
+- **Every screen rebuilt** to the UX brief: landing with pricing, login,
+  register, 404, links dashboard (quick create with auto-copy, search, type
+  filter, tag chips, bulk tag/copy), full link editor with live social
+  preview, link details (clicks chart + table, countries, social preview,
+  email pixel, smart redirects), campaigns list, 4-step campaign wizard,
+  campaign details (opens, recipients, exports), analytics (7-day view,
+  typo'd links), settings (account, API & MCP, tags, notifications, plan).
+- `GET /api/v1/urls/{short_code}`: fetch one URL.
+- `POST /api/v1/urls/fetch-metadata`: OG title/description/image for any
+  destination (auth required), used by the live preview.
+- `GET /api/v1/urls`: `q` (case-insensitive search over code, title and
+  destination) and repeatable `url_type` filters.
+- `URLResponse` gains `click_count` (bots and pixel opens excluded),
+  `campaign_id` and `user_data`.
+- Analytics overview `top_urls` items gain `short_url` and `title`.
+- `GET /api/v1/campaigns/{id}` now includes the campaign's `tags`.
+- MCP tools `get_url` and `fetch_url_metadata`.
+
+### Changed (Phase 3.11)
+- Frontend is a **fully static build**: `@astrojs/node` removed. The link and
+  campaign detail pages moved from `/dashboard/urls/[short_code]` and
+  `/dashboard/campaigns/[id]` to `/dashboard/link/?code=…` and
+  `/dashboard/campaign/?id=…`.
+- Analytics overview `top_urls` no longer counts tracking-pixel opens as
+  clicks, even with `include_bots=true`.
+- Default `CORS_ORIGINS` includes the frontend dev server
+  (`http://localhost:4232`).
+
+### Changed — Astro 7
+- Frontend upgraded to **Astro 7.3.4** (Vite 8, Rust compiler) with
+  `@tailwindcss/vite`/`tailwindcss` 4.3.3 and `@astrojs/check` 0.9.10.
+  Requires Node.js ≥ 22.12. The `vite ^7.3.2` npm override was removed
+  (Astro 7 needs Vite ≥ 8.0.13); `npm audit` is clean.
+- Astro 7 compresses HTML with JSX whitespace rules (`compressHTML: 'jsx'`).
+  Three styleguide templates relied on a line break for a space and now use
+  an explicit `{' '}`. Every page's rendered text and screenshots (1440 and
+  390 px) were compared against the Astro 6 build and match.
 
 ### Frontend
 - Astro 4 → 6 upgrade. `@astrojs/tailwind` (deprecated for Astro ≥ 5)

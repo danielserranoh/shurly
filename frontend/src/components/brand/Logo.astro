@@ -1,0 +1,32 @@
+---
+/**
+ * Shurly logo. The brand-blue dot is the signature ("surely." / the click).
+ * - variant: wordmark (default) | isotype
+ * - tone: default (ink on light) | reversed (white on dark) | mono (single ink color)
+ * Clear space: keep at least the dot's diameter free around the mark.
+ */
+interface Props {
+  variant?: 'wordmark' | 'isotype';
+  tone?: 'default' | 'reversed' | 'mono';
+  /** Rendered height in px. Width follows the mark's aspect ratio. */
+  height?: number;
+  class?: string;
+  href?: string | null;
+}
+
+const { variant = 'wordmark', tone = 'default', height = 24, class: className = '', href = null } = Astro.props;
+
+// Aspect ratios from the generated SVG viewBoxes (see design/brand/README.md).
+const RATIO = { wordmark: 3069 / 904, isotype: 1 };
+const FILES = {
+  wordmark: { default: 'wordmark.svg', reversed: 'wordmark-reversed.svg', mono: 'wordmark-mono-ink.svg' },
+  isotype: { default: 'isotype.svg', reversed: 'isotype-brand.svg', mono: 'isotype.svg' },
+};
+const src = `/brand/${FILES[variant][tone]}`;
+const width = Math.round(height * RATIO[variant]);
+const Tag = href ? 'a' : 'span';
+---
+
+<Tag href={href ?? undefined} class:list={['inline-flex shrink-0 items-center', className]} aria-label={href ? 'Shurly home' : undefined}>
+  <img src={src} width={width} height={height} alt={href ? '' : 'Shurly'} draggable="false" />
+</Tag>

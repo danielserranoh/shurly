@@ -1,0 +1,28 @@
+---
+import Icon from './Icon.astro';
+import type { IconName } from '@/utils/icons';
+
+interface Props {
+  label: string;
+  /** data-stat key: scripts fill [data-stat="key"] and [data-stat-hint="key"] */
+  stat: string;
+  icon: IconName;
+  hint?: string;
+  accent?: boolean;
+}
+
+const { label, stat, icon, hint, accent = false } = Astro.props;
+---
+
+<div class:list={['card relative overflow-hidden p-5', accent && 'bg-ink-950 text-white']}>
+  <div class="flex items-center justify-between">
+    <p class:list={['text-sm font-medium', accent ? 'text-ink-300' : 'text-ink-500']}>{label}</p>
+    <span class:list={['grid size-8 place-items-center rounded-lg', accent ? 'bg-white/10 text-brand-300' : 'bg-ink-100 text-ink-600']}>
+      <Icon name={icon} />
+    </span>
+  </div>
+  <p class="mt-3 text-[1.875rem] leading-none font-semibold tracking-tight" data-stat={stat}>
+    <span class:list={['skeleton inline-block h-7 w-16 align-middle', accent && 'opacity-20']}></span>
+  </p>
+  <p class:list={['mt-2 min-h-5 text-[13px]', accent ? 'text-ink-400' : 'text-ink-500']} data-stat-hint={stat}>{hint}</p>
+</div>

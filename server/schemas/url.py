@@ -143,6 +143,9 @@ class URLResponse(BaseModel):
 
     # Analytics
     last_click_at: datetime | None = None
+    # Phase 3.11 — all-time clicks, excluding bot/crawler hits and email tracking-pixel
+    # opens (the analytics endpoints' default definition). Computed per request.
+    click_count: int = 0
 
     # Phase 3.9.2 — validity window and visit cap
     valid_since: datetime | None = None
@@ -151,6 +154,10 @@ class URLResponse(BaseModel):
 
     # Phase 3.9.4 — crawlability flag
     crawlable: bool = False
+
+    # Phase 3.11 — campaign linkage + personalization data (null for standard/custom URLs)
+    campaign_id: UUID | None = None
+    user_data: dict | None = None
 
     # Tags
     tags: list[TagResponse] = []
@@ -179,3 +186,24 @@ class OpenGraphMetadataResponse(BaseModel):
     og_url: str
     has_custom_preview: bool
     fetched_at: datetime | None
+
+
+class URLMetadataRequest(BaseModel):
+    """Phase 3.11 — request body for a live Open Graph lookup (no link is created)."""
+
+    url: str = Field(..., description="Destination URL to fetch Open Graph metadata from")
+
+    @field_validator("url")
+    @classmethod
+    def validate_url(cls, v: str) -> str:
+        if not is_valid_url(v):
+            raise ValueError("Invalid URL format. Must be a valid http or https URL.")
+        return v
+
+
+class URLMetadataResponse(BaseModel):
+    """Phase 3.11 — Open Graph metadata fetched live; fields are null when unavailable."""
+
+    og_title: str | None = None
+    og_description: str | None = None
+    og_image_url: str | None = None

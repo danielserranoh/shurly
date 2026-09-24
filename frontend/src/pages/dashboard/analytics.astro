@@ -1,303 +1,219 @@
 ---
-import Layout from '../../layouts/Layout.astro';
-import ProtectedRoute from '../../components/ProtectedRoute.astro';
+import AppLayout from '@/layouts/AppLayout.astro';
+import PageHeader from '@/components/ui/PageHeader.astro';
+import StatCard from '@/components/ui/StatCard.astro';
+import Icon from '@/components/ui/Icon.astro';
+import ProBadge from '@/components/ui/ProBadge.astro';
 ---
 
-<Layout title="Analytics - Shurly">
-  <ProtectedRoute>
-    <div class="min-h-screen bg-gray-50 py-8">
-      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <!-- Header -->
-        <div class="mb-8">
-          <h1 class="text-3xl font-bold text-gray-900">Analytics Dashboard</h1>
-          <p class="mt-2 text-sm text-gray-600">Overview of your URL shortening performance</p>
+<AppLayout title="Analytics" section="analytics">
+  <PageHeader title="Analytics" description="How your links are doing, across everything you’ve shared." />
+
+  <!-- One filter row, above everything it scopes -->
+  <div class="mb-6 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
+    <div class="segmented scrollbar-none max-w-full self-start overflow-x-auto" role="radiogroup" aria-label="Date range">
+      <label><input type="radio" name="range" value="7" checked /><span>Last 7 days</span></label>
+      <label data-tooltip="Longer ranges come with Pro"><input type="radio" name="range" value="30" disabled /><span>30 days <Icon name="lock" class="size-3" /></span></label>
+      <label data-tooltip="Longer ranges come with Pro"><input type="radio" name="range" value="90" disabled /><span>90 days <Icon name="lock" class="size-3" /></span></label>
+      <label data-tooltip="Custom ranges come with Pro"><input type="radio" name="range" value="custom" disabled /><span>Custom <Icon name="lock" class="size-3" /></span></label>
+    </div>
+    <label class="flex items-center gap-2.5 text-sm text-ink-700">
+      <span class="switch"><input type="checkbox" role="switch" data-include-bots /><span></span></span>
+      Include bots & crawlers
+    </label>
+    <button type="button" class="btn btn-secondary btn-sm sm:ml-auto" data-export><Icon name="download" />Export CSV</button>
+  </div>
+
+  <div id="analytics" class="transition-opacity duration-200">
+    <section aria-label="Summary" class="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
+      <StatCard label="Clicks, last 7 days" stat="recent" icon="activity" accent />
+      <StatCard label="Clicks, all time" stat="total" icon="click" />
+      <StatCard label="Unique visitors" stat="unique" icon="users" />
+      <StatCard label="Links" stat="links" icon="link" />
+    </section>
+
+    <section class="card mt-6 p-5 sm:p-6" aria-labelledby="timeline-title">
+      <div class="flex items-center justify-between gap-3">
+        <div>
+          <h2 id="timeline-title" class="font-semibold text-ink-950">Clicks per day</h2>
+          <p class="text-sm text-ink-500">All links and campaigns · last 7 days</p>
         </div>
-
-        <!-- Loading State -->
-        <div id="loading" class="flex items-center justify-center py-12">
-          <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-        </div>
-
-        <!-- Content -->
-        <div id="content" class="hidden">
-          <!-- Summary Stats Cards -->
-          <div class="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4 mb-8">
-            <!-- Total URLs Card -->
-            <div class="bg-white overflow-hidden shadow rounded-lg">
-              <div class="p-5">
-                <div class="flex items-center">
-                  <div class="flex-shrink-0">
-                    <svg class="h-6 w-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"></path>
-                    </svg>
-                  </div>
-                  <div class="ml-5 w-0 flex-1">
-                    <dl>
-                      <dt class="text-sm font-medium text-gray-500 truncate">Total URLs</dt>
-                      <dd class="text-2xl font-semibold text-gray-900" id="total-urls">-</dd>
-                    </dl>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <!-- Total Campaigns Card -->
-            <div class="bg-white overflow-hidden shadow rounded-lg">
-              <div class="p-5">
-                <div class="flex items-center">
-                  <div class="flex-shrink-0">
-                    <svg class="h-6 w-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path>
-                    </svg>
-                  </div>
-                  <div class="ml-5 w-0 flex-1">
-                    <dl>
-                      <dt class="text-sm font-medium text-gray-500 truncate">Total Campaigns</dt>
-                      <dd class="text-2xl font-semibold text-gray-900" id="total-campaigns">-</dd>
-                    </dl>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <!-- Total Clicks Card -->
-            <div class="bg-white overflow-hidden shadow rounded-lg">
-              <div class="p-5">
-                <div class="flex items-center">
-                  <div class="flex-shrink-0">
-                    <svg class="h-6 w-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5M7.188 2.239l.777 2.897M5.136 7.965l-2.898-.777M13.95 4.05l-2.122 2.122m-5.657 5.656l-2.12 2.122"></path>
-                    </svg>
-                  </div>
-                  <div class="ml-5 w-0 flex-1">
-                    <dl>
-                      <dt class="text-sm font-medium text-gray-500 truncate">Total Clicks</dt>
-                      <dd class="text-2xl font-semibold text-gray-900" id="total-clicks">-</dd>
-                    </dl>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <!-- Unique Visitors Card -->
-            <div class="bg-white overflow-hidden shadow rounded-lg">
-              <div class="p-5">
-                <div class="flex items-center">
-                  <div class="flex-shrink-0">
-                    <svg class="h-6 w-6 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path>
-                    </svg>
-                  </div>
-                  <div class="ml-5 w-0 flex-1">
-                    <dl>
-                      <dt class="text-sm font-medium text-gray-500 truncate">Unique Visitors</dt>
-                      <dd class="text-2xl font-semibold text-gray-900" id="unique-visitors">-</dd>
-                    </dl>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Recent Activity (Last 7 Days) -->
-          <div class="bg-white shadow rounded-lg p-6 mb-8">
-            <h2 class="text-lg font-semibold text-gray-900 mb-4">Recent Activity (Last 7 Days)</h2>
-            <div class="space-y-1 mb-4">
-              <div class="flex justify-between text-sm">
-                <span class="text-gray-600">Total Clicks:</span>
-                <span class="font-semibold text-gray-900" id="recent-clicks">-</span>
-              </div>
-            </div>
-
-            <!-- Timeline Chart -->
-            <div id="timeline-chart" class="mt-6">
-              <!-- Chart will be rendered here -->
-            </div>
-          </div>
-
-          <!-- Two Column Layout -->
-          <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            <!-- Top Performing URLs -->
-            <div class="bg-white shadow rounded-lg p-6">
-              <h2 class="text-lg font-semibold text-gray-900 mb-4">Top Performing URLs</h2>
-              <div id="top-urls" class="space-y-3">
-                <!-- Top URLs will be rendered here -->
-              </div>
-            </div>
-
-            <!-- Export Section -->
-            <div class="bg-white shadow rounded-lg p-6">
-              <h2 class="text-lg font-semibold text-gray-900 mb-4">Export Data</h2>
-              <p class="text-sm text-gray-600 mb-4">Download your analytics data for further analysis</p>
-              <button
-                id="export-btn"
-                class="w-full inline-flex justify-center items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-              >
-                <svg class="mr-2 h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
-                </svg>
-                Export Analytics CSV
-              </button>
-            </div>
-          </div>
-        </div>
+        <button type="button" class="btn btn-ghost btn-sm" data-table-toggle aria-pressed="false"><Icon name="list" /><span data-label>Table</span></button>
       </div>
+      <div class="mt-6" data-chart></div>
+      <div class="mt-4 max-h-80 overflow-auto rounded-xl border border-line" data-table hidden></div>
+    </section>
+
+    <div class="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]">
+      <section class="card p-5 sm:p-6" aria-labelledby="top-title">
+        <h2 id="top-title" class="font-semibold text-ink-950">Top links</h2>
+        <p class="text-sm text-ink-500">Most clicked, all time</p>
+        <div class="mt-5" data-top></div>
+      </section>
+
+      <section class="card p-5 sm:p-6" aria-labelledby="orphans-title">
+        <h2 id="orphans-title" class="flex items-center gap-2 font-semibold text-ink-950">Typos & broken links</h2>
+        <p class="text-sm text-ink-500">Short links people tried that don’t exist — often a typo on something printed.</p>
+        <ul class="mt-5 grid gap-2" data-orphans></ul>
+      </section>
     </div>
 
-    <script>
-      import { apiGet } from '../../utils/api';
-      import type { OverviewStats, DailyStats } from '../../utils/types';
+    <section class="mt-6 flex flex-col gap-4 rounded-2xl border border-dashed border-ink-300 bg-white p-5 sm:flex-row sm:items-center">
+      <span class="grid size-10 shrink-0 place-items-center rounded-xl bg-ink-950 text-brand-300"><Icon name="line-chart" class="size-5" /></span>
+      <div class="flex-1">
+        <p class="flex items-center gap-2 font-semibold text-ink-950">Go deeper <ProBadge /></p>
+        <p class="mt-0.5 text-sm text-ink-500">30 and 90-day views, custom ranges, every click exported and live stats are coming with Pro.</p>
+      </div>
+    </section>
+  </div>
+</AppLayout>
 
-      let overviewData: OverviewStats | null = null;
+<script>
+  import { apiGet, saveBlob } from '@/utils/api';
+  import { barList, bindChartTableToggle, columnChart, dataTable, sparkline } from '@/utils/charts';
+  import { toCsv } from '@/utils/csv';
+  import { formatDateTime, formatNumber, hostname, pluralize, prettyUrl } from '@/utils/format';
+  import { html, setHTML } from '@/utils/html';
+  import { icon } from '@/utils/icons';
+  import { linkHref, listLinks } from '@/utils/links';
+  import { hydrateTimes, toast } from '@/utils/ui';
+  import type { OrphanVisitsResponse, OverviewStats } from '@/utils/types';
 
-      async function loadAnalytics() {
-        try {
-          const data = await apiGet<OverviewStats>('/api/v1/analytics/overview', true);
-          overviewData = data;
+  const $ = <T extends HTMLElement = HTMLElement>(sel: string) => document.querySelector<T>(sel)!;
+  const root = $('#analytics');
+  const botsToggle = $<HTMLInputElement>('[data-include-bots]');
+  let overview: OverviewStats | null = null;
 
-          // Update summary cards
-          document.getElementById('total-urls')!.textContent = data.total_urls.toString();
-          document.getElementById('total-campaigns')!.textContent = data.total_campaigns.toString();
-          document.getElementById('total-clicks')!.textContent = data.total_clicks.toString();
-          document.getElementById('unique-visitors')!.textContent = data.unique_visitors.toString();
-          document.getElementById('recent-clicks')!.textContent = data.recent_clicks.toString();
+  function setStat(key: string, value: string, hint?: string | ReturnType<typeof html>) {
+    $(`[data-stat="${key}"]`).textContent = value;
+    if (hint === undefined) return;
+    const el = $(`[data-stat-hint="${key}"]`);
+    if (typeof hint === 'string') el.textContent = hint;
+    else setHTML(el, hint);
+  }
 
-          // Render timeline chart
-          renderTimelineChart(data.daily_timeline);
+  async function loadOverview() {
+    root.classList.add('opacity-60');
+    try {
+      overview = await apiGet<OverviewStats>(`/api/v1/analytics/overview${botsToggle.checked ? '?include_bots=true' : ''}`);
+    } catch (err) {
+      toast('Couldn’t load analytics', 'error', { description: err instanceof Error ? err.message : undefined });
+      return;
+    } finally {
+      root.classList.remove('opacity-60');
+    }
+    const o = overview;
+    setStat('recent', formatNumber(o.recent_clicks_7d), html`<span class="flex items-center justify-between gap-2"><span>${botsToggle.checked ? 'Including bots' : 'People only'}</span>${sparkline(o.recent_activity.map((d) => d.clicks), 72, 20)}</span>`);
+    setStat('total', formatNumber(o.total_clicks), 'Since you started');
+    setStat('unique', formatNumber(o.total_unique_visitors), 'Distinct visitors, all time');
+    setStat('links', formatNumber(o.total_urls), html`${pluralize(o.total_campaigns, 'campaign')} · <a class="link" href="/dashboard/">View links</a>`);
 
-          // Render top URLs
-          renderTopURLs(data.top_urls);
+    const today = new Date().toISOString().slice(0, 10);
+    const rows = o.recent_activity.map((d) => {
+      const date = new Date(`${d.date}T12:00:00`);
+      return {
+        label: d.date === today ? 'Today' : date.toLocaleDateString('en-US', { weekday: 'short' }),
+        value: d.clicks,
+        title: date.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' }),
+      };
+    });
+    columnChart($('[data-chart]'), rows, { ariaLabel: `Clicks per day across all links, last 7 days. Total ${o.recent_clicks_7d}.`, height: 260 });
+    setHTML($('[data-table]'), dataTable(rows.map((r) => ({ label: r.title, value: r.value })), ['Day', 'Clicks']));
 
-          // Show content, hide loading
-          document.getElementById('loading')!.classList.add('hidden');
-          document.getElementById('content')!.classList.remove('hidden');
-        } catch (error) {
-          console.error('Failed to load analytics:', error);
-          alert('Failed to load analytics data');
-        }
+    const top = o.top_urls.filter((u) => u.clicks > 0);
+    setHTML(
+      $('[data-top]'),
+      top.length
+        ? barList(
+            top.map((u) => ({
+              label: u.title || hostname(u.original_url) || u.short_code,
+              sublabel: prettyUrl(u.short_url) || u.short_code,
+              value: u.clicks,
+              href: linkHref(u.short_code),
+            })),
+          )
+        : html`<p class="rounded-xl bg-ink-50 p-4 text-sm text-ink-500">No clicks yet. Share a link and it’ll show up here.</p>`,
+    );
+  }
+
+  // Levenshtein distance for "did you mean" suggestions on orphan visits.
+  function distance(a: string, b: string): number {
+    const dp = Array.from({ length: a.length + 1 }, (_, i) => [i, ...Array(b.length).fill(0)]);
+    for (let j = 1; j <= b.length; j++) dp[0][j] = j;
+    for (let i = 1; i <= a.length; i++)
+      for (let j = 1; j <= b.length; j++)
+        dp[i][j] = Math.min(dp[i - 1][j] + 1, dp[i][j - 1] + 1, dp[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    return dp[a.length][b.length];
+  }
+
+  async function loadOrphans() {
+    const list = $('[data-orphans]');
+    try {
+      const [orphans, links] = await Promise.all([
+        apiGet<OrphanVisitsResponse>('/api/v1/analytics/orphan-visits?limit=500'),
+        listLinks({ limit: 100 }).catch(() => ({ urls: [], total: 0 })),
+      ]);
+      const groups = new Map<string, { count: number; last: string | null }>();
+      orphans.items
+        .filter((o) => o.type === 'invalid_short_url')
+        .forEach((o) => {
+          const g = groups.get(o.attempted_path) ?? { count: 0, last: null };
+          g.count += 1;
+          if (o.created_at && (!g.last || o.created_at > g.last)) g.last = o.created_at;
+          groups.set(o.attempted_path, g);
+        });
+      const codes = links.urls.map((u) => u.short_code);
+      const sorted = [...groups.entries()].sort((a, b) => b[1].count - a[1].count).slice(0, 6);
+      if (!sorted.length) {
+        setHTML(list, html`<li class="flex items-center gap-3 rounded-xl bg-brand-50 p-4 text-sm text-brand-900">${icon('circle-check', 'size-4 text-brand-700')}No broken links. Everyone’s landing where they should.</li>`);
+        return;
       }
-
-      function renderTimelineChart(timeline: DailyStats[]) {
-        const container = document.getElementById('timeline-chart')!;
-
-        if (!timeline || timeline.length === 0) {
-          container.innerHTML = '<p class="text-gray-500 text-sm text-center py-8">No activity data available</p>';
-          return;
-        }
-
-        const maxClicks = Math.max(...timeline.map(d => d.clicks), 1);
-
-        const chartHTML = `
-          <div class="flex items-end justify-between h-48 gap-2">
-            ${timeline.map(stat => {
-              const height = (stat.clicks / maxClicks) * 100;
-              const date = new Date(stat.date);
-              const dayName = date.toLocaleDateString('en-US', { weekday: 'short' });
-
-              return `
-                <div class="flex-1 flex flex-col items-center group">
-                  <div class="relative w-full">
-                    <div
-                      class="w-full bg-blue-500 hover:bg-blue-600 rounded-t transition-all cursor-pointer"
-                      style="height: ${height}%"
-                      title="${stat.clicks} clicks on ${date.toLocaleDateString()}"
-                    ></div>
-                    <div class="absolute -top-6 left-1/2 transform -translate-x-1/2 bg-gray-900 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
-                      ${stat.clicks} clicks
-                    </div>
-                  </div>
-                  <div class="text-xs text-gray-600 mt-2">${dayName}</div>
-                </div>
-              `;
-            }).join('')}
-          </div>
-          <div class="mt-4 text-xs text-gray-500 text-center">
-            Hover over bars to see exact numbers
-          </div>
-        `;
-
-        container.innerHTML = chartHTML;
-      }
-
-      function renderTopURLs(topUrls: Array<{ short_code: string; short_url: string; clicks: number }>) {
-        const container = document.getElementById('top-urls')!;
-
-        if (!topUrls || topUrls.length === 0) {
-          container.innerHTML = '<p class="text-gray-500 text-sm text-center py-8">No URL data available</p>';
-          return;
-        }
-
-        const urlsHTML = topUrls.map((url, index) => `
-          <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
-            <div class="flex items-center flex-1 min-w-0">
-              <span class="flex-shrink-0 w-6 h-6 flex items-center justify-center bg-blue-600 text-white text-xs font-bold rounded-full mr-3">
-                ${index + 1}
-              </span>
-              <a
-                href="/dashboard/urls/${url.short_code}"
-                class="text-sm font-medium text-blue-600 hover:text-blue-800 truncate"
-              >
-                ${url.short_url}
-              </a>
+      setHTML(
+        list,
+        html`${sorted.map(([path, g]) => {
+          const attempted = path.replace(/^\//, '').toLowerCase();
+          const best = codes
+            .map((c) => ({ c, d: distance(attempted, c.toLowerCase()) }))
+            .filter((x) => x.d > 0 && x.d <= 2)
+            .sort((a, b) => a.d - b.d)[0];
+          return html`<li class="flex items-center gap-3 rounded-xl border border-line p-3">
+            <span class="grid size-8 shrink-0 place-items-center rounded-lg bg-amber-50 text-amber-700">${icon('link-off')}</span>
+            <div class="min-w-0 flex-1">
+              <p class="shortlink truncate text-sm text-ink-900">${path}</p>
+              <p class="truncate text-xs text-ink-500">${best ? html`Did you mean <a class="link" href="${linkHref(best.c)}">/${best.c}</a>? · ` : ''}${g.last ? html`last <time data-relative datetime="${g.last}" title="${formatDateTime(g.last)}"></time>` : ''}</p>
             </div>
-            <span class="ml-3 text-sm font-semibold text-gray-900">${url.clicks} clicks</span>
-          </div>
-        `).join('');
+            <span class="badge badge-warn">${pluralize(g.count, 'try', 'tries')}</span>
+          </li>`;
+        })}`,
+      );
+      hydrateTimes(list);
+    } catch {
+      setHTML(list, html`<li class="rounded-xl bg-ink-50 p-4 text-sm text-ink-500">Couldn’t load broken-link attempts.</li>`);
+    }
+  }
 
-        container.innerHTML = urlsHTML;
-      }
+  $('[data-export]').addEventListener('click', () => {
+    if (!overview) return;
+    const o = overview;
+    const csv = toCsv([
+      ['metric', 'value'],
+      ['total_links', o.total_urls],
+      ['total_campaigns', o.total_campaigns],
+      ['total_clicks', o.total_clicks],
+      ['unique_visitors', o.total_unique_visitors],
+      ['clicks_last_7_days', o.recent_clicks_7d],
+      [],
+      ['date', 'clicks'],
+      ...o.recent_activity.map((d) => [d.date, d.clicks]),
+      [],
+      ['short_link', 'title', 'destination', 'clicks'],
+      ...o.top_urls.map((u) => [u.short_url ?? u.short_code, u.title ?? '', u.original_url, u.clicks]),
+    ]);
+    saveBlob(new Blob([csv], { type: 'text/csv' }), `shurly-analytics-${new Date().toISOString().slice(0, 10)}.csv`);
+  });
+  botsToggle.addEventListener('change', loadOverview);
+  bindChartTableToggle($<HTMLButtonElement>('[data-table-toggle]'), $('[data-chart]'), $('[data-table]'));
 
-      function exportAnalyticsCSV() {
-        if (!overviewData) {
-          alert('No data to export');
-          return;
-        }
-
-        const csvRows = [];
-
-        // Header
-        csvRows.push('Metric,Value');
-
-        // Summary stats
-        csvRows.push(`Total URLs,${overviewData.total_urls}`);
-        csvRows.push(`Total Campaigns,${overviewData.total_campaigns}`);
-        csvRows.push(`Total Clicks,${overviewData.total_clicks}`);
-        csvRows.push(`Unique Visitors,${overviewData.unique_visitors}`);
-        csvRows.push(`Recent Clicks (7 days),${overviewData.recent_clicks}`);
-        csvRows.push('');
-
-        // Daily timeline
-        csvRows.push('Daily Timeline');
-        csvRows.push('Date,Clicks');
-        overviewData.daily_timeline.forEach(day => {
-          csvRows.push(`${day.date},${day.clicks}`);
-        });
-        csvRows.push('');
-
-        // Top URLs
-        csvRows.push('Top URLs');
-        csvRows.push('Short URL,Clicks');
-        overviewData.top_urls.forEach(url => {
-          csvRows.push(`${url.short_url},${url.clicks}`);
-        });
-
-        const csvContent = csvRows.join('\n');
-        const blob = new Blob([csvContent], { type: 'text/csv' });
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `shurly-analytics-${new Date().toISOString().split('T')[0]}.csv`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        window.URL.revokeObjectURL(url);
-      }
-
-      // Event listeners
-      document.getElementById('export-btn')!.addEventListener('click', exportAnalyticsCSV);
-
-      // Load analytics on page load
-      loadAnalytics();
-    </script>
-  </ProtectedRoute>
-</Layout>
+  loadOverview();
+  loadOrphans();
+</script>

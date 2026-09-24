@@ -52,12 +52,24 @@ def _try_build_mcp_app(fastapi_app):
     server = build_mcp_for_app(fastapi_app)
     # `path="/"` because we mount the result under `/mcp` — fastmcp would
     # otherwise produce double-prefixed URLs.
-    return server.http_app(path="/", transport="http")
+    #
+    # Phase 5.6 — `stateless_http=True` is not fastmcp's default, so it has to
+    # be explicit. MCP revision 2026-07-28 removed protocol-level sessions
+    # (no `initialize` handshake, no `Mcp-Session-Id`); leaving fastmcp on its
+    # stateful default keeps a per-task session table this deployment cannot
+    # honour. The service scales to `maxTaskCount: 2` (scripts/deploy_ecs.sh)
+    # with no session affinity, so a session minted on one task is unknown to
+    # the other and those calls fail with `-32600 Missing session ID`; blue/green
+    # deploys drop every live session for the same reason. Nothing here needs
+    # cross-call state: curated tools open their own `SessionLocal` per call and
+    # the bearer is resolved per request via `get_access_token()`.
+    return server.http_app(path="/", transport="http", stateless_http=True)
 
 
 def _seed_database():
     """
-    Create the schema if missing, then seed the default domain and predefined tag set.
+    Create the schema if missing, then seed the default domain and predefined tag set,
+    and bind legacy campaign URLs (NULL `domain_id`) to the default domain.
 
     `Base.metadata.create_all()` is idempotent — only creates tables that don't
     exist. Safe on every container start. Switch to Alembic when migrations
@@ -75,7 +87,7 @@ def _seed_database():
         User,
         Visitor,
     )
-    from server.utils.domain import get_or_create_default_domain
+    from server.utils.domain import backfill_campaign_url_domains, get_or_create_default_domain
     from server.utils.tags import initialize_predefined_tags
 
     Base.metadata.create_all(bind=engine)
@@ -84,6 +96,7 @@ def _seed_database():
     try:
         initialize_predefined_tags(db)
         get_or_create_default_domain(db)
+        backfill_campaign_url_domains(db)
     finally:
         db.close()
 

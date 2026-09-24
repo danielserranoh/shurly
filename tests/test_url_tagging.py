@@ -3,7 +3,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
-from server.core.models import Tag, URL, URLType, Campaign
+from server.core.models import URL, Campaign, Tag, URLType
 
 
 @pytest.mark.integration
@@ -29,7 +29,7 @@ class TestURLTagging:
 
         # Add tags
         response = client.patch(
-            f"/api/v1/urls/test123/tags",
+            "/api/v1/urls/test123/tags",
             json={"tag_ids": [str(tag1.id), str(tag2.id)]},
             headers=auth_headers
         )
@@ -61,7 +61,7 @@ class TestURLTagging:
 
         # Replace with tag2 and tag3
         response = client.patch(
-            f"/api/v1/urls/test123/tags",
+            "/api/v1/urls/test123/tags",
             json={"tag_ids": [str(tag2.id), str(tag3.id)]},
             headers=auth_headers
         )
@@ -90,7 +90,7 @@ class TestURLTagging:
         # Try to add fake tag
         fake_id = uuid.uuid4()
         response = client.patch(
-            f"/api/v1/urls/test123/tags",
+            "/api/v1/urls/test123/tags",
             json={"tag_ids": [str(fake_id)]},
             headers=auth_headers
         )
@@ -104,7 +104,7 @@ class TestURLTagging:
         db_session.commit()
 
         response = client.patch(
-            f"/api/v1/urls/nonexistent/tags",
+            "/api/v1/urls/nonexistent/tags",
             json={"tag_ids": [str(tag.id)]},
             headers=auth_headers
         )
@@ -139,7 +139,7 @@ class TestURLTagging:
 
         # Try to tag with test_user's auth
         response = client.patch(
-            f"/api/v1/urls/notmine/tags",
+            "/api/v1/urls/notmine/tags",
             json={"tag_ids": [str(tag.id)]},
             headers=auth_headers
         )
@@ -444,3 +444,22 @@ class TestCampaignTagging:
         assert test_campaign is not None
         assert len(test_campaign["tags"]) == 1
         assert test_campaign["tags"][0]["name"] == "test"
+
+    def test_campaign_detail_includes_tags(self, client: TestClient, auth_headers: dict, db_session: Session, test_user):
+        """The single-campaign endpoint returns tags too, consistent with the list."""
+        tag = Tag(name="launch", display_name="Launch", color="gray-500", created_by=test_user.id)
+        db_session.add(tag)
+        campaign = Campaign(
+            name="Detail Campaign",
+            original_url="https://example.com",
+            csv_columns=["name"],
+            created_by=test_user.id,
+        )
+        campaign.tags.append(tag)
+        db_session.add(campaign)
+        db_session.commit()
+
+        response = client.get(f"/api/v1/campaigns/{campaign.id}", headers=auth_headers)
+
+        assert response.status_code == 200
+        assert [t["name"] for t in response.json()["tags"]] == ["launch"]

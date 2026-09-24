@@ -37,8 +37,12 @@ class Settings(BaseSettings):
     api_version: str = "0.1.0"
     api_description: str = "A modern URL shortener API"
 
-    # CORS settings
-    cors_origins: list[str] = ["http://localhost:4321", "http://localhost:3000"]
+    # CORS settings (4232 = frontend dev server, see docker-compose.yml)
+    cors_origins: list[str] = [
+        "http://localhost:4321",
+        "http://localhost:4232",
+        "http://localhost:3000",
+    ]
     cors_allow_credentials: bool = True
     cors_allow_methods: list[str] = ["*"]
     cors_allow_headers: list[str] = ["*"]

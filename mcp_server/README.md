@@ -194,8 +194,9 @@ Two filters live in `mcp_server/server.py`:
   (`create_short_url_api_v1_urls_post`) to clean MCP tool names
   (`create_short_url`).
 
-The 36-tool surface covers: auth (6), URL CRUD + tagging + previews (9),
-redirect rules (4), campaigns (6), analytics (7), tags (4).
+The surface is now **38 tools**: auth (6), URL CRUD + tagging + previews (11),
+redirect rules (4), campaigns (6), analytics (7), tags (4). Phase 3.11 added
+`get_url` and `fetch_url_metadata` to the original 36.
 
 `tests/test_phase52_mcp_tools.py` pins this list. When a route is added or
 renamed, the test fails until `MCP_TOOL_NAMES` (or `EXCLUDED_ROUTE_MAPS`) is
@@ -223,8 +224,7 @@ The pure logic lives in `mcp_server/curated.py` (takes `db: Session` and
 `mcp_server/server.py` open a `SessionLocal` per call and resolve the
 caller with `resolve_current_user(db)` (Phase 5.4).
 
-Total tool surface after Phase 5.3: **40 tools** (36 auto-generated + 4
-curated). The 5.2 contract test (`tests/test_phase52_mcp_tools.py`) and
+Total tool surface: **42 tools** (38 auto-generated + 4 curated). The 5.2 contract test (`tests/test_phase52_mcp_tools.py`) and
 the 5.3 logic tests (`tests/test_phase53_curated_tools.py`) together pin
 the surface.
 

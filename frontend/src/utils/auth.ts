@@ -1,57 +1,43 @@
-// Authentication utilities for managing JWT tokens
+// Authentication helpers. The JWT lives in localStorage; pages behind AppLayout
+// are additionally guarded by an inline <head> script so no protected UI flashes.
 
-const TOKEN_KEY = 'shurly_auth_token';
+export const TOKEN_KEY = 'shurly_auth_token';
 
-/**
- * Store authentication token in localStorage
- */
 export function setToken(token: string): void {
-  if (typeof window !== 'undefined') {
-    localStorage.setItem(TOKEN_KEY, token);
-  }
+  localStorage.setItem(TOKEN_KEY, token);
 }
 
-/**
- * Get authentication token from localStorage
- */
 export function getToken(): string | null {
-  if (typeof window !== 'undefined') {
-    return localStorage.getItem(TOKEN_KEY);
-  }
-  return null;
+  return typeof window === 'undefined' ? null : localStorage.getItem(TOKEN_KEY);
 }
 
-/**
- * Remove authentication token from localStorage
- */
 export function removeToken(): void {
-  if (typeof window !== 'undefined') {
-    localStorage.removeItem(TOKEN_KEY);
-  }
+  localStorage.removeItem(TOKEN_KEY);
 }
 
-/**
- * Check if user is authenticated
- */
 export function isAuthenticated(): boolean {
   return getToken() !== null;
 }
 
-/**
- * Logout user by removing token and redirecting to login
- */
-export function logout(): void {
-  removeToken();
-  if (typeof window !== 'undefined') {
-    window.location.href = '/login';
-  }
+/** Only allow same-site relative paths as post-login destinations. */
+export function safeNext(next: string | null | undefined, fallback = '/dashboard/'): string {
+  if (!next || !next.startsWith('/') || next.startsWith('//') || next.startsWith('/\\')) return fallback;
+  return next;
 }
 
-/**
- * Redirect to login page if not authenticated
- */
+/** Send the user to /login, remembering where they were. */
+export function redirectToLogin(reason?: 'expired'): void {
+  const here = window.location.pathname + window.location.search;
+  const params = new URLSearchParams({ next: here });
+  if (reason) params.set('reason', reason);
+  window.location.replace(`/login/?${params.toString()}`);
+}
+
+export function logout(): void {
+  removeToken();
+  window.location.href = '/login/?reason=signed-out';
+}
+
 export function requireAuth(): void {
-  if (typeof window !== 'undefined' && !isAuthenticated()) {
-    window.location.href = '/login';
-  }
+  if (!isAuthenticated()) redirectToLogin();
 }

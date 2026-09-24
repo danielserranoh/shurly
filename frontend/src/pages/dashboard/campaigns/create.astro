@@ -1,435 +1,354 @@
 ---
-import ProtectedRoute from '@/components/ProtectedRoute.astro';
-import Navbar from '@/components/Navbar.astro';
+import AppLayout from '@/layouts/AppLayout.astro';
+import PageHeader from '@/components/ui/PageHeader.astro';
+import Icon from '@/components/ui/Icon.astro';
+import Illustration from '@/components/illustrations/Illustration.astro';
 
-const title = 'Create Campaign | Shurly';
+const steps = ['Details', 'Recipients', 'Review', 'Create'];
 ---
 
-<ProtectedRoute>
-  <!DOCTYPE html>
-  <html lang="en">
-    <head>
-      <meta charset="UTF-8" />
-      <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-      <title>{title}</title>
-    </head>
-    <body class="bg-gray-50 min-h-screen">
-      <Navbar />
+<AppLayout title="New campaign" section="campaigns" width="narrow">
+  <PageHeader title="New campaign" description="Turn a list of recipients into personal, trackable links." back={{ href: '/dashboard/campaigns/', label: 'Campaigns' }} />
 
-      <main class="container mx-auto px-4 py-8 max-w-4xl">
-        <div class="mb-8">
-          <a
-            href="/dashboard/campaigns"
-            class="text-blue-600 hover:text-blue-700 text-sm font-medium"
-          >
-            ← Back to Campaigns
-          </a>
-          <h1 class="text-3xl font-bold text-gray-900 mt-4">Create New Campaign</h1>
-          <p class="text-gray-600 mt-1">
-            Create bulk shortened URLs from a CSV file
-          </p>
+  <ol class="mb-8 flex items-center gap-2 sm:gap-3" aria-label="Progress">
+    {
+      steps.map((label, i) => (
+        <>
+          {i > 0 && <li class="h-px flex-1 bg-line" aria-hidden="true" />}
+          <li class="flex items-center gap-2" data-step-indicator={i + 1}>
+            <span class="grid size-7 shrink-0 place-items-center rounded-full bg-ink-100 text-xs font-semibold text-ink-500 transition-colors" data-dot>
+              {i + 1}
+            </span>
+            <span class="hidden text-sm font-medium text-ink-500 sm:inline" data-label>
+              {label}
+            </span>
+          </li>
+        </>
+      ))
+    }
+  </ol>
+
+  <form id="wizard" class="card" novalidate>
+    <!-- Step 1 -->
+    <section data-step="1" class="grid gap-5 p-6 sm:p-8" aria-labelledby="s1-title">
+      <div>
+        <h2 id="s1-title" class="text-lg font-semibold text-ink-950">What are you sending?</h2>
+        <p class="mt-1 text-sm text-ink-500">Every recipient’s link points here, with their details added so the page can greet them by name.</p>
+      </div>
+      <div data-form-alert hidden></div>
+      <div class="grid gap-1.5">
+        <label for="name" class="label">Campaign name</label>
+        <input id="name" name="name" class="input input-lg" maxlength="255" placeholder="e.g. Spring launch — partners" required autofocus />
+        <p class="field-error" data-error-for="name" hidden></p>
+      </div>
+      <div class="grid gap-1.5">
+        <label for="original_url" class="label">Destination</label>
+        <input id="original_url" name="original_url" type="url" inputmode="url" class="input input-lg" placeholder="https://yoursite.com/landing-page" required />
+        <p class="field-error" data-error-for="original_url" hidden></p>
+      </div>
+      <div class="grid gap-1.5">
+        <span id="tags-label" class="label">Tags <span class="font-normal text-ink-500">— optional, added to every link</span></span>
+        <div id="tags" aria-labelledby="tags-label"></div>
+      </div>
+      <div class="flex justify-end">
+        <button type="button" class="btn btn-primary" data-next>Continue<Icon name="arrow-right" /></button>
+      </div>
+    </section>
+
+    <!-- Step 2 -->
+    <section data-step="2" hidden class="grid gap-5 p-6 sm:p-8" aria-labelledby="s2-title">
+      <div class="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 id="s2-title" class="text-lg font-semibold text-ink-950">Who’s it for?</h2>
+          <p class="mt-1 text-sm text-ink-500">A CSV with a header row. Each row becomes one personal link.</p>
         </div>
+        <button type="button" class="btn btn-ghost btn-sm" data-sample><Icon name="download" />Sample CSV</button>
+      </div>
 
-        <!-- Progress Steps -->
-        <div class="mb-8">
-          <div class="flex items-center justify-between">
-            <div class="flex items-center" id="step-indicator-1">
-              <div class="flex items-center justify-center w-10 h-10 rounded-full bg-blue-600 text-white font-semibold">
-                1
-              </div>
-              <span class="ml-3 font-medium text-gray-900">Campaign Info</span>
-            </div>
-            <div class="flex-1 h-0.5 mx-4 bg-gray-300"></div>
-            <div class="flex items-center" id="step-indicator-2">
-              <div class="flex items-center justify-center w-10 h-10 rounded-full bg-gray-300 text-gray-600 font-semibold">
-                2
-              </div>
-              <span class="ml-3 font-medium text-gray-500">Upload CSV</span>
-            </div>
-            <div class="flex-1 h-0.5 mx-4 bg-gray-300"></div>
-            <div class="flex items-center" id="step-indicator-3">
-              <div class="flex items-center justify-center w-10 h-10 rounded-full bg-gray-300 text-gray-600 font-semibold">
-                3
-              </div>
-              <span class="ml-3 font-medium text-gray-500">Review</span>
-            </div>
-          </div>
+      <label data-drop class="group relative grid cursor-pointer place-items-center rounded-2xl border-2 border-dashed border-ink-300 bg-ink-50 px-6 py-10 text-center transition-colors hover:border-ink-500 hover:bg-white data-[dragging]:border-brand-600 data-[dragging]:bg-brand-50">
+        <input type="file" accept=".csv,text/csv" class="sr-only" data-file />
+        <Illustration name="upload" class="h-24 w-auto" />
+        <p class="mt-3 font-semibold text-ink-900">Drop your CSV here, or <span class="link">browse</span></p>
+        <p class="mt-1 text-sm text-ink-500">Columns can be anything — firstName, company, region, deal ID…</p>
+      </label>
+
+      <div data-file-summary hidden class="flex items-center gap-3 rounded-xl border border-line p-3">
+        <span class="grid size-10 place-items-center rounded-lg bg-brand-100 text-brand-800"><Icon name="file-spreadsheet" class="size-5" /></span>
+        <div class="min-w-0 flex-1">
+          <p class="truncate text-sm font-semibold text-ink-900" data-file-name></p>
+          <p class="text-xs text-ink-500" data-file-meta></p>
         </div>
+        <button type="button" class="btn btn-secondary btn-sm" data-replace>Replace</button>
+      </div>
 
-        <!-- Form Container -->
-        <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-8">
-          <!-- Step 1: Campaign Info -->
-          <div id="step-1">
-            <h2 class="text-xl font-semibold text-gray-900 mb-6">
-              Campaign Information
-            </h2>
-
-            <div class="space-y-6">
-              <div>
-                <label for="campaign-name" class="block text-sm font-medium text-gray-700 mb-2">
-                  Campaign Name <span class="text-red-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  id="campaign-name"
-                  class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="e.g., Q4 2024 Product Launch"
-                  required
-                />
-                <p class="mt-1 text-sm text-gray-500">
-                  A descriptive name to identify this campaign
-                </p>
-              </div>
-
-              <div>
-                <label for="original-url" class="block text-sm font-medium text-gray-700 mb-2">
-                  Destination URL <span class="text-red-500">*</span>
-                </label>
-                <input
-                  type="url"
-                  id="original-url"
-                  class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="https://example.com/landing-page"
-                  required
-                />
-                <p class="mt-1 text-sm text-gray-500">
-                  All short URLs will redirect to this URL with personalized query parameters
-                </p>
-              </div>
-            </div>
-
-            <div class="mt-8 flex justify-end">
-              <button
-                id="next-step-1"
-                class="bg-blue-600 text-white px-6 py-2.5 rounded-lg hover:bg-blue-700 transition-colors font-medium"
-              >
-                Next: Upload CSV →
-              </button>
-            </div>
-          </div>
-
-          <!-- Step 2: CSV Upload -->
-          <div id="step-2" class="hidden">
-            <h2 class="text-xl font-semibold text-gray-900 mb-6">Upload CSV File</h2>
-
-            <div class="space-y-6">
-              <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">
-                  CSV Data <span class="text-red-500">*</span>
-                </label>
-                <textarea
-                  id="csv-data"
-                  rows="10"
-                  class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent font-mono text-sm"
-                  placeholder="firstName,lastName,company,email
-John,Doe,Acme Corp,john@acme.com
-Jane,Smith,TechCorp,jane@techcorp.com"
-                  required
-                ></textarea>
-                <p class="mt-1 text-sm text-gray-500">
-                  Paste your CSV data with a header row. Each row will create one short URL.
-                </p>
-              </div>
-
-              <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                <h4 class="text-sm font-medium text-blue-900 mb-2">CSV Format Requirements:</h4>
-                <ul class="text-sm text-blue-800 space-y-1 list-disc list-inside">
-                  <li>First row must be a header with column names</li>
-                  <li>Column names can be anything (e.g., firstName, company, region)</li>
-                  <li>All rows must have the same number of columns</li>
-                  <li>Each row creates one short URL with that row's data as query parameters</li>
-                </ul>
-              </div>
-
-              <!-- CSV Preview (shown after validation) -->
-              <div id="csv-preview" class="hidden">
-                <h3 class="text-sm font-medium text-gray-700 mb-2">Preview:</h3>
-                <div class="border border-gray-200 rounded-lg overflow-hidden">
-                  <table class="min-w-full divide-y divide-gray-200">
-                    <thead class="bg-gray-50">
-                      <tr id="csv-preview-header"></tr>
-                    </thead>
-                    <tbody id="csv-preview-body" class="bg-white divide-y divide-gray-200">
-                    </tbody>
-                  </table>
-                </div>
-                <p class="mt-2 text-sm text-gray-500">
-                  <span id="csv-row-count">0</span> URLs will be created
-                </p>
-              </div>
-            </div>
-
-            <div class="mt-8 flex justify-between">
-              <button
-                id="back-step-2"
-                class="border border-gray-300 text-gray-700 px-6 py-2.5 rounded-lg hover:bg-gray-50 transition-colors font-medium"
-              >
-                ← Back
-              </button>
-              <button
-                id="preview-csv"
-                class="bg-blue-600 text-white px-6 py-2.5 rounded-lg hover:bg-blue-700 transition-colors font-medium"
-              >
-                Preview & Continue →
-              </button>
-            </div>
-          </div>
-
-          <!-- Step 3: Review -->
-          <div id="step-3" class="hidden">
-            <h2 class="text-xl font-semibold text-gray-900 mb-6">Review & Create</h2>
-
-            <div class="space-y-6">
-              <div class="bg-gray-50 rounded-lg p-6 space-y-4">
-                <div>
-                  <h3 class="text-sm font-medium text-gray-500">Campaign Name</h3>
-                  <p id="review-name" class="mt-1 text-lg font-medium text-gray-900"></p>
-                </div>
-                <div>
-                  <h3 class="text-sm font-medium text-gray-500">Destination URL</h3>
-                  <p id="review-url" class="mt-1 text-gray-900 break-all"></p>
-                </div>
-                <div>
-                  <h3 class="text-sm font-medium text-gray-500">Total URLs</h3>
-                  <p id="review-count" class="mt-1 text-lg font-medium text-gray-900"></p>
-                </div>
-                <div>
-                  <h3 class="text-sm font-medium text-gray-500">CSV Columns</h3>
-                  <div id="review-columns" class="mt-2 flex flex-wrap gap-2"></div>
-                </div>
-              </div>
-
-              <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-                <p class="text-sm text-yellow-800">
-                  <strong>Note:</strong> After creation, each short URL will append its row data as query parameters.
-                  For example: <code class="bg-yellow-100 px-1 rounded">?firstName=John&lastName=Doe&company=Acme</code>
-                </p>
-              </div>
-            </div>
-
-            <div class="mt-8 flex justify-between">
-              <button
-                id="back-step-3"
-                class="border border-gray-300 text-gray-700 px-6 py-2.5 rounded-lg hover:bg-gray-50 transition-colors font-medium"
-              >
-                ← Back
-              </button>
-              <button
-                id="create-campaign"
-                class="bg-blue-600 text-white px-6 py-2.5 rounded-lg hover:bg-blue-700 transition-colors font-medium"
-              >
-                Create Campaign
-              </button>
-            </div>
-          </div>
-
-          <!-- Loading State -->
-          <div id="loading-state" class="hidden text-center py-12">
-            <div class="inline-flex items-center">
-              <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-              <span class="ml-3 text-gray-600">Creating campaign...</span>
-            </div>
-          </div>
-
-          <!-- Error Message -->
-          <div id="error-message" class="hidden mt-4 bg-red-50 border border-red-200 rounded-lg p-4">
-            <p class="text-red-800" id="error-text"></p>
-          </div>
+      <details class="disclosure" data-paste-section>
+        <summary class="text-sm font-medium text-ink-700 hover:text-ink-950"><Icon name="clipboard" class="size-4" />Paste CSV instead<Icon name="chevron-down" class="chevron size-4" /></summary>
+        <div class="disclosure-body mt-3 grid gap-2">
+          <label for="csv-text" class="sr-only">CSV text</label>
+          <textarea id="csv-text" class="textarea min-h-40 font-mono text-[13px]" spellcheck="false" placeholder={'firstName,company,region\nAna,Acme Corp,Madrid'}></textarea>
+          <button type="button" class="btn btn-secondary btn-sm justify-self-start" data-use-paste>Use this data</button>
         </div>
-      </main>
+      </details>
 
-      <script>
-        import { apiPost } from '@/utils/api';
-        import type { Campaign, CreateCampaignRequest } from '@/utils/types';
+      <div data-csv-errors hidden class="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800" role="alert"></div>
 
-        let currentStep = 1;
-        let campaignData: { name: string; original_url: string; csv_data: string } | null = null;
-        let parsedCSV: any[] = [];
+      <div class="flex justify-between">
+        <button type="button" class="btn btn-ghost" data-back><Icon name="arrow-left" />Back</button>
+        <button type="button" class="btn btn-primary" data-next disabled>Review<Icon name="arrow-right" /></button>
+      </div>
+    </section>
 
-        // Step navigation
-        function goToStep(step: number) {
-          // Hide all steps
-          document.getElementById('step-1')?.classList.add('hidden');
-          document.getElementById('step-2')?.classList.add('hidden');
-          document.getElementById('step-3')?.classList.add('hidden');
+    <!-- Step 3 -->
+    <section data-step="3" hidden class="grid gap-6 p-6 sm:p-8" aria-labelledby="s3-title">
+      <div>
+        <h2 id="s3-title" class="text-lg font-semibold text-ink-950">Looks right?</h2>
+        <p class="mt-1 text-sm text-ink-500" data-review-sub></p>
+      </div>
+      <div data-form-alert hidden></div>
 
-          // Show target step
-          document.getElementById(`step-${step}`)?.classList.remove('hidden');
+      <dl class="grid grid-cols-1 gap-4 rounded-2xl bg-ink-50 p-5 sm:grid-cols-3">
+        <div><dt class="text-xs text-ink-500">Campaign</dt><dd class="mt-1 font-semibold break-words text-ink-950" data-review-name></dd></div>
+        <div class="sm:col-span-2"><dt class="text-xs text-ink-500">Destination</dt><dd class="mt-1 truncate text-sm font-medium text-ink-900" data-review-url></dd></div>
+        <div><dt class="text-xs text-ink-500">Links to create</dt><dd class="mt-1 text-2xl font-semibold tracking-tight text-ink-950" data-review-count></dd></div>
+        <div class="sm:col-span-2"><dt class="text-xs text-ink-500">Personalized with</dt><dd class="mt-1.5 flex flex-wrap gap-1.5" data-review-columns></dd></div>
+      </dl>
 
-          // Update step indicators
-          for (let i = 1; i <= 3; i++) {
-            const indicator = document.getElementById(`step-indicator-${i}`);
-            const circle = indicator?.querySelector('div');
-            const text = indicator?.querySelector('span');
+      <div>
+        <p class="mb-2 text-sm font-medium text-ink-800">Preview</p>
+        <div class="overflow-x-auto rounded-xl border border-line" data-review-table></div>
+        <p class="mt-2 text-xs text-ink-500" data-review-more></p>
+      </div>
 
-            if (i < step) {
-              // Completed step
-              circle?.classList.remove('bg-gray-300', 'text-gray-600');
-              circle?.classList.add('bg-green-600', 'text-white');
-              text?.classList.remove('text-gray-500');
-              text?.classList.add('text-gray-900');
-            } else if (i === step) {
-              // Current step
-              circle?.classList.remove('bg-gray-300', 'text-gray-600', 'bg-green-600');
-              circle?.classList.add('bg-blue-600', 'text-white');
-              text?.classList.remove('text-gray-500');
-              text?.classList.add('text-gray-900');
-            } else {
-              // Future step
-              circle?.classList.remove('bg-blue-600', 'bg-green-600', 'text-white');
-              circle?.classList.add('bg-gray-300', 'text-gray-600');
-              text?.classList.remove('text-gray-900');
-              text?.classList.add('text-gray-500');
-            }
-          }
+      <div class="rounded-xl border border-line p-4">
+        <p class="text-sm font-medium text-ink-800">When <span data-example-name></span> opens their link, they land on:</p>
+        <p class="mt-2 font-mono text-xs leading-5 break-all text-ink-700" data-example-url></p>
+      </div>
 
-          currentStep = step;
-        }
+      <div data-csv-warnings hidden class="flex gap-2.5 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+        <Icon name="warning" class="mt-0.5 size-4 shrink-0 text-amber-600" /><div data-csv-warnings-text></div>
+      </div>
 
-        // Step 1: Next button
-        document.getElementById('next-step-1')?.addEventListener('click', () => {
-          const name = (document.getElementById('campaign-name') as HTMLInputElement)?.value.trim();
-          const url = (document.getElementById('original-url') as HTMLInputElement)?.value.trim();
+      <div class="flex justify-between">
+        <button type="button" class="btn btn-ghost" data-back><Icon name="arrow-left" />Back</button>
+        <button type="submit" class="btn btn-primary btn-lg" data-create>Create links</button>
+      </div>
+    </section>
 
-          if (!name) {
-            alert('Please enter a campaign name');
-            return;
-          }
+    <!-- Step 4 -->
+    <section data-step="4" hidden class="grid place-items-center gap-3 px-6 py-16 text-center" aria-live="polite">
+      <span class="spinner spinner-lg"></span>
+      <h2 class="display mt-3 text-2xl text-ink-950" data-creating-title>Creating your links…</h2>
+      <p class="text-sm text-ink-500">This takes a few seconds for big lists. Don’t close the tab.</p>
+    </section>
+  </form>
+</AppLayout>
 
-          if (!url || !url.match(/^https?:\/\/.+/)) {
-            alert('Please enter a valid URL (must start with http:// or https://)');
-            return;
-          }
+<script>
+  import { saveBlob } from '@/utils/api';
+  import { createCampaign, setCampaignTags, columnChips } from '@/utils/campaigns';
+  import { analyzeCsv, SAMPLE_CSV, type ParsedCsv } from '@/utils/csv';
+  import { applyApiError, clearErrors, setFieldError } from '@/utils/forms';
+  import { formatNumber, isValidHttpUrl, normalizeUrlInput, pluralize } from '@/utils/format';
+  import { html, setHTML } from '@/utils/html';
+  import { iconSvg } from '@/utils/icons';
+  import { campaignHref } from '@/utils/links';
+  import { mountTagInput } from '@/utils/tag-input';
 
-          campaignData = { name, original_url: url, csv_data: '' };
-          goToStep(2);
-        });
+  const form = document.getElementById('wizard') as HTMLFormElement;
+  const $ = <T extends HTMLElement = HTMLElement>(sel: string, root: ParentNode = document) => root.querySelector<T>(sel)!;
+  const field = (n: string) => form.elements.namedItem(n) as HTMLInputElement;
+  const tags = mountTagInput(document.getElementById('tags')!);
+  let step = 1;
+  let csvText = '';
+  let parsed: ParsedCsv | null = null;
+  let fileLabel = '';
+  const PASTED = 'Pasted data';
 
-        // Step 2: Back button
-        document.getElementById('back-step-2')?.addEventListener('click', () => {
-          goToStep(1);
-        });
+  function go(n: number) {
+    step = n;
+    form.querySelectorAll<HTMLElement>('[data-step]').forEach((s) => (s.hidden = Number(s.dataset.step) !== n));
+    document.querySelectorAll<HTMLElement>('[data-step-indicator]').forEach((li) => {
+      const i = Number(li.dataset.stepIndicator);
+      const dot = $('[data-dot]', li);
+      const label = li.querySelector<HTMLElement>('[data-label]');
+      if (i === n) li.setAttribute('aria-current', 'step');
+      else li.removeAttribute('aria-current');
+      dot.className = `grid size-7 shrink-0 place-items-center rounded-full text-xs font-semibold transition-colors ${
+        i < n ? 'bg-brand-400 text-white' : i === n ? 'bg-ink-950 text-white' : 'bg-ink-100 text-ink-500'
+      }`;
+      dot.innerHTML = i < n ? iconSvg('check', 'size-3.5', 3) : String(i);
+      if (label) label.className = `hidden text-sm font-medium sm:inline ${i <= n ? 'text-ink-950' : 'text-ink-500'}`;
+    });
+    const first = form.querySelector<HTMLElement>(`[data-step="${n}"] input:not([type=file]), [data-step="${n}"] button[data-next]`);
+    if (n !== 4) first?.focus({ preventScroll: true });
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
 
-        // Step 2: Preview CSV
-        document.getElementById('preview-csv')?.addEventListener('click', () => {
-          const csvData = (document.getElementById('csv-data') as HTMLTextAreaElement)?.value.trim();
+  // ------------------------------------------------------------------ Step 1
+  function validateDetails(): boolean {
+    clearErrors(form);
+    let ok = true;
+    if (!field('name').value.trim()) {
+      setFieldError(form, 'name', 'Give the campaign a name you’ll recognise later.');
+      ok = false;
+    }
+    const url = normalizeUrlInput(field('original_url').value);
+    if (!isValidHttpUrl(url)) {
+      setFieldError(form, 'original_url', url ? 'That doesn’t look like a web link. Try https://yoursite.com/page' : 'Where should the links go?');
+      ok = false;
+    } else field('original_url').value = url;
+    if (!ok) form.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus();
+    return ok;
+  }
+  form.addEventListener('input', (e) => {
+    const t = e.target as HTMLInputElement;
+    if (t.name) setFieldError(form, t.name, null);
+  });
 
-          if (!csvData) {
-            alert('Please paste CSV data');
-            return;
-          }
+  // ------------------------------------------------------------------ Step 2
+  const drop = $('[data-drop]');
+  const fileInput = $<HTMLInputElement>('[data-file]');
+  const errorsBox = $('[data-csv-errors]');
+  const nextFromCsv = $<HTMLButtonElement>('[data-step="2"] [data-next]');
 
-          // Parse CSV
-          try {
-            const lines = csvData.split('\n').filter(line => line.trim());
-            if (lines.length < 2) {
-              alert('CSV must have at least a header row and one data row');
-              return;
-            }
+  function acceptCsv(text: string, label: string) {
+    csvText = text.replace(/\r\n?/g, '\n');
+    parsed = analyzeCsv(csvText);
+    fileLabel = label;
+    const ok = parsed.errors.length === 0;
+    errorsBox.hidden = ok;
+    if (!ok) {
+      setHTML(errorsBox, html`<p class="font-semibold">We can’t use this file yet</p><ul class="mt-1.5 list-disc space-y-1 pl-5">${parsed.errors.map((e) => html`<li>${e}</li>`)}</ul>`);
+    }
+    $('[data-file-summary]').hidden = false;
+    $('[data-file-name]').textContent = label;
+    $('[data-file-meta]').textContent = ok
+      ? `${pluralize(parsed.rows.length, 'recipient')} · ${pluralize(parsed.headers.length, 'column')}`
+      : 'Needs a fix before you can continue';
+    drop.hidden = true;
+    nextFromCsv.disabled = !ok;
+    if (ok) nextFromCsv.focus();
+  }
 
-            const headers = lines[0].split(',').map(h => h.trim());
-            parsedCSV = lines.slice(1).map(line => {
-              const values = line.split(',').map(v => v.trim());
-              const row: any = {};
-              headers.forEach((header, i) => {
-                row[header] = values[i] || '';
-              });
-              return row;
-            });
+  async function readFile(file: File | undefined) {
+    if (!file) return;
+    if (!/\.csv$/i.test(file.name) && file.type && !/csv|text\/plain|excel/.test(file.type)) {
+      errorsBox.hidden = false;
+      errorsBox.textContent = 'That’s not a CSV. In Excel or Google Sheets, use File → Download → CSV.';
+      return;
+    }
+    acceptCsv(await file.text(), file.name);
+  }
 
-            // Show preview
-            const preview = document.getElementById('csv-preview');
-            const headerRow = document.getElementById('csv-preview-header');
-            const bodyRows = document.getElementById('csv-preview-body');
+  fileInput.addEventListener('change', () => readFile(fileInput.files?.[0]));
+  ['dragenter', 'dragover'].forEach((ev) =>
+    drop.addEventListener(ev, (e) => {
+      e.preventDefault();
+      drop.setAttribute('data-dragging', '');
+    }),
+  );
+  ['dragleave', 'drop'].forEach((ev) => drop.addEventListener(ev, () => drop.removeAttribute('data-dragging')));
+  drop.addEventListener('drop', (e) => {
+    e.preventDefault();
+    void readFile((e as DragEvent).dataTransfer?.files?.[0]);
+  });
+  $('[data-replace]').addEventListener('click', () => {
+    const fromPaste = fileLabel === PASTED;
+    $('[data-file-summary]').hidden = true;
+    drop.hidden = false;
+    errorsBox.hidden = true;
+    parsed = null;
+    fileInput.value = '';
+    nextFromCsv.disabled = true;
+    // Pasted data goes back to the textarea; a file goes back to the file picker.
+    if (fromPaste) {
+      $<HTMLDetailsElement>('[data-paste-section]').open = true;
+      $<HTMLTextAreaElement>('#csv-text').focus();
+    } else {
+      fileInput.click();
+    }
+  });
+  $('[data-use-paste]').addEventListener('click', () => {
+    const text = $<HTMLTextAreaElement>('#csv-text').value;
+    if (!text.trim()) {
+      errorsBox.hidden = false;
+      errorsBox.textContent = 'Paste your CSV first — a header row, then one row per recipient.';
+      return;
+    }
+    acceptCsv(text, PASTED);
+  });
+  $('[data-sample]').addEventListener('click', () => saveBlob(new Blob([SAMPLE_CSV], { type: 'text/csv' }), 'shurly-sample-recipients.csv'));
 
-            if (headerRow) {
-              headerRow.innerHTML = headers.map(h =>
-                `<th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">${h}</th>`
-              ).join('');
-            }
+  // ------------------------------------------------------------------ Step 3
+  function exampleUrl(base: string, headers: string[], row: string[]): string {
+    try {
+      const u = new URL(base);
+      headers.forEach((h, i) => u.searchParams.set(h, row[i] ?? ''));
+      return u.toString();
+    } catch {
+      return base;
+    }
+  }
 
-            if (bodyRows) {
-              bodyRows.innerHTML = parsedCSV.slice(0, 5).map(row =>
-                `<tr>${headers.map(h =>
-                  `<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${row[h]}</td>`
-                ).join('')}</tr>`
-              ).join('');
-            }
+  function renderReview() {
+    if (!parsed) return;
+    const { headers, rows, warnings } = parsed;
+    const dest = field('original_url').value;
+    $('[data-review-name]').textContent = field('name').value.trim();
+    $('[data-review-url]').textContent = dest;
+    $('[data-review-count]').textContent = formatNumber(rows.length);
+    $('[data-review-sub]').textContent = `From ${fileLabel}. We’ll create ${pluralize(rows.length, 'personal link')} — one per row.`;
+    setHTML($('[data-review-columns]'), columnChips(headers, 8));
+    const preview = rows.slice(0, 5);
+    setHTML(
+      $('[data-review-table]'),
+      html`<table class="table"><thead><tr><th class="w-10">#</th>${headers.map((h) => html`<th>${h}</th>`)}</tr></thead>
+        <tbody>${preview.map((r, i) => html`<tr><td class="num text-ink-500">${i + 1}</td>${headers.map((_, c) => html`<td class="whitespace-nowrap">${r[c] || html`<span class="text-ink-500">—</span>`}</td>`)}</tr>`)}</tbody></table>`,
+    );
+    $('[data-review-more]').textContent = rows.length > 5 ? `…and ${pluralize(rows.length - 5, 'more row')}.` : '';
+    $('[data-example-name]').textContent = rows[0]?.[0] || 'the first recipient';
+    $('[data-example-url]').textContent = exampleUrl(dest, headers, rows[0] ?? []);
+    const warnBox = $('[data-csv-warnings]');
+    warnBox.hidden = warnings.length === 0;
+    setHTML($('[data-csv-warnings-text]'), html`${warnings.map((w) => html`<p>${w}</p>`)}`);
+    $('[data-create]').textContent = `Create ${pluralize(rows.length, 'link')}`;
+  }
 
-            const rowCount = document.getElementById('csv-row-count');
-            if (rowCount) {
-              rowCount.textContent = parsedCSV.length.toString();
-            }
+  // ------------------------------------------------------------------ Navigation
+  form.addEventListener('click', (e) => {
+    const t = e.target as HTMLElement;
+    if (t.closest('[data-next]')) {
+      if (step === 1 && !validateDetails()) return;
+      if (step === 2) {
+        if (!parsed || parsed.errors.length) return;
+        renderReview();
+      }
+      go(step + 1);
+    } else if (t.closest('[data-back]')) {
+      go(step - 1);
+    }
+  });
 
-            preview?.classList.remove('hidden');
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (step !== 3 || !parsed) return;
+    go(4);
+    $('[data-creating-title]').textContent = `Creating ${pluralize(parsed.rows.length, 'personal link')}…`;
+    try {
+      const campaign = await createCampaign({
+        name: field('name').value.trim(),
+        original_url: field('original_url').value,
+        csv_data: csvText.trim(),
+      });
+      const tagIds = tags.getIds();
+      if (tagIds.length) await setCampaignTags(campaign.id, tagIds).catch(() => undefined);
+      sessionStorage.setItem('shurly_flash', `Campaign created — ${pluralize(campaign.url_count, 'link')} ready`);
+      location.href = campaignHref(campaign.id);
+    } catch (err) {
+      go(3);
+      applyApiError($('[data-step="3"]'), err);
+    }
+  });
 
-            // Update campaign data
-            if (campaignData) {
-              campaignData.csv_data = csvData;
-            }
-
-            goToStep(3);
-
-            // Update review
-            document.getElementById('review-name')!.textContent = campaignData!.name;
-            document.getElementById('review-url')!.textContent = campaignData!.original_url;
-            document.getElementById('review-count')!.textContent = `${parsedCSV.length} URLs`;
-
-            const columnsContainer = document.getElementById('review-columns');
-            if (columnsContainer) {
-              columnsContainer.innerHTML = headers.map(h =>
-                `<span class="inline-flex items-center px-3 py-1 rounded-full bg-blue-100 text-blue-800 text-sm font-medium">${h}</span>`
-              ).join('');
-            }
-
-          } catch (error) {
-            alert('Failed to parse CSV. Please check the format.');
-            console.error(error);
-          }
-        });
-
-        // Step 3: Back button
-        document.getElementById('back-step-3')?.addEventListener('click', () => {
-          goToStep(2);
-        });
-
-        // Step 3: Create campaign
-        document.getElementById('create-campaign')?.addEventListener('click', async () => {
-          if (!campaignData) {
-            alert('Campaign data is missing');
-            return;
-          }
-
-          const errorDiv = document.getElementById('error-message');
-          const errorText = document.getElementById('error-text');
-          const loadingState = document.getElementById('loading-state');
-          const step3 = document.getElementById('step-3');
-
-          try {
-            // Show loading
-            step3?.classList.add('hidden');
-            loadingState?.classList.remove('hidden');
-            errorDiv?.classList.add('hidden');
-
-            const campaign = await apiPost<Campaign>(
-              '/api/v1/campaigns',
-              campaignData,
-              true
-            );
-
-            // Redirect to campaign details
-            window.location.href = `/dashboard/campaigns/${campaign.id}`;
-          } catch (error) {
-            console.error('Failed to create campaign:', error);
-            step3?.classList.remove('hidden');
-            loadingState?.classList.add('hidden');
-            errorDiv?.classList.remove('hidden');
-            if (errorText) {
-              errorText.textContent = error instanceof Error ? error.message : 'Failed to create campaign';
-            }
-          }
-        });
-      </script>
-    </body>
-  </html>
-</ProtectedRoute>
+  go(1);
+</script>

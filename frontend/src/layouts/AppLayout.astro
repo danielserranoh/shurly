@@ -1,0 +1,169 @@
+---
+import BaseLayout from './BaseLayout.astro';
+import Logo from '@/components/brand/Logo.astro';
+import Icon from '@/components/ui/Icon.astro';
+
+type Section = 'links' | 'campaigns' | 'analytics' | 'settings';
+
+interface Props {
+  title: string;
+  section?: Section;
+  /** Content width: default 72rem, narrow 48rem for forms. */
+  width?: 'default' | 'narrow' | 'wide';
+}
+
+const { title, section, width = 'default' } = Astro.props;
+
+const nav: { key: Section; label: string; href: string; icon: 'link' | 'megaphone' | 'chart' }[] = [
+  { key: 'links', label: 'Links', href: '/dashboard/', icon: 'link' },
+  { key: 'campaigns', label: 'Campaigns', href: '/dashboard/campaigns/', icon: 'megaphone' },
+  { key: 'analytics', label: 'Analytics', href: '/dashboard/analytics/', icon: 'chart' },
+];
+const maxWidth = { default: 'max-w-6xl', narrow: 'max-w-3xl', wide: 'max-w-7xl' }[width];
+---
+
+<BaseLayout title={title} protected>
+  <a href="#main" class="sr-only z-50 rounded-md bg-ink-950 px-3 py-2 text-sm font-semibold text-white focus:not-sr-only focus:fixed focus:top-3 focus:left-3">Skip to content</a>
+
+  <header class="sticky top-0 z-30 border-b border-line bg-white/85 backdrop-blur-md">
+    <div class="mx-auto flex h-16 max-w-6xl items-center gap-2 px-4 sm:px-6">
+      <Logo href="/dashboard/" height={22} class="mr-4 rounded-md" />
+
+      <nav class="hidden items-center gap-1 md:flex" aria-label="Main">
+        {
+          nav.map((item) => (
+            <a href={item.href} class="nav-link" aria-current={section === item.key ? 'page' : undefined}>
+              {item.label}
+            </a>
+          ))
+        }
+      </nav>
+
+      <div class="ml-auto flex items-center gap-2">
+        <a href="/dashboard/create/" class="btn btn-primary btn-sm hidden sm:inline-flex" data-tooltip="Shortcut: N" data-tooltip-align="end">
+          <Icon name="plus" />New link
+        </a>
+        <a href="/dashboard/create/" class="btn btn-primary btn-sm btn-icon sm:hidden" aria-label="New link">
+          <Icon name="plus" />
+        </a>
+
+        <button
+          type="button"
+          class="grid size-9 place-items-center rounded-full bg-ink-950 text-sm font-semibold text-brand-300 ring-offset-2 transition hover:ring-2 hover:ring-ink-200"
+          popovertarget="user-menu"
+          aria-label="Account menu"
+          data-user-initial
+        >
+          <span class="size-2 rounded-full bg-brand-400" aria-hidden="true"></span>
+        </button>
+        <div id="user-menu" popover class="menu w-64" data-align="end">
+          <div class="px-2.5 pt-1.5 pb-2.5">
+            <p class="text-xs text-ink-500">Signed in as</p>
+            <p class="truncate text-sm font-semibold text-ink-950" data-user-email>…</p>
+            <span class="badge badge-brand mt-2"><span class="status-dot text-brand-600"></span>Early access</span>
+          </div>
+          <div class="menu-sep"></div>
+          <a class="menu-item" href="/dashboard/settings/"><Icon name="settings" />Settings</a>
+          <a class="menu-item" href="/dashboard/settings/#tags"><Icon name="tags" />Manage tags</a>
+          <a class="menu-item" href="/dashboard/settings/#api"><Icon name="key" />API &amp; MCP</a>
+          <div class="menu-sep"></div>
+          <button type="button" class="menu-item" data-logout><Icon name="log-out" />Log out</button>
+        </div>
+
+        <button type="button" class="btn btn-ghost btn-sm btn-icon md:hidden" data-dialog-open="mobile-nav" aria-label="Open menu">
+          <Icon name="menu" class="size-5" />
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <dialog id="mobile-nav" class="modal" aria-label="Menu">
+    <div class="modal-panel p-3" style="--modal-width: 22rem">
+      <div class="flex items-center justify-between px-2 pt-1 pb-3">
+        <Logo height={20} />
+        <button type="button" class="btn btn-ghost btn-sm btn-icon" data-dialog-close aria-label="Close menu"><Icon name="x" /></button>
+      </div>
+      <nav aria-label="Mobile" class="grid gap-1">
+        {
+          nav.map((item) => (
+            <a
+              href={item.href}
+              class:list={['menu-item h-11 text-base', section === item.key && 'bg-ink-100 text-ink-950']}
+              aria-current={section === item.key ? 'page' : undefined}
+            >
+              <Icon name={item.icon} />
+              {item.label}
+            </a>
+          ))
+        }
+        <a href="/dashboard/settings/" class:list={['menu-item h-11 text-base', section === 'settings' && 'bg-ink-100 text-ink-950']}>
+          <Icon name="settings" />Settings
+        </a>
+        <div class="menu-sep"></div>
+        <button type="button" class="menu-item h-11 text-base" data-logout><Icon name="log-out" />Log out</button>
+      </nav>
+    </div>
+  </dialog>
+
+  <main id="main" class:list={['mx-auto px-4 pt-8 pb-20 sm:px-6', maxWidth]}>
+    <slot />
+  </main>
+</BaseLayout>
+
+<script>
+  import { apiGet } from '@/utils/api';
+  import { logout } from '@/utils/auth';
+  import type { User } from '@/utils/types';
+
+  const CACHE_KEY = 'shurly_me';
+
+  function paint(user: Pick<User, 'email'>) {
+    document.querySelectorAll('[data-user-email]').forEach((el) => (el.textContent = user.email));
+    document.querySelectorAll<HTMLElement>('[data-user-initial]').forEach((el) => {
+      el.textContent = (user.email[0] ?? '?').toUpperCase();
+      el.title = user.email;
+    });
+  }
+
+  const cached = sessionStorage.getItem(CACHE_KEY);
+  if (cached) {
+    try {
+      paint(JSON.parse(cached));
+    } catch {
+      sessionStorage.removeItem(CACHE_KEY);
+    }
+  }
+  apiGet<User>('/api/v1/auth/me')
+    .then((user) => {
+      sessionStorage.setItem(CACHE_KEY, JSON.stringify({ email: user.email }));
+      paint(user);
+    })
+    .catch(() => {
+      /* 401 is handled by the API client; other errors leave the cached name */
+    });
+
+  document.addEventListener('click', (e) => {
+    if ((e.target as HTMLElement).closest('[data-logout]')) {
+      sessionStorage.removeItem(CACHE_KEY);
+      logout();
+    }
+  });
+
+  // Keyboard shortcuts: N → new link, / → focus the page's search box.
+  document.addEventListener('keydown', (e) => {
+    if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey) return;
+    const el = e.target as HTMLElement;
+    if (el.closest('input, textarea, select, [contenteditable="true"], dialog[open]')) return;
+    if (e.key === 'n' || e.key === 'N') {
+      e.preventDefault();
+      window.location.href = '/dashboard/create/';
+    } else if (e.key === '/') {
+      const search = document.querySelector<HTMLInputElement>('[data-search]');
+      if (search) {
+        e.preventDefault();
+        search.focus();
+        search.select();
+      }
+    }
+  });
+</script>

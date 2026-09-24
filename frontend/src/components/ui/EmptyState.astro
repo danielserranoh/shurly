@@ -1,0 +1,27 @@
+---
+import Illustration from '../illustrations/Illustration.astro';
+
+interface Props {
+  illustration: 'links' | 'campaigns' | 'analytics' | 'search' | 'error' | 'not-found' | 'success' | 'tags' | 'locked' | 'upload' | 'rules';
+  title: string;
+  body?: string;
+  id?: string;
+  hidden?: boolean;
+  compact?: boolean;
+  /** Heading level for the title; nest it under the section it belongs to. */
+  level?: 2 | 3 | 4;
+  class?: string;
+}
+
+const { illustration, title, body, id, hidden = false, compact = false, level = 2, class: className = '' } = Astro.props;
+const Heading = `h${level}` as const;
+---
+
+<div id={id} hidden={hidden} class:list={['flex flex-col items-center text-center', compact ? 'px-6 py-10' : 'px-6 py-16', className]}>
+  <Illustration name={illustration} class={compact ? 'h-24 w-auto' : 'h-32 w-auto'} />
+  <Heading class="display mt-5 text-xl text-ink-950" data-empty-title>{title}</Heading>
+  {body && <p class="mt-2 max-w-sm text-sm leading-6 text-ink-500" data-empty-body>{body}</p>}
+  <div class="mt-6 flex flex-wrap justify-center gap-2 empty:hidden">
+    <slot />
+  </div>
+</div>

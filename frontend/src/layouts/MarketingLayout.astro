@@ -1,0 +1,102 @@
+---
+import BaseLayout from './BaseLayout.astro';
+import Logo from '@/components/brand/Logo.astro';
+import Icon from '@/components/ui/Icon.astro';
+import { site } from '@/config/site';
+
+interface Props {
+  title: string;
+  description?: string;
+}
+
+const { title, description } = Astro.props;
+const year = new Date().getFullYear();
+---
+
+<BaseLayout title={title} description={description} themeColor="#001b3c">
+  <header id="site-header" class="fixed inset-x-0 top-0 z-40 transition-colors duration-200 data-[scrolled]:border-b data-[scrolled]:border-line data-[scrolled]:bg-white/85 data-[scrolled]:backdrop-blur-md">
+    <div class="mx-auto flex h-16 max-w-6xl items-center gap-6 px-4 sm:px-6">
+      <a href="/" aria-label="Shurly home" class="shrink-0 rounded-md">
+        <img src="/brand/wordmark-reversed.svg" width="78" height="23" alt="" class="block" data-logo-dark />
+        <img src="/brand/wordmark.svg" width="78" height="23" alt="" class="hidden" data-logo-light />
+      </a>
+      <nav class="hidden items-center gap-1 text-sm font-medium md:flex" aria-label="Main">
+        <a href="/#features" class="rounded-md px-3 py-2 text-ink-300 transition-colors hover:text-white" data-nav>Features</a>
+        <a href="/#how" class="rounded-md px-3 py-2 text-ink-300 transition-colors hover:text-white" data-nav>How it works</a>
+        <a href="/#pricing" class="rounded-md px-3 py-2 text-ink-300 transition-colors hover:text-white" data-nav>Pricing</a>
+      </nav>
+      <div class="ml-auto flex items-center gap-2">
+        <a href="/login/" class="btn btn-sm hidden text-ink-200 hover:bg-white/10 hover:text-white sm:inline-flex" data-nav-btn>Log in</a>
+        <a href="/register/" class="btn btn-accent btn-sm">Get started</a>
+      </div>
+    </div>
+  </header>
+
+  <slot />
+
+  <footer class="border-t border-line bg-white">
+    <div class="mx-auto grid grid-cols-1 max-w-6xl gap-10 px-4 py-14 sm:px-6 md:grid-cols-[1.4fr_1fr_1fr]">
+      <div>
+        <Logo height={24} />
+        <p class="mt-4 max-w-xs text-sm leading-6 text-ink-500">
+          Trackable short links for small marketing teams. Send the link, know who opened it.
+        </p>
+      </div>
+      <div>
+        <p class="eyebrow">Product</p>
+        <ul class="mt-4 grid gap-2.5 text-sm">
+          <li><a class="text-ink-600 hover:text-ink-950" href="/#features">Features</a></li>
+          <li><a class="text-ink-600 hover:text-ink-950" href="/#pricing">Pricing</a></li>
+          <li><a class="text-ink-600 hover:text-ink-950" href="/register/">Create an account</a></li>
+          <li><a class="text-ink-600 hover:text-ink-950" href="/login/">Log in</a></li>
+        </ul>
+      </div>
+      <div>
+        <p class="eyebrow">Developers</p>
+        <ul class="mt-4 grid gap-2.5 text-sm">
+          <li><a class="inline-flex items-center gap-1 text-ink-600 hover:text-ink-950" href={site.apiDocsUrl}>API reference <Icon name="arrow-up-right" class="size-3.5" /></a></li>
+          {site.sourceUrl && <li><a class="inline-flex items-center gap-1 text-ink-600 hover:text-ink-950" href={site.sourceUrl}>Source code <Icon name="arrow-up-right" class="size-3.5" /></a></li>}
+          <li><a class="text-ink-600 hover:text-ink-950" href="/styleguide/">Design system</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="border-t border-line">
+      <div class="mx-auto flex max-w-6xl flex-col gap-2 px-4 py-6 text-xs text-ink-500 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+        <p>© {year} Griddo. Shurly is a product by Griddo.</p>
+        <p class="inline-flex items-center gap-1.5">Visitor IPs are anonymized before they're stored. <span class="status-dot text-brand-600"></span></p>
+      </div>
+    </div>
+  </footer>
+</BaseLayout>
+
+<script>
+  // Header turns light once the page scrolls past the dark hero.
+  const header = document.getElementById('site-header')!;
+  const dark = header.querySelector<HTMLElement>('[data-logo-dark]')!;
+  const light = header.querySelector<HTMLElement>('[data-logo-light]')!;
+  const links = header.querySelectorAll<HTMLElement>('[data-nav]');
+  const login = header.querySelector<HTMLElement>('[data-nav-btn]');
+  const hero = document.querySelector<HTMLElement>('[data-hero]');
+
+  function update() {
+    const threshold = hero ? hero.offsetHeight - 72 : 8;
+    const scrolled = window.scrollY > threshold;
+    header.toggleAttribute('data-scrolled', scrolled);
+    dark.classList.toggle('hidden', scrolled);
+    light.classList.toggle('hidden', !scrolled);
+    links.forEach((a) => {
+      a.classList.toggle('text-ink-300', !scrolled);
+      a.classList.toggle('hover:text-white', !scrolled);
+      a.classList.toggle('text-ink-600', scrolled);
+      a.classList.toggle('hover:text-ink-950', scrolled);
+    });
+    if (login) {
+      login.classList.toggle('text-ink-200', !scrolled);
+      login.classList.toggle('hover:bg-white/10', !scrolled);
+      login.classList.toggle('hover:text-white', !scrolled);
+      login.classList.toggle('btn-ghost', scrolled);
+    }
+  }
+  update();
+  window.addEventListener('scroll', update, { passive: true });
+</script>

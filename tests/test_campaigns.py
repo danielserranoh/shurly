@@ -5,6 +5,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 from server.core.models import URL, Campaign
+from server.utils.domain import get_or_create_default_domain
 
 
 @pytest.mark.integration
@@ -69,6 +70,59 @@ test2@example.com,APAC"""
         assert urls[0].user_data is not None
         assert "email" in urls[0].user_data
         assert "region" in urls[0].user_data
+
+    def test_create_campaign_binds_urls_to_default_domain(
+        self, client: TestClient, auth_headers: dict, db_session: Session
+    ):
+        """Campaign URLs live on the default domain, like standard and custom URLs."""
+        from uuid import UUID
+
+        csv_data = """email
+test1@example.com
+test2@example.com"""
+
+        response = client.post(
+            "/api/v1/campaigns",
+            json={
+                "name": "Domain Campaign",
+                "original_url": "https://example.com",
+                "csv_data": csv_data,
+            },
+            headers=auth_headers,
+        )
+
+        assert response.status_code == 201
+        campaign_id = UUID(response.json()["id"])
+
+        default_domain = get_or_create_default_domain(db_session)
+        urls = db_session.query(URL).filter(URL.campaign_id == campaign_id).all()
+        assert len(urls) == 2
+        assert {url.domain_id for url in urls} == {default_domain.id}
+
+    def test_create_campaign_urls_serve_tracking_pixel(
+        self, client: TestClient, auth_headers: dict, db_session: Session
+    ):
+        """The pixel resolves by domain only, so a campaign URL needs its domain_id."""
+        from uuid import UUID
+
+        response = client.post(
+            "/api/v1/campaigns",
+            json={
+                "name": "Pixel Campaign",
+                "original_url": "https://example.com",
+                "csv_data": "email\ntest@example.com",
+            },
+            headers=auth_headers,
+        )
+
+        assert response.status_code == 201
+        campaign_id = UUID(response.json()["id"])
+        url = db_session.query(URL).filter(URL.campaign_id == campaign_id).one()
+
+        pixel = client.get(f"/{url.short_code}/track")
+
+        assert pixel.status_code == 200
+        assert pixel.headers["content-type"] == "image/gif"
 
     def test_create_campaign_unauthorized(self, client: TestClient):
         """Test that campaign creation requires authentication."""

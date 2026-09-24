@@ -1,0 +1,386 @@
+---
+import AppLayout from '@/layouts/AppLayout.astro';
+import Icon from '@/components/ui/Icon.astro';
+import StatCard from '@/components/ui/StatCard.astro';
+import EmptyState from '@/components/ui/EmptyState.astro';
+import QrModal from '@/components/app/QrModal.astro';
+---
+
+<AppLayout title="Campaign" section="campaigns">
+  <a href="/dashboard/campaigns/" class="mb-4 inline-flex items-center gap-1.5 rounded-md text-sm font-medium text-ink-500 hover:text-ink-950"><Icon name="arrow-left" />Campaigns</a>
+
+  <EmptyState id="not-found" hidden illustration="not-found" title="We couldn’t find that campaign" body="It may have been deleted, or it belongs to another account.">
+    <a href="/dashboard/campaigns/" class="btn btn-primary"><Icon name="list" />All campaigns</a>
+  </EmptyState>
+
+  <div id="loading" class="grid gap-6" aria-hidden="true">
+    <div class="space-y-3"><span class="skeleton block h-8 w-1/3"></span><span class="skeleton block h-4 w-1/2"></span></div>
+    <div class="grid grid-cols-2 gap-4 lg:grid-cols-4">{[1, 2, 3, 4].map(() => <div class="skeleton h-32 rounded-2xl"></div>)}</div>
+    <div class="skeleton h-96 rounded-2xl"></div>
+  </div>
+
+  <div id="content" hidden>
+    <header class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+      <div class="min-w-0">
+        <h1 class="display text-3xl break-words text-ink-950" data-name></h1>
+        <p class="mt-2 flex min-w-0 items-center gap-1.5 text-sm text-ink-500">
+          <Icon name="corner-down-right" class="size-4 shrink-0" />
+          <a class="truncate hover:text-ink-900 hover:underline" target="_blank" rel="noopener noreferrer" data-destination></a>
+        </p>
+        <div class="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-[13px] text-ink-500">
+          <span class="inline-flex items-center gap-1.5"><Icon name="calendar" class="size-3.5" /><span data-created></span></span>
+          <span class="inline-flex flex-wrap items-center gap-1.5"><span>Personalized with</span><span class="flex flex-wrap gap-1.5" data-columns></span></span>
+        </div>
+        <div class="mt-3 flex flex-wrap gap-1.5" data-tags></div>
+      </div>
+      <div class="flex shrink-0 gap-2">
+        <button type="button" class="btn btn-secondary" data-export><Icon name="download" />Export links</button>
+        <button type="button" class="btn btn-secondary btn-icon" popovertarget="campaign-menu" aria-label="More actions"><Icon name="more" /></button>
+        <div id="campaign-menu" popover class="menu" data-align="end">
+          <button type="button" class="menu-item" data-export-report><Icon name="file-spreadsheet" />Download click report</button>
+          <div class="menu-sep"></div>
+          <button type="button" class="menu-item" data-danger data-delete><Icon name="trash" />Delete campaign</button>
+        </div>
+      </div>
+    </header>
+
+    <section aria-label="Summary" class="mt-8 grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
+      <StatCard label="Opened" stat="opened" icon="mail-open" accent />
+      <StatCard label="Recipients" stat="recipients" icon="users" />
+      <StatCard label="Clicks" stat="clicks" icon="click" />
+      <StatCard label="Unique visitors" stat="unique" icon="user" />
+    </section>
+
+    <div class="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
+      <section class="card p-5 sm:p-6" aria-labelledby="timeline-title">
+        <div class="flex items-center justify-between gap-3">
+          <div>
+            <h2 id="timeline-title" class="font-semibold text-ink-950">Clicks</h2>
+            <p class="text-sm text-ink-500">Per day, last 7 days</p>
+          </div>
+          <button type="button" class="btn btn-ghost btn-sm" data-table-toggle aria-pressed="false"><Icon name="list" /><span data-label>Table</span></button>
+        </div>
+        <div class="mt-6" data-chart></div>
+        <div class="mt-4 max-h-80 overflow-auto rounded-xl border border-line" data-table hidden></div>
+      </section>
+
+      <section class="card p-5 sm:p-6" aria-labelledby="top-title">
+        <h2 id="top-title" class="font-semibold text-ink-950">Most engaged</h2>
+        <p class="text-sm text-ink-500">Recipients with the most clicks</p>
+        <ol class="mt-4 grid gap-3" data-top></ol>
+      </section>
+    </div>
+
+    <!-- Recipients -->
+    <section class="card mt-6 overflow-hidden" aria-labelledby="recipients-title">
+      <div class="flex flex-col gap-3 border-b border-line p-5 sm:p-6 lg:flex-row lg:items-center">
+        <div>
+          <h2 id="recipients-title" class="font-semibold text-ink-950">Recipients <span class="font-normal text-ink-500" data-recipient-count></span></h2>
+          <p class="text-sm text-ink-500">Follow up with the people who opened it while it’s fresh.</p>
+        </div>
+        <div class="flex flex-col gap-2 sm:flex-row lg:ml-auto">
+          <div class="relative">
+            <span class="pointer-events-none absolute inset-y-0 left-3 flex items-center text-ink-400"><Icon name="search" /></span>
+            <label for="recipient-search" class="sr-only">Search recipients</label>
+            <input id="recipient-search" type="search" class="input w-full pl-9 sm:w-60" placeholder="Search recipients" data-search autocomplete="off" />
+          </div>
+          <div class="segmented self-start" role="radiogroup" aria-label="Show">
+            <label><input type="radio" name="show" value="all" checked /><span>All</span></label>
+            <label><input type="radio" name="show" value="opened" /><span>Opened</span></label>
+            <label><input type="radio" name="show" value="unopened" /><span>Not yet</span></label>
+          </div>
+        </div>
+      </div>
+      <div data-select-bar hidden class="flex items-center gap-3 border-b border-line bg-ink-950 px-5 py-2.5 text-sm text-white">
+        <span><span data-selected-count class="font-semibold"></span> selected</span>
+        <button type="button" class="btn btn-sm text-white hover:bg-white/10" data-copy-selected><span data-copy-icon><Icon name="copy" /></span><span data-copy-label>Copy their links</span></button>
+        <button type="button" class="btn btn-sm ml-auto text-ink-400 hover:bg-white/10 hover:text-white" data-clear-selection>Clear</button>
+      </div>
+      <div class="max-h-[36rem] overflow-auto" data-recipients></div>
+      <nav data-pages hidden class="flex items-center justify-between gap-3 border-t border-line px-5 py-3 text-sm text-ink-500" aria-label="Recipients pagination">
+        <p data-range></p>
+        <div class="flex gap-2">
+          <button type="button" class="btn btn-secondary btn-sm" data-prev><Icon name="chevron-left" />Previous</button>
+          <button type="button" class="btn btn-secondary btn-sm" data-next>Next<Icon name="chevron-right" /></button>
+        </div>
+      </nav>
+    </section>
+  </div>
+
+  <QrModal />
+</AppLayout>
+
+<script>
+  import { ApiError, errorMessage } from '@/utils/api';
+  import { campaignRecipients, campaignSummary, columnChips, deleteCampaign, exportCampaignLinks, exportCampaignReport, getCampaign } from '@/utils/campaigns';
+  import { bindChartTableToggle, columnChart, dataTable, meter } from '@/utils/charts';
+  import { formatDate, formatDateTime, formatNumber, pluralize, prettyUrl } from '@/utils/format';
+  import { html, raw, safeUrl, setHTML } from '@/utils/html';
+  import { icon } from '@/utils/icons';
+  import { linkHref, openQr } from '@/utils/links';
+  import { tagPill } from '@/utils/tags';
+  import { confirmDialog, copyWithFeedback, hydrateTimes, toast } from '@/utils/ui';
+  import type { Campaign, CampaignRecipientStat, CampaignSummary } from '@/utils/types';
+
+  const PAGE = 50;
+  const id = new URLSearchParams(location.search).get('id') ?? '';
+  const $ = <T extends HTMLElement = HTMLElement>(sel: string) => document.querySelector<T>(sel)!;
+
+  interface Row {
+    code: string;
+    shortUrl: string;
+    data: Record<string, string>;
+    clicks: number;
+    unique: number;
+    last: string | null;
+  }
+
+  let campaign: Campaign;
+  let rows: Row[] = [];
+  let view: Row[] = [];
+  let page = 1;
+  let show: 'all' | 'opened' | 'unopened' = 'all';
+  let query = '';
+  const selected = new Set<string>();
+
+  function setStat(key: string, value: string, hint?: string | ReturnType<typeof html>) {
+    $(`[data-stat="${key}"]`).textContent = value;
+    if (hint === undefined) return;
+    const el = $(`[data-stat-hint="${key}"]`);
+    if (typeof hint === 'string') el.textContent = hint;
+    else setHTML(el, hint);
+  }
+
+  function renderHeader() {
+    document.title = `${campaign.name} · Shurly`;
+    $('[data-name]').textContent = campaign.name;
+    const dest = $<HTMLAnchorElement>('[data-destination]');
+    dest.textContent = prettyUrl(campaign.original_url);
+    dest.href = safeUrl(campaign.original_url);
+    $('[data-created]').textContent = `Created ${formatDate(campaign.created_at)}`;
+    setHTML($('[data-columns]'), columnChips(campaign.csv_columns, 8));
+    setHTML($('[data-tags]'), html`${(campaign.tags ?? []).map((t) => tagPill(t))}`);
+  }
+
+  function renderSummary(s: CampaignSummary) {
+    const opened = Math.round((s.click_through_rate / 100) * s.total_urls);
+    setStat(
+      'opened',
+      `${Math.round(s.click_through_rate)}%`,
+      html`<span class="mb-2 block">${opened} of ${s.total_urls} recipients</span>${meter(opened, s.total_urls, `${opened} of ${s.total_urls} recipients opened their link`)}`,
+    );
+    setStat('recipients', formatNumber(s.total_urls), 'One personal link each');
+    setStat('clicks', formatNumber(s.total_clicks), s.total_urls ? `${(s.total_clicks / s.total_urls).toFixed(1)} per recipient` : '');
+    setStat('unique', formatNumber(s.unique_ips), 'Distinct visitors');
+    const today = new Date().toISOString().slice(0, 10);
+    const data = s.daily_timeline.map((d) => {
+      const date = new Date(`${d.date}T12:00:00`);
+      return {
+        label: d.date === today ? 'Today' : date.toLocaleDateString('en-US', { weekday: 'short' }),
+        value: d.clicks,
+        title: date.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' }),
+      };
+    });
+    columnChart($('[data-chart]'), data, { ariaLabel: `Campaign clicks per day, last 7 days. Total ${s.total_clicks}.`, height: 220 });
+    setHTML($('[data-table]'), dataTable(data.map((d) => ({ label: d.title, value: d.value })), ['Day', 'Clicks']));
+
+    const top = s.top_performers.filter((p) => p.clicks > 0);
+    setHTML(
+      $('[data-top]'),
+      top.length
+        ? html`${top.map((p, i) => html`<li class="flex items-center gap-3">
+            <span class="grid size-7 shrink-0 place-items-center rounded-full ${i === 0 ? 'bg-brand-400 text-white' : 'bg-ink-100 text-ink-600'} text-xs font-bold">${i + 1}</span>
+            <div class="min-w-0 flex-1">
+              <p class="truncate text-sm font-medium text-ink-900">${personLabel(p.user_data)}</p>
+              <p class="truncate text-xs text-ink-500">${secondaryLabel(p.user_data)}</p>
+            </div>
+            <span class="text-sm font-semibold text-ink-950">${formatNumber(p.clicks)}</span>
+          </li>`)}`
+        : html`<li class="rounded-xl bg-ink-50 p-4 text-sm text-ink-500">No clicks yet. The first recipient to open their link shows up here.</li>`,
+    );
+  }
+
+  function personLabel(data: Record<string, string>): string {
+    const values = Object.values(data ?? {}).filter(Boolean);
+    return values[0] ?? 'Recipient';
+  }
+  function secondaryLabel(data: Record<string, string>): string {
+    return Object.values(data ?? {}).filter(Boolean).slice(1, 3).join(' · ');
+  }
+
+  // ------------------------------------------------------------------ Recipients table
+  function applyFilters() {
+    const q = query.toLowerCase();
+    view = rows.filter((r) => {
+      if (show === 'opened' && r.clicks === 0) return false;
+      if (show === 'unopened' && r.clicks > 0) return false;
+      if (!q) return true;
+      return r.code.includes(q) || Object.values(r.data).some((v) => String(v).toLowerCase().includes(q));
+    });
+    page = Math.min(page, Math.max(1, Math.ceil(view.length / PAGE)));
+    renderTable();
+  }
+
+  function renderTable() {
+    const cols = campaign.csv_columns;
+    const slice = view.slice((page - 1) * PAGE, page * PAGE);
+    const allChecked = slice.length > 0 && slice.every((r) => selected.has(r.code));
+    $('[data-recipient-count]').textContent = `· ${formatNumber(rows.length)}`;
+    if (!view.length) {
+      setHTML(
+        $('[data-recipients]'),
+        html`<p class="px-6 py-12 text-center text-sm text-ink-500">${
+          show === 'opened' ? 'Nobody has opened their link yet.' : show === 'unopened' ? 'Everyone has opened their link. Nice.' : 'No recipients match your search.'
+        }</p>`,
+      );
+    } else {
+      setHTML(
+        $('[data-recipients]'),
+        html`<table class="table">
+          <thead><tr>
+            <th class="w-10"><input type="checkbox" class="checkbox" data-select-all ${allChecked ? raw('checked') : ''} aria-label="Select all on this page" /></th>
+            ${cols.map((c) => html`<th>${c}</th>`)}
+            <th>Short link</th><th class="text-right">Clicks</th><th>Last opened</th>
+          </tr></thead>
+          <tbody>${slice.map((r) => html`<tr>
+            <td><input type="checkbox" class="checkbox" data-select="${r.code}" ${selected.has(r.code) ? raw('checked') : ''} aria-label="Select ${personLabel(r.data)}" /></td>
+            ${cols.map((c, i) => html`<td class="whitespace-nowrap ${i === 0 ? 'font-medium text-ink-950' : ''}">${r.data[c] || html`<span class="text-ink-500">—</span>`}</td>`)}
+            <td class="whitespace-nowrap">
+              <div class="flex items-center gap-1">
+                <a class="shortlink text-[13px] text-ink-900 hover:underline" href="${linkHref(r.code)}">${prettyUrl(r.shortUrl)}</a>
+                <button type="button" class="btn btn-ghost btn-sm btn-icon" data-copy="${r.shortUrl}" aria-label="Copy link for ${personLabel(r.data)}"><span data-copy-icon>${icon('copy')}</span></button>
+                <button type="button" class="btn btn-ghost btn-sm btn-icon" data-qr="${r.code}" aria-label="QR code for ${personLabel(r.data)}">${icon('qr')}</button>
+              </div>
+            </td>
+            <td class="num text-right ${r.clicks ? 'font-semibold text-ink-950' : 'text-ink-500'}">${formatNumber(r.clicks)}</td>
+            <td class="whitespace-nowrap text-ink-500">${r.last ? html`<span class="inline-flex items-center gap-1.5"><span class="status-dot text-brand-600"></span><time data-relative datetime="${r.last}" title="${formatDateTime(r.last)}"></time></span>` : html`<span class="badge badge-outline">Not yet</span>`}</td>
+          </tr>`)}</tbody></table>`,
+      );
+      hydrateTimes($('[data-recipients]'));
+    }
+    const pages = Math.ceil(view.length / PAGE);
+    $('[data-pages]').hidden = pages <= 1;
+    $('[data-range]').textContent = `${formatNumber((page - 1) * PAGE + 1)}–${formatNumber(Math.min(view.length, page * PAGE))} of ${formatNumber(view.length)}`;
+    $<HTMLButtonElement>('[data-prev]').disabled = page <= 1;
+    $<HTMLButtonElement>('[data-next]').disabled = page >= pages;
+    updateSelectBar();
+  }
+
+  function updateSelectBar() {
+    $('[data-select-bar]').hidden = selected.size === 0;
+    $('[data-selected-count]').textContent = String(selected.size);
+  }
+
+  $('[data-recipients]').addEventListener('change', (e) => {
+    const t = e.target as HTMLInputElement;
+    if (t.matches('[data-select-all]')) {
+      view.slice((page - 1) * PAGE, page * PAGE).forEach((r) => (t.checked ? selected.add(r.code) : selected.delete(r.code)));
+      renderTable();
+    } else if (t.matches('[data-select]')) {
+      if (t.checked) selected.add(t.dataset.select!);
+      else selected.delete(t.dataset.select!);
+      updateSelectBar();
+    }
+  });
+  $('[data-recipients]').addEventListener('click', (e) => {
+    const qr = (e.target as HTMLElement).closest<HTMLElement>('[data-qr]');
+    if (!qr) return;
+    const row = rows.find((r) => r.code === qr.dataset.qr);
+    if (row) openQr({ short_url: row.shortUrl, short_code: row.code });
+  });
+  $('[data-copy-selected]').addEventListener('click', (e) => {
+    const text = rows.filter((r) => selected.has(r.code)).map((r) => r.shortUrl).join('\n');
+    copyWithFeedback(text, e.currentTarget as HTMLElement, `${pluralize(selected.size, 'link')} copied`);
+  });
+  $('[data-clear-selection]').addEventListener('click', () => {
+    selected.clear();
+    renderTable();
+  });
+  let t = 0;
+  $<HTMLInputElement>('#recipient-search').addEventListener('input', (e) => {
+    window.clearTimeout(t);
+    t = window.setTimeout(() => {
+      query = (e.target as HTMLInputElement).value.trim();
+      page = 1;
+      applyFilters();
+    }, 150);
+  });
+  document.querySelectorAll<HTMLInputElement>('input[name="show"]').forEach((r) =>
+    r.addEventListener('change', () => {
+      show = r.value as typeof show;
+      page = 1;
+      applyFilters();
+    }),
+  );
+  $('[data-prev]').addEventListener('click', () => {
+    page -= 1;
+    renderTable();
+  });
+  $('[data-next]').addEventListener('click', () => {
+    page += 1;
+    renderTable();
+  });
+
+  // ------------------------------------------------------------------ Actions
+  $('[data-export]').addEventListener('click', () => exportCampaignLinks(campaign).catch((err) => toast('Couldn’t export the links', 'error', { description: errorMessage(err) })));
+  $('[data-export-report]').addEventListener('click', () => {
+    $('#campaign-menu').hidePopover();
+    exportCampaignReport(campaign).catch((err) => toast('Couldn’t download the report', 'error', { description: errorMessage(err) }));
+  });
+  $('[data-delete]').addEventListener('click', async () => {
+    $('#campaign-menu').hidePopover();
+    const ok = await confirmDialog({
+      title: `Delete “${campaign.name}”?`,
+      body: `All ${pluralize(campaign.url_count, 'personal link')} will stop working and their click history will be deleted. This can’t be undone.`,
+      confirmLabel: 'Delete campaign',
+      danger: true,
+      onConfirm: () => deleteCampaign(id),
+    });
+    if (ok) {
+      sessionStorage.setItem('shurly_flash', 'Campaign deleted');
+      location.href = '/dashboard/campaigns/';
+    }
+  });
+  bindChartTableToggle($<HTMLButtonElement>('[data-table-toggle]'), $('[data-chart]'), $('[data-table]'));
+
+  // ------------------------------------------------------------------ Load
+  async function load() {
+    if (!id) {
+      $('#loading').hidden = true;
+      $('#not-found').hidden = false;
+      return;
+    }
+    try {
+      campaign = await getCampaign(id);
+    } catch (err) {
+      $('#loading').hidden = true;
+      $('#not-found').hidden = false;
+      if (!(err instanceof ApiError && (err.status === 404 || err.status === 403 || err.status === 400))) {
+        $('#not-found [data-empty-title]').textContent = 'We couldn’t load this campaign';
+        $('#not-found [data-empty-body]').textContent = errorMessage(err);
+      }
+      return;
+    }
+    renderHeader();
+    const stats = new Map<string, CampaignRecipientStat>();
+    rows = (campaign.urls ?? []).map((u) => ({ code: u.short_code, shortUrl: u.short_url ?? '', data: u.user_data ?? {}, clicks: 0, unique: 0, last: null }));
+    $('#loading').hidden = true;
+    $('#content').hidden = false;
+    applyFilters();
+
+    const [s, users] = await Promise.allSettled([campaignSummary(id), campaignRecipients(id)]);
+    if (s.status === 'fulfilled') renderSummary(s.value);
+    else ['opened', 'recipients', 'clicks', 'unique'].forEach((k) => setStat(k, '—', 'Couldn’t load'));
+    if (users.status === 'fulfilled') {
+      users.value.users.forEach((u) => stats.set(u.short_code, u));
+      rows = rows
+        .map((r) => {
+          const st = stats.get(r.code);
+          return st ? { ...r, clicks: st.clicks, unique: st.unique_ips, last: st.last_clicked } : r;
+        })
+        .sort((a, b) => b.clicks - a.clicks || (b.last ?? '').localeCompare(a.last ?? ''));
+      applyFilters();
+    }
+  }
+  load();
+</script>

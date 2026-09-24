@@ -7,7 +7,11 @@ from sqlalchemy.orm import Session
 
 from server.core.models import URL, Domain, User
 from server.core.models.url import URLType
-from server.utils.domain import get_or_create_default_domain, resolve_domain_for_host
+from server.utils.domain import (
+    backfill_campaign_url_domains,
+    get_or_create_default_domain,
+    resolve_domain_for_host,
+)
 
 
 class TestDomainHelpers:
@@ -162,3 +166,63 @@ class TestRedirectByDomain:
         )
         assert r.status_code == 302
         assert r.headers["location"] == "https://default-target.example"
+
+
+class TestBackfillCampaignUrlDomains:
+    """Campaign URLs created before the generator set `domain_id` are stored with NULL."""
+
+    def _url(
+        self,
+        db_session: Session,
+        user: User,
+        code: str,
+        domain_id=None,
+        url_type: URLType = URLType.CAMPAIGN,
+    ) -> URL:
+        url = URL(
+            short_code=code,
+            domain_id=domain_id,
+            original_url="https://example.com",
+            url_type=url_type,
+            created_by=user.id,
+        )
+        db_session.add(url)
+        db_session.commit()
+        return url
+
+    def test_binds_legacy_campaign_urls_to_default_domain(
+        self, db_session: Session, test_user: User
+    ):
+        default = get_or_create_default_domain(db_session)
+        legacy = self._url(db_session, test_user, "legcy1")
+        updated_at = legacy.updated_at
+        # Only campaign URLs are in scope; other NULL-domain rows keep the resolver fallback.
+        standard = self._url(db_session, test_user, "legcy2", url_type=URLType.STANDARD)
+
+        assert backfill_campaign_url_domains(db_session) == 1
+
+        db_session.refresh(legacy)
+        db_session.refresh(standard)
+        assert legacy.domain_id == default.id
+        assert legacy.updated_at == updated_at
+        assert standard.domain_id is None
+        # Idempotent: runs on every startup.
+        assert backfill_campaign_url_domains(db_session) == 0
+
+    def test_leaves_rows_whose_code_would_collide(
+        self, db_session: Session, test_user: User, caplog
+    ):
+        default = get_or_create_default_domain(db_session)
+        # Code already live on the default domain (it shadows the legacy row today).
+        self._url(db_session, test_user, "taken1", domain_id=default.id, url_type=URLType.STANDARD)
+        shadowed = self._url(db_session, test_user, "taken1")
+        # Two legacy rows sharing a code: allowed while domain_id is NULL.
+        twin_a = self._url(db_session, test_user, "twin01")
+        twin_b = self._url(db_session, test_user, "twin01")
+
+        assert backfill_campaign_url_domains(db_session) == 0
+
+        assert "3 campaign URL(s) kept a NULL domain_id" in caplog.text
+        for url in (shadowed, twin_a, twin_b):
+            db_session.refresh(url)
+            assert url.domain_id is None

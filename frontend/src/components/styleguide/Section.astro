@@ -1,0 +1,25 @@
+---
+/** Top-level styleguide section: number, display title, one-line intro, then specimens. */
+interface Props {
+  id: string;
+  index: number;
+  title: string;
+  intro: string;
+}
+
+const { id, index, title, intro } = Astro.props;
+const number = String(index).padStart(2, '0');
+---
+
+<section id={id} aria-labelledby={`${id}-title`} class="border-t border-line pt-14 pb-4 first-of-type:border-t-0 sm:pt-20" data-sg-section>
+  <header class="max-w-2xl">
+    <p class="flex items-center gap-2 font-mono text-xs font-medium text-ink-500">
+      <span class="size-1.5 rounded-full bg-brand-500" aria-hidden="true"></span>{number}
+    </p>
+    <h2 id={`${id}-title`} class="display mt-3 text-3xl text-ink-950 sm:text-4xl">{title}</h2>
+    <p class="mt-3 text-[15px] leading-7 text-ink-600">{intro}</p>
+  </header>
+  <div class="mt-10 grid gap-14">
+    <slot />
+  </div>
+</section>

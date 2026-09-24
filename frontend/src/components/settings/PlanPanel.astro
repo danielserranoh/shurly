@@ -1,0 +1,86 @@
+---
+import Icon from '@/components/ui/Icon.astro';
+import ProBadge from '@/components/ui/ProBadge.astro';
+import SettingsSection from './SettingsSection.astro';
+import { plans } from '@/config/site';
+
+const pro = plans.find((p) => p.id === 'pro') ?? plans[plans.length - 1];
+const usage = [
+  { key: 'links', label: 'Links' },
+  { key: 'campaigns', label: 'Campaigns' },
+  { key: 'clicks', label: 'Clicks, all time' },
+  { key: 'tags', label: 'Your tags' },
+];
+---
+
+<div class="grid gap-10">
+  <SettingsSection id="plan-title" title="Your plan" description="What you’re on, and what you’ve made so far.">
+    <div class="card p-5 sm:p-6">
+      <div class="flex flex-wrap items-center gap-3">
+        <h3 class="display text-2xl text-ink-950">Early access</h3>
+        <span class="badge badge-brand"><span class="status-dot text-brand-600"></span>Current plan</span>
+      </div>
+      <p class="mt-2 text-[15px] text-ink-500">Every feature is unlocked while Shurly is in early access.</p>
+
+      <p class="eyebrow mt-6" id="usage-title">Usage</p>
+      <dl class="mt-3 grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-line bg-line sm:grid-cols-4" aria-labelledby="usage-title">
+        {
+          usage.map((u) => (
+            <div class="bg-white px-4 py-3.5">
+              <dt class="text-xs font-medium text-ink-500">{u.label}</dt>
+              <dd class="num mt-1 text-2xl leading-8 font-semibold tracking-tight text-ink-950" data-usage={u.key}>
+                <span class="skeleton inline-block h-6 w-12 align-middle" />
+              </dd>
+            </div>
+          ))
+        }
+      </dl>
+      <p class="hint mt-2" data-usage-error hidden>We couldn’t load your usage right now. Refresh the page to try again.</p>
+    </div>
+  </SettingsSection>
+
+  <SettingsSection id="pro-title" title="What’s next" description={`Pro is on its way. ${pro.blurb}`}>
+    <div class="rounded-2xl bg-ink-950 p-6 text-white shadow-xl sm:p-8">
+      <div class="flex flex-wrap items-center gap-3">
+        <h3 class="display text-2xl">{pro.name}</h3>
+        <ProBadge label="Coming soon" />
+      </div>
+      <p class="mt-2 text-[15px] text-ink-300">Pricing announced soon — nothing to do for now.</p>
+      <ul class="mt-6 grid gap-x-6 gap-y-3 text-[15px] sm:grid-cols-2">
+        {
+          pro.features.map((f) => (
+            <li class="flex gap-3">
+              <Icon name="check" class="mt-0.5 size-5 shrink-0 text-brand-300" />
+              {f}
+            </li>
+          ))
+        }
+      </ul>
+    </div>
+  </SettingsSection>
+</div>
+
+<script>
+  import { apiGet } from '@/utils/api';
+  import { formatNumber } from '@/utils/format';
+  import { customTagCount } from './store';
+  import type { OverviewStats } from '@/utils/types';
+
+  function setUsage(key: string, value: string) {
+    const el = document.querySelector<HTMLElement>(`[data-usage="${key}"]`);
+    if (el) el.textContent = value;
+  }
+
+  apiGet<OverviewStats>('/api/v1/analytics/overview')
+    .then((o) => {
+      setUsage('links', formatNumber(o.total_urls));
+      setUsage('campaigns', formatNumber(o.total_campaigns));
+      setUsage('clicks', formatNumber(o.total_clicks));
+    })
+    .catch(() => {
+      ['links', 'campaigns', 'clicks'].forEach((k) => setUsage(k, '—'));
+      document.querySelector<HTMLElement>('[data-usage-error]')!.hidden = false;
+    });
+
+  customTagCount.subscribe((n) => setUsage('tags', n === null ? '—' : formatNumber(n)));
+</script>
