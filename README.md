@@ -23,7 +23,7 @@ A modern, full-stack URL shortener with analytics and campaign management, built
 - **Pydantic v2** — schema validation
 - **SQLAlchemy 2.0 + PostgreSQL** — `psycopg2-binary` driver
 - **python-jose** + **passlib (bcrypt<5)** — JWT + password hashing
-- **uv** + **ruff** + **pytest** — packaging, linting, testing (449 tests)
+- **uv** + **ruff** + **pytest** — packaging, linting, testing (454 tests)
 
 ### Frontend
 - **Astro 7** (Vite 8), fully static output (`frontend/dist/` can be served from S3/any CDN), vanilla TypeScript islands
