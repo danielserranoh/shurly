@@ -127,8 +127,13 @@ The MCP server is mounted on the main FastAPI app at `/mcp` and ships in
 the same Docker image / ECS task as the regular API. Production endpoint:
 
 ```
-https://s.griddo.io/mcp
+https://s.griddo.io/mcp/
 ```
+
+**The trailing slash is required.** `/mcp` without it is captured by the public
+short-code redirect route (`/{short_code}`, GET-only), so a POST there returns
+`405 Method Not Allowed` and a GET returns `404` — the request never reaches the
+MCP mount. `/mcp/` does not match that route and falls through to the mount.
 
 Single deployment, single Dockerfile, single ALB rule — same SLO as the
 rest of the API. The `_try_build_mcp_app` hook in `main.py` is conditional
@@ -167,7 +172,7 @@ curl -X POST https://s.griddo.io/api/v1/auth/api-key/generate \
 
 # 2. Register the deployed MCP:
 claude mcp add shurly --transport http \
-    --url https://s.griddo.io/mcp \
+    --url https://s.griddo.io/mcp/ \
     --header "Authorization: Bearer <api_key>"
 ```
 
@@ -268,7 +273,7 @@ curl -X POST https://s.griddo.io/api/v1/auth/api-key/generate \
 # → {"api_key": "<32-byte url-safe>", "scope": "full_access"}
 # 3. Use it in the MCP client config:
 claude mcp add shurly --transport http \
-    --url https://s.griddo.io/mcp \
+    --url https://s.griddo.io/mcp/ \
     --header "Authorization: Bearer <api_key>"
 ```
 
