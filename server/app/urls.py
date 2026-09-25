@@ -47,6 +47,7 @@ from server.utils.redirect_rules import pick_target
 from server.utils.url import (
     build_short_url,  # Phase 3.11 — moved to utils; still importable from here
     generate_short_code,
+    is_reserved_short_code,
     is_valid_custom_code,
     make_code_unique,
     normalize_short_code,
@@ -240,8 +241,10 @@ async def create_custom_url(
     - **400**: Invalid custom code format
     - **401**: Authentication required or invalid token
     - **422**: Validation error (invalid URL format)
+    - **500**: Failed to find a free variant of a taken code (very rare)
 
-    **Note:** If the custom code is already taken, random characters will be appended and a warning returned.
+    **Note:** If the custom code is already taken, or reserved because Shurly serves that
+    path itself (`mcp`, `docs`, `redoc`), random characters will be appended and a warning returned.
     """
     # Validate custom code
     if not is_valid_custom_code(url_data.custom_code):
@@ -251,20 +254,42 @@ async def create_custom_url(
         )
 
     # Phase 3.9.6 — apply SHORT_URL_MODE to user-supplied slugs.
-    short_code = normalize_short_code(url_data.custom_code)
+    requested_code = normalize_short_code(url_data.custom_code)
+    short_code = requested_code
     warning = None
 
     # Phase 3.10.1 — uniqueness is per-domain; check inside the default domain.
     domain = get_or_create_default_domain(db)
-    existing = (
-        db.query(URL)
-        .filter(URL.domain_id == domain.id, URL.short_code == short_code)
-        .first()
-    )
-    if existing:
-        # Append random characters to make it unique
-        short_code = make_code_unique(url_data.custom_code, append_length=3)
-        warning = f"The requested code '{url_data.custom_code}' was already taken. Modified to '{short_code}'."
+
+    def is_unavailable(code: str) -> bool:
+        # Reserved codes (/mcp, /docs, …) are paths the app serves itself, so a
+        # short link there could never resolve: treat them as taken.
+        if is_reserved_short_code(code):
+            return True
+        return (
+            db.query(URL).filter(URL.domain_id == domain.id, URL.short_code == code).first()
+            is not None
+        )
+
+    if is_unavailable(requested_code):
+        # Append random characters until the code is free. Built from the
+        # normalized code so loose mode stays lowercase, and re-checked because
+        # the suffixed code can be taken too.
+        short_code = None
+        for _ in range(10):
+            candidate = make_code_unique(requested_code, append_length=3)
+            if not is_unavailable(candidate):
+                short_code = candidate
+                break
+
+        if not short_code:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to generate unique short code. Please try again.",
+            )
+
+        reason = "is reserved" if is_reserved_short_code(requested_code) else "was already taken"
+        warning = f"The requested code '{url_data.custom_code}' {reason}. Modified to '{short_code}'."
 
     # Auto-fetch Open Graph metadata if not provided
     og_title = url_data.og_title

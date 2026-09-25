@@ -7,6 +7,21 @@ from urllib.parse import urlparse
 
 from server.core.config import settings
 
+# Matches the `URL.short_code` column (String(20)).
+MAX_SHORT_CODE_LENGTH = 20
+
+# Single-segment paths the app serves itself, ahead of `/{short_code}`: a short
+# link with one of these codes could never be reached. Custom codes that hit
+# one are treated as taken. `test_reserved_codes_cover_the_app_routes` checks
+# this set against the app's routes.
+RESERVED_SHORT_CODES = frozenset(
+    {
+        "mcp",  # MCP endpoint: the bare /mcp 308s to the /mcp/ mount (main.py)
+        "docs",  # FastAPI Swagger UI
+        "redoc",  # FastAPI ReDoc
+    }
+)
+
 
 def build_short_url(short_code: str) -> str:
     """Build the full short URL from a short code.
@@ -51,9 +66,21 @@ def normalize_short_code(code: str) -> str:
     return code.lower() if settings.short_url_mode == "loose" else code
 
 
+def is_reserved_short_code(code: str) -> bool:
+    """
+    True if `code` is a path the app serves itself (see RESERVED_SHORT_CODES).
+
+    Compared after SHORT_URL_MODE normalization: routes are case-sensitive, so
+    in strict mode only the exact lowercase path collides.
+    """
+    return normalize_short_code(code) in RESERVED_SHORT_CODES
+
+
 def make_code_unique(code: str, append_length: int = 3) -> str:
     """
     Make a code unique by appending random characters.
+
+    The base is trimmed so the result still fits MAX_SHORT_CODE_LENGTH.
 
     Args:
         code: Original code
@@ -63,7 +90,7 @@ def make_code_unique(code: str, append_length: int = 3) -> str:
         Modified code with random characters appended
     """
     random_suffix = generate_short_code(length=append_length)
-    return f"{code}{random_suffix}"
+    return f"{code[: MAX_SHORT_CODE_LENGTH - append_length]}{random_suffix}"
 
 
 def is_valid_custom_code(code: str) -> bool:
@@ -84,7 +111,7 @@ def is_valid_custom_code(code: str) -> bool:
     if not code:
         return False
 
-    if len(code) < 3 or len(code) > 20:
+    if len(code) < 3 or len(code) > MAX_SHORT_CODE_LENGTH:
         return False
 
     # Allow only alphanumeric, hyphens, and underscores
