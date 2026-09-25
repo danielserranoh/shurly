@@ -560,6 +560,55 @@ System creates:
 
 ---
 
+## Phase 3.12: Account Avatar
+
+**Goal:** Let users upload their own avatar from **Settings → Account**, replacing the initial-in-a-circle
+placeholder, with a crop step before saving.
+**Priority:** 🟢 LOW - UX polish; no dependency on Phase 4/5
+**Today:** no avatar anywhere. The app header shows the user's initial in a `size-9` circle
+(`AppLayout.astro`, `data-user-initial`); `AccountPanel.astro` has no avatar; `User` has no avatar field;
+the backend has no file storage (no S3, no `UploadFile` endpoints).
+
+### 3.12.1 Picker (frontend)
+- [ ] Avatar block at the top of `AccountPanel.astro`: current avatar (or initial placeholder) + change / remove
+- [ ] Two ways in: **drag & drop** an image onto the avatar area, or **select a file** from the computer
+- [ ] Accept JPEG, PNG, WebP; reject anything else and oversized files with an inline error (limit TBD, e.g. 5 MB)
+
+### 3.12.2 Crop step: zoom + pan before saving
+- [ ] Preview the image inside the same circle the avatar is shown in
+- [ ] **Zoom** (slider + wheel/pinch) and **pan** (drag) the image under the circle
+- [ ] **Hard constraint — the circle is always fully covered.** No part of the circle may ever show the
+      placeholder behind it:
+  - minimum zoom = the scale at which the image's **shorter side** equals the circle's diameter ("cover");
+    zooming out stops there
+  - pan is clamped so no image edge can cross into the circle, at every zoom level (re-clamp on zoom)
+  - initial state: minimum zoom, centred
+- [ ] Keyboard access: arrow keys pan, +/- zoom; Save / Cancel; Esc cancels
+- [ ] Follow `design/DESIGN_SYSTEM.md` (tokens, `Modal`, copy voice) and add the component to `/styleguide/`
+
+### 3.12.3 Save + storage (backend)
+- [ ] Crop **client-side** and upload the final square only (e.g. 512×512 WebP), so the server never
+      handles originals or crop maths
+- [ ] Endpoints: `PUT /api/v1/auth/me/avatar` (upload), `DELETE /api/v1/auth/me/avatar` (back to initial);
+      `GET /api/v1/auth/me` exposes the avatar URL
+- [ ] Server-side validation regardless of the client: real image type (magic bytes, not just
+      `Content-Type`), dimensions, size cap
+- [ ] **Open decision — where the bytes live:** a DB column (simple, no new infra) vs. S3 (needs a bucket;
+      the frontend's S3 + CloudFront from Phase 4.5/4.6 doesn't exist yet). Decide before implementing
+- [ ] Model: avatar reference/field on `User` (+ `updated_at` or a hash for cache-busting)
+
+### 3.12.4 Show it everywhere
+- [ ] Replace the initial with the avatar in the app header (`AppLayout.astro`) and in Account
+- [ ] Fall back to the initial when there is no avatar or the image fails to load
+
+### 3.12.5 Verification
+- [ ] Backend tests (TDD): upload, replace, delete, type/size rejection, auth required, `me` exposes it
+- [ ] Crop-logic unit tests for the cover constraint: min zoom, pan clamping at every zoom, re-clamp on
+      zoom-out, portrait / landscape / square / very small images
+- [ ] Manual check on desktop (drop + picker) and mobile (picker + touch pan/pinch), 1440 px and 390 px
+
+---
+
 ## Phase 4: AWS Deployment (ECS Express on griddo-main)
 
 **Architecture decision**: Pivoted from AWS Lambda to **ECS Express Mode** (Fargate-backed, ALB-fronted, replacement for App Runner). Rationale:
