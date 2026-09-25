@@ -143,22 +143,52 @@ def create_app() -> FastAPI:
     # Versioned API.
     app.include_router(api_router, prefix="/api/v1")
 
-    # Public unversioned routes (redirect, robots, pixel, landing).
-    app.include_router(redirect_router)
-
-    # Phase 5.5 — Streamable HTTP MCP transport at /mcp. Built AFTER the
-    # routers are registered so fastmcp's OpenAPI introspection sees the
-    # full route graph. Mounted last so the FastAPI routes take precedence
-    # on every other path. Build is conditional on the [mcp] extra being
-    # installed (returns None in dev environments without fastmcp).
+    # Phase 5.5 — Streamable HTTP MCP transport at /mcp. Built AFTER the API
+    # router so fastmcp's OpenAPI introspection sees every tool-bearing route.
+    # Build is conditional on the [mcp] extra being installed (returns None in
+    # dev environments without fastmcp).
+    #
+    # ORDER IS LOAD-BEARING: this mount must come BEFORE `redirect_router`.
+    # That router owns `/{short_code}`, which matches the bare path `/mcp` and
+    # is GET-only — registered first, it answered a POST to /mcp with 405 and a
+    # GET with a lookup for the short code "mcp", and the mount never saw the
+    # request. Mounting first costs exactly one short code ("mcp") out of ~57
+    # billion six-character combinations, and closes the trap where anyone
+    # could claim the very URL people mistype when configuring a client.
+    # Only the literal path is claimed: `/mcpx`, `/notmcp` etc. still resolve.
     mcp_app = _try_build_mcp_app(app)
     if mcp_app is not None:
+        # A Starlette `Mount("/mcp")` compiles to `^/mcp(?P<path>/.*)$` — it
+        # structurally does not match its own bare path, whatever the ordering.
+        # So `/mcp` gets an explicit 308 of its own, registered first.
+        #
+        # 308, not 301/302: the redirect has to survive a POST carrying a
+        # JSON-RPC body. 301/302 let a client drop the body (RFC 7231 §6.4.2 —
+        # curl delivers an empty body without `--post301`), which would reach
+        # the MCP app as an unparseable empty request instead of failing
+        # loudly. 307/308 preserve method and body; 308 is the permanent one.
+        # Note this is also why an ALB redirect rule could not have done it:
+        # ALB emits only HTTP_301 and HTTP_302.
+        @app.api_route("/mcp", methods=["POST", "DELETE", "GET"], include_in_schema=False)
+        async def _mcp_slash_redirect(request: Request):
+            from starlette.responses import RedirectResponse
+
+            target = "/mcp/"
+            if request.url.query:
+                target = f"{target}?{request.url.query}"
+            return RedirectResponse(target, status_code=308)
+
         app.mount("/mcp", mcp_app)
         # Late-bind the lifespan so the MCP session manager starts/stops
         # with the host. We can't read `mcp_app` from the lifespan closure
         # at app-construction time (it's built right above), so we attach a
         # router-level startup that delegates to the MCP lifespan.
         app.state.mcp_app = mcp_app
+
+    # Public unversioned routes (redirect, robots, pixel, landing). Registered
+    # last so `/{short_code}` — the broadest pattern in the app — cannot shadow
+    # anything above it.
+    app.include_router(redirect_router)
 
     return app
 

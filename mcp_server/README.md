@@ -127,8 +127,14 @@ The MCP server is mounted on the main FastAPI app at `/mcp` and ships in
 the same Docker image / ECS task as the regular API. Production endpoint:
 
 ```
-https://s.griddo.io/mcp
+https://s.griddo.io/mcp/
 ```
+
+Both `/mcp` and `/mcp/` work. The bare path is served by an explicit **308
+Permanent Redirect** to `/mcp/`, because a Starlette `Mount("/mcp")` compiles to
+`^/mcp(?P<path>/.*)$` and does not match its own bare path. 308 rather than
+301/302 so a POST keeps its JSON-RPC body — 301/302 let a client drop it. The
+short code `mcp` is reserved as a consequence; every other code still resolves.
 
 Single deployment, single Dockerfile, single ALB rule — same SLO as the
 rest of the API. The `_try_build_mcp_app` hook in `main.py` is conditional
@@ -167,7 +173,7 @@ curl -X POST https://s.griddo.io/api/v1/auth/api-key/generate \
 
 # 2. Register the deployed MCP:
 claude mcp add shurly --transport http \
-    --url https://s.griddo.io/mcp \
+    --url https://s.griddo.io/mcp/ \
     --header "Authorization: Bearer <api_key>"
 ```
 
@@ -268,7 +274,7 @@ curl -X POST https://s.griddo.io/api/v1/auth/api-key/generate \
 # → {"api_key": "<32-byte url-safe>", "scope": "full_access"}
 # 3. Use it in the MCP client config:
 claude mcp add shurly --transport http \
-    --url https://s.griddo.io/mcp \
+    --url https://s.griddo.io/mcp/ \
     --header "Authorization: Bearer <api_key>"
 ```
 
