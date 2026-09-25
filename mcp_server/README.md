@@ -130,10 +130,11 @@ the same Docker image / ECS task as the regular API. Production endpoint:
 https://s.griddo.io/mcp/
 ```
 
-**The trailing slash is required.** `/mcp` without it is captured by the public
-short-code redirect route (`/{short_code}`, GET-only), so a POST there returns
-`405 Method Not Allowed` and a GET returns `404` — the request never reaches the
-MCP mount. `/mcp/` does not match that route and falls through to the mount.
+Both `/mcp` and `/mcp/` work. The bare path is served by an explicit **308
+Permanent Redirect** to `/mcp/`, because a Starlette `Mount("/mcp")` compiles to
+`^/mcp(?P<path>/.*)$` and does not match its own bare path. 308 rather than
+301/302 so a POST keeps its JSON-RPC body — 301/302 let a client drop it. The
+short code `mcp` is reserved as a consequence; every other code still resolves.
 
 Single deployment, single Dockerfile, single ALB rule — same SLO as the
 rest of the API. The `_try_build_mcp_app` hook in `main.py` is conditional
