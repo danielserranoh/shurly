@@ -38,7 +38,7 @@ eyebrows only: a handwritten note above a heading, **always uppercase**, 14 px, 
 JetBrains Mono (`font-mono`, the `.shortlink` class) for short links and codes. Figtree,
 Shadows Into Light Two and JetBrains Mono are self-hosted (`@fontsource*`).
 Logical is used when the browser has it and falls back to Figtree until its web font
-files are added. The wordmark is Bricolage Grotesque, outlined in the SVG.
+files are added. The logo is custom lettering, outlined in the SVG (see `brand/README.md`).
 
 **Shape and depth.** Radius `sm 6 / md 8 / lg 10 / xl 14 / 2xl 18 / 3xl 24 px`:
 inputs and buttons `lg`, cards `2xl`, dialogs `3xl`. Shadows `xs…xl`: cards sit
@@ -108,7 +108,7 @@ showing the same data. Stat numbers use the UI sans, not the display face.
 
 | # | Question | Decision |
 |---|---|---|
-| 1 | Wordmark or symbol? | Both. The wordmark with the blue click dot is primary. The "s." isotype is for favicons, app icons and avatars. |
+| 1 | Wordmark or symbol? | Both. The wordmark with its diamond "click" is primary (blue diamond on light, cyan on navy). The "sy" isotype is for favicons, app icons and avatars. |
 | 2 | Vibrant or sober? | Sober ink base, one vibrant accent. Griddo blue is rationed so it always means "this is the action / this worked". |
 | 3 | Illustration style | Minimal line-art in ink with brand-blue accent fills, drawn as inline SVG (`Illustration.astro`). |
 | 4 | Hero message | "Send the link. Know who opened it." It is concrete, fits B2B outreach, and campaigns follow from it. |

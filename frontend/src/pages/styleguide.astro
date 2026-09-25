@@ -81,19 +81,19 @@ const statuses: { name: string; badge: string; icon: IconName; label: string; al
 ];
 
 // ---------------------------------------------------------------- Brand
-const WORDMARK_RATIO = 3069 / 904; // wordmark.svg viewBox
-const DOT_RATIO = 176 / 904; // the dot's diameter relative to the wordmark's height
+const WORDMARK_RATIO = 463.11 / 176.45; // shurly-logo-horizontal.svg viewBox
+const DOT_RATIO = 31.11 / 176.45; // the diamond's width relative to the wordmark's height
 const wordmarkWidth = (h: number) => Math.round(h * WORDMARK_RATIO);
 const clearH = 60;
 const clearX = Math.round(clearH * DOT_RATIO * 10) / 10;
-/** Dot centre inside wordmark*.svg, as a % of the image box. */
-const dotStyle = (scale = 1) => `left:97.13%;top:71.24%;width:${(5.735 * scale).toFixed(2)}%`;
+/** Diamond centre inside shurly-logo-horizontal*.svg, as a % of the image box; width is the unrotated square's side. */
+const dotStyle = (scale = 1) => `left:96.64%;top:68.32%;width:${(4.75 * scale).toFixed(2)}%`;
 
 const logoTiles = [
-  { title: 'Primary', body: 'Ink and Griddo blue, on white and light surfaces.', file: 'wordmark.svg', code: '<Logo />', stage: 'bg-white', src: '/brand/wordmark.svg' },
-  { title: 'Reversed', body: 'White and Griddo blue, on ink and dark photos.', file: 'wordmark-reversed.svg', code: '<Logo tone="reversed" />', stage: 'bg-ink-950', src: '/brand/wordmark-reversed.svg' },
-  { title: 'Mono ink', body: 'On light tints, and for one-color print.', file: 'wordmark-mono-ink.svg', code: '<Logo tone="mono" />', stage: 'bg-brand-100', src: '/brand/wordmark-mono-ink.svg' },
-  { title: 'Mono white', body: 'On brand blue, busy or colored backgrounds.', file: 'wordmark-mono-white.svg', code: '<img>', stage: 'bg-[linear-gradient(135deg,#022958_0%,#2a476e_55%,#5057ff_100%)]', src: '/brand/wordmark-mono-white.svg' },
+  { title: 'Primary', body: 'Navy with a Griddo-blue diamond, on white and light surfaces.', file: 'shurly-logo-horizontal.svg', code: '<Logo />', stage: 'bg-white', src: '/brand/shurly-logo-horizontal.svg' },
+  { title: 'Reversed', body: 'White with a cyan diamond, on navy and dark photos.', file: 'shurly-logo-horizontal-reversed.svg', code: '<Logo tone="reversed" />', stage: 'bg-ink-950', src: '/brand/shurly-logo-horizontal-reversed.svg' },
+  { title: 'Mono navy', body: 'On light tints, and for one-color print.', file: 'shurly-logo-horizontal-mono-navy.svg', code: '<Logo tone="mono" />', stage: 'bg-brand-100', src: '/brand/shurly-logo-horizontal-mono-navy.svg' },
+  { title: 'Mono white', body: 'On brand blue, busy or colored backgrounds.', file: 'shurly-logo-horizontal-mono-white.svg', code: '<img>', stage: 'bg-[linear-gradient(135deg,#022958_0%,#2a476e_55%,#5057ff_100%)]', src: '/brand/shurly-logo-horizontal-mono-white.svg' },
 ];
 
 // ---------------------------------------------------------------- Typography
@@ -309,7 +309,7 @@ const colorCount = allColors.length;
   <!-- Top bar ------------------------------------------------------------->
   <header id="top" class="sticky top-0 z-30 border-b border-line bg-white/85 backdrop-blur-md">
     <div class="mx-auto flex h-16 max-w-7xl items-center gap-3 px-4 sm:px-6">
-      <Logo href="/" height={22} class="rounded-md" />
+      <Logo href="/" height={30} class="rounded-md" />
       <span class="h-5 w-px bg-line-strong" aria-hidden="true"></span>
       <span class="text-sm font-semibold whitespace-nowrap text-ink-950">Design system</span>
       <div class="ml-auto flex items-center gap-2">
@@ -349,11 +349,11 @@ const colorCount = allColors.length;
       <div class="animate-fade-up [animation-delay:120ms]" aria-hidden="true">
         <div class="rounded-3xl bg-white/[0.04] px-8 py-12 ring-1 ring-white/10 sm:px-12 sm:py-16">
           <div class="relative mx-auto w-fit">
-            <img src="/brand/wordmark-reversed.svg" width={wordmarkWidth(80)} height="80" alt="" class="block h-14 w-auto sm:h-20" draggable="false" />
-            <span class="absolute aspect-square -translate-x-1/2 -translate-y-1/2 animate-ping-dot rounded-full bg-brand-400" style={dotStyle()}></span>
+            <img src="/brand/shurly-logo-horizontal-reversed.svg" width={wordmarkWidth(100)} height="100" alt="" class="block h-20 w-auto sm:h-24" draggable="false" />
+            <span class="absolute aspect-square -translate-x-1/2 -translate-y-1/2 rotate-45 animate-ping-dot bg-brand-cyan" style={dotStyle()}></span>
           </div>
           <p class="mt-10 text-center text-sm text-ink-400">
-            <span class="mr-2 inline-block size-2 rounded-full bg-brand-400 align-middle"></span>The dot is the period in “Surely.” — and the click.
+            <span class="mr-2 inline-block size-2 rotate-45 bg-brand-cyan align-middle"></span>The diamond is the period in “Surely.” — and the click.
           </p>
         </div>
       </div>
@@ -437,7 +437,7 @@ const colorCount = allColors.length;
 
         <Specimen
           title="Logo"
-          description="The wordmark is set in Bricolage Grotesque ExtraBold, tracked −0.04em. Its Griddo-blue dot is the period of “Surely.” — and the click."
+          description="Custom rounded lettering with a diamond for a period: Griddo blue on light surfaces, cyan on navy. The period of “Surely.” — and the click."
           code={['<Logo />', 'public/brand/', 'design/brand/']}
           stage="none"
         >
@@ -461,7 +461,7 @@ const colorCount = allColors.length;
           </div>
         </Specimen>
 
-        <Specimen title="Isotype & lockup" description="“s.” in an ink rounded square, for small sizes: favicons, app icons, avatars. On dark, use the blue tile." code={['<Logo variant="isotype" />', 'tone="reversed"']} stage="none">
+        <Specimen title="Isotype & mark" description="“sy” and the diamond on a rounded tile, for small sizes: favicons, app icons, avatars. Navy tile on light surfaces, white tile on dark." code={['<Logo variant="isotype" />', 'tone="reversed"']} stage="none">
           <div class="grid overflow-hidden rounded-2xl border border-line md:grid-cols-2 xl:grid-cols-[1fr_1fr_1.2fr]">
             <div class="bg-white p-6">
               <div class="flex items-end gap-4" role="img" aria-label="Isotype at 64, 40, 24 and 16 pixels">
@@ -474,10 +474,10 @@ const colorCount = allColors.length;
                   ))
                 }
               </div>
-              <p class="mt-4 font-mono text-[11px] text-ink-500">isotype.svg</p>
+              <p class="mt-4 font-mono text-[11px] text-ink-500">shurly-isotype-reversed.svg</p>
             </div>
             <div class="bg-ink-950 p-6">
-              <div class="flex items-end gap-4" role="img" aria-label="Blue isotype at 64, 40, 24 and 16 pixels">
+              <div class="flex items-end gap-4" role="img" aria-label="White isotype at 64, 40, 24 and 16 pixels">
                 {
                   [64, 40, 24, 16].map((h) => (
                     <figure class="grid justify-items-center gap-2">
@@ -487,40 +487,40 @@ const colorCount = allColors.length;
                   ))
                 }
               </div>
-              <p class="mt-4 font-mono text-[11px] text-ink-400">isotype-brand.svg</p>
+              <p class="mt-4 font-mono text-[11px] text-ink-400">shurly-isotype.svg</p>
             </div>
             <div class="grid content-between gap-6 border-t border-line bg-white p-6 md:col-span-2 xl:col-span-1 xl:border-t-0 xl:border-l">
-              <span class="inline-flex items-center gap-3.5" role="img" aria-label="Shurly horizontal lockup">
-                <img src="/brand/isotype.svg" width="48" height="48" alt="" draggable="false" />
-                <img src="/brand/wordmark.svg" width={wordmarkWidth(42)} height="42" alt="" draggable="false" />
+              <span class="inline-flex items-center gap-6" role="img" aria-label="Shurly mark without a tile">
+                <img src="/brand/shurly-isomark.svg" width="73" height="60" alt="" draggable="false" />
+                <span class="grid place-items-center rounded-xl bg-ink-950 p-3"><img src="/brand/shurly-isomark-reversed.svg" width="44" height="36" alt="" draggable="false" /></span>
               </span>
-              <p class="font-mono text-[11px] text-ink-500">Horizontal and vertical lockups, plus PNG exports: design/brand/</p>
+              <p class="font-mono text-[11px] text-ink-500">shurly-isomark*.svg — the mark without its tile. PNG exports: design/brand/</p>
             </div>
           </div>
         </Specimen>
 
-        <Specimen title="Clear space & minimum size" description="Keep at least the dot’s diameter (x) clear on every side. Never go below 16px tall." stage="white">
+        <Specimen title="Clear space & minimum size" description="Keep at least the diamond’s width (x) clear on every side. Never go below 20px tall (the descender takes a quarter of the height)." stage="white">
           <div class="grid gap-10 md:grid-cols-[1.3fr_1fr] md:items-center">
             <figure class="grid justify-items-center gap-4">
               <div class="relative border border-dashed border-ink-400" style={`padding:${clearX}px`}>
-                <img src="/brand/wordmark.svg" width={wordmarkWidth(clearH)} height={clearH} alt="Shurly wordmark with its clear space marked" class="block outline outline-1 outline-ink-200" draggable="false" />
-                <span class="absolute top-0 left-1/2 -translate-x-1/2 rounded-full bg-brand-400" style={`width:${clearX}px;height:${clearX}px`} aria-hidden="true"></span>
-                <span class="absolute bottom-0 left-1/2 -translate-x-1/2 rounded-full bg-brand-400" style={`width:${clearX}px;height:${clearX}px`} aria-hidden="true"></span>
-                <span class="absolute top-1/2 left-0 -translate-y-1/2 rounded-full bg-brand-400" style={`width:${clearX}px;height:${clearX}px`} aria-hidden="true"></span>
-                <span class="absolute top-1/2 right-0 -translate-y-1/2 rounded-full bg-brand-400" style={`width:${clearX}px;height:${clearX}px`} aria-hidden="true"></span>
+                <img src="/brand/shurly-logo-horizontal.svg" width={wordmarkWidth(clearH)} height={clearH} alt="Shurly wordmark with its clear space marked" class="block outline outline-1 outline-ink-200" draggable="false" />
+                <span class="absolute top-0 left-1/2 -translate-x-1/2 rotate-45 bg-brand-400" style={`width:${clearX / Math.SQRT2}px;height:${clearX / Math.SQRT2}px`} aria-hidden="true"></span>
+                <span class="absolute bottom-0 left-1/2 -translate-x-1/2 rotate-45 bg-brand-400" style={`width:${clearX / Math.SQRT2}px;height:${clearX / Math.SQRT2}px`} aria-hidden="true"></span>
+                <span class="absolute top-1/2 left-0 -translate-y-1/2 rotate-45 bg-brand-400" style={`width:${clearX / Math.SQRT2}px;height:${clearX / Math.SQRT2}px`} aria-hidden="true"></span>
+                <span class="absolute top-1/2 right-0 -translate-y-1/2 rotate-45 bg-brand-400" style={`width:${clearX / Math.SQRT2}px;height:${clearX / Math.SQRT2}px`} aria-hidden="true"></span>
               </div>
-              <figcaption class="text-center text-sm text-ink-500">x = the dot’s diameter, about a fifth of the wordmark’s height.</figcaption>
+              <figcaption class="text-center text-sm text-ink-500">x = the diamond’s width, about a sixth of the wordmark’s height.</figcaption>
             </figure>
             <div class="grid gap-7">
               <div>
                 <p class="label">Minimum size</p>
                 <div class="mt-3 flex items-end gap-8">
                   <figure class="grid gap-2">
-                    <img src="/brand/wordmark.svg" width={wordmarkWidth(16)} height="16" alt="Wordmark at 16 pixels" draggable="false" />
-                    <figcaption class="font-mono text-[11px] text-ink-500">Wordmark · 16px</figcaption>
+                    <img src="/brand/shurly-logo-horizontal.svg" width={wordmarkWidth(20)} height="20" alt="Wordmark at 20 pixels" draggable="false" />
+                    <figcaption class="font-mono text-[11px] text-ink-500">Wordmark · 20px</figcaption>
                   </figure>
                   <figure class="grid gap-2">
-                    <img src="/brand/isotype.svg" width="16" height="16" alt="Isotype at 16 pixels" draggable="false" />
+                    <img src="/brand/shurly-isotype-reversed.svg" width="16" height="16" alt="Isotype at 16 pixels" draggable="false" />
                     <figcaption class="font-mono text-[11px] text-ink-500">Isotype · 16px</figcaption>
                   </figure>
                 </div>
@@ -528,11 +528,11 @@ const colorCount = allColors.length;
               <div>
                 <p class="label">The dot</p>
                 <div class="mt-3 flex items-center gap-4">
-                  <span class="relative flex size-4 shrink-0" aria-hidden="true">
-                    <span class="absolute inline-flex size-full animate-ping-dot rounded-full bg-brand-400"></span>
-                    <span class="relative size-4 rounded-full bg-brand-400"></span>
+                  <span class="relative flex size-3.5 shrink-0 rotate-45" aria-hidden="true">
+                    <span class="absolute inline-flex size-full animate-ping-dot bg-brand-400"></span>
+                    <span class="relative size-3.5 bg-brand-400"></span>
                   </span>
-                  <p class="text-sm leading-6 text-ink-600">The period in “Surely.” and the click. In the product it pings when something is live or loading.</p>
+                  <p class="text-sm leading-6 text-ink-600">The diamond: the period in “Surely.” and the click. In the logo it’s blue on light and cyan on navy; in the product, round status dots ping when something is live or loading.</p>
                 </div>
               </div>
             </div>
@@ -541,17 +541,17 @@ const colorCount = allColors.length;
 
         <Specimen title="Misuse" description="The logo only comes in the files above. Everything else is a don’t." stage="none">
           <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            <DoDont kind="dont" caption="recolor the dot. On light backgrounds it’s always Griddo blue." stage="bg-white">
+            <DoDont kind="dont" caption="recolor the diamond. Griddo blue on light, cyan on navy — nothing else." stage="bg-white">
               <span class="relative inline-block">
-                <img src="/brand/wordmark.svg" width={wordmarkWidth(36)} height="36" alt="Wordmark with a pink dot" class="block" draggable="false" />
-                <span class="absolute aspect-square -translate-x-1/2 -translate-y-1/2 rounded-full bg-pink-500" style={dotStyle(1.12)} aria-hidden="true"></span>
+                <img src="/brand/shurly-logo-horizontal.svg" width={wordmarkWidth(36)} height="36" alt="Wordmark with a pink diamond" class="block" draggable="false" />
+                <span class="absolute aspect-square -translate-x-1/2 -translate-y-1/2 rotate-45 bg-pink-500" style={dotStyle(1.15)} aria-hidden="true"></span>
               </span>
             </DoDont>
             <DoDont kind="dont" caption="stretch, squash or rotate it. Scale it evenly." stage="bg-white">
-              <img src="/brand/wordmark.svg" width={wordmarkWidth(36)} height="36" alt="Wordmark stretched sideways" style="transform: scale(1.35, 0.78)" draggable="false" />
+              <img src="/brand/shurly-logo-horizontal.svg" width={wordmarkWidth(36)} height="36" alt="Wordmark stretched sideways" style="transform: scale(1.35, 0.78)" draggable="false" />
             </DoDont>
-            <DoDont kind="dont" caption="put the full-color logo on brand blue. The dot vanishes; use mono white." stage="bg-brand-400">
-              <img src="/brand/wordmark.svg" width={wordmarkWidth(36)} height="36" alt="Full-color wordmark on brand blue" draggable="false" />
+            <DoDont kind="dont" caption="put the full-color logo on brand blue. The diamond vanishes; use mono white." stage="bg-brand-400">
+              <img src="/brand/shurly-logo-horizontal.svg" width={wordmarkWidth(36)} height="36" alt="Full-color wordmark on brand blue" draggable="false" />
             </DoDont>
             <DoDont kind="dont" caption="retype the name in another font. Use the SVG files." stage="bg-white">
               <span class="font-sans text-[34px] leading-none font-bold tracking-normal text-ink-950">Shurly<span class="text-brand-500">.</span></span>
@@ -764,9 +764,9 @@ const colorCount = allColors.length;
               <p class="text-xs text-ink-500">Logical, headlines</p>
             </div>
             <div>
-              <img src="/brand/wordmark.svg" width={wordmarkWidth(24)} height="24" alt="shurly." class="block h-6 w-auto" draggable="false" />
+              <img src="/brand/shurly-logo-horizontal.svg" width={wordmarkWidth(24)} height="24" alt="shurly." class="block h-6 w-auto" draggable="false" />
               <p class="mt-1 text-sm font-semibold text-ink-950">Logo <span class="font-normal text-ink-500">· SVG</span></p>
-              <p class="text-xs text-ink-500">Bricolage ExtraBold, outlined</p>
+              <p class="text-xs text-ink-500">Custom lettering, outlined</p>
             </div>
           </div>
         </Specimen>

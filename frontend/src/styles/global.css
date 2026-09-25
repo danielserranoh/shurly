@@ -42,6 +42,7 @@
   --color-brand-800: #25267b;
   --color-brand-900: #1c1e5a;
   --color-brand-950: #0f1236;
+  --color-brand-cyan: #3cc3dd; /* the logo's diamond on navy surfaces only */
 
   /* ---- Color: surfaces ----------------------------------------------------- */
   --color-canvas: #faf9f6;

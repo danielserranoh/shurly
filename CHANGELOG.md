@@ -44,6 +44,17 @@ implementation lifecycle and is independent of the URL version segment.
   - `GET /api/v1/analytics/campaigns/{id}/users` (campaign recipients) computes
     every URL's clicks, unique IPs and last click in one grouped query.
 
+### Changed — New logo
+- New Shurly logo (custom rounded lettering with a diamond period) and "sy"
+  isotype replace the Bricolage wordmark and "s." isotype everywhere: web header,
+  footer, auth pages, 404, styleguide, favicons, app icons and the OG card.
+- The diamond is Griddo blue on light surfaces and cyan `#3cc3dd` on navy (new
+  `brand-cyan` token, logo only). The brand kit in `design/brand/` is regenerated
+  from one master geometry: logo in colour, reversed and mono, isotype on navy and
+  white tiles, tile-less mark, PNG @1x/2x/3x. Old lime/Bricolage files removed.
+- Logo heights grow ~1.35× (header 22→30 px) because the new logo's box includes
+  the "y" descender.
+
 ### Changed — Griddo palette and type (trial)
 - Brand colour is Griddo blue `#5057ff` (was lime `#b8f03e`): new `brand-50…950`
   scale with the signature at `brand-400`. Brand fills now carry white text,
