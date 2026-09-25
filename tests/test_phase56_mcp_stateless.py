@@ -129,3 +129,32 @@ def test_curated_and_generated_tools_both_survive_stateless_mode(monkeypatch):
     names = {tool["name"] for tool in _payload(response)["result"]["tools"]}
     assert "get_url_analytics_summary" in names, "curated tool missing"
     assert "create_short_url" in names, "auto-generated tool missing"
+
+
+def test_mcp_requires_the_trailing_slash(monkeypatch):
+    """`/mcp` (no slash) is shadowed by the short-code redirect route.
+
+    `redirect_router` is registered before the mount and owns `/{short_code}`,
+    which matches the bare path `/mcp`. That route is GET-only, so a POST there
+    returns 405 and never reaches the MCP app; a GET is treated as a lookup for
+    the short code "mcp" and 404s.
+
+    This is why `mcp_server/README.md` advertises `https://s.griddo.io/mcp/`
+    with the slash. Pinned here so the documented URL and the routing cannot
+    drift apart silently — if a future change makes the bare path work, this
+    test should be updated deliberately, not discovered in production.
+    """
+    from starlette.testclient import TestClient
+
+    with TestClient(_fresh_app(monkeypatch)) as client:
+        with_slash = _rpc(client, "tools/list")
+        without_slash = client.post(
+            "/mcp",
+            json={"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}},
+            headers=MCP_HEADERS,
+        )
+
+    assert with_slash.status_code == 200, with_slash.text
+    assert without_slash.status_code == 405, (
+        "bare /mcp no longer 405s — routing changed; update the README and this test"
+    )
