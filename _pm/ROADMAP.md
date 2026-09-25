@@ -560,21 +560,67 @@ System creates:
 
 ---
 
-## Phase 3.12: Account Avatar
+## Phase 3.12: Account Profile & Avatar
 
-**Goal:** Let users upload their own avatar from **Settings → Account**, replacing the initial-in-a-circle
-placeholder, with a crop step before saving.
+**Goal:** Give users a profile they manage from **Settings → Account**: first name, last name, country,
+timezone, and an avatar uploaded with a crop step. Name and timezone also lay the groundwork for anything
+scheduled later (sends, reports, digests) — which needs to know the user's local time.
 **Priority:** 🟢 LOW - UX polish; no dependency on Phase 4/5
-**Today:** no avatar anywhere. The app header shows the user's initial in a `size-9` circle
-(`AppLayout.astro`, `data-user-initial`); `AccountPanel.astro` has no avatar; `User` has no avatar field;
-the backend has no file storage (no S3, no `UploadFile` endpoints).
+**Today:** `users` holds auth data only (email, password hash, API key + scope/constraints, is_active,
+created_at) — no name, country, timezone or avatar. The app header shows the user's initial in a `size-9`
+circle (`AppLayout.astro`, `data-user-initial`); `AccountPanel.astro` has no avatar; the backend has no
+file storage (no S3, no `UploadFile` endpoints).
 
-### 3.12.1 Picker (frontend)
+### 3.12.1 Data model — new `user_profiles` table ✅ decided
+Storage is the database, not S3 (the Phase 4.5/4.6 bucket + CloudFront doesn't exist yet). And it's a
+**new table rather than new columns on `users`**, for two reasons:
+- **No migrations.** There's no Alembic; the schema comes from `Base.metadata.create_all()` at startup,
+  which creates missing *tables* but never adds *columns* to existing ones. New columns on `users` would
+  exist in the test DB (built from scratch) and be missing on RDS — a production-only failure needing a
+  hand-run `ALTER TABLE` inside the VPC. A new table is created on the next boot, no manual step.
+- **`users` is read on every request.** `server/core/auth.py` loads `User` on every authenticated call
+  (JWT and API key); keeping profile and image out of it keeps that path lean.
+
+```
+user_profiles
+  user_id              UUID  PK, FK -> users.id  ON DELETE CASCADE   (1:1)
+  first_name           String(100)  nullable
+  last_name            String(100)  nullable
+  country              String(2)    nullable   ISO 3166-1 alpha-2 ("ES", "MX", …)
+  timezone             String(64)   nullable   IANA name ("Europe/Madrid", "Atlantic/Canary", …)
+  avatar               LargeBinary  nullable   the final cropped square; SQLAlchemy deferred()
+  avatar_content_type  String(32)   nullable   e.g. "image/webp"
+  avatar_updated_at    DateTime     nullable   cache-busting version for the image
+  updated_at           DateTime
+```
+- [ ] Model `server/core/models/user_profile.py`, registered in `__init__.py`; `User.profile` relationship
+      (`uselist=False`, `back_populates`) — lazy, never joined into the auth query
+- [ ] `avatar` column mapped with `deferred()`, so reading names/country/timezone never loads the image bytes
+- [ ] Row created lazily on first save; existing users simply have no row and read as an empty profile
+- [ ] All fields nullable — nothing is required to keep using the product
+
+**Timezone is its own field, not derived from country.** A country does not determine a timezone:
+Spain alone has two (`Europe/Madrid`, `Atlantic/Canary`), and Mexico, Brazil, the US, Canada, Russia and
+Australia have several. So store `country` *and* `timezone`:
+- Store the **IANA name, never a GMT/UTC offset** — offsets change twice a year with DST, the name doesn't.
+  Scheduling code stores instants in UTC and converts with `zoneinfo` at the edges.
+- Pre-fill from the browser (`Intl.DateTimeFormat().resolvedOptions().timeZone`); use `country` to narrow
+  the timezone picker, and auto-select when the country has a single zone
+- Validate server-side against `zoneinfo.available_timezones()`; validate `country` against ISO 3166-1
+
+### 3.12.2 Profile fields (frontend + API)
+- [ ] Account section: first name, last name, country (select), timezone (select, filtered by country,
+      pre-filled from the browser)
+- [ ] `PATCH /api/v1/auth/me/profile` — partial update; `GET /api/v1/auth/me` returns the profile
+      (names, country, timezone, avatar version) alongside the existing fields
+- [ ] Header initial comes from `first_name` when set, falling back to the email as today
+
+### 3.12.3 Avatar picker (frontend)
 - [ ] Avatar block at the top of `AccountPanel.astro`: current avatar (or initial placeholder) + change / remove
 - [ ] Two ways in: **drag & drop** an image onto the avatar area, or **select a file** from the computer
 - [ ] Accept JPEG, PNG, WebP; reject anything else and oversized files with an inline error (limit TBD, e.g. 5 MB)
 
-### 3.12.2 Crop step: zoom + pan before saving
+### 3.12.4 Avatar crop: zoom + pan before saving
 - [ ] Preview the image inside the same circle the avatar is shown in
 - [ ] **Zoom** (slider + wheel/pinch) and **pan** (drag) the image under the circle
 - [ ] **Hard constraint — the circle is always fully covered.** No part of the circle may ever show the
@@ -586,23 +632,27 @@ the backend has no file storage (no S3, no `UploadFile` endpoints).
 - [ ] Keyboard access: arrow keys pan, +/- zoom; Save / Cancel; Esc cancels
 - [ ] Follow `design/DESIGN_SYSTEM.md` (tokens, `Modal`, copy voice) and add the component to `/styleguide/`
 
-### 3.12.3 Save + storage (backend)
-- [ ] Crop **client-side** and upload the final square only (e.g. 512×512 WebP), so the server never
-      handles originals or crop maths
-- [ ] Endpoints: `PUT /api/v1/auth/me/avatar` (upload), `DELETE /api/v1/auth/me/avatar` (back to initial);
-      `GET /api/v1/auth/me` exposes the avatar URL
+### 3.12.5 Avatar save (backend)
+- [ ] Crop **client-side** and upload the final square only (e.g. 512×512 WebP, ~30–80 KB), so the server
+      never handles originals or crop maths
+- [ ] `PUT /api/v1/auth/me/avatar` (upload), `DELETE /api/v1/auth/me/avatar` (back to the initial),
+      `GET /api/v1/auth/me/avatar` (serves the bytes with `Cache-Control` + an ETag from `avatar_updated_at`)
 - [ ] Server-side validation regardless of the client: real image type (magic bytes, not just
       `Content-Type`), dimensions, size cap
-- [ ] **Open decision — where the bytes live:** a DB column (simple, no new infra) vs. S3 (needs a bucket;
-      the frontend's S3 + CloudFront from Phase 4.5/4.6 doesn't exist yet). Decide before implementing
-- [ ] Model: avatar reference/field on `User` (+ `updated_at` or a hash for cache-busting)
+- [ ] **Watch out:** the API authenticates with a bearer header, which a plain `<img src>` cannot send.
+      The frontend must fetch the avatar through the authenticated client and display it via an object URL
+      (keyed on the avatar version, so it's only re-fetched when it changes)
 
-### 3.12.4 Show it everywhere
+### 3.12.6 Show it everywhere
 - [ ] Replace the initial with the avatar in the app header (`AppLayout.astro`) and in Account
 - [ ] Fall back to the initial when there is no avatar or the image fails to load
 
-### 3.12.5 Verification
-- [ ] Backend tests (TDD): upload, replace, delete, type/size rejection, auth required, `me` exposes it
+### 3.12.7 Verification
+- [ ] Backend tests (TDD): profile round-trip through `db_session`; `PATCH` partial updates; country and
+      timezone validation (reject unknown ISO codes and non-IANA zones, accept `Atlantic/Canary`);
+      user without a profile row reads as empty; deleting a user cascades to the profile
+- [ ] Avatar tests: upload, replace, delete, type/size rejection, auth required, ETag/cache headers, and
+      that loading the profile does **not** load the avatar bytes (deferred)
 - [ ] Crop-logic unit tests for the cover constraint: min zoom, pan clamping at every zoom, re-clamp on
       zoom-out, portrait / landscape / square / very small images
 - [ ] Manual check on desktop (drop + picker) and mobile (picker + touch pan/pinch), 1440 px and 390 px
