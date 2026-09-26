@@ -321,7 +321,7 @@ def test_allow_private_setting_is_off_by_default():
 @pytest.mark.integration
 class TestPreviewEndpointsUseTheGuard:
     """Every endpoint that fetches previews is covered, and a refused fetch never fails
-    the request: the URL is still created, just without preview metadata."""
+    the request: it just yields no preview metadata."""
 
     def test_create_url(self, client: TestClient, auth_headers: dict, dns, web):
         r = client.post(
@@ -364,4 +364,21 @@ class TestPreviewEndpointsUseTheGuard:
         assert r.status_code == 200
         assert r.json()["og_title"] is None
         assert dns.lookups == ["intranet.corp", "intranet.corp"]  # create, then refresh
+        assert web.requests == []
+
+    def test_fetch_metadata(self, client: TestClient, auth_headers: dict, dns, web):
+        """The live-preview endpoint returns whatever it fetched straight to the caller,
+        which makes it the most direct way to read an internal page."""
+        dns.records["preview.attacker.test"] = ["169.254.169.254"]
+        web.routes["preview.attacker.test/latest/meta-data/"] = page("ami-id")
+
+        r = client.post(
+            "/api/v1/urls/fetch-metadata",
+            json={"url": "http://preview.attacker.test/latest/meta-data/"},
+            headers=auth_headers,
+        )
+
+        assert r.status_code == 200
+        assert r.json() == {"og_title": None, "og_description": None, "og_image_url": None}
+        assert dns.lookups == ["preview.attacker.test"]
         assert web.requests == []

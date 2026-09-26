@@ -131,6 +131,129 @@ class TestCustomURLShortening:
 
             assert response.status_code == 400
 
+    @pytest.fixture
+    def no_og_fetch(self, monkeypatch: pytest.MonkeyPatch):
+        """Keep the OG fetcher off the network."""
+        from server.app import urls as urls_module
+        from server.utils.opengraph import OpenGraphMetadata
+
+        async def _empty_og(*_a, **_kw):
+            return OpenGraphMetadata()
+
+        monkeypatch.setattr(urls_module, "fetch_opengraph_metadata", _empty_og)
+
+    @staticmethod
+    def _create(client: TestClient, auth_headers: dict, code: str):
+        return client.post(
+            "/api/v1/urls/custom",
+            json={"url": "https://example.com", "custom_code": code},
+            headers=auth_headers,
+        )
+
+    @pytest.mark.parametrize("code", ["mcp", "docs", "redoc", "MCP", "Docs"])
+    def test_custom_url_reserved_code_is_treated_as_taken(
+        self, client: TestClient, auth_headers: dict, no_og_fetch, code: str
+    ):
+        """The app serves /mcp, /docs and /redoc itself, so a short link with one
+        of those codes could never resolve: it gets a suffix, like a taken code."""
+        response = self._create(client, auth_headers, code)
+
+        assert response.status_code == 201
+        data = response.json()
+        assert data["short_code"].startswith(code.lower())
+        assert data["short_code"] != code.lower()
+        assert "reserved" in data["warning"]
+        assert client.get(f"/{data['short_code']}", follow_redirects=False).status_code == 302
+
+    def test_custom_url_code_resembling_reserved_is_kept(
+        self, client: TestClient, auth_headers: dict, no_og_fetch
+    ):
+        """Only exact collisions are reserved: /mcpx and /docs2 are ordinary codes."""
+        for code in ("mcpx", "docs2"):
+            data = self._create(client, auth_headers, code).json()
+            assert data["short_code"] == code
+            assert data.get("warning") is None
+
+    def test_custom_url_reserved_check_is_exact_case_in_strict_mode(
+        self,
+        client: TestClient,
+        auth_headers: dict,
+        no_og_fetch,
+        monkeypatch: pytest.MonkeyPatch,
+    ):
+        """Routes are case-sensitive, so in strict mode /MCP reaches the
+        short-code handler and only the exact `mcp` is reserved."""
+        from server.core.config import settings
+
+        monkeypatch.setattr(settings, "short_url_mode", "strict")
+
+        assert self._create(client, auth_headers, "MCP").json()["short_code"] == "MCP"
+        assert self._create(client, auth_headers, "mcp").json()["short_code"] != "mcp"
+
+    def test_custom_url_taken_fallback_stays_lowercase_in_loose_mode(
+        self, client: TestClient, auth_headers: dict, no_og_fetch
+    ):
+        """The fallback is built from the normalized code, so it resolves in
+        lowercase like every other loose-mode code."""
+        self._create(client, auth_headers, "promo")
+
+        data = self._create(client, auth_headers, "PROMO").json()
+
+        assert data["short_code"].startswith("promo")
+        assert data["short_code"] == data["short_code"].lower()
+        assert client.get(f"/{data['short_code']}", follow_redirects=False).status_code == 302
+
+    def test_custom_url_taken_fallback_fits_the_column(
+        self, client: TestClient, auth_headers: dict, no_og_fetch
+    ):
+        """`URL.short_code` is String(20). SQLite doesn't enforce that, but
+        Postgres rejects a taken 20-character code grown by the suffix."""
+        code = "a" * 20
+        self._create(client, auth_headers, code)
+
+        data = self._create(client, auth_headers, code).json()
+
+        assert len(data["short_code"]) <= 20
+        assert data["short_code"] != code
+        assert data["short_code"].startswith(code[:17])
+
+    def test_custom_url_taken_fallback_retries_until_free(
+        self,
+        client: TestClient,
+        auth_headers: dict,
+        no_og_fetch,
+        monkeypatch: pytest.MonkeyPatch,
+    ):
+        """If the suffixed code is taken too, draw again instead of letting the
+        insert hit the per-domain UNIQUE constraint."""
+        import server.utils.url as url_utils
+
+        self._create(client, auth_headers, "promo")
+        self._create(client, auth_headers, "promoaaa")
+        suffixes = iter(["aaa", "bbb"])
+        monkeypatch.setattr(url_utils, "generate_short_code", lambda length=6: next(suffixes))
+
+        response = self._create(client, auth_headers, "promo")
+
+        assert response.status_code == 201
+        assert response.json()["short_code"] == "promobbb"
+
+    def test_reserved_codes_cover_the_app_routes(self):
+        """Every single-segment path the app serves itself must be reserved, so
+        a new route can't silently shadow a short link."""
+        from main import create_app
+        from server.utils.url import RESERVED_SHORT_CODES, is_valid_custom_code
+
+        app = create_app()
+        paths = {getattr(route, "path", "") for route in app.routes} | set(app.openapi()["paths"])
+        routed_codes = {
+            path.strip("/")
+            for path in paths
+            if path.count("/") == 1 and "{" not in path and is_valid_custom_code(path.strip("/"))
+        }
+
+        assert routed_codes <= RESERVED_SHORT_CODES, routed_codes - RESERVED_SHORT_CODES
+
 
 @pytest.mark.integration
 class TestURLRedirect:

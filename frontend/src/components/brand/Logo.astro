@@ -1,9 +1,11 @@
 ---
 /**
- * Shurly logo. The brand-blue dot is the signature ("surely." / the click).
- * - variant: wordmark (default) | isotype
- * - tone: default (ink on light) | reversed (white on dark) | mono (single ink color)
- * Clear space: keep at least the dot's diameter free around the mark.
+ * Shurly logo. The diamond dot is the signature ("surely." / the click): Griddo blue on
+ * light surfaces, cyan on navy.
+ * - variant: wordmark (default) | isotype ("sy" on a rounded tile)
+ * - tone: default (for light surfaces) | reversed (for dark surfaces) | mono (single navy ink)
+ * Clear space: keep at least the diamond's width free around the mark.
+ * The wordmark's box includes the "y" descender, so it renders ~1.35x taller than a cap-height mark.
  */
 interface Props {
   variant?: 'wordmark' | 'isotype';
@@ -17,10 +19,11 @@ interface Props {
 const { variant = 'wordmark', tone = 'default', height = 24, class: className = '', href = null } = Astro.props;
 
 // Aspect ratios from the generated SVG viewBoxes (see design/brand/README.md).
-const RATIO = { wordmark: 3069 / 904, isotype: 1 };
+const RATIO = { wordmark: 463.11 / 176.45, isotype: 1 };
 const FILES = {
-  wordmark: { default: 'wordmark.svg', reversed: 'wordmark-reversed.svg', mono: 'wordmark-mono-ink.svg' },
-  isotype: { default: 'isotype.svg', reversed: 'isotype-brand.svg', mono: 'isotype.svg' },
+  wordmark: { default: 'shurly-logo-horizontal.svg', reversed: 'shurly-logo-horizontal-reversed.svg', mono: 'shurly-logo-horizontal-mono-navy.svg' },
+  // On light surfaces the navy tile reads best; on dark ones, the white tile.
+  isotype: { default: 'shurly-isotype-reversed.svg', reversed: 'shurly-isotype.svg', mono: 'shurly-isotype-reversed.svg' },
 };
 const src = `/brand/${FILES[variant][tone]}`;
 const width = Math.round(height * RATIO[variant]);

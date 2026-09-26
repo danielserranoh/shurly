@@ -451,6 +451,7 @@ curl -X POST http://localhost:8000/api/urls \
 - [ ] Create URL with very long original URL (1000+ chars) → Should work
 - [ ] Create custom code with special characters → Should reject
 - [ ] Create custom code that's already taken → Should modify and warn
+- [ ] Create custom code `mcp` (or `docs`) → Should modify and warn that it's reserved
 - [ ] Create URL without protocol → Should show error
 - [ ] Create URL with localhost/internal IP → Should work (for testing)
 

@@ -26,6 +26,24 @@ implementation lifecycle and is independent of the URL version segment.
 
 ## [Unreleased]
 
+### Fixed — reserved and colliding custom codes
+- **Custom codes the app serves itself are treated as taken.** `POST
+  /api/v1/urls/custom` accepted `mcp`, `docs` and `redoc`, but `/mcp` redirects
+  to the MCP endpoint and `/docs` and `/redoc` serve the API docs, so those short
+  links could never resolve. They now get a random suffix and a warning, exactly
+  like a taken code (`mcp` → e.g. `mcp4k2`). Only exact matches count (`mcpx`
+  and `docs2` are kept), case-insensitively in `loose` mode. The set lives in
+  `RESERVED_SHORT_CODES` (`server/utils/url.py`), and a test fails if the app
+  serves a single-segment path that isn't in it.
+- **A taken code's fallback now honours `SHORT_URL_MODE=loose`.** It was built
+  from the raw input, so `PROMO` (with `promo` taken) became `PROMOr09`, which
+  resolved at `/PROMOr09` but 404'd at `/promor09`. It is now lowercase.
+- **The fallback fits the column and is re-checked.** A taken 18–20 character
+  code grew to 21–23 characters, past `short_code`'s `String(20)`, which
+  PostgreSQL rejects with a `500`. The base is now trimmed. The suffixed code
+  is also checked for availability and redrawn (up to 10 times) instead of
+  hitting the per-domain `UNIQUE` constraint.
+
 ### Fixed — pagination bounds and N+1 queries
 - **`GET /api/v1/urls` and `GET /api/v1/campaigns` enforce their documented page
   size.** `limit` must be 1–100 and `skip` ≥ 0; anything else now returns `422`
@@ -43,6 +61,17 @@ implementation lifecycle and is independent of the URL version segment.
     URLs' current tags in one query;
   - `GET /api/v1/analytics/campaigns/{id}/users` (campaign recipients) computes
     every URL's clicks, unique IPs and last click in one grouped query.
+
+### Changed — New logo
+- New Shurly logo (custom rounded lettering with a diamond period) and "sy"
+  isotype replace the Bricolage wordmark and "s." isotype everywhere: web header,
+  footer, auth pages, 404, styleguide, favicons, app icons and the OG card.
+- The diamond is Griddo blue on light surfaces and cyan `#3cc3dd` on navy (new
+  `brand-cyan` token, logo only). The brand kit in `design/brand/` is regenerated
+  from one master geometry: logo in colour, reversed and mono, isotype on navy and
+  white tiles, tile-less mark, PNG @1x/2x/3x. Old lime/Bricolage files removed.
+- Logo heights grow ~1.35× (header 22→30 px) because the new logo's box includes
+  the "y" descender.
 
 ### Changed — Griddo palette and type (trial)
 - Brand colour is Griddo blue `#5057ff` (was lime `#b8f03e`): new `brand-50…950`

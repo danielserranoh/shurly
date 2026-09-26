@@ -488,10 +488,10 @@ The CNAME wasn't written to Route 53, or it was written to the wrong account. Va
 
 - ✅ Phase 4.1 — Cleanup of Lambda/SAM artifacts
 - ✅ Phase 4.2 — Container image + health endpoint + production env template
-- 🟡 Phase 4.3 — `scripts/create_rds.sh` ready; **execute manually**
-- 🟡 Phase 4.4 — TLS cert; **execute manually** (commands above)
-- 🟡 Phase 4.5 — `scripts/deploy_ecs.sh` ready; **execute manually**
-- 🟡 Phase 4.6 — `scripts/setup_custom_domain.sh` ready; **execute manually**
-- 🟡 Phase 4.7 — Lambda `ecs-alb-rule-sync` `RULE_SYNC_MAP` extension; **edit + redeploy manually** (instructions above)
+- ✅ Phase 4.3 — RDS `shurly-db` created with `scripts/create_rds.sh`
+- ✅ Phase 4.4 — TLS cert for `s.griddo.io` issued and validated
+- ✅ Phase 4.5 — ECS Express service `shurly-api` created with `scripts/deploy_ecs.sh`
+- ✅ Phase 4.6 — `s.griddo.io` wired with `scripts/setup_custom_domain.sh` (ALB rule priority 12)
+- ✅ Phase 4.7 — Lambda `ecs-alb-rule-sync` `RULE_SYNC_MAP` extended with `"4": "12"`
 - ✅ Phase 4.8 — `.github/workflows/deploy-backend.yml` rewritten for OIDC + ECR + ECS
-- ⏳ Phase 4.9 — First real deploy (the steps above, executed end-to-end)
+- ✅ Phase 4.9 — First real deploy, 2026-04-27. Lessons learned in [`docs/AWS_ECS_DEPLOYMENT.md`](docs/AWS_ECS_DEPLOYMENT.md)
