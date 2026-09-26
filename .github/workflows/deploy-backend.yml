@@ -92,6 +92,7 @@ jobs:
           # the manifest portable. Cf. lessons in docs/AWS_ECS_DEPLOYMENT.md.
           docker buildx build \
             --platform linux/amd64,linux/arm64 \
+            --build-arg GIT_SHA="$GITHUB_SHA" \
             --tag "$IMAGE_URI" \
             --push \
             .
@@ -111,6 +112,11 @@ jobs:
             exit 1
           fi
 
+          # Each step runs in its own shell, so the next step can only see this
+          # through GITHUB_ENV. Without it the wait step polled an empty ARN and
+          # reported `status=unknown` on every deploy since the pipeline existed.
+          echo "SERVICE_ARN=$SERVICE_ARN" >> "$GITHUB_ENV"
+
           # Pull the existing primary container, mutate only the image, and
           # send it back. Avoids overwriting any env-var changes someone may
           # have applied via the console.
@@ -118,12 +124,25 @@ jobs:
             --service-arn "$SERVICE_ARN" \
             --query "service.primaryContainer" --output json)
 
+          # The container config carries plain env vars, credentials included
+          # (DB_PASSWORD). GitHub only masks values registered as GitHub
+          # secrets, so mask anything credential-shaped ourselves before any
+          # later line could print it. Defence in depth: nothing below should.
+          echo "$CURRENT_CONTAINER" \
+            | jq -r '.environment[]? | select(.name | test("PASS|SECRET|TOKEN|KEY|CREDENTIAL"; "i")) | .value' \
+            | while IFS= read -r v; do if [ -n "$v" ]; then echo "::add-mask::$v"; fi; done
+
           UPDATED_CONTAINER=$(echo "$CURRENT_CONTAINER" | \
             jq --arg img "$IMAGE_URI" '.image = $img')
 
+          # NEVER let this print its response. It echoes the full container
+          # config, env vars and all — this repo is public, and the default
+          # output published the production DB password in three deploy logs
+          # (22-26 Sep 2026) before it was caught.
           aws ecs update-express-gateway-service \
             --service-arn "$SERVICE_ARN" \
-            --primary-container "$UPDATED_CONTAINER"
+            --primary-container "$UPDATED_CONTAINER" \
+            > /dev/null
 
           echo "Deploy initiated for $IMAGE_URI"
 
@@ -132,6 +151,8 @@ jobs:
           # ECS Express's deployment-state events fire through EventBridge.
           # Here we just poll for ~3 minutes; the existing alb-rule-sync
           # Lambda will pick up TG changes when the deploy completes.
+          # Informational only — the smoke test below is the real gate, since
+          # it checks which commit is actually answering on the public host.
           for i in $(seq 1 18); do
             STATUS=$(aws ecs describe-express-gateway-service \
               --service-arn "$SERVICE_ARN" \
@@ -150,19 +171,22 @@ jobs:
         # NOT `<service>.ecs...`, so probing the latter always 404s. The right
         # target is the public host bound to Shurly's ALB rule (priority 12).
         # The blue/green Lambda (ecs-alb-rule-sync) handles the TG flip on
-        # SERVICE_DEPLOYMENT_COMPLETED, but its EventBridge fan-out can lag a
-        # few seconds — so we retry with a short backoff before giving up.
+        # SERVICE_DEPLOYMENT_COMPLETED, but its EventBridge fan-out can lag.
+        #
+        # A 200 alone proves nothing: the old image answers 200 too, and that is
+        # how the 26 Sep release reported success while prod kept serving the
+        # previous one. So wait until /health reports the commit we just built.
         run: |
           PUBLIC_HOST="s.griddo.io"
-          echo "Probing https://${PUBLIC_HOST}/api/v1/health"
-          for i in $(seq 1 12); do
-            CODE=$(curl -sS -o /dev/null -w "%{http_code}" "https://${PUBLIC_HOST}/api/v1/health" || echo "000")
-            if [ "$CODE" = "200" ]; then
-              echo "✓ Health endpoint responding (attempt $i)"
+          echo "Waiting for https://${PUBLIC_HOST}/api/v1/health to report commit ${GITHUB_SHA::8}"
+          for i in $(seq 1 60); do
+            SERVING=$(curl -sS --max-time 10 "https://${PUBLIC_HOST}/api/v1/health" | jq -r '.commit // "none"' 2>/dev/null || echo "unreachable")
+            if [ "$SERVING" = "$GITHUB_SHA" ]; then
+              echo "✓ New image is serving (attempt $i)"
               exit 0
             fi
-            echo "[$i/12] HTTP $CODE — not ready, retrying in 10s"
+            echo "[$i/60] serving commit: ${SERVING::8} — waiting for ${GITHUB_SHA::8}"
             sleep 10
           done
-          echo "::error::Health endpoint did not return 200 after rollout"
+          echo "::error::After ~10 min ${PUBLIC_HOST} still serves commit ${SERVING::8}, not ${GITHUB_SHA::8}. The image was pushed and the rollout accepted, but traffic never moved to it — check the ECS Express deployment and the ecs-alb-rule-sync Lambda."
           exit 1
