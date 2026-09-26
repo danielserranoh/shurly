@@ -53,6 +53,12 @@ ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1
 
+# Source commit, reported by GET /api/v1/health so the deploy pipeline can tell
+# the new image from the old one. Declared late so changing it doesn't
+# invalidate the dependency layers above. Defaults to "unknown" for local builds.
+ARG GIT_SHA=unknown
+ENV GIT_SHA=$GIT_SHA
+
 EXPOSE 8000
 
 # Container healthcheck (used by `docker ps` and local orchestration). ECS uses
