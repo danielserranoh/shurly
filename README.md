@@ -389,7 +389,9 @@ All analytics endpoints exclude bot and pixel hits by default. Pass
 Shurly supports three types of URLs:
 
 1. **Standard**: Auto-generated 6-character short codes
-2. **Custom**: User-defined short codes (3-20 alphanumeric characters and hyphens)
+2. **Custom**: User-defined short codes (3-20 alphanumeric characters and hyphens).
+   A code that's taken, or reserved because Shurly serves that path itself
+   (`mcp`, `docs`, `redoc`), gets a random suffix and a warning.
 3. **Campaign**: Generated from CSV imports with personalized user data
 
 Each URL can also carry: validity window (`valid_since`/`valid_until`), visit cap

@@ -134,7 +134,9 @@ Both `/mcp` and `/mcp/` work. The bare path is served by an explicit **308
 Permanent Redirect** to `/mcp/`, because a Starlette `Mount("/mcp")` compiles to
 `^/mcp(?P<path>/.*)$` and does not match its own bare path. 308 rather than
 301/302 so a POST keeps its JSON-RPC body — 301/302 let a client drop it. The
-short code `mcp` is reserved as a consequence; every other code still resolves.
+short code `mcp` is reserved as a consequence: asking for it as a custom code
+gets a suffixed code and a warning, like a taken one (see `RESERVED_SHORT_CODES`
+in `server/utils/url.py`). Every other code still resolves.
 
 Single deployment, single Dockerfile, single ALB rule — same SLO as the
 rest of the API. The `_try_build_mcp_app` hook in `main.py` is conditional
