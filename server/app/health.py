@@ -15,6 +15,8 @@ Two flavors:
   check to consume an RDS connection.
 """
 
+import os
+
 from fastapi import APIRouter, Depends, status
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -30,7 +32,12 @@ health_router = APIRouter()
     responses={200: {"description": "Process is up"}},
 )
 def liveness() -> dict[str, str]:
-    return {"status": "ok"}
+    # `commit` is the git SHA baked into the image at build time (Dockerfile
+    # `ARG GIT_SHA`). The deploy pipeline's smoke test waits until it matches
+    # the commit being deployed: a bare 200 can't tell the new image from the
+    # old one, which is how a release once reported success while the previous
+    # image kept serving. Public repo, so the SHA discloses nothing.
+    return {"status": "ok", "commit": os.getenv("GIT_SHA", "unknown")}
 
 
 @health_router.get(
