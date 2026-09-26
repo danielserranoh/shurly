@@ -135,6 +135,10 @@ jobs:
           UPDATED_CONTAINER=$(echo "$CURRENT_CONTAINER" | \
             jq --arg img "$IMAGE_URI" '.image = $img')
 
+          # The wait step uses this to tell the deployment we're about to create
+          # from the previous one, which also reads PRIMARY/COMPLETED.
+          echo "DEPLOY_STARTED=$(date -u +%s)" >> "$GITHUB_ENV"
+
           # NEVER let this print its response. It echoes the full container
           # config, env vars and all — this repo is public, and the default
           # output published the production DB password in three deploy logs
@@ -146,47 +150,58 @@ jobs:
 
           echo "Deploy initiated for $IMAGE_URI"
 
-      - name: Wait for service to stabilize
+      - name: Wait for the rollout to complete
+        # ECS Express rolls out as a CANARY: 5% of traffic for 3 min, then 100%,
+        # then a 3 min bake — ~10-12 min end to end. Poll the ECS *deployment*:
+        # the service status reads ACTIVE throughout, which is why the old check
+        # passed on its first attempt without waiting for anything.
+        # Gating: a FAILED rollout (circuit breaker rolled back) fails the job.
         run: |
-          # ECS Express's deployment-state events fire through EventBridge.
-          # Here we just poll for ~3 minutes; the existing alb-rule-sync
-          # Lambda will pick up TG changes when the deploy completes.
-          # Informational only — the smoke test below is the real gate, since
-          # it checks which commit is actually answering on the public host.
-          for i in $(seq 1 18); do
-            STATUS=$(aws ecs describe-express-gateway-service \
-              --service-arn "$SERVICE_ARN" \
-              --query "service.status" --output text 2>/dev/null || echo "unknown")
-            echo "[$i/18] status=$STATUS"
-            if [ "$STATUS" = "ACTIVE" ]; then
-              echo "✓ Service is ACTIVE"
+          for i in $(seq 1 100); do
+            read -r STATE CREATED <<<"$(aws ecs describe-services --cluster default \
+              --services "$ECS_SERVICE_NAME" \
+              --query "services[0].deployments[?status=='PRIMARY'] | [0].[rolloutState, createdAt]" \
+              --output text)"
+            # 30 s of slack for clock skew between the runner and AWS.
+            IS_NEW=$(python3 -c "import sys,datetime; print(int(datetime.datetime.fromisoformat(sys.argv[1]).timestamp() >= int(sys.argv[2]) - 30))" "$CREATED" "$DEPLOY_STARTED" 2>/dev/null || echo 0)
+            echo "[$i/100] primary deployment: $STATE (new: $IS_NEW)"
+            if [ "$IS_NEW" = "1" ] && [ "$STATE" = "COMPLETED" ]; then
+              echo "✓ Rollout completed"
               exit 0
             fi
-            sleep 10
+            if [ "$IS_NEW" = "1" ] && [ "$STATE" = "FAILED" ]; then
+              echo "::error::The ECS deployment FAILED and was rolled back. Check the service events in the ECS console."
+              exit 1
+            fi
+            sleep 15
           done
-          echo "::warning::Service did not reach ACTIVE within ~3 min. Check the console."
+          echo "::error::The rollout did not complete within 25 min."
+          exit 1
 
       - name: Smoke test the public host
-        # ECS Express auto-hosts use the form `sh-<32-hex>.ecs.<region>.on.aws`,
-        # NOT `<service>.ecs...`, so probing the latter always 404s. The right
-        # target is the public host bound to Shurly's ALB rule (priority 12).
-        # The blue/green Lambda (ecs-alb-rule-sync) handles the TG flip on
-        # SERVICE_DEPLOYMENT_COMPLETED, but its EventBridge fan-out can lag.
-        #
-        # A 200 alone proves nothing: the old image answers 200 too, and that is
-        # how the 26 Sep release reported success while prod kept serving the
-        # previous one. So wait until /health reports the commit we just built.
+        # s.griddo.io is served by a custom ALB rule (priority 12) that Express
+        # doesn't manage: the ecs-alb-rule-sync Lambda copies Express's own rule
+        # onto it when the deployment COMPLETES. Two consequences, both measured
+        # on 27 Sep 2026:
+        #   - the public host gets no canary: it stays 100% on the old image
+        #     until the rollout completes, then switches at once;
+        #   - ECS stops the old task ~1 min before emitting "completed", so the
+        #     rule briefly points at an empty target group and the ALB answers
+        #     503 (00:16:20 -> 00:17:16 that night).
+        # So by the time this runs, the switch is seconds away — but tolerate
+        # that 503 gap. A 200 alone proves nothing (the old image answers 200
+        # too); wait for /health to report the commit we just built.
         run: |
           PUBLIC_HOST="s.griddo.io"
           echo "Waiting for https://${PUBLIC_HOST}/api/v1/health to report commit ${GITHUB_SHA::8}"
-          for i in $(seq 1 60); do
+          for i in $(seq 1 30); do
             SERVING=$(curl -sS --max-time 10 "https://${PUBLIC_HOST}/api/v1/health" | jq -r '.commit // "none"' 2>/dev/null || echo "unreachable")
             if [ "$SERVING" = "$GITHUB_SHA" ]; then
               echo "✓ New image is serving (attempt $i)"
               exit 0
             fi
-            echo "[$i/60] serving commit: ${SERVING::8} — waiting for ${GITHUB_SHA::8}"
+            echo "[$i/30] serving: ${SERVING::11} — waiting for ${GITHUB_SHA::8}"
             sleep 10
           done
-          echo "::error::After ~10 min ${PUBLIC_HOST} still serves commit ${SERVING::8}, not ${GITHUB_SHA::8}. The image was pushed and the rollout accepted, but traffic never moved to it — check the ECS Express deployment and the ecs-alb-rule-sync Lambda."
+          echo "::error::The rollout completed, but 5 min later ${PUBLIC_HOST} still serves ${SERVING::11}, not ${GITHUB_SHA::8}. The public-host rule (priority 12) was not synced — check the ecs-alb-rule-sync Lambda's logs."
           exit 1
