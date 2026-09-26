@@ -659,7 +659,13 @@ Australia have several. So store `country` *and* `timezone`:
 
 ---
 
-## Phase 4: AWS Deployment (ECS Express on griddo-main)
+## Phase 4: AWS Deployment (ECS Express on griddo-main) ✅
+
+**Status:** live at `https://s.griddo.io` since **2026-04-27** (first deploy, PRs #7–#11). `main` is
+production: every merge auto-deploys through `deploy-backend.yml`. The lessons from the rollout, the
+troubleshooting catalog and the runbook are in [`docs/AWS_ECS_DEPLOYMENT.md`](../docs/AWS_ECS_DEPLOYMENT.md);
+the from-scratch walkthrough is [`DEPLOYMENT.md`](../DEPLOYMENT.md). The checklists below record the plan as
+written, with notes where reality differed.
 
 **Architecture decision**: Pivoted from AWS Lambda to **ECS Express Mode** (Fargate-backed, ALB-fronted, replacement for App Runner). Rationale:
 
@@ -699,74 +705,77 @@ Replace the Lambda-oriented setup that landed in earlier prep commits with the E
 - [x] Remove `mangum` dependency from `pyproject.toml`
 - [x] Verify `uv run pytest` still passes (285 tests)
 
-### 4.2 Container image ready for Fargate
-- [ ] Audit existing `dockerfile`: confirm uvicorn entrypoint, exposed port, multi-stage build to keep image small, and that it builds for `linux/arm64` (Fargate ARM64 is ~20% cheaper than x86).
-- [ ] Add `GET /api/v1/health` endpoint that returns `{"status": "ok"}` without touching the database. ECS Express will hit this via the ALB target group health check; we don't want every health check to consume an RDS connection.
-- [ ] Optional: a `GET /api/v1/health/db` endpoint that does touch the DB — used for synthetic monitoring, not for the ALB.
-- [ ] Replace `.env.lambda.example` with `.env.production.example`. Same settings (`ANONYMIZE_REMOTE_ADDR`, `TRUSTED_PROXIES`, `DEFAULT_DOMAIN=s.griddo.io`, `REDIRECT_STATUS_CODE`, `REDIRECT_CACHE_LIFETIME`, etc.) but oriented at ECS task env vars instead of Lambda env.
-- [ ] Local smoke: `docker build -t shurly:dev . && docker run --env-file .env shurly:dev` should boot uvicorn and answer the health check.
+### 4.2 Container image ready for Fargate ✅
+- [x] Audit existing `dockerfile`: confirm uvicorn entrypoint, exposed port, multi-stage build to keep image small, and that it builds for `linux/arm64` (Fargate ARM64 is ~20% cheaper than x86).
+  - Reality: ECS Express runs **x86_64** Fargate and an arm64-only manifest fails to pull, so the image is built **multi-arch** (`linux/amd64,linux/arm64`). See playbook lesson #3.
+- [x] Add `GET /api/v1/health` endpoint that returns `{"status": "ok"}` without touching the database. ECS Express will hit this via the ALB target group health check; we don't want every health check to consume an RDS connection.
+- [x] Optional: a `GET /api/v1/health/db` endpoint that does touch the DB — used for synthetic monitoring, not for the ALB.
+- [x] Replace `.env.lambda.example` with `.env.production.example`. Same settings (`ANONYMIZE_REMOTE_ADDR`, `TRUSTED_PROXIES`, `DEFAULT_DOMAIN=s.griddo.io`, `REDIRECT_STATUS_CODE`, `REDIRECT_CACHE_LIFETIME`, etc.) but oriented at ECS task env vars instead of Lambda env.
+- [x] Local smoke: `docker build -t shurly:dev . && docker run --env-file .env shurly:dev` should boot uvicorn and answer the health check. (Superseded by the real deploy; the image also carries a `HEALTHCHECK`.)
 
-### 4.3 Database (mirrors Shlink Phase 2)
+### 4.3 Database (mirrors Shlink Phase 2) ✅
 Adapt `scripts/create_rds.sh` for Shurly. Reusing concepts from the Shlink deploy guide; specifics:
-- [ ] DB SG: either reuse Shlink's `sg-0336fc12dcb7cad06` (lowest friction) or create `shurly-db-sg`. Decision: separate SG so we can revoke independently if needed.
-- [ ] Subnet group: reuse `shlink-db-subnets` (covers default VPC subnets — same VPC).
-- [ ] DB instance `shurly-db`, `db.t4g.micro`, 20 GB gp3, `--no-publicly-accessible`, 7-day backup retention.
-- [ ] **No `--engine-version` pin** (per Shlink lesson #6).
-- [ ] Master user `shurly`, DB name `shurly`. Password from `openssl rand -base64 24` — captured for the env, not committed.
+- [x] DB SG: either reuse Shlink's `sg-0336fc12dcb7cad06` (lowest friction) or create `shurly-db-sg`. Decision: separate SG so we can revoke independently if needed. → `shurly-db-sg` (5432 open within the VPC).
+- [x] Subnet group: reuse `shlink-db-subnets` (covers default VPC subnets — same VPC).
+- [x] DB instance `shurly-db`, `db.t4g.micro`, 20 GB gp3, `--no-publicly-accessible`, 7-day backup retention.
+- [x] **No `--engine-version` pin** (per Shlink lesson #6). → AWS picked PostgreSQL 17.
+- [x] Master user `shurly`, DB name `shurly`. Password from `openssl rand -base64 24` — captured for the env, not committed.
+- [x] Schema bootstrap: `Base.metadata.create_all()` runs at startup (idempotent, additive only). Swap for Alembic before the first non-additive schema change (playbook lesson #13).
 
-### 4.4 TLS certificate (mirrors Shlink Phase 3)
-- [ ] `aws acm request-certificate --domain-name s.griddo.io --validation-method DNS` (`griddo-main`, eu-south-2)
-- [ ] Capture validation CNAME, write it to Route 53 from **`griddo-production`** profile (zone `Z0999097TJGECCBKJOY1`)
-- [ ] `aws acm wait certificate-validated`
+### 4.4 TLS certificate (mirrors Shlink Phase 3) ✅
+- [x] `aws acm request-certificate --domain-name s.griddo.io --validation-method DNS` (`griddo-main`, eu-south-2)
+- [x] Capture validation CNAME, write it to Route 53 from **`griddo-production`** profile (zone `Z0999097TJGECCBKJOY1`)
+- [x] `aws acm wait certificate-validated`
 
-### 4.5 ECS Express service (mirrors Shlink Phase 5)
-- [ ] Create ECR repository `shurly-api` in `griddo-main`
-- [ ] `docker buildx build --platform linux/arm64 --tag <account>.dkr.ecr.eu-south-2.amazonaws.com/shurly-api:<sha> .`
-- [ ] ECR login + push
-- [ ] `aws ecs create-express-gateway-service --service-name shurly-api`:
+### 4.5 ECS Express service (mirrors Shlink Phase 5) ✅
+- [x] Create ECR repository `shurly-api` in `griddo-main` (tags are IMMUTABLE, so images are tagged `<sha>-<timestamp>`)
+- [x] `docker buildx build --platform linux/amd64,linux/arm64 --tag <account>.dkr.ecr.eu-south-2.amazonaws.com/shurly-api:<sha>-<timestamp> .` (multi-arch, see 4.2)
+- [x] ECR login + push
+- [x] `aws ecs create-express-gateway-service --service-name shurly-api`:
   - Reuses `ecsTaskExecutionRole` + `ecsInfrastructureRoleForExpressServices`
   - `--cpu 256 --memory 512` (Fargate units, **not** decimal — per Shlink lesson #1)
   - `--health-check-path /api/v1/health`
   - `--scaling-target {minTaskCount: 1, maxTaskCount: 2}`
   - Env vars: full set from `.env.production.example`, with `DB_HOST` from RDS endpoint and `DB_PASSWORD`/`JWT_SECRET_KEY` from prompts (or Secrets Manager later)
-- [ ] `--monitor-resources` may timeout; verify with `describe-express-gateway-service` (Shlink lesson #2)
-- [ ] Smoke against the auto-generated host: `curl https://shurly-api.ecs.eu-south-2.on.aws/api/v1/health`
+- [x] `--monitor-resources` may timeout; verify with `describe-express-gateway-service` (Shlink lesson #2)
+- [x] Smoke against the auto-generated host: `curl https://shurly-api.ecs.eu-south-2.on.aws/api/v1/health`
+  - Reality: the auto-host is opaque (`sh-<32-hex>.ecs.eu-south-2.on.aws`), not service-named (playbook lesson #1).
 
-### 4.6 Custom domain `s.griddo.io` (mirrors Shlink Phase 6)
-- [ ] `aws elbv2 add-listener-certificates` — add the `s.griddo.io` ACM cert to the shared ALB's HTTPS listener (Shlink lesson #3)
-- [ ] `aws elbv2 create-rule --priority 12 --conditions host-header=s.griddo.io` pointing to Shurly's active target group (the one with weight 100 — Shlink lesson #7 about priority headroom for Express Mode)
-- [ ] `aws route53 change-resource-record-sets` from **`griddo-production`** profile: A-alias `s.griddo.io` → ALB
-- [ ] `dig s.griddo.io && curl https://s.griddo.io/api/v1/health` to verify
+### 4.6 Custom domain `s.griddo.io` (mirrors Shlink Phase 6) ✅
+- [x] `aws elbv2 add-listener-certificates` — add the `s.griddo.io` ACM cert to the shared ALB's HTTPS listener (Shlink lesson #3)
+- [x] `aws elbv2 create-rule --priority 12 --conditions host-header=s.griddo.io` pointing to Shurly's active target group (the one with weight 100 — Shlink lesson #7 about priority headroom for Express Mode)
+- [x] `aws route53 change-resource-record-sets` from **`griddo-production`** profile: A-alias `s.griddo.io` → ALB
+- [x] `dig s.griddo.io && curl https://s.griddo.io/api/v1/health` to verify
 
-### 4.7 ALB rule sync — extend the existing Lambda
+### 4.7 ALB rule sync — extend the existing Lambda ✅
 ECS Express does blue/green deploys by alternating target group weights. Manual ALB rules (priority 12 in our case) need to follow the active TG or the service drops. The `ecs-alb-rule-sync` Lambda already handles this for Shlink; we extend it.
-- [ ] Identify Shurly's Express Mode rule priority (the one Express Mode auto-creates between 1-5)
-- [ ] PR against the Lambda's `RULE_SYNC_MAP`: add `<shurly-express-priority>: "12"` mapping
-- [ ] Test: `aws lambda invoke --function-name ecs-alb-rule-sync` returns "No changes needed" or syncs correctly
-- [ ] Force a redeploy via `update-express-gateway-service --force-new-deployment` and verify `s.griddo.io` keeps responding without manual intervention
+- [x] Identify Shurly's Express Mode rule priority (the one Express Mode auto-creates between 1-5) → **4**
+- [x] PR against the Lambda's `RULE_SYNC_MAP`: add `<shurly-express-priority>: "12"` mapping → `"4": "12"`
+- [x] Test: `aws lambda invoke --function-name ecs-alb-rule-sync` returns "No changes needed" or syncs correctly → `["Synced priority 12 with 4"]`
+- [x] Force a redeploy via `update-express-gateway-service --force-new-deployment` and verify `s.griddo.io` keeps responding without manual intervention
 
-### 4.8 CI/CD with OIDC + ECR + ECS
+### 4.8 CI/CD with OIDC + ECR + ECS ✅
 Replaces the SAM-based GitHub Actions workflow.
-- [ ] **One-time setup in `griddo-main`** (documented in DEPLOYMENT.md, executed manually with SSO):
+- [x] **One-time setup in `griddo-main`** (documented in DEPLOYMENT.md, executed manually with SSO):
   - GitHub OIDC provider (`token.actions.githubusercontent.com`)
   - IAM role `github-actions-shurly-deploy` with trust policy scoped to `repo:danielserranoh/shurly:*`
   - Permissions: ECR push (scoped to the `shurly-api` repo), ECS update-express-gateway-service (scoped to the Shurly service ARN), CloudWatch Logs read for verification
-- [ ] Rewrite `.github/workflows/deploy-backend.yml`:
+- [x] Rewrite `.github/workflows/deploy-backend.yml`:
   - `permissions: id-token: write` for OIDC
   - `aws-actions/configure-aws-credentials@v4` with `role-to-assume`, no access keys
-  - `docker buildx build --platform linux/arm64 --push`
-  - `aws ecs update-express-gateway-service --force-new-deployment`
-  - Trigger: `workflow_dispatch` only until first manual deploy succeeds; then optionally re-enable `push` to `main`
-- [ ] No `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` secrets — only `AWS_DEPLOY_ROLE_ARN`, `DB_HOST`, `JWT_SECRET_KEY`, etc.
+  - `docker buildx build --platform linux/amd64,linux/arm64 --push` (multi-arch, see 4.2)
+  - `aws ecs update-express-gateway-service --force-new-deployment`, then a smoke of `/api/v1/health` on the public host
+  - Trigger: `workflow_dispatch` only until first manual deploy succeeds; then optionally re-enable `push` to `main` → done: `push` to `main` is on, `main` is branch-protected (PR + passing tests), `workflow_dispatch` kept for rollbacks
+- [x] No `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` secrets — only `AWS_DEPLOY_ROLE_ARN`, `DB_HOST`, `JWT_SECRET_KEY`, etc.
 
-### 4.9 First real deploy + smoke
+### 4.9 First real deploy + smoke ✅ (2026-04-27)
 End-to-end run with the user driving SSO locally:
-- [ ] `./scripts/create_rds.sh` (one-time)
-- [ ] Request ACM cert + validate
-- [ ] `./scripts/deploy_ecs.sh` (build + push + service create)
-- [ ] `./scripts/setup_custom_domain.sh` (cert, rule, DNS)
-- [ ] Update Lambda `RULE_SYNC_MAP`
-- [ ] Smoke checklist:
+- [x] `./scripts/create_rds.sh` (one-time)
+- [x] Request ACM cert + validate
+- [x] `./scripts/deploy_ecs.sh` (build + push + service create)
+- [x] `./scripts/setup_custom_domain.sh` (cert, rule, DNS)
+- [x] Update Lambda `RULE_SYNC_MAP`
+- [ ] Smoke checklist — only `/api/v1/health` (checked by CI on every deploy) and the forced redeploy are on record; re-run the rest against production and tick them here:
   - `register` → `login` → returns JWT
   - `POST /api/v1/urls` creates a short URL bound to `s.griddo.io`
   - `GET /<code>` returns 302 to destination
@@ -774,7 +783,7 @@ End-to-end run with the user driving SSO locally:
   - `GET /robots.txt` returns default-deny
   - `GET /api/v1/analytics/orphan-visits` after a typo'd `GET /xyzabc` shows the orphan
   - Force `update-express-gateway-service --force-new-deployment` → verify `s.griddo.io` stays up
-- [ ] Capture findings in CHANGELOG.md and any follow-up items as new issues
+- [x] Capture findings → the 13 lessons in `docs/AWS_ECS_DEPLOYMENT.md`, fixed in the `fix(scripts)` / `hotfix` commits of PRs #7–#10
 
 ---
 
@@ -789,19 +798,19 @@ End-to-end run with the user driving SSO locally:
 - Phase 4 (deploy) must complete first — MCP runs against the same backend; we don't want to debug Lambda cold starts and MCP transports simultaneously.
 - Internal dogfood window of ~2–4 weeks before Phase 7 starts. Findings feed the frontend prioritization.
 
-### 5.1 Foundation & framework choice
-- [ ] Decision recorded: start with **`fastmcp` standalone** for fast prototyping (auto-generates tools from FastAPI), reserve the option to migrate to `mcp.server.fastmcp` (official SDK) if upstream divergence becomes a real risk.
-- [ ] Add `fastmcp` to `pyproject.toml` `mcp` optional-extra group (so it doesn't bloat the Lambda bundle when not needed).
-- [ ] Create `mcp_server/` sub-package or sibling module — keep it isolated from `server/` so the API can run standalone.
-- [ ] Pick transport: **Streamable HTTP** (single endpoint, request/response, Lambda-friendly). Stdio for local dev only.
-- [ ] Document the chosen framework + transport in `mcp_server/README.md` with the 3-option comparison rationale (so a future maintainer doesn't relitigate the decision).
+### 5.1 Foundation & framework choice ✅
+- [x] Decision recorded: start with **`fastmcp` standalone** for fast prototyping (auto-generates tools from FastAPI), reserve the option to migrate to `mcp.server.fastmcp` (official SDK) if upstream divergence becomes a real risk.
+- [x] Add `fastmcp` to `pyproject.toml` `mcp` optional-extra group (so it doesn't bloat the Lambda bundle when not needed). → `fastmcp>=4,<5`
+- [x] Create `mcp_server/` sub-package or sibling module — keep it isolated from `server/` so the API can run standalone.
+- [x] Pick transport: **Streamable HTTP** (single endpoint, request/response, Lambda-friendly). Stdio for local dev only.
+- [x] Document the chosen framework + transport in `mcp_server/README.md` with the 3-option comparison rationale (so a future maintainer doesn't relitigate the decision).
 
 ### 5.2 Auto-generated tools from FastAPI
-- [ ] Bootstrap: `FastMCP.from_fastapi(app)` (or equivalent) — generate the first cut of tools automatically.
-- [ ] Audit the generated tool list: for each `/api/v1/...` endpoint, verify the tool name, description, schema, and return shape are LLM-friendly.
-- [ ] Filter out endpoints that should NOT be MCP tools: legacy `statistics.py`, internal-only routes, anything that handles file uploads (campaign CSV — see 5.3).
-- [ ] Verify the OG-preview, robots.txt, redirect path, and tracking pixel routes are excluded (they're public unversioned routes, not management API).
-- [ ] Tests: each auto-generated tool round-trips through the MCP server and produces the same output as the underlying endpoint.
+- [x] Bootstrap: `FastMCP.from_fastapi(app)` (or equivalent) — generate the first cut of tools automatically. (47 raw tools)
+- [x] Audit the generated tool list: for each `/api/v1/...` endpoint, verify the tool name, description, schema, and return shape are LLM-friendly. → `MCP_TOOL_NAMES` strips the `_api_v1_<path>_<method>` suffix from operationIds; `tests/test_phase52_mcp_tools.py` pins the surface (38 tools today)
+- [x] Filter out endpoints that should NOT be MCP tools: legacy `statistics.py`, internal-only routes, anything that handles file uploads (campaign CSV — see 5.3). → `EXCLUDED_ROUTE_MAPS` drops `/api/v1/stats/*` and the health probes. No route takes a file upload: `create_campaign` takes the CSV as a string and stays a tool, with `create_campaign_from_rows` (5.3) as the LLM-friendly variant
+- [x] Verify the OG-preview, robots.txt, redirect path, and tracking pixel routes are excluded (they're public unversioned routes, not management API). → `/`, `/robots.txt`, `/{short_code}` and `/{short_code}/track` are excluded. The OG-preview routes (`/api/v1/urls/{code}/preview`, `…/refresh-preview`, `fetch-metadata`) are authenticated management API, so they **stay** as tools
+- [ ] Tests: each auto-generated tool round-trips through the MCP server and produces the same output as the underlying endpoint. → open: only `get_current_user_info` is called through the MCP layer (`tests/test_phase54_mcp_auth.py`); the other generated tools are covered by their REST tests, not through MCP
 
 ### 5.3 Hand-curated tools (where auto-gen is awkward) ✅
 - [x] **`create_campaign_from_rows`** — accepts `rows: list[dict]`, serialises to CSV in-memory, reuses the existing campaign generator.
@@ -835,6 +844,11 @@ End-to-end run with the user driving SSO locally:
 - [x] Local stdio server (`scripts/run_mcp_local.sh`) stays as the dev workflow — not replaced by the deploy.
 - [x] Documented the dev/prod split, registration, and escape hatches in `mcp_server/README.md`.
 
+**Follow-ups after the mount** (shipped; the first was committed as "Phase 5.6", which is not the 5.6 below):
+- [x] **Stateless transport** (MCP 2026-07-28): `stateless_http=True` on the mount, so no `Mcp-Session-Id` is minted. Without it, calls failed with "Missing session ID" once the service scales to 2 tasks or a blue/green deploy replaces them. Tests: `tests/test_phase56_mcp_stateless.py` (PR #25).
+- [x] **`/mcp/` advertised with the slash**, and the bare `/mcp` answers with a **308** to it so a POST keeps its JSON-RPC body (PRs #32, #33).
+- [x] **Reserved short codes**: custom codes `mcp`, `docs`, `redoc` get a suffixed code, as for a taken one (PR #35).
+
 ### 5.6 Internal dogfood + signal capture
 - [ ] Roll out to the Griddo team: 3–5 internal users with API keys.
 - [ ] Capture for 2–4 weeks: tool invocation counts (which tools get used vs ignored), tool error rates, average call duration.
@@ -842,53 +856,59 @@ End-to-end run with the user driving SSO locally:
 - [ ] Output: a "frontend feature priority" list backed by real signal, fed into Phase 7.
 
 ### 5.7 Verification
-- [ ] All auto-generated + curated tools have at least one happy-path test.
-- [ ] MCP endpoint responds within the same SLO as the regular API.
-- [ ] No regression in existing tests (backend behavior unchanged).
-- [ ] `mcp_server/README.md` exists and covers: architecture, framework choice, auth, deployment, how to add a new tool.
-- [ ] CHANGELOG.md entry under "Added" describing the MCP surface.
+- [ ] All auto-generated + curated tools have at least one happy-path test. → curated tools: yes (`tests/test_phase53_curated_tools.py`); auto-generated: see the open item in 5.2
+- [ ] MCP endpoint responds within the same SLO as the regular API. → same task and ALB rule, but never measured
+- [x] No regression in existing tests (backend behavior unchanged). → 465 passing (2026-09-26)
+- [ ] `mcp_server/README.md` exists and covers: architecture, framework choice, auth, deployment, how to add a new tool. → everything but "how to add a new tool"
+- [ ] CHANGELOG.md entry under "Added" describing the MCP surface. → missing: the CHANGELOG only mentions MCP in passing (fixes and the Phase 3.11 tools)
 
 ### Open questions (resolve during 5.1)
-- Does `fastmcp.from_fastapi()` produce useful tool descriptions, or do we need to enrich them via Pydantic `Field(..., description=...)` everywhere first? (Likely yes — most of our schemas already have descriptions; sweep the gaps.)
-- Should pixel/redirect endpoints be exposed as tools at all? (Probably not — they're public-facing routes, not management surface.)
-- Per-user MCP config in Claude Code: how does the team add their personal API key without committing it? (Document the env-var pattern in `mcp_server/README.md`.)
+- Does `fastmcp.from_fastapi()` produce useful tool descriptions, or do we need to enrich them via Pydantic `Field(..., description=...)` everywhere first? (Likely yes — most of our schemas already have descriptions; sweep the gaps.) → still open: nobody has done the sweep
+- ~~Should pixel/redirect endpoints be exposed as tools at all?~~ **Resolved:** no — excluded in `EXCLUDED_ROUTE_MAPS` (5.2).
+- ~~Per-user MCP config in Claude Code: how does the team add their personal API key without committing it?~~ **Resolved:** `claude mcp add shurly --transport http --url https://s.griddo.io/mcp/ --header "Authorization: Bearer <api_key>"`, documented in `mcp_server/README.md`.
 - Authorization discovery: we publish no RFC 9728 protected-resource metadata. All four `.well-known` paths 404, and the 401 carries a bare `WWW-Authenticate: Bearer` with no `resource_metadata=` pointer, so MCP clients cannot auto-discover how to authenticate and must be handed an API key. Not a flag we can flip — it needs our own authorization server or delegation to an IdP (fastmcp ships providers for Auth0, Azure, Clerk, Google, Keycloak, WorkOS, …). A product decision, not a technical one.
 
 ---
 
 ## Phase 6: Testing & Optimization
 
+> Phases 4 and 5 moved the stack from Lambda + API Gateway to ECS Express behind a shared ALB; the items below
+> were rewritten for that stack on 2026-09-26.
+
 ### 6.1 Testing
-- [ ] Unit tests (pytest)
-  - [ ] URL shortening logic
-  - [ ] Campaign CSV parsing
-  - [ ] Auth token generation
-- [ ] Integration tests
-  - [ ] API endpoints
-  - [ ] Database operations
+- [x] Unit tests (pytest) — 465 tests, run on every PR by `test.yml` (with `--extra mcp`)
+  - [x] URL shortening logic
+  - [x] Campaign CSV parsing
+  - [x] Auth token generation
+- [x] Integration tests (FastAPI `TestClient` against in-memory SQLite)
+  - [x] API endpoints
+  - [x] Database operations
 - [ ] E2E tests (optional)
-  - [ ] Frontend flows
+  - [ ] Frontend flows (Phase 3.11 ran a manual smoke of 14 core flows; nothing automated)
 
 ### 6.2 Performance Optimization
 - [ ] Database indexes review
 - [ ] Query optimization for analytics
-- [ ] CloudFront caching strategy
-- [ ] Lambda cold start optimization (provisioned concurrency if needed)
+  - [x] Multi-URL endpoints run a constant number of SQL statements (N+1 removed) and list pagination is capped at 100 (PR #26)
+- [ ] Caching strategy for the redirect path (CloudFront in front of the ALB, or none)
+- [ ] ~~Lambda cold start optimization~~ — not applicable on ECS; containers have no cold start
 
 ### 6.3 Security Hardening
-- [ ] Rate limiting (API Gateway usage plans)
+- [ ] Rate limiting — no API Gateway on this stack, so it needs app-level limiting or AWS WAF on the shared ALB
 - [ ] Input validation review
 - [ ] SQL injection prevention check
-- [ ] XSS prevention in frontend
+- [ ] XSS prevention in frontend (dynamic HTML goes through the escaping `html` tag from `@/utils/html`; audit the remaining raw `innerHTML` uses)
 - [ ] CORS configuration review
-- [ ] Environment secrets audit
+- [ ] Environment secrets audit (DB password and JWT secret are plain task env vars; Secrets Manager is the planned move)
+- [x] SSRF guard on the Open Graph fetcher (PR #21, see CHANGELOG § Security)
+- [x] Campaign-link takeover via custom codes (see CHANGELOG § Security)
 
 ### 6.4 Monitoring & Logging
-- [ ] CloudWatch Logs setup
+- [x] CloudWatch Logs setup → `/aws/ecs/default/shurly-api-5fdb`; `X-Request-Id` correlates requests
 - [ ] Error alerting (SNS/email)
 - [ ] Key metrics dashboard
-  - [ ] Lambda invocations
-  - [ ] API Gateway errors
+  - [ ] ECS task count / CPU / memory
+  - [ ] ALB 5xx and target health
   - [ ] RDS connections
   - [ ] Redirect latency
 
@@ -897,8 +917,8 @@ End-to-end run with the user driving SSO locally:
 ## Phase 7: Documentation & Handoff
 
 ### 7.1 Documentation
-- [ ] API documentation (OpenAPI/Swagger) - auto-generated by FastAPI
-- [ ] Deployment guide
+- [x] API documentation (OpenAPI/Swagger) - auto-generated by FastAPI (`/docs`, `/redoc`)
+- [x] Deployment guide → `DEPLOYMENT.md` (walkthrough) + `docs/AWS_ECS_DEPLOYMENT.md` (playbook)
 - [ ] User manual for dashboard
 - [ ] Architecture diagram
 - [ ] Database schema diagram
@@ -906,8 +926,8 @@ End-to-end run with the user driving SSO locally:
 
 ### 7.2 Operational Runbook
 - [ ] How to add new users
-- [ ] How to investigate issues
-- [ ] How to scale if needed
+- [x] How to investigate issues → troubleshooting catalog in `docs/AWS_ECS_DEPLOYMENT.md`
+- [x] How to scale if needed → "Scale up/down" in the same runbook
 - [ ] Backup and recovery procedures
 - [ ] Cost monitoring guide
 
@@ -963,11 +983,10 @@ To maximize velocity, we'll use specialized agents:
 - Standard industry practice
 - Easy to implement with python-jose
 
-### Serverless Architecture: AWS Lambda ✅
-- Cost-effective for low traffic
-- Auto-scaling
-- 1-2s cold start acceptable per requirements
-- Estimated cost: $20-35/month
+### ~~Serverless Architecture: AWS Lambda~~ → superseded by ECS Express (2026-04-26)
+- Original choice: cost-effective for low traffic, auto-scaling, 1-2s cold start acceptable, ~$20-35/month
+- Replaced by ECS Express on Fargate: the MCP server wants a long-lived process, the redirect path shouldn't
+  pay cold starts, and the RDS pool stays warm. See Phase 4 and the decision log in `docs/AWS_ECS_DEPLOYMENT.md`.
 
 ### Campaign URL Approach: Lookup Token ✅
 - Short code maps to JSONB user_data
