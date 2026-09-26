@@ -52,3 +52,8 @@ uv.lock
 
 # graft's local graph cache — regenerable, not committed (run `graft build`).
 /graft/
+
+# pytest-cov artifacts
+.coverage
+.coverage.*
+htmlcov/
