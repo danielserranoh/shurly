@@ -25,11 +25,19 @@ EventBridge rule `ecs-deploy-alb-sync`, on `ECS Deployment State Change`:
 
 | Event | What the Lambda does |
 |---|---|
-| `SERVICE_DEPLOYMENT_IN_PROGRESS` | Follows the deployment: syncs every 5 s until ECS reports it no longer `IN_PROGRESS` (or the 900 s timeout nears), then one final pass |
+| `SERVICE_DEPLOYMENT_IN_PROGRESS` | Follows the deployment: syncs every 5 s until ECS reports it no longer `IN_PROGRESS`, then one final pass. If the 900 s timeout nears first, it re-invokes itself asynchronously to keep following (up to 4 hand-offs, ~75 min) |
 | `SERVICE_DEPLOYMENT_COMPLETED` / `_FAILED` | One pass (safety net) |
 | Manual `--payload '{}'` | One pass |
 
-Each pass syncs all three mappings and is idempotent.
+Each pass syncs all three mappings and is idempotent. Log lines show the
+weights applied and their share, e.g. `weights 950/50 = 95%/5%`. ALB weights are
+relative, not percentages: Express uses 950/50 during the canary.
+
+**Why it hands off.** 900 s is Lambda's hard ceiling, and a canary rollout
+already used 613 s of it (27 Sep 2026). If a rollout ever outlived one
+invocation, the follower would stop before the final shift and the ~1 min 503
+would return. The hand-off carries a hop counter (`_follow_hop`), so the chain
+can't run forever.
 
 **Why it follows the deployment.** Until 27 Sep 2026 it ran only on `COMPLETED`.
 ECS stops the old task about a minute *before* emitting that event, so the custom
@@ -43,6 +51,7 @@ Role `ecs-alb-rule-sync-lambda`, inline policy `alb-rule-sync`:
 
 - `elasticloadbalancing:DescribeRules`, `elasticloadbalancing:ModifyRule`
 - `ecs:DescribeServices` on `service/default/*`, to know when a deployment ends
+- `lambda:InvokeFunction` on its own ARN only, for the hand-off
 
 ## Deploy
 
@@ -79,7 +88,8 @@ leaving them in place is harmless.
 
 ## Tests
 
-`tests/test_alb_rule_sync.py` drives the handler with fake ELB/ECS clients:
-manual runs, the canary being followed until completion, stopping when the
-deployment disappears or the time budget runs out, and the other two services'
-mappings still being synced.
+`tests/test_alb_rule_sync.py` drives the handler with fake ELB/ECS/Lambda
+clients: manual runs, the canary being followed until completion, stopping when
+the deployment disappears, handing off before the timeout (and the hop cap),
+the percentages in the log, and the other two services' mappings still being
+synced.
