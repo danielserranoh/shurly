@@ -1029,6 +1029,9 @@ records which tools get used, how often, or how they fail.
         echoes the invalid values (the whole request body, CSV rows included, when a field is missing). Now it keeps
         the tool and the status, without the body or the traceback (`ApiErrorLogFilter`, `mcp_server/usage.py`).
         Other exceptions keep their traceback. Production never runs `FASTMCP_LOG_LEVEL=DEBUG`, which logs arguments
+  - [x] Nor in a database error's message, for any request 🔎 R10: SQLAlchemy ends it with the statement's
+        parameters, and the traceback kept for real errors prints it. The engine hides them (`hide_parameters=True`;
+        `tests/test_db_error_messages.py`). PostgreSQL's own detail for a constraint violation still names the value
 - [x] Same JSON format for the HTTP request line (`http.request`, from `RequestIdMiddleware`), with `request_id`;
       uvicorn's access log is off in the image. A generated tool's call into the API carries the MCP request's id
 - [x] Logs Insights queries (calls, errors and latency per tool, daily users, one request end to end) documented
@@ -1372,10 +1375,11 @@ check earlier in the next project.
 - **What:** the usage log (5.6.0) logs argument names only, but fastmcp logs each failed call itself, with a
   traceback. For a generated tool the error carries the API's response body, and a 422 body echoes the invalid
   values: the whole request body, a campaign's CSV rows included, when a field is missing. So argument values
-  could reach CloudWatch → 5.6.0
+  could reach CloudWatch. So could any request's input through a database error, whose message SQLAlchemy ends
+  with the statement's parameters → 5.6.0
 - **How it surfaced:** probing the usage log's test harness: a `create_short_url` call with an invalid URL put the
-  value on stderr
+  value on stderr. Then checking what the traceback kept for real errors prints turned up the SQL parameters
 - **Why it slipped:** "never log argument values" was checked against the lines we write; the test read only our
   JSON lines, not everything the process wrote
 - **Lesson:** test a "never log X" rule against the whole of stderr for a call that carries X, failures included:
-  frameworks log on their own
+  frameworks log on their own, and libraries put data in their exception messages
