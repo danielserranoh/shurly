@@ -13,7 +13,8 @@ Modern URL shortener for B2B campaigns with analytics, built for AWS serverless 
 
 Order agreed in the 2026-09-27 review; confirm each item before starting it.
 
-1. **MCP usage log** (5.6.0): without it the dogfood produces no numbers.
+1. **MCP usage log** (5.6.0): without it the dogfood produces no numbers. Code done; retention and saved queries
+   are an AWS step.
 2. **Team workspace** (3.14): links belong to the team by default. Done before anyone creates links, so
    nothing has to be migrated. Brings in Alembic.
 3. **Frontend hosting** (4.10): S3 + CloudFront; AWS steps run with SSO.
@@ -469,7 +470,7 @@ System creates:
   - [x] Generate UUID per request if not provided
   - [x] Accept and propagate client-supplied `X-Request-Id` header
   - [x] Echo back in response headers
-  - [ ] Include in all log lines for CloudWatch correlation — still pending: Phase 4 shipped without an access-log formatter, so `request.state.request_id` is set but no log line reads it → planned in 5.6.0 (JSON log lines carry `request_id`)
+  - [x] Include in all log lines for CloudWatch correlation → 5.6.0: every `http.request` and `mcp.tool_call` line carries `request_id` (other lines, e.g. warnings and fastmcp's own errors, don't)
 - [x] **SHORT_URL_MODE config (`strict` | `loose`)**
   - [x] In `loose` mode: lowercase generated codes and lowercase custom slugs at insert
   - [x] In `strict` mode: preserve case, treat `Abc` and `abc` as distinct
@@ -1016,19 +1017,21 @@ for this.
 **Prerequisites:** the usage log (5.6.0), the team workspace (3.14), the hosted frontend (4.10), sign-up and
 OAuth (3.13, 5.8) and the install guide (5.9). **Decided (2026-09-27):** the dogfood runs with the frontend too.
 
-#### 5.6.0 Usage log (prerequisite) 🔎 R4
+#### 5.6.0 Usage log (prerequisite) 🔎 R4 — code ✅, AWS setup pending
 In the access log every MCP call is a `POST /mcp/`: the tool name travels inside the JSON-RPC body, so nothing
 records which tools get used, how often, or how they fail.
-- [ ] One JSON line per tool call on stdout (→ CloudWatch Logs), e.g.
-      `{"event": "mcp.tool_call", "tool": "create_short_url", "user_id": "…", "duration_ms": 84, "outcome": "ok", "error_type": null, "request_id": "…", "ts": "…"}`
-- [ ] Hooked as a fastmcp middleware (`on_call_tool`, present in fastmcp 4.0.10), so auto-generated and curated
-      tools are covered alike
-- [ ] Never log argument values: campaign rows carry names, companies and emails (GDPR). Argument names at most
-- [ ] Same JSON format for the HTTP request line, with `request_id` (closes the open item in 3.9.6)
-- [ ] Saved CloudWatch Logs Insights queries: calls per tool, error rate per tool, p50/p95 duration, active users
-      per day; documented in `mcp_server/README.md`
-- [ ] Retention on the log group (e.g. 90 days) so it doesn't grow forever
-- [ ] Tests: one line per call with the expected fields, `outcome=error` on failure, no argument values
+- [x] One JSON line per tool call (`mcp.tool_call`: tool, argument names, user, outcome, error type, HTTP status,
+      duration, request id). On **stderr**, not stdout: under the stdio transport stdout is the JSON-RPC channel
+- [x] Hooked as a fastmcp middleware (`on_call_tool`, `mcp_server/usage.py`), so auto-generated and curated tools
+      are covered alike
+- [x] Never log argument values: campaign rows carry names, companies and emails (GDPR). Argument names only
+- [x] Same JSON format for the HTTP request line (`http.request`, from `RequestIdMiddleware`), with `request_id`;
+      uvicorn's access log is off in the image. A generated tool's call into the API carries the MCP request's id
+- [x] Logs Insights queries (calls, errors and latency per tool, daily users, one request end to end) documented
+      in `mcp_server/README.md` § Usage log
+- [ ] Save those queries in CloudWatch and set retention on the log group (90 days): commands in the same section,
+      to run once with SSO
+- [x] Tests: `tests/test_phase560_usage_log.py` (9)
 
 #### 5.6.1 Rollout and signal capture
 - [ ] Roll out to the Griddo team: 3–5 internal users, with the frontend and the MCP.
