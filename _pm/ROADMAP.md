@@ -758,6 +758,8 @@ may change what. A personal link is possible, but only when someone chooses it o
 - Admins can edit and delete the organization's links. Owners promote members to admin and demote them.
 - An admin can't demote an owner. An owner stops being one by stepping down or handing the role over, and the
   only owner must hand it over first.
+- The rest of 3.14.2 and 3.14.3 (the permissions table, the role-change rule, the first owner from
+  configuration, two owners, personal links of people who leave) was proposed in review and accepted the same day.
 
 **Priority:** 🔴 HIGH — before the dogfood. With no users yet, nothing has to be migrated.
 **Today:** every link, campaign and stat is scoped to its creator. Some 20 queries filter by `created_by`
@@ -782,18 +784,18 @@ own links. Tags are already global.
 | Create links and campaigns (organization or personal) | ✓ | ✓ | ✓ |
 | Edit and delete the ones they created | ✓ | ✓ | ✓ |
 | Edit and delete anyone's organization links and campaigns | | ✓ | ✓ |
-| Remove members from the organization (proposed) | | ✓ | ✓ |
+| Remove members from the organization | | ✓ | ✓ |
 | Promote members to admin, demote admins | | | ✓ |
 | Make other owners, step down, hand the role over | | | ✓ |
 
-- [ ] Rule (proposed): nobody changes the role of someone whose role is equal to or above theirs, and nobody
-      grants a role above their own. So an admin can't demote an owner (decided), nor another admin (proposed:
-      otherwise two admins can strip each other)
+- [ ] Rule: nobody changes the role of someone whose role is equal to or above theirs, and nobody grants a role
+      above their own. So an admin can't demote an owner, nor another admin (otherwise two admins could strip
+      each other)
 - [ ] At least one owner, always: the last owner can't step down, leave, be demoted or be deactivated until
       another owner exists. Checked in one transaction, so two owners demoting each other at once can't leave none
 - [ ] "Hand the role over" = make someone owner and step down, in one action
 - [ ] The first owner comes from configuration (`BOOTSTRAP_OWNER_EMAIL`), not from whoever signs in first
-- [ ] Two owners from day one (proposed): if the only owner leaves Griddo and their Google account is suspended,
+- [ ] Two owners from day one: if the only owner leaves Griddo and their Google account is suspended,
       nobody can manage roles. Break-glass: changing `BOOTSTRAP_OWNER_EMAIL` restores an owner
 - [ ] Every role change writes an `org.role_changed` line to the event log (who, whom, from, to)
 
@@ -806,7 +808,7 @@ own links. Tags are already global.
       role: link CRUD, bulk tags, redirect rules, campaigns, analytics (overview, per link, per campaign, CSV) and
       the curated MCP tools. An API key acts with its user's role
 - [ ] `created_by` stays, so lists can show who created each link
-- [ ] Someone leaves (proposed): their personal links keep redirecting, and an owner can move them to the
+- [ ] Someone leaves: their personal links keep redirecting, and an owner can move them to the
       organization so someone can still manage them
 - [ ] One organization per user at launch (the membership table allows more later). Tags stay global while
       there's a single organization; scope them per organization before a second one
