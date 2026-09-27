@@ -343,6 +343,24 @@ carries the MCP request's id. So one `request_id` links the `POST /mcp/`, the
 `mcp.tool_call` and the API request behind it (which also gets its own
 `http.request` line).
 
+fastmcp also logs each failed call itself, in plain text with a traceback
+(`Error calling tool 'list_urls'`). When a generated tool's API call fails, the
+error carries the API's response body, and a 422 body echoes the invalid values:
+the whole request body, campaign rows included, when a field is missing. So for
+an API error that line keeps the tool and the status, and drops the body and the
+traceback, which would only walk fastmcp's HTTP client:
+
+```
+Error calling tool 'create_short_url': HTTP error 422 (response body not logged)
+```
+
+`ApiErrorLogFilter` (`mcp_server/usage.py`) rewrites it; the MCP client still
+gets the whole error. Any other exception keeps its traceback, including one
+raised inside the API, which reaches the tool as itself.
+
+Never run production with `FASTMCP_LOG_LEVEL=DEBUG`: at that level fastmcp logs
+every call's arguments in full.
+
 ### Queries (CloudWatch Logs Insights)
 
 Calls per tool:
