@@ -36,11 +36,9 @@ jobs:
         uv sync --extra dev --extra mcp
 
     - name: Lint with ruff
-      # Pre-existing lint/format debt across the codebase (35 errors,
-      # 28 files needing reformat at last count). Tracked separately for a
-      # one-shot `ruff check --fix && ruff format` cleanup PR. Until then we
-      # surface warnings without failing CI so deploy gating stays meaningful.
-      continue-on-error: true
+      # Gating. The codebase was brought to zero lint errors and fully
+      # formatted in one cleanup PR (27 Sep 2026); keep it there. Locally:
+      # `uv run ruff check . && uv run ruff format --check .`
       run: |
         uv run ruff check .
         uv run ruff format --check .
