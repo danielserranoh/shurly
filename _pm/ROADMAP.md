@@ -192,7 +192,7 @@ System creates:
   - [x] URLs table with user data
   - [x] Export campaign URLs button (CSV download)
   - [x] Delete campaign functionality
-- [ ] Campaign analytics visualization (deferred to Phase 3.4)
+- [x] Campaign analytics visualization — summary stat cards + clicks-per-day chart on `dashboard/campaign.astro` (Phase 3.11)
 
 ### 3.4 Analytics Dashboard ✅
 - [x] Overview page (aggregate stats)
@@ -443,14 +443,14 @@ System creates:
 - [x] Truncate IPv6 to `/64` at insert time
 - [x] Config flag `ANONYMIZE_REMOTE_ADDR` (default true)
 - [x] Tests verifying no full IPs are persisted (`tests/test_network.py`)
-- [ ] Document GDPR posture in DEPLOYMENT.md (deferred to Phase 4 deployment doc pass)
+- [x] Document GDPR posture in DEPLOYMENT.md — "GDPR posture" section
 
 ### 3.9.6 Architectural Lessons - "Free" Wins ✅
 - [x] **X-Request-Id middleware** — `RequestIdMiddleware` in `main.py`
   - [x] Generate UUID per request if not provided
   - [x] Accept and propagate client-supplied `X-Request-Id` header
   - [x] Echo back in response headers
-  - [ ] Include in all log lines for CloudWatch correlation (defer access-log formatter to Phase 4)
+  - [ ] Include in all log lines for CloudWatch correlation — still pending: Phase 4 shipped without an access-log formatter, so `request.state.request_id` is set but no log line reads it
 - [x] **SHORT_URL_MODE config (`strict` | `loose`)**
   - [x] In `loose` mode: lowercase generated codes and lowercase custom slugs at insert
   - [x] In `strict` mode: preserve case, treat `Abc` and `abc` as distinct
@@ -466,7 +466,7 @@ System creates:
   - [x] Do NOT auto-trust `X-Forwarded-For`
   - [x] `TRUSTED_PROXIES` env var (CIDR list)
   - [x] Only honor `X-Forwarded-For` when source IP matches a trusted proxy
-  - [ ] Document deployment guidance in DEPLOYMENT.md (deferred to Phase 4)
+  - [x] Document deployment guidance in DEPLOYMENT.md — "Trusted-Proxy Configuration" section; prod runs `TRUSTED_PROXIES=["172.31.0.0/16"]`
 - [x] **DISABLE_TRACK_PARAM**
   - [x] Config: query param name (default `nostat`) that suppresses visit logging
   - [x] Tests confirming the redirect still happens but no Visitor row is inserted
