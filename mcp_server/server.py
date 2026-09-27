@@ -122,7 +122,11 @@ def _build_mcp_server(fastapi_app=None) -> FastMCP:
     with auth on.
     """
     from mcp_server.auth import ShurlyTokenVerifier, forward_bearer_auth
-    from mcp_server.usage import UsageLogMiddleware, forward_request_id
+    from mcp_server.usage import (
+        UsageLogMiddleware,
+        forward_request_id,
+        install_api_error_log_filter,
+    )
 
     if fastapi_app is None:
         from main import app as fastapi_app  # local import — see docstring
@@ -148,6 +152,9 @@ def _build_mcp_server(fastapi_app=None) -> FastMCP:
     _register_curated_tools(server)
     # Phase 5.6.0 — one `mcp.tool_call` line per call (mcp_server/usage.py).
     server.add_middleware(UsageLogMiddleware())
+    # fastmcp's own line for a failed API call leaves out the response body,
+    # which can echo the tool's arguments.
+    install_api_error_log_filter()
     return server
 
 

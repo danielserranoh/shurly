@@ -682,7 +682,7 @@ Australia have several. So store `country` *and* `timezone`:
 
 ---
 
-## Phase 3.13: Sign in with Google (Workspace), with an optional password 🔎 R1 · 🔎 R10
+## Phase 3.13: Sign in with Google (Workspace), with an optional password 🔎 R1 · 🔎 R11
 
 **Goal:** people at Griddo get in with their Griddo Google account. An account can also have a password, set by
 its owner once signed in, and both lead to the same account.
@@ -1088,13 +1088,20 @@ records which tools get used, how often, or how they fail.
 - [x] Hooked as a fastmcp middleware (`on_call_tool`, `mcp_server/usage.py`), so auto-generated and curated tools
       are covered alike
 - [x] Never log argument values: campaign rows carry names, companies and emails (GDPR). Argument names only
+  - [x] Nor in fastmcp's own line for a failed call 🔎 R10: for an API error it printed the response body, and a 422
+        echoes the invalid values (the whole request body, CSV rows included, when a field is missing). Now it keeps
+        the tool and the status, without the body or the traceback (`ApiErrorLogFilter`, `mcp_server/usage.py`).
+        Other exceptions keep their traceback. Production never runs `FASTMCP_LOG_LEVEL=DEBUG`, which logs arguments
+  - [x] Nor in a database error's message, for any request 🔎 R10: SQLAlchemy ends it with the statement's
+        parameters, and the traceback kept for real errors prints it. The engine hides them (`hide_parameters=True`;
+        `tests/test_db_error_messages.py`). PostgreSQL's own detail for a constraint violation still names the value
 - [x] Same JSON format for the HTTP request line (`http.request`, from `RequestIdMiddleware`), with `request_id`;
       uvicorn's access log is off in the image. A generated tool's call into the API carries the MCP request's id
 - [x] Logs Insights queries (calls, errors and latency per tool, daily users, one request end to end) documented
       in `mcp_server/README.md` § Usage log
 - [ ] Save those queries in CloudWatch and set retention on the log group (90 days): commands in the same section,
       to run once with SSO
-- [x] Tests: `tests/test_phase560_usage_log.py` (9)
+- [x] Tests: `tests/test_phase560_usage_log.py` (14)
 
 #### 5.6.1 Rollout and signal capture
 - [ ] Roll out to the Griddo team: 3–5 internal users, with the frontend and the MCP.
@@ -1430,7 +1437,20 @@ check earlier in the next project.
 - **Why it slipped:** "document it" was read as developer docs; nobody pictured the people who'd install it
 - **Lesson:** onboarding docs for the real audience are part of a feature's definition of done
 
-### R10 — Sign-up designed before asking which identity provider the company runs · missed · found 2026-09-27
+### R10 — fastmcp's error line logged tool arguments · missed · found 2026-09-27
+- **What:** the usage log (5.6.0) logs argument names only, but fastmcp logs each failed call itself, with a
+  traceback. For a generated tool the error carries the API's response body, and a 422 body echoes the invalid
+  values: the whole request body, a campaign's CSV rows included, when a field is missing. So argument values
+  could reach CloudWatch. So could any request's input through a database error, whose message SQLAlchemy ends
+  with the statement's parameters → 5.6.0
+- **How it surfaced:** probing the usage log's test harness: a `create_short_url` call with an invalid URL put the
+  value on stderr. Then checking what the traceback kept for real errors prints turned up the SQL parameters
+- **Why it slipped:** "never log argument values" was checked against the lines we write; the test read only our
+  JSON lines, not everything the process wrote
+- **Lesson:** test a "never log X" rule against the whole of stderr for a call that carries X, failures included:
+  frameworks log on their own, and libraries put data in their exception messages
+
+### R11 — Sign-up designed before asking which identity provider the company runs · missed · found 2026-09-27
 - **What:** 3.13 was first planned as email confirmation over SES, with our own password reset. Griddo runs Google
   Workspace, and signing in with it covers the domain check, email verification, MFA and resets → 3.13
   rewritten; the email flow moved to 3.15, for external users

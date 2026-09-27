@@ -26,6 +26,33 @@ implementation lifecycle and is independent of the URL version segment.
 
 ## [Unreleased]
 
+### Security — database errors leave out the SQL parameters
+- **A failed database statement no longer writes the user's input to the log.**
+  SQLAlchemy ends a database error's message with the statement's parameters,
+  and a traceback prints that message: uvicorn's for an API request, fastmcp's
+  for a tool call. So when a statement failed (a lost connection, a timeout, a
+  constraint), the log got what the user sent: for `POST /api/v1/auth/register`,
+  the email and the password's bcrypt hash; for a campaign, its rows. The engine
+  now hides them (`hide_parameters=True`, which covers `echo`'s SQL logging too);
+  the statement stays, so the error still says what failed.
+- PostgreSQL's own detail for a constraint violation is part of the driver's
+  message, so it still names the value: `Key (email)=(…) already exists`, or the
+  whole row for a `NOT NULL` violation (`Failing row contains (…)`).
+
+### Security — MCP tool arguments kept out of fastmcp's error log
+- **A failed API call no longer writes the tool's arguments to the log.** fastmcp
+  logs each failed tool call with its traceback, and when a generated tool's call
+  into the API failed, the error carried the API's response body. A `422` body
+  echoes each invalid field's value, or the whole request body when a field is
+  missing, so a `create_campaign` CSV (names, companies, emails) could reach
+  CloudWatch. For an API error the line now keeps the tool and the status, without
+  the body or the traceback: `Error calling tool 'create_short_url': HTTP error 422
+  (response body not logged)`. The MCP client still gets the whole error, and any
+  other exception, including one raised inside the API, still logs its traceback
+  (`ApiErrorLogFilter` in `mcp_server/usage.py`).
+- **Never run production with `FASTMCP_LOG_LEVEL=DEBUG`**: at that level fastmcp
+  logs every tool call's arguments in full. The default, `INFO`, doesn't.
+
 ### Added — usage log for MCP tool calls and HTTP requests (Phase 5.6.0)
 - **One JSON line per MCP tool call** (`mcp.tool_call`): tool, argument names,
   user id, outcome, error type, HTTP status of a failed API call, duration and
