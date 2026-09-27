@@ -9,6 +9,22 @@ Modern URL shortener for B2B campaigns with analytics, built for AWS serverless 
 
 ---
 
+## Next up (proposed 2026-09-27)
+
+Order proposed in the 2026-09-27 review; confirm each item before starting it.
+
+1. **Close sign-up in production** (3.13.1): a stopgap of a few hours for a hole open since the first deploy.
+2. **MCP usage log** (5.6.0): without it the dogfood produces no numbers.
+3. **Frontend hosting** (4.10): needs the hosting decision and AWS steps run with SSO.
+4. **Sign-up for @griddo.io, confirmed by email** (3.13.2–3.13.6): needs SES, and a hosted page for the link (4.10).
+5. **Internal dogfood** (5.6).
+6. **Replace Shlink on `go.griddo.io`** (Phase 8): after the dogfood and error alerting (6.4).
+
+Tasks marked 🔎 were not in the original plan. Each one points to an entry in the
+[retro log](#retro-log--work-we-did-not-see-coming) at the end of this file.
+
+---
+
 ## Use Cases
 
 ### 1. Standard URL Shortening
@@ -450,11 +466,12 @@ System creates:
   - [x] Generate UUID per request if not provided
   - [x] Accept and propagate client-supplied `X-Request-Id` header
   - [x] Echo back in response headers
-  - [ ] Include in all log lines for CloudWatch correlation — still pending: Phase 4 shipped without an access-log formatter, so `request.state.request_id` is set but no log line reads it
+  - [ ] Include in all log lines for CloudWatch correlation — still pending: Phase 4 shipped without an access-log formatter, so `request.state.request_id` is set but no log line reads it → planned in 5.6.0 (JSON log lines carry `request_id`)
 - [x] **SHORT_URL_MODE config (`strict` | `loose`)**
   - [x] In `loose` mode: lowercase generated codes and lowercase custom slugs at insert
   - [x] In `strict` mode: preserve case, treat `Abc` and `abc` as distinct
-  - [x] Default to `loose` (Shlink's default)
+  - [x] Default to `loose` (~~Shlink's default~~: Shlink defaults to `strict`, and its `loose` also matches
+        case-insensitively, which Shurly's doesn't 🔎 R6)
 - [x] **Short-code collision retry**
   - [x] Verified existing 10-attempt retry loop in `create_short_url`
   - [x] Explicit retry-on-conflict test (`TestShortCodeCollisionRetry`)
@@ -659,7 +676,76 @@ Australia have several. So store `country` *and* `timezone`:
 
 ---
 
-## Phase 4: AWS Deployment (ECS Express on griddo-main) ✅
+## Phase 3.13: Sign-up limited to @griddo.io, confirmed by email 🔎 R1
+
+**Goal:** only people with a `@griddo.io` mailbox can create an account, and they prove it by opening a link
+sent to that mailbox.
+**Priority:** 🔴 HIGH — `POST /api/v1/auth/register` has accepted any email since the first deploy
+(2026-04-27): no domain check, no confirmation, no rate limit. Anyone who finds `s.griddo.io` can create
+links on a Griddo domain, which is how URL shorteners end up on phishing blocklists.
+**Decided (2026-09-27):** `@griddo.io` only, confirmed by a link. The domain check depends on the
+confirmation: without it anyone can type `x@griddo.io`.
+
+### 3.13.1 Stopgap: close sign-up in production now
+- [ ] `REGISTRATION_ENABLED` setting, `false` in the task env → `POST /auth/register` answers 403
+- [ ] Audit the accounts created while sign-up was open: users outside `@griddo.io`, their links,
+      campaigns and API keys → deactivate (`is_active=false`) and review what they created
+- [ ] The register page says sign-up is closed while the flag is off
+
+### 3.13.2 Flow: email first, password on confirmation
+The password is chosen on the confirmation page, not at sign-up. Corporate mail security scanners often
+open the links in incoming mail by themselves: if sign-up took a password and the link activated the
+account, an attacker could register `victim@griddo.io` with a password of their choosing and the victim's
+scanner would activate it.
+1. `POST /api/v1/auth/register {email}` → 422 outside the allowlist; otherwise the same 202 whether or not
+   the account exists (no account enumeration)
+2. Email with a single-use link to the frontend: `/register/confirm/?token=…`
+3. That page asks for the password → `POST /api/v1/auth/register/confirm {token, password}` creates the
+   user. Opening the link changes nothing, so a scanner opening it is harmless
+- [ ] `REGISTRATION_ALLOWED_DOMAINS=["griddo.io"]`: exact domain after lowercasing
+      (`x@griddo.io.evil.com` and `x@evilgriddo.io` are rejected)
+- [ ] Token: ≥32 random bytes, stored as a SHA-256 hash, single use, 24 h expiry, superseded by a newer one
+- [ ] New table (e.g. `email_tokens`: `token_hash`, `email`, `purpose`, `expires_at`, `used_at`) and **no new
+      columns on `users`**: `create_all()` never adds columns to an existing table (see 3.12.1). The user
+      row only exists once confirmed, so `users` needs no "unverified" state and current users stay as they are
+- [ ] **Password reset** on the same machinery (`purpose=reset`); there is none today 🔎 R2
+- [ ] Rate limit sign-up, resend and reset per email and per IP: each call sends an email, so without a
+      limit it becomes a mail bomb and burns the SES quota (first slice of the rate limiting in 6.3)
+
+### 3.13.3 Email sending: Amazon SES (AWS steps run with SSO)
+- [ ] Verify the sender domain in SES (`griddo-main`, eu-south-2). The DKIM CNAMEs go in the `griddo.io`
+      zone in **`griddo-production`**, the same cross-account step as the ACM validation in 4.4
+- [ ] Agree the sender with whoever runs Griddo's mail, so the SPF/DMARC of `griddo.io` stay valid. Option:
+      a subdomain (e.g. `no-reply@notify.griddo.io`) keeps app mail apart from corporate mail
+- [ ] Stay in the SES sandbox: it only delivers to verified identities, and a verified domain covers every
+      address on it, so verifying `griddo.io` (also when sending from a subdomain) reaches any `@griddo.io`
+      (200 emails/day, 1/s). Production access only if sign-up ever opens to other domains
+- [ ] ECS **task role** for `shurly-api` with `ses:SendEmail` on that identity: `deploy_ecs.sh` sets no task
+      role today, so the app has no AWS permissions of its own. No SMTP password to store
+- [ ] Settings: `EMAIL_BACKEND` (`ses` | `console`), `EMAIL_FROM`, `FRONTEND_URL` (to build the link)
+
+### 3.13.4 Backend
+- [ ] `server/utils/email.py` with a `console` backend for local dev and tests (tests never send mail)
+- [ ] Plain-text + HTML templates with Jinja2 (already a dependency); `boto3` for SES
+- [ ] Endpoints and schemas from 3.13.2, resend included
+- [ ] MCP: `register` and `login` are auto-generated tools today. Either they follow the new flow or they
+      leave the surface (an MCP caller is already authenticated); `tests/test_phase52_mcp_tools.py` pins it
+
+### 3.13.5 Frontend
+- [ ] Register page: email only, then a "check your inbox" state
+- [ ] `/register/confirm/?token=` and reset pages: set the password, then signed in
+- [ ] "Forgot your password?" on the login page
+- [ ] Needs the frontend hosted (4.10). If 4.10 slips: a server-rendered confirm page with Jinja2, as
+      `preview.html` already does
+
+### 3.13.6 Verification
+- [ ] Tests (TDD): allowlist edge cases, token single use / expiry / hashed at rest, identical response for
+      new and existing emails, confirm creates the user, reset, rate limits, `REGISTRATION_ENABLED=false`
+- [ ] End-to-end in production with a real `@griddo.io` mailbox
+
+---
+
+## Phase 4: AWS Deployment (ECS Express on griddo-main) — backend ✅ · frontend pending (4.10)
 
 **Status:** live at `https://s.griddo.io` since **2026-04-27** (first deploy, PRs #7–#11). `main` is
 production: every merge auto-deploys through `deploy-backend.yml`. The lessons from the rollout, the
@@ -684,7 +770,7 @@ written, with notes where reality differed.
 
 **Hostnames**:
 - `s.griddo.io` — Shurly API + redirect path (short, optimized for printing/QR — short URLs benefit from short hosts).
-- `shurl.griddo.io` (or `shurly.griddo.io`) — reserved for the future frontend (Phase 7).
+- `shurl.griddo.io` (or `shurly.griddo.io`) — reserved for the frontend (4.10).
 
 **Existing reusable infrastructure** (created during the Shlink deploy):
 - VPC `vpc-01b31e19aa032bcff` (default)
@@ -776,7 +862,7 @@ End-to-end run with the user driving SSO locally:
 - [x] `./scripts/setup_custom_domain.sh` (cert, rule, DNS)
 - [x] Update Lambda `RULE_SYNC_MAP`
 - [ ] Smoke checklist — only `/api/v1/health` (checked by CI on every deploy) and the forced redeploy are on record; re-run the rest against production and tick them here:
-  - `register` → `login` → returns JWT
+  - `register` → `login` → returns JWT (once 3.13.1 closes sign-up, log in with an existing account)
   - `POST /api/v1/urls` creates a short URL bound to `s.griddo.io`
   - `GET /<code>` returns 302 to destination
   - `GET /<code>/track` returns 43-byte GIF
@@ -785,18 +871,52 @@ End-to-end run with the user driving SSO locally:
   - Force `update-express-gateway-service --force-new-deployment` → verify `s.griddo.io` stays up
 - [x] Capture findings → the 13 lessons in `docs/AWS_ECS_DEPLOYMENT.md`, fixed in the `fix(scripts)` / `hotfix` commits of PRs #7–#10
 
+### 4.10 Frontend hosting 🔎 R3
+The Lambda-era plan hosted the frontend on S3 + CloudFront ("Phase 4.6"). The ECS rewrite of this phase
+(2026-04-26) dropped both and sent the frontend to "Phase 7", which is Documentation & Handoff. The frontend
+has been finished since 3.11 with nowhere to run: `deploy-frontend.yml` is manual-only and points at
+buckets that no doc says were created.
+
+**Proposed (decision pending): one private S3 bucket behind CloudFront**, for the public pages (landing,
+pricing, sign-in) and the dashboard alike. The build is static on purpose: 3.11 dropped the Node adapter
+for this.
+- *One hosting is enough.* The dashboard's HTML/JS holds no data and no secrets; every record comes from the
+  API, behind a JWT or an API key. The privacy of the dashboard lives in the API.
+- *Cheapest.* The traffic fits CloudFront's always-free tier (1 TB and 10M requests a month) and S3 storage
+  costs cents. A container means a Fargate task running around the clock (a second Express service, as
+  shlink-web does), or frontend releases tied to backend deploys (served from the API container, where the
+  root path belongs to short codes).
+- *Safest.* No server to patch; the bucket stays private behind Origin Access Control (OAC); HSTS and CSP
+  headers come from a CloudFront response-headers policy. CSP matters here: the JWT lives in `localStorage` (3.1).
+
+- [ ] Choose the hostname: `shurl.griddo.io` (reserved so far), `shurly.griddo.io`, or `links.griddo.io` once
+      Shlink's web client retires (Phase 8), the address the team already uses to shorten links
+- [ ] S3 bucket (Block Public Access on) + CloudFront distribution with OAC
+- [ ] ACM certificate in **us-east-1**: CloudFront only takes certificates from N. Virginia (the ALB's is in
+      eu-south-2). DNS validation in `griddo-production`
+- [ ] CloudFront Function rewriting `/dashboard/` → `/dashboard/index.html`: a private bucket is reached through
+      the S3 REST endpoint, which doesn't resolve directory indexes. The comment in `astro.config.mjs` saying no
+      CDN rewrites are needed only holds for the public website endpoint
+- [ ] Error response: 404 → `/404.html`
+- [ ] Route 53 alias record, from `griddo-production`
+- [ ] Rewrite `deploy-frontend.yml`: OIDC role as in 4.8 (it still uses access keys), the real bucket,
+      `PUBLIC_API_URL=https://s.griddo.io`, `PUBLIC_SITE_URL`; re-enable `push` on `frontend/**`. Its header
+      still points at the Lambda-era "Phase 4.5/4.6"
+- [ ] `CORS_ORIGINS` in the task matches the chosen hostname (`deploy_ecs.sh` defaults to `https://shurl.griddo.io`)
+- [ ] Update the hostnames table in `DEPLOYMENT.md` (it still says "Future frontend | 7")
+
 ---
 
 ## Phase 5: MCP Server over Streamable HTTP
 
-**Goal:** Expose the existing API as an MCP server so internal users (and Claude Code / Claude Desktop) can drive Shurly without a frontend. Pilot for the broader "MCP-as-product" thesis: capture how people actually use the service via natural language, and use those signals to prioritize Phase 7 (frontend) features.
+**Goal:** Expose the existing API as an MCP server so internal users (and Claude Code / Claude Desktop) can drive Shurly without a frontend. Pilot for the broader "MCP-as-product" thesis: capture how people actually use the service via natural language, and use those signals to prioritize frontend features.
 **Duration:** ~1.5–2 weeks
-**Priority:** 🟡 MEDIUM — Runs after Phase 4 (deploy) and before Phase 7 (frontend). Backend-only stack already has 3.9 + 3.10 hardening, so this exposes a stable surface.
+**Priority:** 🟡 MEDIUM — Runs after Phase 4 (deploy). It was planned to run before the frontend existed; 3.11 built the frontend first, so the dogfood now feeds the frontend backlog. Backend-only stack already has 3.9 + 3.10 hardening, so this exposes a stable surface.
 **Reference:** [Model Context Protocol spec](https://modelcontextprotocol.io/), Anthropic Python SDK (`mcp`), FastMCP (https://github.com/jlowin/fastmcp). Decision rationale recorded in conversation thread (PR review).
 
 **Sequencing:**
 - Phase 4 (deploy) must complete first — MCP runs against the same backend; we don't want to debug Lambda cold starts and MCP transports simultaneously.
-- Internal dogfood window of ~2–4 weeks before Phase 7 starts. Findings feed the frontend prioritization.
+- Internal dogfood window of ~2–4 weeks. Findings feed the frontend backlog.
 
 ### 5.1 Foundation & framework choice ✅
 - [x] Decision recorded: start with **`fastmcp` standalone** for fast prototyping (auto-generates tools from FastAPI), reserve the option to migrate to `mcp.server.fastmcp` (official SDK) if upstream divergence becomes a real risk.
@@ -850,10 +970,27 @@ End-to-end run with the user driving SSO locally:
 - [x] **Reserved short codes**: custom codes `mcp`, `docs`, `redoc` get a suffixed code, as for a taken one (PR #35).
 
 ### 5.6 Internal dogfood + signal capture
+**Prerequisites:** sign-up limited to @griddo.io (3.13) and the usage log (5.6.0).
+
+#### 5.6.0 Usage log (prerequisite) 🔎 R4
+In the access log every MCP call is a `POST /mcp/`: the tool name travels inside the JSON-RPC body, so nothing
+records which tools get used, how often, or how they fail.
+- [ ] One JSON line per tool call on stdout (→ CloudWatch Logs), e.g.
+      `{"event": "mcp.tool_call", "tool": "create_short_url", "user_id": "…", "duration_ms": 84, "outcome": "ok", "error_type": null, "request_id": "…", "ts": "…"}`
+- [ ] Hooked as a fastmcp middleware (`on_call_tool`, present in fastmcp 4.0.10), so auto-generated and curated
+      tools are covered alike
+- [ ] Never log argument values: campaign rows carry names, companies and emails (GDPR). Argument names at most
+- [ ] Same JSON format for the HTTP request line, with `request_id` (closes the open item in 3.9.6)
+- [ ] Saved CloudWatch Logs Insights queries: calls per tool, error rate per tool, p50/p95 duration, active users
+      per day; documented in `mcp_server/README.md`
+- [ ] Retention on the log group (e.g. 90 days) so it doesn't grow forever
+- [ ] Tests: one line per call with the expected fields, `outcome=error` on failure, no argument values
+
+#### 5.6.1 Rollout and signal capture
 - [ ] Roll out to the Griddo team: 3–5 internal users with API keys.
 - [ ] Capture for 2–4 weeks: tool invocation counts (which tools get used vs ignored), tool error rates, average call duration.
 - [ ] Capture qualitatively: which workflows feel smooth in chat, which feel awkward (e.g. CSV import, charts).
-- [ ] Output: a "frontend feature priority" list backed by real signal, fed into Phase 7.
+- [ ] Output: a "frontend feature priority" list backed by real signal, fed into the frontend backlog.
 
 ### 5.7 Verification
 - [ ] All auto-generated + curated tools have at least one happy-path test. → curated tools: yes (`tests/test_phase53_curated_tools.py`); auto-generated: see the open item in 5.2
@@ -894,7 +1031,7 @@ End-to-end run with the user driving SSO locally:
 - [ ] ~~Lambda cold start optimization~~ — not applicable on ECS; containers have no cold start
 
 ### 6.3 Security Hardening
-- [ ] Rate limiting — no API Gateway on this stack, so it needs app-level limiting or AWS WAF on the shared ALB
+- [ ] Rate limiting — no API Gateway on this stack, so it needs app-level limiting or AWS WAF on the shared ALB (first slice: sign-up, resend and reset in 3.13.2)
 - [ ] Input validation review
 - [ ] SQL injection prevention check
 - [ ] XSS prevention in frontend (dynamic HTML goes through the escaping `html` tag from `@/utils/html`; audit the remaining raw `innerHTML` uses)
@@ -905,7 +1042,7 @@ End-to-end run with the user driving SSO locally:
 
 ### 6.4 Monitoring & Logging
 - [x] CloudWatch Logs setup → `/aws/ecs/default/shurly-api-5fdb`; `X-Request-Id` correlates requests
-- [ ] Error alerting (SNS/email)
+- [ ] Error alerting (SNS/email) — required before the Shlink cutover (8.5)
 - [ ] Key metrics dashboard
   - [ ] ECS task count / CPU / memory
   - [ ] ALB 5xx and target health
@@ -925,12 +1062,81 @@ End-to-end run with the user driving SSO locally:
 - [ ] Environment variables reference
 
 ### 7.2 Operational Runbook
-- [ ] How to add new users
+- [ ] How to add new users → self-service sign-up for `@griddo.io` once 3.13 ships
 - [x] How to investigate issues → troubleshooting catalog in `docs/AWS_ECS_DEPLOYMENT.md`
 - [x] How to scale if needed → "Scale up/down" in the same runbook
 - [ ] Backup and recovery procedures
 - [ ] Cost monitoring guide
 
+---
+
+## Phase 8: Replace Shlink on go.griddo.io 🔎 R5
+
+**Goal:** Shurly takes over `go.griddo.io` and the Shlink stack is retired (shlink-api, shlink-web on
+`links.griddo.io`, and its RDS). Every link already in circulation keeps working.
+**Priority:** 🟡 MEDIUM — after the dogfood (5.6) and error alerting (6.4): from the cutover on, links printed
+and emailed over the years depend on Shurly.
+
+**Can both coexist?** They already do: the shared ALB routes by hostname (`go.griddo.io` → Shlink,
+`s.griddo.io` → Shurly). Each hostname points at one service at a time, so the cutover moves `go.griddo.io`
+with one ALB change, and rolling back restores it. Shurly resolves links by (Host → domain, code) since
+3.10.1, so one instance can serve both hostnames.
+
+### 8.1 Decisions first
+- [ ] Hostname for new links after the cutover: keep `s.griddo.io`, or make `go.griddo.io` the default (the one
+      people know). Links on both keep resolving either way
+- [ ] Shared or personal links 🔎 R7: Shlink is one shared pool; in Shurly every query filters by `created_by`,
+      so each person sees only their own links. Replacing a team tool needs a shared owner account or a team model
+- [ ] Owner of the migrated links (follows from the previous point)
+- [ ] Visit history: import it as `Visitor` rows (no schema change, but Shlink exposes no IPs, so unique-visitor
+      counts won't cover it) or archive Shlink's export and start counting at the cutover
+
+### 8.2 Case sensitivity 🔎 R6
+Shlink defaults to `SHORT_URL_MODE=strict`: case-sensitive lookups and mixed-case generated codes. Shurly's
+`loose` lowercases codes when they are created but matches the path exactly; Shlink's `loose` also matches
+case-insensitively.
+- [ ] Check which mode `go.griddo.io` runs
+- [ ] `strict` → import codes verbatim (skip `normalize_short_code`); Shurly's exact-match resolver already
+      behaves like Shlink's strict mode. Pin it with a test so lookups never get lowercased by accident
+- [ ] `loose` → case-insensitive lookup on that domain before the cutover
+
+### 8.3 Finish multi-domain (3.10.1 shipped the model only)
+- [ ] `Domain` row for `go.griddo.io`
+- [ ] `build_short_url()` uses the link's own domain; today it always builds on the default one, so a migrated
+      link would be shown as `s.griddo.io/<code>`
+- [ ] Choosing the domain when creating a link (API, MCP, UI): only if 8.1 puts new links on `go.griddo.io`
+
+### 8.4 Export → clean → import
+Clean in the export, not in Shlink: Shlink stays intact as the rollback, every decision is written down, and
+the import can be re-run.
+- [ ] Export script over Shlink's REST API (`/rest/v3/short-urls`, `…/redirect-rules`, `…/visits`) with an API
+      key → raw JSON snapshot, archived untouched
+- [ ] Review sheet (CSV), one row per link: code, domain, destination, title, tags, created, visits, last visit,
+      expired/capped, destination HTTP status, duplicate-of, and a `decision` column: `keep`, `archive` or `drop`
+- [ ] Default to `keep`: a kept link costs a row; a dropped one that turns out to be on a poster, a QR code or a
+      PDF breaks for good. `archive` = migrate with a `legacy` tag the dashboard can hide; `drop` only for tests
+      and duplicates
+- [ ] Field mapping: long URL, title, tags, valid since/until, max visits, crawlable, `forwardQuery` →
+      `forward_parameters`, redirect rules. Conditions Shurly lacks (e.g. IP or geolocation) go in the report;
+      nothing is dropped silently
+- [ ] Import (idempotent, `--dry-run` first): exact code, original domain and creation date; fails on a
+      conflict instead of suffixing like the custom-code path does. It writes to the private RDS, so it runs
+      as an admin-only endpoint or through ECS Exec (documented in `DEPLOYMENT.md`; it needs a task role with
+      SSM permissions, see 3.13.3)
+
+### 8.5 Cutover
+- [ ] Freeze link creation in Shlink; final delta export + import
+- [ ] ALB: add `go.griddo.io` to the host condition of rule 12 (Shurly), then delete rule 10 (Shlink). Rollback:
+      recreate rule 10. Update `RULE_SYNC_MAP` in `infra/ecs-alb-rule-sync/`. The `go.griddo.io` certificate is
+      already on the listener
+- [ ] Smoke on `go.griddo.io` with a sample of migrated codes, mixed case included
+- [ ] Watch orphan visits on `go.griddo.io` for 2–4 weeks: hits on dropped codes show what was still in use →
+      re-import them from the raw export
+
+### 8.6 Decommission
+- [ ] Shlink stopped but restorable during the rollback window; final RDS snapshot
+- [ ] Delete shlink-api and shlink-web, ALB rules 10/11, their `RULE_SYNC_MAP` entries and Shlink's RDS
+- [ ] Point `links.griddo.io` at the Shurly frontend, if 4.10 chooses it
 
 ---
 
@@ -993,3 +1199,64 @@ To maximize velocity, we'll use specialized agents:
 - Privacy-friendly (no PII in URLs)
 - Flexible (any CSV columns)
 - Server-side parameter injection on redirect
+
+---
+
+## Retro log — work we did not see coming
+
+Every task that joined the plan late, or turned out to be missing, gets an entry here and a 🔎 R<n> marker
+where the task lives. Kinds: **missed** (should have been planned), **new scope** (decided later), **wrong
+record** (the docs said something the code or the source didn't). This log feeds the final retro: what to
+check earlier in the next project.
+
+### R1 — Sign-up open to anyone in production · missed · found 2026-09-27
+- **What:** `POST /api/v1/auth/register` took any email, unconfirmed and unthrottled, from the first deploy
+  (2026-04-27) → 3.13
+- **How it surfaced:** reviewing the pending work before the dogfood
+- **Why it slipped:** Phase 1.3 built open sign-up as the default, and the pre-launch hardening (3.9) covered
+  the redirect path but never asked who may sign up
+- **Lesson:** before going public, list every unauthenticated endpoint and decide who may call it. Who can
+  sign up is a product decision to make explicitly
+
+### R2 — No password reset · missed · found 2026-09-27
+- **What:** a user who forgets the password has no way back → 3.13.2
+- **How it surfaced:** designing the confirmation email for R1
+- **Why it slipped:** with no email sending in the stack, every flow that needs a mailbox stayed invisible
+- **Lesson:** settle "can the app send email?" early; confirmation, reset and notifications all depend on it
+
+### R3 — Frontend hosting fell out of the plan · missed · found 2026-09-27
+- **What:** the ECS rewrite of Phase 4 (2026-04-26, `eb0efd6`) dropped the S3 + CloudFront items and pointed
+  the frontend at "Phase 7", which is Documentation. The frontend was finished (3.11) with nowhere to run → 4.10
+- **How it surfaced:** asking why the redesign had no public URL
+- **Why it slipped:** the pivot rewrote the phase around the backend, and nobody compared the deliverables of
+  the old plan with the new one
+- **Lesson:** after a pivot, diff the deliverables of the old plan against the new one: each one gets a home or
+  an explicit "dropped"
+
+### R4 — The dogfood had nothing to measure with · missed · found 2026-09-27
+- **What:** 5.6 asks for per-tool counts, errors and durations, and nothing logs them → 5.6.0
+- **How it surfaced:** checking what 5.6 needs before starting it
+- **Why it slipped:** the goal named the measurement but not the task that produces the data
+- **Lesson:** every "measure X" goal gets its instrumentation task, done before the measuring window opens
+
+### R5 — Replace Shlink · new scope · decided 2026-09-27
+- **What:** Shurly reused Shlink's infrastructure, but the plan never said whether it would replace it.
+  Decided: it will, migrating its links → Phase 8
+- **Lesson:** when a new system overlaps an existing one, write down its fate on day one (coexist, replace or
+  absorb): it shapes the data model (R7) and the migration
+
+### R6 — Shlink's defaults recorded wrong · wrong record · found 2026-09-27
+- **What:** 3.9.6 says `loose` is Shlink's default; it's `strict`. And Shurly's `loose` only lowercases codes
+  on create, while Shlink's also matches case-insensitively → 8.2
+- **How it surfaced:** reading Shlink's docs to plan the migration
+- **Why it slipped:** the setting was borrowed by name, without checking its default or behaviour at the source
+- **Lesson:** when a design copies a reference system, cite the source for each default and behaviour it copies
+
+### R7 — Links belong to a person; Shlink's belong to the team · missed · found 2026-09-27
+- **What:** every Shurly query filters by `created_by`; replacing a shared Shlink needs shared links or a team
+  model → 8.1
+- **How it surfaced:** deciding who would own the migrated links
+- **Why it slipped:** the use cases at the top of this file are one person's flows; a team sharing links never
+  was one
+- **Lesson:** in B2B tools, decide early whether data belongs to the person or to the team: cheap on day one,
+  a migration later
