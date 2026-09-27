@@ -1,4 +1,5 @@
 import os
+import time
 import uuid
 from contextlib import asynccontextmanager
 
@@ -11,6 +12,7 @@ from server.app import api_router
 from server.app.urls import redirect_router
 from server.core import get_db
 from server.core.config import settings
+from server.utils.event_log import log_event
 
 
 class RequestIdMiddleware(BaseHTTPMiddleware):
@@ -19,13 +21,31 @@ class RequestIdMiddleware(BaseHTTPMiddleware):
 
     Generate a UUID per request unless the client supplied one; echo back in the
     response header; stash on `request.state.request_id` so handlers/log lines can
-    correlate (CloudWatch picks up the value once we add the access log formatter).
+    correlate.
+
+    Phase 5.6.0 — also writes each request's `http.request` line of the event log,
+    which replaces uvicorn's access log (turned off in the image). The path goes
+    without its query string, which can carry tokens. `duration_ms` runs until the
+    response headers are ready, so a streamed body isn't counted.
     """
 
     async def dispatch(self, request: Request, call_next):
         rid = request.headers.get("x-request-id") or uuid.uuid4().hex
         request.state.request_id = rid
-        response = await call_next(request)
+        started = time.perf_counter()
+        status = 500  # what the client gets if the app raises
+        try:
+            response = await call_next(request)
+            status = response.status_code
+        finally:
+            log_event(
+                "http.request",
+                request_id=rid,
+                method=request.method,
+                path=request.url.path,
+                status=status,
+                duration_ms=round((time.perf_counter() - started) * 1000, 1),
+            )
         response.headers["x-request-id"] = rid
         return response
 

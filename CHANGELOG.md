@@ -26,6 +26,23 @@ implementation lifecycle and is independent of the URL version segment.
 
 ## [Unreleased]
 
+### Added — usage log for MCP tool calls and HTTP requests (Phase 5.6.0)
+- **One JSON line per MCP tool call** (`mcp.tool_call`): tool, argument names,
+  user id, outcome, error type, HTTP status of a failed API call, duration and
+  request id. In the access log every MCP call was a `POST /mcp/`, so nothing
+  recorded which tools were used or how they failed; the dogfood (5.6) needs
+  those numbers. Argument values are never logged: campaign rows carry personal
+  data. Written by a fastmcp middleware (`mcp_server/usage.py`).
+- **One JSON line per HTTP request** (`http.request`): method, path without the
+  query string, status, duration and request id. It replaces uvicorn's access
+  log, now off in the image (`--no-access-log`), and closes the 3.9.6 item "request
+  id in log lines".
+- **A generated tool's call into the API carries the MCP request's id**, so one id
+  links the MCP request, the tool call and the API call behind it.
+- Lines go to stderr, since under the stdio transport stdout is the JSON-RPC
+  channel. The Logs Insights queries (calls, errors and latency per tool, daily
+  users) and the retention setup are in `mcp_server/README.md` § Usage log.
+
 ### Fixed — reserved and colliding custom codes
 - **Custom codes the app serves itself are treated as taken.** `POST
   /api/v1/urls/custom` accepted `mcp`, `docs` and `redoc`, but `/mcp` redirects
