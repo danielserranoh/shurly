@@ -16,7 +16,8 @@ Order agreed in the 2026-09-27 review; confirm each item before starting it.
 1. **MCP usage log** (5.6.0): without it the dogfood produces no numbers. Code done; retention and saved queries
    are an AWS step.
 2. **Organization and roles** (3.14): links belong to the organization by default; owner, admin and member.
-   Done before anyone creates links, so nothing has to be migrated. Brings in Alembic.
+   Done before anyone creates links, so nothing has to be migrated. Brings in Alembic. API and MCP done; the
+   frontend (Settings → Organization, the personal toggle, who created each link) is left.
 3. **Frontend hosting** (4.10): S3 + CloudFront; AWS steps run with SSO.
 4. **Identity**: sign in with Google Workspace, for the web (3.13) and the MCP (5.8). One Google project covers
    both.
@@ -774,7 +775,9 @@ own links. Tags are already global.
       (`server/core/migrations.py`); production gets stamped at the baseline. Tested on PostgreSQL in CI
 - [x] `organizations` (id, name, google_domain, created_at) and `organization_members` (organization_id, user_id,
       role: `owner` | `admin` | `member`, joined_at)
-- [ ] `urls.organization_id` and `campaigns.organization_id`, nullable: set = organization link, NULL = personal
+- [x] `urls.organization_id` and `campaigns.organization_id`, nullable: set = organization link, NULL = personal.
+      Migration `0003` gives the organization every existing link and campaign, and creates the organization when
+      the app hasn't yet 🔎 R12
 - [x] Update "Adding a New Model" in `CLAUDE.md` with the migration step
 
 ### 3.14.2 Roles
@@ -803,22 +806,25 @@ own links. Tags are already global.
 - [ ] One organization at launch, "Griddo", with `google_domain = griddo.io`: whoever signs in with a Griddo
       Google account joins as a member (3.13)
 - [ ] New links and campaigns belong to the organization unless the request asks for `visibility: "personal"`:
-      API field, MCP tool argument, and a UI toggle that starts off
-- [ ] Every read scoped to "my organization's links + my personal links", and every write checked against the
+      API field, MCP tool argument, and a UI toggle that starts off. API and MCP done; the toggle is in the frontend
+      work, with Settings → Organization
+- [x] Every read scoped to "my organization's links + my personal links", and every write checked against the
       role: link CRUD, bulk tags, redirect rules, campaigns, analytics (overview, per link, per campaign, CSV) and
-      the curated MCP tools. An API key acts with its user's role
-- [ ] `created_by` stays, so lists can show who created each link
-- [ ] Someone leaves: their personal links keep redirecting, and an owner can move them to the
-      organization so someone can still manage them
-- [ ] One organization per user at launch (the membership table allows more later). Tags stay global while
+      the curated MCP tools. An API key acts with its user's role. `server/utils/access.py`: a link you can't see
+      is a 404, one you can see but not change is a 403
+- [x] `created_by` stays, so lists can show who created each link (`created_by_email` in the responses)
+- [x] Someone leaves: their personal links keep redirecting, and an owner can move them to the
+      organization so someone can still manage them (`POST /api/v1/organization/adopt-personal-links`)
+- [x] One organization per user at launch (the membership table allows more later). Tags stay global while
       there's a single organization; scope them per organization before a second one
 - [ ] Settings → Organization: members, roles, remove, hand the role over (the API is done, 3.14.2)
 
 ### 3.14.4 Verification
-- [ ] Tests (TDD): visibility matrix (A sees B's organization links, not B's personal ones), organization by
+- [x] Tests (TDD): visibility matrix (A sees B's organization links, not B's personal ones), organization by
       default and personal only on request; the roles table row by row, through the API and the MCP; the
       last-owner invariant (step down, demote, deactivate, two owners demoting each other); analytics and CSV
-      follow the same scope
+      follow the same scope (`tests/test_phase3142_organization_roles.py`,
+      `tests/test_phase3143_organization_links.py`)
 - [x] Migrations run against PostgreSQL (docker-compose), not only the in-memory SQLite of the test suite → PostgreSQL 17 service in CI (`--require-postgres`)
 
 ---
@@ -1458,3 +1464,13 @@ check earlier in the next project.
 - **Why it slipped:** sign-up was designed from the app outwards, not from the accounts the company already has
 - **Lesson:** for an internal tool, ask first which identity provider the company runs; signing in with it
   usually replaces sign-up, verification and password resets
+
+### R12 — A data migration counted on a row the app makes after migrating · missed · found 2026-09-27
+- **What:** migration `0003` gives the organization every existing link, but the app creates the organization at
+  startup, after the migrations. With `0002` and `0003` in one deploy it found none and left every link personal
+  → `0003` creates the organization itself (3.14.1)
+- **How it surfaced:** re-reading the diff before pushing. The test passed because it inserted the organization
+  by hand before migrating
+- **Why it slipped:** the test built the state the migration expected, not the one a deploy starts from
+- **Lesson:** test a data migration from what a real deploy starts with: the last release's schema and data, and
+  every pending revision in one run

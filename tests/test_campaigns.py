@@ -381,7 +381,7 @@ class TestGetCampaign:
     def test_get_campaign_wrong_user(
         self, client: TestClient, auth_headers: dict, db_session: Session
     ):
-        """Test that users can't access other users' campaigns."""
+        """Someone else's personal campaign doesn't exist for you (404), like links."""
         # Create different user
         from server.core.models import User
 
@@ -406,7 +406,7 @@ class TestGetCampaign:
         # Try to access with test_user's auth
         response = client.get(f"/api/v1/campaigns/{campaign.id}", headers=auth_headers)
 
-        assert response.status_code == 403
+        assert response.status_code == 404
 
 
 @pytest.mark.integration
@@ -568,7 +568,7 @@ class TestDeleteCampaign:
     def test_delete_campaign_wrong_user(
         self, client: TestClient, auth_headers: dict, db_session: Session
     ):
-        """Test that users can't delete other users' campaigns."""
+        """Nobody deletes someone else's personal campaign: to them it doesn't exist (404)."""
         from server.core.models import User
 
         # Create different user
@@ -593,7 +593,7 @@ class TestDeleteCampaign:
         # Try to delete with test_user's auth
         response = client.delete(f"/api/v1/campaigns/{campaign.id}", headers=auth_headers)
 
-        assert response.status_code == 403
+        assert response.status_code == 404
 
         # Verify campaign still exists
         assert db_session.query(Campaign).filter(Campaign.id == campaign.id).first() is not None

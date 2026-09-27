@@ -78,6 +78,12 @@ class URL(Base):
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=func.now(), nullable=False)
 
+    # Phase 3.14.3 — the organization the link belongs to. NULL = personal: only
+    # its creator sees it (server/utils/access.py).
+    organization_id = Column(
+        UUID(as_uuid=True), ForeignKey("organizations.id"), nullable=True, index=True
+    )
+
     # Relationships
     creator = relationship("User", back_populates="urls")
     campaign = relationship("Campaign", back_populates="urls")
@@ -98,6 +104,15 @@ class URL(Base):
         # constraint is meaningful in practice.
         UniqueConstraint("domain_id", "short_code", name="uq_urls_domain_code"),
     )
+
+    @property
+    def visibility(self) -> str:
+        return "personal" if self.organization_id is None else "organization"
+
+    @property
+    def created_by_email(self) -> str | None:
+        """Lists eager-load `creator`, or this costs a query per link."""
+        return self.creator.email if self.creator else None
 
     def __repr__(self):
         return f"<URL(short_code={self.short_code}, type={self.url_type})>"

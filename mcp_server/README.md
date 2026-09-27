@@ -225,6 +225,7 @@ Phase 5.3 ships hand-written tools alongside the auto-generated set:
 - **`create_campaign_from_rows`** — accepts `rows: list[dict]` instead of
   an embedded CSV string. Serialises in-memory and reuses the existing
   campaign generator (same uniqueness retry, same `user_data` shape).
+  The campaign is the organization's unless `visibility="personal"`.
 - **`get_url_analytics_summary`** — composes totals + daily series + top
   countries into one call so the LLM doesn't chain `overview/daily/geo`.
 - **`add_redirect_rule`** — sugar over `POST /urls/{code}/rules` with named
@@ -233,6 +234,10 @@ Phase 5.3 ships hand-written tools alongside the auto-generated set:
 - **`list_orphan_visits_grouped`** — clusters orphan visits by
   `attempted_path` so typo patterns are obvious instead of paginating
   through a flat event log.
+
+Like the API, they act with the caller's role (Phase 3.14.3): the
+organization's links and the caller's personal ones are visible, and changing
+someone else's organization link takes an admin or owner.
 
 The pure logic lives in `mcp_server/curated.py` (takes `db: Session` and
 `user: User` explicitly — easy to test). The MCP-facing wrappers in

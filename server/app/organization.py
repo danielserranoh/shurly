@@ -3,7 +3,8 @@ Phase 3.14.2 — the organization, its members and their roles.
 
 The rules live in `server/utils/organization.py`; this module maps them to HTTP:
 403 when the caller's role doesn't allow the change, 404 when the person isn't in
-the organization, 409 when the change would leave it without an owner.
+the organization, 409 when the change would leave it without an owner or needs
+the person removed first.
 """
 
 import uuid as uuid_pkg
@@ -15,6 +16,8 @@ from server.core import get_db
 from server.core.auth import get_current_user
 from server.core.models import Organization, OrganizationMember, User
 from server.schemas.organization import (
+    AdoptedLinks,
+    LinksAdoption,
     MemberResponse,
     OrganizationResponse,
     OwnershipTransfer,
@@ -32,6 +35,7 @@ _STATUS = {
     org_service.NotAMember: status.HTTP_404_NOT_FOUND,
     org_service.LastOwner: status.HTTP_409_CONFLICT,
     org_service.CannotRemoveSelf: status.HTTP_400_BAD_REQUEST,
+    org_service.StillActive: status.HTTP_409_CONFLICT,
 }
 
 
@@ -150,3 +154,29 @@ def transfer_ownership(
         raise _http_error(exc) from exc
     db.commit()
     return _member_response(membership)
+
+
+@organization_router.post(
+    "/adopt-personal-links",
+    response_model=AdoptedLinks,
+    responses={
+        **get_responses(401, 403, 404, 422),
+        409: {"description": "The person is still in the organization: remove them first"},
+    },
+)
+def adopt_personal_links(
+    body: LinksAdoption,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Move the personal links and campaigns of someone who was removed to the
+    organization, so the team keeps them. Owners only.
+    """
+    try:
+        links, campaigns = org_service.adopt_personal_links(db, current_user, body.user_id)
+    except org_service.OrganizationError as exc:
+        db.rollback()
+        raise _http_error(exc) from exc
+    db.commit()
+    return AdoptedLinks(links=links, campaigns=campaigns)

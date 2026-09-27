@@ -135,12 +135,18 @@ def test_health_probes_excluded():
 
 
 def test_organization_changes_stay_out_of_the_mcp():
-    """Phase 3.14.2 — role changes, removals and ownership handovers are web/API only.
+    """Phase 3.14.2 — role changes, removals, ownership handovers and adopting
+    someone's links are web/API only.
 
     An assistant reading untrusted text (link titles, fetched pages) could be
     talked into "make X an owner".
     """
     names = _list_tool_names()
-    governance = ("update_member_role", "remove_organization_member", "transfer_ownership")
+    governance = (
+        "update_member_role",
+        "remove_organization_member",
+        "transfer_ownership",
+        "adopt_personal_links",
+    )
     leaked = {n for n in names if n.startswith(governance)}
     assert not leaked, f"Organization changes exposed as MCP tools: {sorted(leaked)}"

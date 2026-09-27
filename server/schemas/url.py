@@ -7,6 +7,7 @@ from uuid import UUID
 from pydantic import BaseModel, Field, field_validator
 
 from server.core.models.url import URLType
+from server.utils.access import Visibility
 from server.utils.url import is_valid_url
 
 if TYPE_CHECKING:
@@ -41,6 +42,12 @@ class URLCreate(BaseModel):
 
     # Phase 3.9.4 — default-deny crawlability
     crawlable: bool = Field(False, description="Allow this short URL in robots.txt (default: deny)")
+
+    # Phase 3.14.3 — the organization's unless its creator asks for a personal one
+    visibility: Visibility = Field(
+        "organization",
+        description="'organization' (everyone in it sees it) or 'personal' (only you do)",
+    )
 
     @field_validator("url")
     @classmethod
@@ -83,6 +90,12 @@ class URLCustomCreate(BaseModel):
 
     # Phase 3.9.4 — default-deny crawlability
     crawlable: bool = Field(False, description="Allow this short URL in robots.txt (default: deny)")
+
+    # Phase 3.14.3 — the organization's unless its creator asks for a personal one
+    visibility: Visibility = Field(
+        "organization",
+        description="'organization' (everyone in it sees it) or 'personal' (only you do)",
+    )
 
     @field_validator("url")
     @classmethod
@@ -182,6 +195,9 @@ class URLResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
     warning: str | None = None  # For custom URLs when code was modified
+    # Phase 3.14.3 — whose it is
+    visibility: Visibility = "organization"
+    created_by_email: str | None = None
 
     model_config = {"from_attributes": True}
 

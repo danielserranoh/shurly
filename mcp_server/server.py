@@ -25,6 +25,10 @@ import os
 from fastmcp import FastMCP
 from fastmcp.server.providers.openapi import MCPType, RouteMap
 
+# Module level, not inside `_register_curated_tools`: with postponed annotations
+# fastmcp resolves the tools' parameter types against this module's globals.
+from server.utils.access import Visibility
+
 # Routes that exist in the FastAPI app but should NOT be MCP tools.
 #
 # Public-facing infrastructure: an LLM driving the API has no business
@@ -191,13 +195,15 @@ def _register_curated_tools(server: FastMCP) -> None:
         description=(
             "Create a campaign from a list of row dicts (more LLM-friendly "
             "than the raw CSV-string variant). All rows must share the same "
-            "keys; each row becomes one personalized short URL."
+            "keys; each row becomes one personalized short URL. The campaign "
+            "belongs to the organization unless visibility is 'personal'."
         ),
     )
     def create_campaign_from_rows(
         name: str,
         original_url: str,
         rows: list[dict[str, str]],
+        visibility: Visibility = "organization",
     ) -> dict:
         from server.core import SessionLocal
 
@@ -208,6 +214,7 @@ def _register_curated_tools(server: FastMCP) -> None:
                 name=name,
                 original_url=original_url,
                 rows=rows,
+                visibility=visibility,
             )
 
     @server.tool(

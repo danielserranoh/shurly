@@ -44,6 +44,7 @@ from server.core.models import (
     User,
     Visitor,
 )
+from server.utils.access import Visibility, viewer
 from server.utils.campaign import (
     generate_campaign_urls,
     parse_csv,
@@ -64,13 +65,15 @@ def create_campaign_from_rows(
     name: str,
     original_url: str,
     rows: list[dict[str, str]],
+    visibility: Visibility = "organization",
 ) -> dict[str, Any]:
     """
     Create a campaign from a list of row dicts (LLM-friendly shape).
 
     Equivalent to `POST /api/v1/campaigns` with `csv_data` constructed from
     the rows. The header is the union of the first row's keys (rows must be
-    homogeneous; mismatched keys are rejected by `validate_csv`).
+    homogeneous; mismatched keys are rejected by `validate_csv`). Like the
+    endpoint, the campaign is the organization's unless `visibility="personal"`.
     """
     if not name or not name.strip():
         raise ValueError("name must be non-empty")
@@ -105,6 +108,7 @@ def create_campaign_from_rows(
         original_url=original_url,
         csv_columns=column_names,
         created_by=user.id,
+        organization_id=viewer(db, user).organization_for(visibility),
     )
     db.add(campaign)
     db.flush()
@@ -116,6 +120,7 @@ def create_campaign_from_rows(
         created_by=user.id,
         domain_id=domain.id,
         db_session=db,
+        organization_id=campaign.organization_id,
     )
     db.add_all(urls)
     db.commit()
@@ -128,6 +133,7 @@ def create_campaign_from_rows(
         "csv_columns": campaign.csv_columns,
         "url_count": len(urls),
         "created_at": campaign.created_at.isoformat() if campaign.created_at else None,
+        "visibility": campaign.visibility,
     }
 
 
@@ -187,9 +193,13 @@ def add_redirect_rule(
             "before_date/after_date) must be provided."
         )
 
-    url = db.query(URL).filter(URL.short_code == short_code, URL.created_by == user.id).first()
+    # Phase 3.14.3 — the same rules as the endpoint: see the link, then be able to change it.
+    who = viewer(db, user)
+    url = db.query(URL).filter(URL.short_code == short_code, who.sees(URL)).first()
     if url is None:
         raise LookupError(f"URL with short_code={short_code!r} not found for current user")
+    if not who.can_change(url):
+        raise PermissionError("Only its creator, or an admin or owner, can change this link.")
 
     rule = RedirectRule(
         url_id=url.id,
@@ -233,7 +243,7 @@ def get_url_analytics_summary(
     if days < 1 or days > 90:
         raise ValueError("days must be between 1 and 90")
 
-    url = db.query(URL).filter(URL.short_code == short_code, URL.created_by == user.id).first()
+    url = db.query(URL).filter(URL.short_code == short_code, viewer(db, user).sees(URL)).first()
     if url is None:
         raise LookupError(f"URL with short_code={short_code!r} not found for current user")
 

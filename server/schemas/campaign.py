@@ -6,6 +6,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator
 
+from server.utils.access import Visibility
 from server.utils.url import is_valid_url
 
 if TYPE_CHECKING:
@@ -21,6 +22,11 @@ class CampaignCreate(BaseModel):
     name: str = Field(..., description="Name of the campaign", min_length=1, max_length=255)
     original_url: str = Field(..., description="Base URL for all campaign URLs")
     csv_data: str = Field(..., description="CSV data with header row")
+    # Phase 3.14.3 — the organization's unless its creator asks for a personal one
+    visibility: Visibility = Field(
+        "organization",
+        description="'organization' (everyone in it sees it) or 'personal' (only you do)",
+    )
 
     @field_validator("original_url")
     @classmethod
@@ -60,6 +66,9 @@ class CampaignResponse(BaseModel):
     created_at: datetime
     tags: list[TagResponse] = []
     urls: list[CampaignURLResponse] | None = None  # Only included in detail view
+    # Phase 3.14.3 — whose it is
+    visibility: Visibility = "organization"
+    created_by_email: str | None = None
 
     model_config = {"from_attributes": True}
 
