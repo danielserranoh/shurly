@@ -173,7 +173,7 @@ The script prints the **Express Mode rule priority** that points at Shurly's aut
 
 Express Mode flips traffic between two target groups for blue/green deploys. Manual rules (priority 12) need to follow the active TG; otherwise, after each rollout, `s.griddo.io` would point at an inactive TG and 503.
 
-The `ecs-alb-rule-sync` Lambda (created during the Shlink deploy, see Shlink Phase 10) already handles this for Shlink. To extend it for Shurly, edit its `RULE_SYNC_MAP`:
+The `ecs-alb-rule-sync` Lambda (created during the Shlink deploy, see Shlink Phase 10) already handles this for Shlink. Its source now lives in [infra/ecs-alb-rule-sync/](infra/ecs-alb-rule-sync/README.md), which documents its triggers, permissions, deploy and rollback. Since 27 Sep 2026 it follows each rollout from `IN_PROGRESS` instead of syncing only on `COMPLETED`, which removed a ~1 min 503 per deploy. To add a service, edit its `RULE_SYNC_MAP`:
 
 ```python
 # In the Lambda code (deployed in griddo-main):
@@ -187,10 +187,11 @@ RULE_SYNC_MAP = {
 Repackage and update:
 
 ```bash
-zip alb-rule-sync.zip alb-rule-sync.py
+cd infra/ecs-alb-rule-sync
+zip -X /tmp/alb-rule-sync.zip alb-rule-sync.py
 aws lambda update-function-code --region eu-south-2 --profile griddo-main \
     --function-name ecs-alb-rule-sync \
-    --zip-file fileb://alb-rule-sync.zip
+    --zip-file fileb:///tmp/alb-rule-sync.zip
 ```
 
 Verify:

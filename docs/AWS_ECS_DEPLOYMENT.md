@@ -80,7 +80,9 @@
    └──────────────────────────────────────────────────────────┼──┘
                                                               │
                   Lambda ecs-alb-rule-sync (EventBridge        │
-                  fires on SERVICE_DEPLOYMENT_COMPLETED)        │
+                  fires on deployment IN_PROGRESS/COMPLETED/   │
+                  FAILED; follows the rollout — see            │
+                  infra/ecs-alb-rule-sync/README.md)            │
                   Reads weights of priority 4, replicates ──────┘
                   to priority 12 so blue/green keeps
                   s.griddo.io healthy through deploys.
