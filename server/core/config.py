@@ -75,6 +75,16 @@ class Settings(BaseSettings):
     # short-link host differs from the API host (rare).
     base_url: str = ""
 
+    # Phase 3.14.2 — the organization every account belongs to (one at launch).
+    # Seeded on startup. `organization_domain` is the Google Workspace domain whose
+    # accounts may sign in (3.13).
+    organization_name: str = "Griddo"
+    organization_domain: str = "griddo.io"
+    # The first owner. This account becomes owner when it joins an organization
+    # that has none, and at startup it restores one if none is left (break-glass).
+    # Empty = no bootstrap owner.
+    bootstrap_owner_email: str = ""
+
     # Phase 3.10.6 — Configurable redirect behavior.
     # `redirect_status_code`: 302 (default) keeps every hit hitting the backend so
     # analytics stay accurate. 301 is SEO-friendly but cached aggressively by

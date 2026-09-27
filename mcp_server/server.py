@@ -43,6 +43,14 @@ EXCLUDED_ROUTE_MAPS: list[RouteMap] = [
     RouteMap(pattern=r"^/api/v1/health(/.*)?$", mcp_type=MCPType.EXCLUDE),
     # Legacy stats namespace — superseded by /api/v1/analytics/*.
     RouteMap(pattern=r"^/api/v1/stats(/.*)?$", mcp_type=MCPType.EXCLUDE),
+    # Phase 3.14.2 — role changes, removals and ownership handovers stay out of the
+    # MCP: an assistant that reads untrusted text (link titles, fetched pages) could
+    # be talked into "make X an owner". Reading the organization is fine.
+    RouteMap(
+        methods=["POST", "PATCH", "DELETE"],
+        pattern=r"^/api/v1/organization(/.*)?$",
+        mcp_type=MCPType.EXCLUDE,
+    ),
 ]
 
 # Maps FastAPI's auto-generated operationIds to clean MCP tool names.
@@ -62,6 +70,9 @@ MCP_TOOL_NAMES: dict[str, str] = {
     "change_password_api_v1_auth_change_password_post": "change_password",
     "generate_api_key_api_v1_auth_api_key_generate_post": "generate_api_key",
     "revoke_api_key_api_v1_auth_api_key_delete": "revoke_api_key",
+    # Organization (Phase 3.14.2) — read-only; changes are excluded above
+    "get_organization_api_v1_organization_get": "get_organization",
+    "list_organization_members_api_v1_organization_members_get": "list_organization_members",
     # URLs
     "create_short_url_api_v1_urls_post": "create_short_url",
     "create_custom_url_api_v1_urls_custom_post": "create_custom_url",

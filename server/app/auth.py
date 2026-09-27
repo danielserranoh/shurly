@@ -23,6 +23,7 @@ from server.schemas.auth import (
     UserResponse,
 )
 from server.schemas.responses import MessageResponse, get_responses
+from server.utils.organization import join_default_organization
 
 auth_router = APIRouter()
 
@@ -67,6 +68,9 @@ def register(user_data: UserRegister, db: Session = Depends(get_db)):
     )
 
     db.add(user)
+    db.flush()
+    # Phase 3.14.2 — every account belongs to the organization.
+    join_default_organization(db, user)
     db.commit()
     db.refresh(user)
 

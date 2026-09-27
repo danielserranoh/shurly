@@ -1,6 +1,7 @@
 """Pytest configuration and fixtures."""
 
 import os
+import uuid
 
 # Skip the FastAPI startup event (which tries to connect to PostgreSQL) during tests.
 # Must be set before `from main import app` so the env var is read at app instantiation.
@@ -8,7 +9,8 @@ os.environ["TESTING"] = "1"
 
 import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
-from sqlalchemy import create_engine, event  # noqa: E402
+from sqlalchemy import create_engine, event, text  # noqa: E402
+from sqlalchemy.engine import make_url  # noqa: E402
 from sqlalchemy.orm import Session, sessionmaker  # noqa: E402
 from sqlalchemy.pool import StaticPool  # noqa: E402
 
@@ -145,3 +147,23 @@ def init_predefined_tags(db_session: Session):
     from server.utils.tags import initialize_predefined_tags
 
     initialize_predefined_tags(db_session)
+
+
+@pytest.fixture
+def pg_engine():
+    """A fresh, empty PostgreSQL database for one test (Phase 3.14; needs TEST_DATABASE_URL)."""
+    url = os.getenv("TEST_DATABASE_URL")
+    if not url:
+        pytest.skip("TEST_DATABASE_URL is not set (a PostgreSQL server)")
+    admin = create_engine(url, isolation_level="AUTOCOMMIT")
+    name = f"shurly_test_{uuid.uuid4().hex[:12]}"
+    with admin.connect() as conn:
+        conn.execute(text(f'CREATE DATABASE "{name}"'))
+    pg = create_engine(make_url(url).set(database=name))
+    try:
+        yield pg
+    finally:
+        pg.dispose()
+        with admin.connect() as conn:
+            conn.execute(text(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)'))
+        admin.dispose()

@@ -26,6 +26,9 @@ EXPECTED_TOOLS: set[str] = {
     "change_password",
     "generate_api_key",
     "revoke_api_key",
+    # Organization (Phase 3.14.2): read-only, role changes stay out of the MCP
+    "get_organization",
+    "list_organization_members",
     # URLs
     "create_short_url",
     "create_custom_url",
@@ -129,3 +132,15 @@ def test_health_probes_excluded():
     names = _list_tool_names()
     leaked = {n for n in names if n in {"liveness", "readiness"}}
     assert not leaked, f"Health probes leaked: {sorted(leaked)}"
+
+
+def test_organization_changes_stay_out_of_the_mcp():
+    """Phase 3.14.2 — role changes, removals and ownership handovers are web/API only.
+
+    An assistant reading untrusted text (link titles, fetched pages) could be
+    talked into "make X an owner".
+    """
+    names = _list_tool_names()
+    governance = ("update_member_role", "remove_organization_member", "transfer_ownership")
+    leaked = {n for n in names if n.startswith(governance)}
+    assert not leaked, f"Organization changes exposed as MCP tools: {sorted(leaked)}"
