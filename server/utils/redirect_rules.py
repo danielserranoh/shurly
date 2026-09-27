@@ -19,8 +19,9 @@ as non-matching (fail closed) so a typo never accidentally redirects users.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from datetime import datetime, timezone
-from typing import Any, Mapping
+from typing import Any
 
 from server.utils.user_agent import parse_user_agent
 

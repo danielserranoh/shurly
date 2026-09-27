@@ -3,7 +3,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
-from server.core.models import Tag, URL, URLType, Campaign
+from server.core.models import URL, Tag, URLType
 
 
 @pytest.mark.integration
@@ -184,7 +184,7 @@ class TestTagCRUD:
     def test_update_predefined_tag_forbidden(self, client: TestClient, auth_headers: dict, db_session: Session, init_predefined_tags):
         """Cannot update predefined tags."""
         # Get a predefined tag
-        tag = db_session.query(Tag).filter(Tag.is_predefined == True).first()
+        tag = db_session.query(Tag).filter(Tag.is_predefined.is_(True)).first()
         assert tag is not None
 
         response = client.patch(
@@ -251,7 +251,7 @@ class TestTagCRUD:
     def test_delete_predefined_tag_forbidden(self, client: TestClient, auth_headers: dict, db_session: Session, init_predefined_tags):
         """Cannot delete predefined tags."""
         # Get a predefined tag
-        tag = db_session.query(Tag).filter(Tag.is_predefined == True).first()
+        tag = db_session.query(Tag).filter(Tag.is_predefined.is_(True)).first()
         assert tag is not None
 
         response = client.delete(f"/api/v1/tags/{tag.id}", headers=auth_headers)
@@ -280,7 +280,7 @@ class TestTagInitialization:
 
         initialize_predefined_tags(db_session)
 
-        tags = db_session.query(Tag).filter(Tag.is_predefined == True).all()
+        tags = db_session.query(Tag).filter(Tag.is_predefined.is_(True)).all()
         assert len(tags) > 0
 
         # Check for specific tags
@@ -294,10 +294,10 @@ class TestTagInitialization:
         from server.utils.tags import initialize_predefined_tags
 
         initialize_predefined_tags(db_session)
-        count1 = db_session.query(Tag).filter(Tag.is_predefined == True).count()
+        count1 = db_session.query(Tag).filter(Tag.is_predefined.is_(True)).count()
 
         initialize_predefined_tags(db_session)
-        count2 = db_session.query(Tag).filter(Tag.is_predefined == True).count()
+        count2 = db_session.query(Tag).filter(Tag.is_predefined.is_(True)).count()
 
         assert count1 == count2
 

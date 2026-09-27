@@ -13,17 +13,18 @@ Example:
     python scripts/init_database.py shurly-dev-db.xxx.rds.amazonaws.com mypassword
 """
 
-import sys
 import os
+import sys
 
 # Add parent directory to path to import server modules
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from sqlalchemy import create_engine, text
-from server.core.models.user import User
-from server.core.models.url import URL
-from server.core.models.visitor import Visitor
-from server.core.models.campaign import Campaign
+
+# Imported for its side effect: the package's __init__ registers every model
+# with Base before create_all(). (It used to import four models by name, which
+# ruff flags as unused — they were only ever there for this side effect.)
+import server.core.models  # noqa: F401
 from server.core import Base
 
 
@@ -47,7 +48,7 @@ def init_database(db_host: str, db_password: str, db_name: str = "shurly", db_us
         with engine.connect() as conn:
             result = conn.execute(text("SELECT version()"))
             version = result.scalar()
-            print(f"\n✓ Connected to PostgreSQL!")
+            print("\n✓ Connected to PostgreSQL!")
             print(f"  Version: {version}\n")
 
         # Create all tables
