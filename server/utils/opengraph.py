@@ -10,6 +10,7 @@ import httpx
 from bs4 import BeautifulSoup
 
 from server.core.config import settings
+from server.utils.url import url_origin
 
 logger = logging.getLogger(__name__)
 
@@ -60,7 +61,8 @@ async def fetch_opengraph_metadata(url: str, timeout: int = 5) -> OpenGraphMetad
 
     The URL is user-supplied, so the request goes through the SSRF guard (see
     `_guarded_get`). A refused URL yields empty metadata, like any other fetch failure,
-    so URL creation never breaks.
+    so URL creation never breaks. Log lines keep the URL's origin only (`url_origin`):
+    its path and query string can carry personal data.
 
     Args:
         url: Destination URL to fetch metadata from
@@ -78,7 +80,7 @@ async def fetch_opengraph_metadata(url: str, timeout: int = 5) -> OpenGraphMetad
 
         # Only parse successful responses
         if response.status_code != 200:
-            logger.warning(f"Failed to fetch {url}: HTTP {response.status_code}")
+            logger.warning("Failed to fetch %s: HTTP %s", url_origin(url), response.status_code)
             return OpenGraphMetadata()
 
         # Only parse HTML content
@@ -94,7 +96,7 @@ async def fetch_opengraph_metadata(url: str, timeout: int = 5) -> OpenGraphMetad
         # creation, so on irrecoverable decode errors we simply skip OG.
         html_text = _decode_response_body(response)
         if html_text is None:
-            logger.info(f"Could not decode OG body for {url}; skipping metadata")
+            logger.info("Could not decode OG body for %s; skipping metadata", url_origin(url))
             return OpenGraphMetadata()
 
         # Parse HTML
@@ -121,15 +123,16 @@ async def fetch_opengraph_metadata(url: str, timeout: int = 5) -> OpenGraphMetad
         )
 
     except _FetchRefusedError as e:
-        logger.warning(f"Refused to fetch metadata from {url}: {e}")
+        logger.warning("Refused to fetch metadata from %s: %s", url_origin(url), e)
         return OpenGraphMetadata()
 
     except (httpx.TimeoutException, asyncio.TimeoutError):
-        logger.warning(f"Timeout fetching metadata from {url}")
+        logger.warning("Timeout fetching metadata from %s", url_origin(url))
         return OpenGraphMetadata()
 
     except Exception as e:
-        logger.error(f"Error fetching metadata from {url}: {str(e)}")
+        # The type only: a library's message can repeat the URL.
+        logger.error("Error fetching metadata from %s: %s", url_origin(url), type(e).__name__)
         return OpenGraphMetadata()
 
 
@@ -171,7 +174,7 @@ async def _get_pinned(client: httpx.AsyncClient, url: httpx.URL) -> httpx.Respon
 async def _resolve_checked_addresses(url: httpx.URL, timeout: float | None) -> list[str]:
     """Resolve the URL's host, refusing it unless every address it resolves to is public."""
     if url.scheme not in _ALLOWED_SCHEMES or not url.host:
-        raise _FetchRefusedError(f"{url} is not an http(s) URL with a host")
+        raise _FetchRefusedError(f"not an http(s) URL with a host (scheme {url.scheme!r})")
     host = url.raw_host.decode("ascii")
     # getaddrinfo blocks, so it runs in a thread. The lookup counts against the connect
     # timeout, as it did when httpx resolved the name itself.
