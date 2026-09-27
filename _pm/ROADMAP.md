@@ -772,7 +772,7 @@ own links. Tags are already global.
       "before the first non-additive change"; adding a column to an existing table already needs it)
 - [x] Migrations run at startup under a Postgres advisory lock, so tasks that boot together don't race
       (`server/core/migrations.py`); production gets stamped at the baseline. Tested on PostgreSQL in CI
-- [ ] `organizations` (id, name, google_domain, created_at) and `organization_members` (organization_id, user_id,
+- [x] `organizations` (id, name, google_domain, created_at) and `organization_members` (organization_id, user_id,
       role: `owner` | `admin` | `member`, joined_at)
 - [ ] `urls.organization_id` and `campaigns.organization_id`, nullable: set = organization link, NULL = personal
 - [x] Update "Adding a New Model" in `CLAUDE.md` with the migration step
@@ -788,16 +788,16 @@ own links. Tags are already global.
 | Promote members to admin, demote admins | | | ✓ |
 | Make other owners, step down, hand the role over | | | ✓ |
 
-- [ ] Rule: nobody changes the role of someone whose role is equal to or above theirs, and nobody grants a role
+- [x] Rule: nobody changes the role of someone whose role is equal to or above theirs, and nobody grants a role
       above their own. So an admin can't demote an owner, nor another admin (otherwise two admins could strip
       each other)
-- [ ] At least one owner, always: the last owner can't step down, leave, be demoted or be deactivated until
+- [x] At least one owner, always: the last owner can't step down, leave, be demoted or be deactivated until
       another owner exists. Checked in one transaction, so two owners demoting each other at once can't leave none
-- [ ] "Hand the role over" = make someone owner and step down, in one action
-- [ ] The first owner comes from configuration (`BOOTSTRAP_OWNER_EMAIL`), not from whoever signs in first
-- [ ] Two owners from day one: if the only owner leaves Griddo and their Google account is suspended,
+- [x] "Hand the role over" = make someone owner and step down, in one action
+- [x] The first owner comes from configuration (`BOOTSTRAP_OWNER_EMAIL`), not from whoever signs in first
+- [ ] Two owners from day one (yours to do after the first sign-ups; the break-glass is in place): if the only owner leaves Griddo and their Google account is suspended,
       nobody can manage roles. Break-glass: changing `BOOTSTRAP_OWNER_EMAIL` restores an owner
-- [ ] Every role change writes an `org.role_changed` line to the event log (who, whom, from, to)
+- [x] Every role change writes an `org.role_changed` line to the event log (who, whom, from, to)
 
 ### 3.14.3 Behaviour
 - [ ] One organization at launch, "Griddo", with `google_domain = griddo.io`: whoever signs in with a Griddo
@@ -812,14 +812,14 @@ own links. Tags are already global.
       organization so someone can still manage them
 - [ ] One organization per user at launch (the membership table allows more later). Tags stay global while
       there's a single organization; scope them per organization before a second one
-- [ ] Settings → Organization: members, roles, remove, hand the role over
+- [ ] Settings → Organization: members, roles, remove, hand the role over (the API is done, 3.14.2)
 
 ### 3.14.4 Verification
 - [ ] Tests (TDD): visibility matrix (A sees B's organization links, not B's personal ones), organization by
       default and personal only on request; the roles table row by row, through the API and the MCP; the
       last-owner invariant (step down, demote, deactivate, two owners demoting each other); analytics and CSV
       follow the same scope
-- [ ] Migrations run against PostgreSQL (docker-compose), not only the in-memory SQLite of the test suite
+- [x] Migrations run against PostgreSQL (docker-compose), not only the in-memory SQLite of the test suite → PostgreSQL 17 service in CI (`--require-postgres`)
 
 ---
 
