@@ -54,6 +54,11 @@ def pytest_addoption(parser):
         action="store_true",
         help="Fail instead of skipping the MCP suites when the [mcp] extra is missing.",
     )
+    parser.addoption(
+        "--require-postgres",
+        action="store_true",
+        help="Fail instead of skipping the PostgreSQL suites when TEST_DATABASE_URL is unset.",
+    )
 
 
 def pytest_configure(config):
@@ -66,6 +71,10 @@ def pytest_configure(config):
             raise pytest.UsageError(
                 "--require-mcp: fastmcp is not installed. Run `uv sync --extra mcp`."
             ) from exc
+    # Same for the suites that need a real PostgreSQL (migrations): they skip
+    # without TEST_DATABASE_URL, and CI passes --require-postgres.
+    if config.getoption("--require-postgres") and not os.getenv("TEST_DATABASE_URL"):
+        raise pytest.UsageError("--require-postgres: set TEST_DATABASE_URL to a PostgreSQL server.")
 
 
 @pytest.fixture(scope="function")

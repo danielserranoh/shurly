@@ -149,6 +149,12 @@ Backend (FastAPI)               Frontend (Astro 7 + Tailwind 4)
 2. Register it in `server/core/models/__init__.py` (add to imports + `__all__`)
 3. If it relates to URL/Visitor, add the relationship + `back_populates` on both sides
 4. Add a unit test that round-trips through `db_session`
+5. Write the migration (also for a new column on an existing model): against a local PostgreSQL,
+   `DB_HOST=… DB_NAME=… uv run alembic revision --autogenerate --rev-id 0002 -m "what changed"`
+   (next number in `server/migrations/versions/`), then read and fix what it generated. The app
+   runs pending migrations at startup. Keep them working for the previous release too (add now,
+   drop or rename in a later release). `tests/test_phase3141_migrations.py` fails if a model and the
+   migrations disagree; it needs `TEST_DATABASE_URL` pointing at a PostgreSQL server
 
 ### Adding a Frontend Page
 1. Create the page in `frontend/src/pages/*.astro` inside `AppLayout` (dashboard) or `MarketingLayout` (public)
@@ -167,6 +173,11 @@ uv run pytest --cov=server --cov-report=html
 
 # Specific test file
 uv run pytest tests/test_phase3102_redirect_rules.py
+
+# Migration tests need a PostgreSQL server (they skip without one; CI runs them).
+# With `docker compose up -d db`:
+TEST_DATABASE_URL=postgresql+psycopg2://postgres:postgres@localhost:5432/postgres \
+  uv run pytest tests/test_phase3141_migrations.py
 ```
 
 ### Local Development

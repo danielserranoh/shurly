@@ -88,15 +88,17 @@ def _try_build_mcp_app(fastapi_app):
 
 def _seed_database():
     """
-    Create the schema if missing, then seed the default domain and predefined tag set,
-    and bind legacy campaign URLs (NULL `domain_id`) to the default domain.
+    Migrate the schema to the latest revision, then seed the default domain and
+    predefined tag set, and bind legacy campaign URLs (NULL `domain_id`) to the
+    default domain.
 
-    `Base.metadata.create_all()` is idempotent — only creates tables that don't
-    exist. Safe on every container start. Switch to Alembic when migrations
-    arrive; until then this avoids a separate bootstrap step against an RDS
-    that lives inside the VPC.
+    Phase 3.14.1 — Alembic replaced `create_all()`, which never adds a column to
+    an existing table. Runs on every container start, under a lock so tasks that
+    boot together don't race (`server/core/migrations.py`); no separate
+    bootstrap step against an RDS that lives inside the VPC.
     """
-    from server.core import Base, engine
+    from server.core import engine
+    from server.core.migrations import run_migrations
     from server.core.models import (  # noqa: F401 — register models with Base
         URL,
         Campaign,
@@ -110,7 +112,7 @@ def _seed_database():
     from server.utils.domain import backfill_campaign_url_domains, get_or_create_default_domain
     from server.utils.tags import initialize_predefined_tags
 
-    Base.metadata.create_all(bind=engine)
+    run_migrations(engine)
 
     db = next(get_db())
     try:

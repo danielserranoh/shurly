@@ -26,6 +26,23 @@ implementation lifecycle and is independent of the URL version segment.
 
 ## [Unreleased]
 
+### Changed — the schema is migrated with Alembic (Phase 3.14.1)
+- **Startup runs the migrations instead of `create_all()`**, which only created
+  missing tables and never added a column to an existing one. Revisions live in
+  `server/migrations/versions/`; `0001` is the baseline, identical to what
+  `create_all()` built (compared with `pg_dump`).
+- **The existing production database is adopted, not rebuilt**: tables without
+  an `alembic_version` get stamped at the baseline, keeping every row.
+- **Tasks that boot together don't race**: a PostgreSQL advisory lock, held for
+  the migration's transaction, lets one task migrate while the others wait.
+- **New PostgreSQL test suite** (`tests/test_phase3141_migrations.py`): empty
+  and pre-Alembic databases, a second run, three processes booting at once, and
+  a drift check that fails when a model changes without a migration. CI runs it
+  against a PostgreSQL 17 service (`--require-postgres`); locally it needs
+  `TEST_DATABASE_URL`.
+- `scripts/init_database.py` runs the migrations too, so it can't build a schema
+  the app would mistake for the baseline.
+
 ### Added — usage log for MCP tool calls and HTTP requests (Phase 5.6.0)
 - **One JSON line per MCP tool call** (`mcp.tool_call`): tool, argument names,
   user id, outcome, error type, HTTP status of a failed API call, duration and

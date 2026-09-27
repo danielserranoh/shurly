@@ -21,11 +21,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from sqlalchemy import create_engine, text
 
-# Imported for its side effect: the package's __init__ registers every model
-# with Base before create_all(). (It used to import four models by name, which
-# ruff flags as unused — they were only ever there for this side effect.)
-import server.core.models  # noqa: F401
-from server.core import Base
+from server.core.migrations import run_migrations
 
 
 def init_database(
@@ -55,9 +51,11 @@ def init_database(
             print("\n✓ Connected to PostgreSQL!")
             print(f"  Version: {version}\n")
 
-        # Create all tables
-        print("Creating tables...")
-        Base.metadata.create_all(bind=engine)
+        # Phase 3.14.1 — through the migrations, as the app does at startup. A schema
+        # made with create_all() would have no alembic_version: the app would stamp
+        # it at the baseline and then fail re-creating what later revisions add.
+        print("Running migrations...")
+        run_migrations(engine)
 
         print("\n✓ Database initialization complete!")
         print("\nCreated tables:")
