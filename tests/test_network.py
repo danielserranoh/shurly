@@ -32,23 +32,14 @@ class TestResolveClientIP:
 
     def test_xff_ignored_without_trusted_proxies(self):
         # Even with an X-F-F header, untrusted source = use socket.
-        assert (
-            resolve_client_ip("203.0.113.10", "10.0.0.5", [])
-            == "203.0.113.10"
-        )
+        assert resolve_client_ip("203.0.113.10", "10.0.0.5", []) == "203.0.113.10"
 
     def test_xff_honored_for_trusted_proxy(self):
-        assert (
-            resolve_client_ip("10.0.0.5", "203.0.113.99", ["10.0.0.0/8"])
-            == "203.0.113.99"
-        )
+        assert resolve_client_ip("10.0.0.5", "203.0.113.99", ["10.0.0.0/8"]) == "203.0.113.99"
 
     def test_xff_ignored_for_untrusted_source(self):
         # Source not in CIDR allowlist → don't trust the header.
-        assert (
-            resolve_client_ip("198.51.100.7", "203.0.113.99", ["10.0.0.0/8"])
-            == "198.51.100.7"
-        )
+        assert resolve_client_ip("198.51.100.7", "203.0.113.99", ["10.0.0.0/8"]) == "198.51.100.7"
 
     def test_xff_uses_leftmost_entry(self):
         assert (

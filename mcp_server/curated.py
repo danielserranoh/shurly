@@ -187,11 +187,7 @@ def add_redirect_rule(
             "before_date/after_date) must be provided."
         )
 
-    url = (
-        db.query(URL)
-        .filter(URL.short_code == short_code, URL.created_by == user.id)
-        .first()
-    )
+    url = db.query(URL).filter(URL.short_code == short_code, URL.created_by == user.id).first()
     if url is None:
         raise LookupError(f"URL with short_code={short_code!r} not found for current user")
 
@@ -237,11 +233,7 @@ def get_url_analytics_summary(
     if days < 1 or days > 90:
         raise ValueError("days must be between 1 and 90")
 
-    url = (
-        db.query(URL)
-        .filter(URL.short_code == short_code, URL.created_by == user.id)
-        .first()
-    )
+    url = db.query(URL).filter(URL.short_code == short_code, URL.created_by == user.id).first()
     if url is None:
         raise LookupError(f"URL with short_code={short_code!r} not found for current user")
 
@@ -254,9 +246,7 @@ def get_url_analytics_summary(
     total_clicks = base.count()
     # `func.count(func.distinct(...))` is portable across SQLite and Postgres;
     # the previous `query.distinct(col).count()` form silently no-ops on SQLite.
-    unique_ips = (
-        base.with_entities(func.count(func.distinct(Visitor.ip))).scalar() or 0
-    )
+    unique_ips = base.with_entities(func.count(func.distinct(Visitor.ip))).scalar() or 0
 
     # Daily series (most recent `days` calendar days, oldest → newest).
     end_date = datetime.now(timezone.utc).date()
@@ -291,9 +281,7 @@ def get_url_analytics_summary(
         .limit(10)
         .all()
     )
-    top_countries = [
-        {"country": r.country or "unknown", "clicks": int(r.c)} for r in geo_rows
-    ]
+    top_countries = [{"country": r.country or "unknown", "clicks": int(r.c)} for r in geo_rows]
 
     return {
         "short_code": url.short_code,

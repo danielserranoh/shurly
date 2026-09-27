@@ -1,0 +1,6 @@
+# Commits that only reformat code. `git blame` skips them so lines stay
+# attributed to the change that wrote them. GitHub honours this file
+# automatically; locally: git config blame.ignoreRevsFile .git-blame-ignore-revs
+
+# style: ruff format the codebase
+74688262696bbba9984f3cc06c3555a90538e0da

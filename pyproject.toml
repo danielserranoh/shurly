@@ -24,7 +24,11 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
-    "ruff>=0.2.0",
+    # Pinned to one minor series: CI now fails on lint/format, and a new ruff
+    # minor can add rules or change formatting. uv.lock isn't committed, so an
+    # open range would let an upgrade turn CI red with no code change. Bump
+    # deliberately (and re-run `ruff format .` in the same PR).
+    "ruff>=0.15.12,<0.16",
     "pytest>=8.0.0",
     "pytest-asyncio>=0.23.0",
     "pytest-cov>=4.0.0",

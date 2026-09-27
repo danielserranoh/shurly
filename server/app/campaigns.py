@@ -543,5 +543,5 @@ def update_campaign_tags(
 
     return {
         "campaign_id": str(campaign.id),
-        "tags": [TagResponse.model_validate(tag) for tag in campaign.tags]
+        "tags": [TagResponse.model_validate(tag) for tag in campaign.tags],
     }

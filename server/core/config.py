@@ -90,9 +90,7 @@ class Settings(BaseSettings):
     @classmethod
     def _validate_redirect_status(cls, v: int) -> int:
         if v not in (301, 302, 307, 308):
-            raise ValueError(
-                "redirect_status_code must be one of 301, 302, 307, 308"
-            )
+            raise ValueError("redirect_status_code must be one of 301, 302, 307, 308")
         return v
 
     # SSRF guard for the Open Graph fetcher. Destination URLs are user-supplied, so link
@@ -128,24 +126,24 @@ class Settings(BaseSettings):
     predefined_tags: dict[str, dict] = {
         "channels": {
             "color": "blue-500",
-            "tags": ["email", "social", "sms", "push", "direct-mail"]
+            "tags": ["email", "social", "sms", "push", "direct-mail"],
         },
         "intent": {
             "color": "green-500",
-            "tags": ["awareness", "consideration", "conversion", "retention"]
+            "tags": ["awareness", "consideration", "conversion", "retention"],
         },
         "content-type": {
             "color": "purple-500",
-            "tags": ["blog", "landing-page", "product", "promotion", "event"]
+            "tags": ["blog", "landing-page", "product", "promotion", "event"],
         },
         "audience": {
             "color": "orange-500",
-            "tags": ["b2b", "b2c", "enterprise", "smb", "consumer"]
+            "tags": ["b2b", "b2c", "enterprise", "smb", "consumer"],
         },
         "lifecycle": {
             "color": "pink-500",
-            "tags": ["onboarding", "nurture", "upsell", "reactivation", "churn"]
-        }
+            "tags": ["onboarding", "nurture", "upsell", "reactivation", "churn"],
+        },
     }
     user_tag_color: str = "gray-500"  # Default color for user-created tags
 

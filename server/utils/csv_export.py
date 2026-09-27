@@ -2,7 +2,7 @@
 
 import csv
 import io
-from typing import Iterable, Iterator, Sequence
+from collections.abc import Iterable, Iterator, Sequence
 
 from fastapi.responses import StreamingResponse
 

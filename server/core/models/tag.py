@@ -1,8 +1,9 @@
 """Tag model for organizing URLs and campaigns."""
+
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, String, CheckConstraint, Table
+from sqlalchemy import Boolean, CheckConstraint, Column, DateTime, ForeignKey, String, Table
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 
@@ -21,18 +22,14 @@ class Tag(Base):
     is_predefined = Column(Boolean, default=False, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     created_by = Column(
-        UUID(as_uuid=True),
-        ForeignKey("users.id", ondelete="SET NULL"),
-        nullable=True
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
 
     # Relationships (will be added after association tables are created)
     urls = relationship("URL", secondary="url_tags", back_populates="tags")
     campaigns = relationship("Campaign", secondary="campaign_tags", back_populates="tags")
 
-    __table_args__ = (
-        CheckConstraint("name = LOWER(name)", name="name_lowercase_check"),
-    )
+    __table_args__ = (CheckConstraint("name = LOWER(name)", name="name_lowercase_check"),)
 
     def __repr__(self):
         return f"<Tag {self.display_name} ({self.name})>"
@@ -42,8 +39,12 @@ class Tag(Base):
 url_tags = Table(
     "url_tags",
     Base.metadata,
-    Column("url_id", UUID(as_uuid=True), ForeignKey("urls.id", ondelete="CASCADE"), primary_key=True),
-    Column("tag_id", UUID(as_uuid=True), ForeignKey("tags.id", ondelete="CASCADE"), primary_key=True),
+    Column(
+        "url_id", UUID(as_uuid=True), ForeignKey("urls.id", ondelete="CASCADE"), primary_key=True
+    ),
+    Column(
+        "tag_id", UUID(as_uuid=True), ForeignKey("tags.id", ondelete="CASCADE"), primary_key=True
+    ),
     Column("created_at", DateTime, default=datetime.utcnow, nullable=False),
 )
 
@@ -51,7 +52,14 @@ url_tags = Table(
 campaign_tags = Table(
     "campaign_tags",
     Base.metadata,
-    Column("campaign_id", UUID(as_uuid=True), ForeignKey("campaigns.id", ondelete="CASCADE"), primary_key=True),
-    Column("tag_id", UUID(as_uuid=True), ForeignKey("tags.id", ondelete="CASCADE"), primary_key=True),
+    Column(
+        "campaign_id",
+        UUID(as_uuid=True),
+        ForeignKey("campaigns.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+    Column(
+        "tag_id", UUID(as_uuid=True), ForeignKey("tags.id", ondelete="CASCADE"), primary_key=True
+    ),
     Column("created_at", DateTime, default=datetime.utcnow, nullable=False),
 )

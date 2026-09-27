@@ -178,8 +178,11 @@ def _register_curated_tools(server: FastMCP) -> None:
 
         with SessionLocal() as db:
             return curated.create_campaign_from_rows(
-                db, resolve_current_user(db),
-                name=name, original_url=original_url, rows=rows,
+                db,
+                resolve_current_user(db),
+                name=name,
+                original_url=original_url,
+                rows=rows,
             )
 
     @server.tool(
@@ -206,11 +209,18 @@ def _register_curated_tools(server: FastMCP) -> None:
 
         with SessionLocal() as db:
             return curated.add_redirect_rule(
-                db, resolve_current_user(db),
-                short_code=short_code, target_url=target_url, priority=priority,
-                device=device, language=language, browser=browser,
-                query_param=query_param, query_value=query_value,
-                before_date=before_date, after_date=after_date,
+                db,
+                resolve_current_user(db),
+                short_code=short_code,
+                target_url=target_url,
+                priority=priority,
+                device=device,
+                language=language,
+                browser=browser,
+                query_param=query_param,
+                query_value=query_value,
+                before_date=before_date,
+                after_date=after_date,
             )
 
     @server.tool(
@@ -229,8 +239,11 @@ def _register_curated_tools(server: FastMCP) -> None:
 
         with SessionLocal() as db:
             return curated.get_url_analytics_summary(
-                db, resolve_current_user(db),
-                short_code=short_code, days=days, include_bots=include_bots,
+                db,
+                resolve_current_user(db),
+                short_code=short_code,
+                days=days,
+                include_bots=include_bots,
             )
 
     @server.tool(
@@ -248,8 +261,10 @@ def _register_curated_tools(server: FastMCP) -> None:
 
         with SessionLocal() as db:
             return curated.list_orphan_visits_grouped(
-                db, resolve_current_user(db),
-                since_days=since_days, limit_groups=limit_groups,
+                db,
+                resolve_current_user(db),
+                since_days=since_days,
+                limit_groups=limit_groups,
             )
 
 

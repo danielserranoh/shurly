@@ -49,7 +49,9 @@ class URL(Base):
     user_data = Column(JSON, nullable=True)  # Store arbitrary key-value pairs for campaign URLs
 
     # URL behavior settings
-    forward_parameters = Column(Boolean, default=True, nullable=False)  # Forward query params to destination
+    forward_parameters = Column(
+        Boolean, default=True, nullable=False
+    )  # Forward query params to destination
 
     # Open Graph metadata for social media previews
     og_title = Column(String(255), nullable=True)

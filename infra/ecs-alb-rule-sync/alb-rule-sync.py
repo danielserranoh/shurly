@@ -37,9 +37,9 @@ lambda_ = boto3.client("lambda", region_name="eu-south-2")
 
 # Express Mode priority → custom rule priority
 RULE_SYNC_MAP = {
-    "1": "10",   # shlink-api → go.griddo.io
-    "3": "11",   # shlink-web → links.griddo.io
-    "4": "12",   # shurly-api → s.griddo.io
+    "1": "10",  # shlink-api → go.griddo.io
+    "3": "11",  # shlink-web → links.griddo.io
+    "4": "12",  # shurly-api → s.griddo.io
 }
 
 LISTENER_ARN = "arn:aws:elasticloadbalancing:eu-south-2:686255983646:listener/app/ecs-express-gateway-alb-d37ca364/8d6cb22fed5c0e8b/f182b836d7cff456"
@@ -79,20 +79,17 @@ def sync_once():
 
         elbv2.modify_rule(
             RuleArn=target_rule["RuleArn"],
-            Actions=[{
-                "Type": "forward",
-                "ForwardConfig": {
-                    "TargetGroups": source_tgs
-                }
-            }]
+            Actions=[{"Type": "forward", "ForwardConfig": {"TargetGroups": source_tgs}}],
         )
-        changes.append(f"Synced priority {target_pri} with {source_pri} ({describe_weights(source_tgs)})")
+        changes.append(
+            f"Synced priority {target_pri} with {source_pri} ({describe_weights(source_tgs)})"
+        )
 
     return changes
 
 
 def describe_weights(target_groups):
-    """"weights 950/50 = 95%/5%". ALB weights are relative, not percentages."""
+    """Render weights like `weights 950/50 = 95%/5%` (ALB weights are relative)."""
     raw = [tg["Weight"] for tg in target_groups]
     total = sum(raw)
     if not total:
@@ -156,8 +153,15 @@ def lambda_handler(event, context):
                 )
                 print(json.dumps({"handed_off": deployment_id, "next_hop": hop + 1}))
             else:
-                print(json.dumps({"gave_up": deployment_id, "hops": hop,
-                                  "note": "COMPLETED/FAILED will still do the final sync"}))
+                print(
+                    json.dumps(
+                        {
+                            "gave_up": deployment_id,
+                            "hops": hop,
+                            "note": "COMPLETED/FAILED will still do the final sync",
+                        }
+                    )
+                )
 
     result = changes if changes else ["No changes needed"]
     print(json.dumps(result))

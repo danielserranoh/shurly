@@ -1,4 +1,5 @@
 """Tag utility functions."""
+
 from sqlalchemy.orm import Session
 
 from server.core.config import settings
@@ -11,7 +12,7 @@ def initialize_predefined_tags(db: Session) -> None:
     Called on app startup or via migration.
     Idempotent - only creates missing tags.
     """
-    for category, config in settings.predefined_tags.items():
+    for config in settings.predefined_tags.values():
         color = config["color"]
         for tag_name in config["tags"]:
             # Check if tag already exists
@@ -28,7 +29,7 @@ def initialize_predefined_tags(db: Session) -> None:
                 display_name=tag_name,
                 color=color,
                 is_predefined=True,
-                created_by=None
+                created_by=None,
             )
             db.add(tag)
 

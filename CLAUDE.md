@@ -90,7 +90,7 @@ Backend (FastAPI)               Frontend (Astro 7 + Tailwind 4)
 2. **Write tests**: Add/update tests before implementing (TDD).
 3. **Implement**: Make changes to pass the tests.
 4. **Verify**: Run `uv run pytest` — the whole suite must pass.
-5. **Lint**: `uv run ruff check server tests main.py` (focus on the files you touched).
+5. **Lint**: `uv run ruff check . && uv run ruff format --check .` — CI fails on either, so fix before pushing (`uv run ruff format .` rewrites).
 6. **Commit**: Use clear, descriptive commit messages following the existing pattern (`feat: Phase X.Y.Z — …`).
 
 ### Code Conventions
@@ -217,7 +217,7 @@ docker compose up -d
 | Start frontend | `cd frontend && npm run dev` |
 | Run all tests | `uv run pytest` |
 | Format code | `uv run ruff format .` |
-| Check lint | `uv run ruff check server tests main.py` |
+| Check lint | `uv run ruff check . && uv run ruff format --check .` |
 | View API docs | http://localhost:8000/docs |
 | View frontend | http://localhost:4232 |
 | robots.txt | http://localhost:8000/robots.txt |

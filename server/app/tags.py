@@ -1,4 +1,5 @@
 """API endpoints for tag management."""
+
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -26,10 +27,11 @@ def list_tags(
     current_user: User = Depends(get_current_user),
 ):
     """List all tags with optional filtering."""
-    query = db.query(
-        Tag,
-        func.count(url_tags.c.url_id).label("usage_count")
-    ).outerjoin(url_tags, Tag.id == url_tags.c.tag_id).group_by(Tag.id)
+    query = (
+        db.query(Tag, func.count(url_tags.c.url_id).label("usage_count"))
+        .outerjoin(url_tags, Tag.id == url_tags.c.tag_id)
+        .group_by(Tag.id)
+    )
 
     if search:
         query = query.filter(Tag.name.startswith(search.lower()))
@@ -143,9 +145,9 @@ def update_tag(
     db.refresh(tag)
 
     # Get usage count
-    usage_count = db.query(func.count(url_tags.c.url_id)).filter(
-        url_tags.c.tag_id == tag.id
-    ).scalar() or 0
+    usage_count = (
+        db.query(func.count(url_tags.c.url_id)).filter(url_tags.c.tag_id == tag.id).scalar() or 0
+    )
 
     return TagResponse(
         id=tag.id,

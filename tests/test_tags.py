@@ -1,16 +1,19 @@
 """Tests for tag management functionality."""
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
-from server.core.models import Tag, URL, URLType, Campaign
+from server.core.models import URL, Tag, URLType
 
 
 @pytest.mark.integration
 class TestTagCRUD:
     """Test tag CRUD operations."""
 
-    def test_list_tags_includes_predefined(self, client: TestClient, auth_headers: dict, init_predefined_tags):
+    def test_list_tags_includes_predefined(
+        self, client: TestClient, auth_headers: dict, init_predefined_tags
+    ):
         """Predefined tags should be returned."""
         response = client.get("/api/v1/tags", headers=auth_headers)
         assert response.status_code == 200
@@ -23,7 +26,9 @@ class TestTagCRUD:
         tag_names = [tag["name"] for tag in data["tags"]]
         assert "email" in tag_names
 
-    def test_list_tags_shows_usage_count(self, client: TestClient, auth_headers: dict, db_session: Session, test_user):
+    def test_list_tags_shows_usage_count(
+        self, client: TestClient, auth_headers: dict, db_session: Session, test_user
+    ):
         """Tags should show usage count."""
         # Create a tag
         tag = Tag(name="test", display_name="Test", color="gray-500", created_by=test_user.id)
@@ -34,7 +39,7 @@ class TestTagCRUD:
             short_code="tagged",
             original_url="https://example.com",
             url_type=URLType.STANDARD,
-            created_by=test_user.id
+            created_by=test_user.id,
         )
         url.tags.append(tag)
         db_session.add(url)
@@ -49,10 +54,14 @@ class TestTagCRUD:
         assert test_tag is not None
         assert test_tag["usage_count"] == 1
 
-    def test_search_tags_by_name(self, client: TestClient, auth_headers: dict, db_session: Session, test_user):
+    def test_search_tags_by_name(
+        self, client: TestClient, auth_headers: dict, db_session: Session, test_user
+    ):
         """Can search tags by name prefix."""
         # Create tags
-        tag1 = Tag(name="marketing", display_name="Marketing", color="gray-500", created_by=test_user.id)
+        tag1 = Tag(
+            name="marketing", display_name="Marketing", color="gray-500", created_by=test_user.id
+        )
         tag2 = Tag(name="sales", display_name="Sales", color="gray-500", created_by=test_user.id)
         db_session.add_all([tag1, tag2])
         db_session.commit()
@@ -65,7 +74,9 @@ class TestTagCRUD:
         assert "marketing" in tag_names
         assert "sales" not in tag_names
 
-    def test_filter_tags_by_type(self, client: TestClient, auth_headers: dict, init_predefined_tags):
+    def test_filter_tags_by_type(
+        self, client: TestClient, auth_headers: dict, init_predefined_tags
+    ):
         """Can filter tags by predefined/user-created."""
         # Get predefined only
         response = client.get("/api/v1/tags?is_predefined=true", headers=auth_headers)
@@ -81,11 +92,7 @@ class TestTagCRUD:
 
     def test_create_user_tag(self, client: TestClient, auth_headers: dict):
         """User can create custom tag."""
-        response = client.post(
-            "/api/v1/tags",
-            json={"name": "My Campaign"},
-            headers=auth_headers
-        )
+        response = client.post("/api/v1/tags", json={"name": "My Campaign"}, headers=auth_headers)
         assert response.status_code == 201
         data = response.json()
         assert data["name"] == "my campaign"  # lowercase
@@ -100,7 +107,7 @@ class TestTagCRUD:
         response = client.post(
             "/api/v1/tags",
             json={"name": "test"},  # Same, different case
-            headers=auth_headers
+            headers=auth_headers,
         )
         assert response.status_code == 400
         assert "already exists" in response.json()["detail"].lower()
@@ -108,29 +115,17 @@ class TestTagCRUD:
     def test_create_tag_too_long(self, client: TestClient, auth_headers: dict):
         """Tag name exceeding 30 chars should fail."""
         long_name = "a" * 31
-        response = client.post(
-            "/api/v1/tags",
-            json={"name": long_name},
-            headers=auth_headers
-        )
+        response = client.post("/api/v1/tags", json={"name": long_name}, headers=auth_headers)
         assert response.status_code == 422  # Pydantic validation
 
     def test_create_tag_empty_name(self, client: TestClient, auth_headers: dict):
         """Tag name cannot be empty."""
-        response = client.post(
-            "/api/v1/tags",
-            json={"name": "   "},
-            headers=auth_headers
-        )
+        response = client.post("/api/v1/tags", json={"name": "   "}, headers=auth_headers)
         assert response.status_code == 422
 
     def test_create_tag_with_emoji(self, client: TestClient, auth_headers: dict):
         """Tags can contain emojis."""
-        response = client.post(
-            "/api/v1/tags",
-            json={"name": "🚀 Launch"},
-            headers=auth_headers
-        )
+        response = client.post("/api/v1/tags", json={"name": "🚀 Launch"}, headers=auth_headers)
         assert response.status_code == 201
         data = response.json()
         assert data["name"] == "🚀 launch"
@@ -141,30 +136,27 @@ class TestTagCRUD:
         response = client.post("/api/v1/tags", json={"name": "Test"})
         assert response.status_code == 401
 
-    def test_update_user_tag(self, client: TestClient, auth_headers: dict, db_session: Session, test_user):
+    def test_update_user_tag(
+        self, client: TestClient, auth_headers: dict, db_session: Session, test_user
+    ):
         """User can rename their tag."""
         # Create tag
-        tag = Tag(
-            name="oldname",
-            display_name="OldName",
-            color="gray-500",
-            created_by=test_user.id
-        )
+        tag = Tag(name="oldname", display_name="OldName", color="gray-500", created_by=test_user.id)
         db_session.add(tag)
         db_session.commit()
 
         # Update
         response = client.patch(
-            f"/api/v1/tags/{tag.id}",
-            json={"name": "NewName"},
-            headers=auth_headers
+            f"/api/v1/tags/{tag.id}", json={"name": "NewName"}, headers=auth_headers
         )
         assert response.status_code == 200
         data = response.json()
         assert data["name"] == "newname"
         assert data["display_name"] == "NewName"
 
-    def test_update_tag_checks_uniqueness(self, client: TestClient, auth_headers: dict, db_session: Session, test_user):
+    def test_update_tag_checks_uniqueness(
+        self, client: TestClient, auth_headers: dict, db_session: Session, test_user
+    ):
         """Cannot rename tag to existing name."""
         # Create two tags
         tag1 = Tag(name="tag1", display_name="Tag1", color="gray-500", created_by=test_user.id)
@@ -174,23 +166,21 @@ class TestTagCRUD:
 
         # Try to rename tag1 to tag2
         response = client.patch(
-            f"/api/v1/tags/{tag1.id}",
-            json={"name": "Tag2"},
-            headers=auth_headers
+            f"/api/v1/tags/{tag1.id}", json={"name": "Tag2"}, headers=auth_headers
         )
         assert response.status_code == 400
         assert "already exists" in response.json()["detail"].lower()
 
-    def test_update_predefined_tag_forbidden(self, client: TestClient, auth_headers: dict, db_session: Session, init_predefined_tags):
+    def test_update_predefined_tag_forbidden(
+        self, client: TestClient, auth_headers: dict, db_session: Session, init_predefined_tags
+    ):
         """Cannot update predefined tags."""
         # Get a predefined tag
-        tag = db_session.query(Tag).filter(Tag.is_predefined == True).first()
+        tag = db_session.query(Tag).filter(Tag.is_predefined.is_(True)).first()
         assert tag is not None
 
         response = client.patch(
-            f"/api/v1/tags/{tag.id}",
-            json={"name": "NewName"},
-            headers=auth_headers
+            f"/api/v1/tags/{tag.id}", json={"name": "NewName"}, headers=auth_headers
         )
         assert response.status_code == 400
         assert "predefined" in response.json()["detail"].lower()
@@ -198,21 +188,19 @@ class TestTagCRUD:
     def test_update_tag_not_found(self, client: TestClient, auth_headers: dict):
         """Updating non-existent tag returns 404."""
         import uuid
+
         fake_id = uuid.uuid4()
         response = client.patch(
-            f"/api/v1/tags/{fake_id}",
-            json={"name": "Test"},
-            headers=auth_headers
+            f"/api/v1/tags/{fake_id}", json={"name": "Test"}, headers=auth_headers
         )
         assert response.status_code == 404
 
-    def test_delete_user_tag(self, client: TestClient, auth_headers: dict, db_session: Session, test_user):
+    def test_delete_user_tag(
+        self, client: TestClient, auth_headers: dict, db_session: Session, test_user
+    ):
         """User can delete their tag."""
         tag = Tag(
-            name="deleteme",
-            display_name="DeleteMe",
-            color="gray-500",
-            created_by=test_user.id
+            name="deleteme", display_name="DeleteMe", color="gray-500", created_by=test_user.id
         )
         db_session.add(tag)
         db_session.commit()
@@ -224,7 +212,9 @@ class TestTagCRUD:
         # Verify deleted
         assert db_session.query(Tag).filter(Tag.id == tag_id).first() is None
 
-    def test_delete_tag_removes_from_urls(self, client: TestClient, auth_headers: dict, db_session: Session, test_user):
+    def test_delete_tag_removes_from_urls(
+        self, client: TestClient, auth_headers: dict, db_session: Session, test_user
+    ):
         """Deleting tag removes it from all URLs."""
         # Create tag
         tag = Tag(name="test", display_name="Test", color="gray-500", created_by=test_user.id)
@@ -235,7 +225,7 @@ class TestTagCRUD:
             short_code="abc123",
             original_url="https://example.com",
             url_type=URLType.STANDARD,
-            created_by=test_user.id
+            created_by=test_user.id,
         )
         url.tags.append(tag)
         db_session.add(url)
@@ -248,10 +238,12 @@ class TestTagCRUD:
         db_session.refresh(url)
         assert len(url.tags) == 0
 
-    def test_delete_predefined_tag_forbidden(self, client: TestClient, auth_headers: dict, db_session: Session, init_predefined_tags):
+    def test_delete_predefined_tag_forbidden(
+        self, client: TestClient, auth_headers: dict, db_session: Session, init_predefined_tags
+    ):
         """Cannot delete predefined tags."""
         # Get a predefined tag
-        tag = db_session.query(Tag).filter(Tag.is_predefined == True).first()
+        tag = db_session.query(Tag).filter(Tag.is_predefined.is_(True)).first()
         assert tag is not None
 
         response = client.delete(f"/api/v1/tags/{tag.id}", headers=auth_headers)
@@ -261,6 +253,7 @@ class TestTagCRUD:
     def test_delete_tag_not_found(self, client: TestClient, auth_headers: dict):
         """Deleting non-existent tag returns 404."""
         import uuid
+
         fake_id = uuid.uuid4()
         response = client.delete(f"/api/v1/tags/{fake_id}", headers=auth_headers)
         assert response.status_code == 404
@@ -280,7 +273,7 @@ class TestTagInitialization:
 
         initialize_predefined_tags(db_session)
 
-        tags = db_session.query(Tag).filter(Tag.is_predefined == True).all()
+        tags = db_session.query(Tag).filter(Tag.is_predefined.is_(True)).all()
         assert len(tags) > 0
 
         # Check for specific tags
@@ -294,10 +287,10 @@ class TestTagInitialization:
         from server.utils.tags import initialize_predefined_tags
 
         initialize_predefined_tags(db_session)
-        count1 = db_session.query(Tag).filter(Tag.is_predefined == True).count()
+        count1 = db_session.query(Tag).filter(Tag.is_predefined.is_(True)).count()
 
         initialize_predefined_tags(db_session)
-        count2 = db_session.query(Tag).filter(Tag.is_predefined == True).count()
+        count2 = db_session.query(Tag).filter(Tag.is_predefined.is_(True)).count()
 
         assert count1 == count2
 

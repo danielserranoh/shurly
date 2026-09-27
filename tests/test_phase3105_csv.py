@@ -32,9 +32,7 @@ class TestCSVExport:
         self, client: TestClient, db_session: Session, test_user: User, auth_headers
     ):
         self._make_url(db_session, test_user, "csv1")
-        r = client.get(
-            "/api/v1/analytics/urls/csv1/daily?format=csv", headers=auth_headers
-        )
+        r = client.get("/api/v1/analytics/urls/csv1/daily?format=csv", headers=auth_headers)
         assert r.status_code == 200
         assert r.headers["content-type"].startswith("text/csv")
         assert "csv1-daily.csv" in r.headers.get("content-disposition", "")
@@ -61,9 +59,7 @@ class TestCSVExport:
             )
         db_session.commit()
 
-        r = client.get(
-            "/api/v1/analytics/urls/csv2/geo?format=csv", headers=auth_headers
-        )
+        r = client.get("/api/v1/analytics/urls/csv2/geo?format=csv", headers=auth_headers)
         assert r.status_code == 200
         rows = list(csv.reader(io.StringIO(r.text)))
         assert rows[0] == ["country", "clicks"]
@@ -75,9 +71,7 @@ class TestCSVExport:
         self, client: TestClient, db_session: Session, test_user: User, auth_headers
     ):
         self._make_url(db_session, test_user, "csv3")
-        r = client.get(
-            "/api/v1/analytics/urls/csv3/daily?format=xml", headers=auth_headers
-        )
+        r = client.get("/api/v1/analytics/urls/csv3/daily?format=xml", headers=auth_headers)
         assert r.status_code == 422  # Pydantic regex validation
 
     def test_default_format_still_json(

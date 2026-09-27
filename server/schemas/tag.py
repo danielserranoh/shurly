@@ -1,4 +1,5 @@
 """Pydantic schemas for tags."""
+
 import uuid as uuid_pkg
 from datetime import datetime
 

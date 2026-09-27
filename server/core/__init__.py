@@ -15,7 +15,9 @@ engine = create_engine(
     echo=False,  # Set to True for SQL logging during development
     connect_args={
         "sslmode": settings.db_ssl_mode,  # SSL mode for RDS connections
-    } if settings.db_ssl_mode else {},
+    }
+    if settings.db_ssl_mode
+    else {},
 )
 
 # Create SessionLocal class

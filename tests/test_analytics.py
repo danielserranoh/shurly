@@ -15,7 +15,9 @@ from server.core.models.url import URLType
 class TestURLDailyAnalytics:
     """Tests for GET /api/v1/analytics/urls/{short_code}/daily"""
 
-    def test_daily_stats_success(self, client: TestClient, db_session: Session, test_user: User, auth_headers: dict):
+    def test_daily_stats_success(
+        self, client: TestClient, db_session: Session, test_user: User, auth_headers: dict
+    ):
         """Test getting daily stats for a URL."""
         # Create a URL
         url = URL(
@@ -63,7 +65,9 @@ class TestURLDailyAnalytics:
             assert isinstance(stat["clicks"], int)
             assert stat["clicks"] >= 0
 
-    def test_daily_stats_no_visits(self, client: TestClient, db_session: Session, test_user: User, auth_headers: dict):
+    def test_daily_stats_no_visits(
+        self, client: TestClient, db_session: Session, test_user: User, auth_headers: dict
+    ):
         """Test daily stats for URL with no visits."""
         url = URL(
             short_code="novisits",
@@ -97,7 +101,9 @@ class TestURLDailyAnalytics:
 class TestURLWeeklyAnalytics:
     """Tests for GET /api/v1/analytics/urls/{short_code}/weekly"""
 
-    def test_weekly_stats_success(self, client: TestClient, db_session: Session, test_user: User, auth_headers: dict):
+    def test_weekly_stats_success(
+        self, client: TestClient, db_session: Session, test_user: User, auth_headers: dict
+    ):
         """Test getting weekly stats for a URL."""
         url = URL(
             short_code="testweekly",
@@ -139,7 +145,9 @@ class TestURLWeeklyAnalytics:
 class TestURLGeoAnalytics:
     """Tests for GET /api/v1/analytics/urls/{short_code}/geo"""
 
-    def test_geo_stats_success(self, client: TestClient, db_session: Session, test_user: User, auth_headers: dict):
+    def test_geo_stats_success(
+        self, client: TestClient, db_session: Session, test_user: User, auth_headers: dict
+    ):
         """Test getting geographic stats for a URL."""
         url = URL(
             short_code="testgeo",
@@ -173,7 +181,9 @@ class TestURLGeoAnalytics:
         assert data["stats"][0]["country"] == "United States"
         assert data["stats"][0]["clicks"] == 2
 
-    def test_geo_stats_with_days_param(self, client: TestClient, db_session: Session, test_user: User, auth_headers: dict):
+    def test_geo_stats_with_days_param(
+        self, client: TestClient, db_session: Session, test_user: User, auth_headers: dict
+    ):
         """Test geo stats with custom days parameter."""
         url = URL(
             short_code="testgeo2",
@@ -195,7 +205,9 @@ class TestURLGeoAnalytics:
 class TestCampaignAnalytics:
     """Tests for campaign analytics endpoints"""
 
-    def test_campaign_summary(self, client: TestClient, db_session: Session, test_user: User, auth_headers: dict):
+    def test_campaign_summary(
+        self, client: TestClient, db_session: Session, test_user: User, auth_headers: dict
+    ):
         """Test getting campaign summary statistics."""
         # Create a campaign
         campaign = Campaign(
@@ -233,7 +245,9 @@ class TestCampaignAnalytics:
                 db_session.add(visit)
         db_session.commit()
 
-        response = client.get(f"/api/v1/analytics/campaigns/{campaign.id}/summary", headers=auth_headers)
+        response = client.get(
+            f"/api/v1/analytics/campaigns/{campaign.id}/summary", headers=auth_headers
+        )
 
         assert response.status_code == 200
         data = response.json()
@@ -245,7 +259,9 @@ class TestCampaignAnalytics:
         assert len(data["top_performers"]) > 0
         assert len(data["daily_timeline"]) == 7
 
-    def test_campaign_users(self, client: TestClient, db_session: Session, test_user: User, auth_headers: dict):
+    def test_campaign_users(
+        self, client: TestClient, db_session: Session, test_user: User, auth_headers: dict
+    ):
         """Test getting campaign user statistics."""
         campaign = Campaign(
             name="User Stats Campaign",
@@ -269,7 +285,9 @@ class TestCampaignAnalytics:
             db_session.add(url)
         db_session.commit()
 
-        response = client.get(f"/api/v1/analytics/campaigns/{campaign.id}/users", headers=auth_headers)
+        response = client.get(
+            f"/api/v1/analytics/campaigns/{campaign.id}/users", headers=auth_headers
+        )
 
         assert response.status_code == 200
         data = response.json()
@@ -283,7 +301,9 @@ class TestCampaignAnalytics:
     def test_campaign_not_found(self, client: TestClient, auth_headers: dict):
         """Test campaign analytics for non-existent campaign."""
         fake_id = str(uuid4())
-        response = client.get(f"/api/v1/analytics/campaigns/{fake_id}/summary", headers=auth_headers)
+        response = client.get(
+            f"/api/v1/analytics/campaigns/{fake_id}/summary", headers=auth_headers
+        )
         assert response.status_code == 404
 
 
@@ -291,7 +311,9 @@ class TestCampaignAnalytics:
 class TestOverviewAnalytics:
     """Tests for GET /api/v1/analytics/overview"""
 
-    def test_overview_stats(self, client: TestClient, db_session: Session, test_user: User, auth_headers: dict):
+    def test_overview_stats(
+        self, client: TestClient, db_session: Session, test_user: User, auth_headers: dict
+    ):
         """Test getting overview statistics."""
         # Create some URLs
         for i in range(3):
@@ -373,9 +395,7 @@ class TestBotFiltering:
         db_session.commit()
         return url
 
-    def test_overview_excludes_bots_by_default(
-        self, client, auth_headers, db_session, test_user
-    ):
+    def test_overview_excludes_bots_by_default(self, client, auth_headers, db_session, test_user):
         self._seed(db_session, test_user)
         r = client.get("/api/v1/analytics/overview", headers=auth_headers)
         assert r.status_code == 200
@@ -383,13 +403,9 @@ class TestBotFiltering:
         assert body["total_clicks"] == 2
         assert body["total_unique_visitors"] == 2
 
-    def test_overview_include_bots_returns_all(
-        self, client, auth_headers, db_session, test_user
-    ):
+    def test_overview_include_bots_returns_all(self, client, auth_headers, db_session, test_user):
         self._seed(db_session, test_user)
-        r = client.get(
-            "/api/v1/analytics/overview?include_bots=true", headers=auth_headers
-        )
+        r = client.get("/api/v1/analytics/overview?include_bots=true", headers=auth_headers)
         assert r.status_code == 200
         body = r.json()
         assert body["total_clicks"] == 5
@@ -407,9 +423,7 @@ class TestBotFiltering:
         db_session.add(url)
         db_session.commit()
 
-        r = client.get(
-            "/auto1", headers={"User-Agent": "curl/8.0"}, follow_redirects=False
-        )
+        r = client.get("/auto1", headers={"User-Agent": "curl/8.0"}, follow_redirects=False)
         assert r.status_code == 302
         v = db_session.query(Visitor).filter(Visitor.short_code == "auto1").first()
         assert v.is_bot is True
