@@ -1095,6 +1095,9 @@ records which tools get used, how often, or how they fail.
   - [x] Nor in a database error's message, for any request 🔎 R10: SQLAlchemy ends it with the statement's
         parameters, and the traceback kept for real errors prints it. The engine hides them (`hide_parameters=True`;
         `tests/test_db_error_messages.py`). PostgreSQL's own detail for a constraint violation still names the value
+  - [x] Nor in the link-preview fetcher's warnings 🔎 R10: a refused, timed-out or failed fetch logged the whole
+        destination URL (a tool argument of `create_short_url`), whose path or query can carry personal data. They
+        keep its origin only (`url_origin`, `server/utils/url.py`; tests in `tests/test_opengraph_ssrf.py`)
 - [x] Same JSON format for the HTTP request line (`http.request`, from `RequestIdMiddleware`), with `request_id`;
       uvicorn's access log is off in the image. A generated tool's call into the API carries the MCP request's id
 - [x] Logs Insights queries (calls, errors and latency per tool, daily users, one request end to end) documented
@@ -1442,13 +1445,16 @@ check earlier in the next project.
   traceback. For a generated tool the error carries the API's response body, and a 422 body echoes the invalid
   values: the whole request body, a campaign's CSV rows included, when a field is missing. So argument values
   could reach CloudWatch. So could any request's input through a database error, whose message SQLAlchemy ends
-  with the statement's parameters → 5.6.0
+  with the statement's parameters, and a destination URL through the link-preview fetcher's own warnings → 5.6.0
 - **How it surfaced:** probing the usage log's test harness: a `create_short_url` call with an invalid URL put the
-  value on stderr. Then checking what the traceback kept for real errors prints turned up the SQL parameters
-- **Why it slipped:** "never log argument values" was checked against the lines we write; the test read only our
-  JSON lines, not everything the process wrote
+  value on stderr. Then checking what the traceback kept for real errors prints turned up the SQL parameters, and
+  a pass over the app's own log calls the fetcher's
+- **Why it slipped:** "never log argument values" was checked against the lines the usage log writes; the test
+  read only those JSON lines, not everything the process wrote, and the older log calls were never checked
+  against the new rule
 - **Lesson:** test a "never log X" rule against the whole of stderr for a call that carries X, failures included:
-  frameworks log on their own, and libraries put data in their exception messages
+  frameworks log on their own, libraries put data in their exception messages, and old log lines predate the
+  rule
 
 ### R11 — Sign-up designed before asking which identity provider the company runs · missed · found 2026-09-27
 - **What:** 3.13 was first planned as email confirmation over SES, with our own password reset. Griddo runs Google
