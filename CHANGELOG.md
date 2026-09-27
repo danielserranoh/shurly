@@ -38,6 +38,23 @@ implementation lifecycle and is independent of the URL version segment.
   error logs its type, not its message, which can repeat the URL, and a refused
   non-http(s) redirect names its scheme instead of the whole URL.
 
+### Changed — the schema is migrated with Alembic (Phase 3.14.1)
+- **Startup runs the migrations instead of `create_all()`**, which only created
+  missing tables and never added a column to an existing one. Revisions live in
+  `server/migrations/versions/`; `0001` is the baseline, identical to what
+  `create_all()` built (compared with `pg_dump`).
+- **The existing production database is adopted, not rebuilt**: tables without
+  an `alembic_version` get stamped at the baseline, keeping every row.
+- **Tasks that boot together don't race**: a PostgreSQL advisory lock, held for
+  the migration's transaction, lets one task migrate while the others wait.
+- **New PostgreSQL test suite** (`tests/test_phase3141_migrations.py`): empty
+  and pre-Alembic databases, a second run, three processes booting at once, and
+  a drift check that fails when a model changes without a migration. CI runs it
+  against a PostgreSQL 17 service (`--require-postgres`); locally it needs
+  `TEST_DATABASE_URL`.
+- `scripts/init_database.py` runs the migrations too, so it can't build a schema
+  the app would mistake for the baseline.
+
 ### Security — database errors leave out the SQL parameters
 - **A failed database statement no longer writes the user's input to the log.**
   SQLAlchemy ends a database error's message with the statement's parameters,

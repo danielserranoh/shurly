@@ -767,15 +767,15 @@ may change what. A personal link is possible, but only when someone chooses it o
 own links. Tags are already global.
 
 ### 3.14.1 Schema: adopt Alembic first
-- [ ] Alembic, with a baseline of the current schema. `create_all()` only creates missing tables, and this phase
-      adds columns to `urls` and `campaigns` (4.3 planned the switch "before the first non-additive change";
-      adding a column to an existing table already needs it)
-- [ ] Migrations run once per deploy, before the new tasks serve traffic: a one-off task in
-      `deploy-backend.yml`, or at startup under a Postgres advisory lock so two tasks don't race
+- [x] Alembic, with a baseline of the current schema (`0001`, identical to what `create_all()` built). `create_all()`
+      only creates missing tables, and this phase adds columns to `urls` and `campaigns` (4.3 planned the switch
+      "before the first non-additive change"; adding a column to an existing table already needs it)
+- [x] Migrations run at startup under a Postgres advisory lock, so tasks that boot together don't race
+      (`server/core/migrations.py`); production gets stamped at the baseline. Tested on PostgreSQL in CI
 - [ ] `organizations` (id, name, google_domain, created_at) and `organization_members` (organization_id, user_id,
       role: `owner` | `admin` | `member`, joined_at)
 - [ ] `urls.organization_id` and `campaigns.organization_id`, nullable: set = organization link, NULL = personal
-- [ ] Update "Adding a New Model" in `CLAUDE.md` with the migration step
+- [x] Update "Adding a New Model" in `CLAUDE.md` with the migration step
 
 ### 3.14.2 Roles
 | | member | admin | owner |

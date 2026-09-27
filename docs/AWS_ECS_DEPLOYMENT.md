@@ -255,6 +255,8 @@ psycopg2.errors.UndefinedTable: relation "tags" does not exist
 
 Added `Base.metadata.create_all(bind=engine)` to the FastAPI startup event. Idempotent — only creates missing tables, never drops or alters. Safe on every container start. **This is acceptable for greenfield; not acceptable once we ship a non-additive schema change.** When that happens, swap for Alembic and remove the `create_all` call.
 
+**Update (2026-09-27, Phase 3.14.1):** swapped for Alembic. The first new column needed it: `create_all()` never adds a column to an existing table. Startup now runs `run_migrations()` (`server/core/migrations.py`) under a PostgreSQL advisory lock, so tasks that boot together don't race. The pre-Alembic database is stamped at the baseline revision (`0001`), which matches what `create_all()` built.
+
 ---
 
 ## Troubleshooting catalog
@@ -330,7 +332,7 @@ Common boot failures:
 | Error | Cause | Fix |
 |---|---|---|
 | `password authentication failed for user "X"` | DB_USER wrong OR password wrong | `aws rds describe-db-instances ... --query MasterUsername` to verify; reset password via `modify-db-instance` if needed |
-| `relation "X" does not exist` | Schema not bootstrapped | Should be impossible after Phase 4.2; if it happens, check the startup event in `main.py` is running and has `Base.metadata.create_all()` |
+| `relation "X" does not exist` | Schema not migrated | Startup runs `run_migrations()` from `main.py`; check the task's first log lines for an Alembic error, and that `SELECT version_num FROM alembic_version` shows the latest revision in `server/migrations/versions/` |
 | `error parsing value for field "X" from source "EnvSettingsSource"` | env var mangled (usually JSON list) | Inspect via `describe-task-definition` and compare to `.env`; if different, fix the deploy script's quoting |
 | `CannotPullContainerError: ... 'linux/amd64'` | image is arm64-only | rebuild multi-arch with `--platform linux/amd64,linux/arm64` |
 
@@ -539,6 +541,8 @@ Time vs. correctness for greenfield. We'd rather ship Phase 4 with a 6-line idem
 
 When we make our first non-additive schema change (column rename, type change, drop), this assumption breaks. At that point: switch to Alembic, autogenerate migrations, and remove the startup `create_all`.
 
+Done on 2026-09-27 (Phase 3.14.1): the first new column on an existing table already broke it, before any rename or drop.
+
 ### Why two AWS accounts (service vs. DNS)?
 
 Inherited from existing Griddo infrastructure. The `griddo.io` apex zone is in `griddo-production`. Service deployments live in `griddo-main`. Cross-account DNS via subdomain delegation OR per-record cross-account writes — we use the latter (each Route 53 write is an explicit `--profile griddo-production` call). It's slightly more friction per record but doesn't require setting up cross-account IAM roles.
@@ -551,7 +555,9 @@ Inherited from existing Griddo infrastructure. The `griddo.io` apex zone is in `
 
 Single developer, no SLA. Adding a manual deploy step would only add friction without adding safety — the PR review IS the safety gate. When the team grows or we have customers who notice deploys, reconsider.
 
-### Why no Alembic / SemVer tags / multi-environment / signed commits / CODEOWNERS?
+### Why no SemVer tags / multi-environment / signed commits / CODEOWNERS?
+
+(Alembic was on this list until Phase 3.14.1.)
 
 Listed in `BRANCH_STRATEGY.md` § "What we deliberately don't do (yet)". All deferred until pain points justify them.
 
