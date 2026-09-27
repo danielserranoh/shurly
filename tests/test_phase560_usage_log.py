@@ -8,6 +8,9 @@ carries the request id, so a tool call can be followed through the API call it
 makes (3.9.6).
 
 Lines go to stderr: under the stdio transport, stdout is the JSON-RPC channel.
+
+fastmcp also logs each failed call itself, with a traceback. For a failed API
+call that line leaves out the response body, which can echo the arguments.
 """
 
 from __future__ import annotations
@@ -15,6 +18,7 @@ from __future__ import annotations
 import asyncio
 import importlib
 import json
+import logging
 from contextlib import contextmanager
 
 import pytest
@@ -226,3 +230,137 @@ def test_tool_call_over_http_shares_one_request_id(monkeypatch, capsys):
     assert requests["/mcp/"]["request_id"] == "rid-mcp"
     # The generated tool's own call into the API is forwarded the same id.
     assert requests["/api/v1/auth/me"]["request_id"] == "rid-mcp"
+
+
+# ---------------------------------------------------------------------------
+# fastmcp's own line for a failed call
+# ---------------------------------------------------------------------------
+
+# Personal data in a tool call. No spaces, so Rich can't wrap it across two lines.
+EMAIL = "jane.doe@acme.example"
+
+
+class _Records(logging.Handler):
+    """Keeps every record; `text()` renders them as a plain handler would, tracebacks included."""
+
+    def __init__(self):
+        super().__init__()
+        self.records: list[logging.LogRecord] = []
+        self.setFormatter(logging.Formatter("%(levelname)s %(name)s: %(message)s"))
+
+    def emit(self, record):
+        self.records.append(record)
+
+    def text(self) -> str:
+        return "\n".join(self.format(record) for record in self.records)
+
+    def tool_errors(self) -> list[logging.LogRecord]:
+        return [r for r in self.records if r.getMessage().startswith("Error calling tool")]
+
+
+@pytest.fixture
+def fastmcp_log():
+    """Every record logged under `fastmcp`, whichever handlers end up printing it."""
+    handler = _Records()
+    logger = logging.getLogger("fastmcp")
+    logger.addHandler(handler)
+    try:
+        yield handler
+    finally:
+        logger.removeHandler(handler)
+
+
+class TestFastmcpErrorLine:
+    """
+    fastmcp logs each failed call itself: "Error calling tool …", with a traceback.
+    When a generated tool's API call fails, the exception carries the response body,
+    and a 422 body echoes the invalid values (the whole request body when a field
+    is missing). The line keeps the tool and the status, not the body.
+    """
+
+    def test_invalid_value_stays_out_of_the_log(
+        self, mcp_on_test_db, signed_in_user, fastmcp_log, capsys
+    ):
+        from fastmcp.exceptions import ToolError
+
+        capsys.readouterr()
+        with _signed_in_as(signed_in_user), pytest.raises(ToolError, match="422") as raised:
+            asyncio.run(mcp_on_test_db.call_tool("create_short_url", {"url": EMAIL}))
+
+        # The caller still gets the API's answer, value included, to correct the call.
+        assert EMAIL in str(raised.value)
+        assert EMAIL not in capsys.readouterr().err
+        assert EMAIL not in fastmcp_log.text()
+        assert fastmcp_log.tool_errors()  # the failure itself is still logged
+
+    def test_campaign_rows_stay_out_of_the_log(
+        self, mcp_on_test_db, signed_in_user, fastmcp_log, capsys
+    ):
+        """The worst case: with `name` missing, the 422 echoes the whole body, CSV included."""
+        from fastmcp.exceptions import ToolError
+
+        arguments = {
+            "original_url": "https://acme.example/offer",
+            "csv_data": f"name,company,email\nJane Doe,Acme,{EMAIL}\n",
+        }
+        capsys.readouterr()
+        with _signed_in_as(signed_in_user), pytest.raises(ToolError, match="422") as raised:
+            asyncio.run(mcp_on_test_db.call_tool("create_campaign", arguments))
+
+        assert EMAIL in str(raised.value)
+        assert EMAIL not in capsys.readouterr().err
+        assert EMAIL not in fastmcp_log.text()
+        assert fastmcp_log.tool_errors()
+
+    def test_line_keeps_the_tool_and_the_status(self, mcp_on_test_db, signed_in_user, fastmcp_log):
+        from fastmcp.exceptions import ToolError
+
+        with _signed_in_as(signed_in_user), pytest.raises(ToolError):
+            asyncio.run(mcp_on_test_db.call_tool("create_short_url", {"url": EMAIL}))
+
+        [record] = fastmcp_log.tool_errors()
+        assert record.levelno == logging.ERROR
+        assert record.getMessage() == (
+            "Error calling tool 'create_short_url': HTTP error 422 (response body not logged)"
+        )
+        # The traceback would print the body again, and it only walks fastmcp's HTTP client.
+        assert record.exc_info is None
+
+    def test_exception_inside_the_api_keeps_its_traceback(
+        self, mcp_on_test_db, signed_in_user, fastmcp_log, capsys
+    ):
+        """A real server error reaches the tool as itself, not as an HTTP error."""
+        from fastmcp.exceptions import ToolError
+
+        from main import app
+        from server.core import get_db
+
+        def unreachable_database():
+            raise RuntimeError("database unreachable")
+
+        app.dependency_overrides[get_db] = unreachable_database  # the fixture pops it
+        capsys.readouterr()
+        with _signed_in_as(signed_in_user), pytest.raises(ToolError):
+            asyncio.run(mcp_on_test_db.call_tool("list_urls", {}))
+
+        [record] = fastmcp_log.tool_errors()
+        assert record.getMessage() == "Error calling tool 'list_urls'"
+        assert record.exc_info[0] is RuntimeError
+        # Single words: Rich wraps its output to the console's width.
+        stderr = capsys.readouterr().err
+        assert "Traceback" in stderr
+        assert "RuntimeError" in stderr
+
+    def test_other_value_error_keeps_its_traceback(self, mcp_on_test_db, fastmcp_log):
+        """Only fastmcp's "HTTP error" counts as an API error, not every ValueError."""
+        from fastmcp.exceptions import ToolError
+
+        @mcp_on_test_db.tool
+        def summary(days: int) -> dict:
+            raise ValueError("days must be between 1 and 90")  # as a curated tool does
+
+        with pytest.raises(ToolError):
+            asyncio.run(mcp_on_test_db.call_tool("summary", {"days": 365}))
+
+        [record] = fastmcp_log.tool_errors()
+        assert record.exc_info[0] is ValueError
