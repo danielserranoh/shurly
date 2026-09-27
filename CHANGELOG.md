@@ -26,6 +26,19 @@ implementation lifecycle and is independent of the URL version segment.
 
 ## [Unreleased]
 
+### Security — database errors leave out the SQL parameters
+- **A failed database statement no longer writes the user's input to the log.**
+  SQLAlchemy ends a database error's message with the statement's parameters,
+  and a traceback prints that message: uvicorn's for an API request, fastmcp's
+  for a tool call. So when a statement failed (a lost connection, a timeout, a
+  constraint), the log got what the user sent: for `POST /api/v1/auth/register`,
+  the email and the password's bcrypt hash; for a campaign, its rows. The engine
+  now hides them (`hide_parameters=True`, which covers `echo`'s SQL logging too);
+  the statement stays, so the error still says what failed.
+- PostgreSQL's own detail for a constraint violation is part of the driver's
+  message, so it still names the value: `Key (email)=(…) already exists`, or the
+  whole row for a `NOT NULL` violation (`Failing row contains (…)`).
+
 ### Security — MCP tool arguments kept out of fastmcp's error log
 - **A failed API call no longer writes the tool's arguments to the log.** fastmcp
   logs each failed tool call with its traceback, and when a generated tool's call
