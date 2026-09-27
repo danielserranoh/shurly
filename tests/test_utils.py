@@ -7,6 +7,7 @@ from server.utils.url import (
     is_valid_custom_code,
     is_valid_url,
     make_code_unique,
+    url_origin,
 )
 
 
@@ -109,3 +110,25 @@ class TestURLValidation:
         """Test that extremely long URLs are rejected."""
         long_url = "https://example.com/" + "a" * 3000
         assert not is_valid_url(long_url)
+
+
+@pytest.mark.unit
+class TestURLOrigin:
+    """`url_origin` keeps what a log line may carry of a destination URL."""
+
+    @pytest.mark.parametrize(
+        ("url", "origin"),
+        [
+            (
+                "https://acme.example/in/jane-doe?email=jane@acme.example#top",
+                "https://acme.example",
+            ),
+            ("https://jane:secret@Acme.Example:8443/", "https://acme.example:8443"),
+            ("http://[::1]:8080/admin", "http://[::1]:8080"),
+            ("jane.doe@acme.example", "<URL without a host>"),
+            ("mailto:jane.doe@acme.example", "<URL without a host>"),
+            ("https://acme.example:port/", "<invalid URL>"),
+        ],
+    )
+    def test_keeps_scheme_host_and_port_only(self, url, origin):
+        assert url_origin(url) == origin
