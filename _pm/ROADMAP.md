@@ -15,11 +15,11 @@ Order agreed in the 2026-09-27 review; confirm each item before starting it.
 
 1. **MCP usage log** (5.6.0): without it the dogfood produces no numbers. Code done; retention and saved queries
    are an AWS step.
-2. **Team workspace** (3.14): links belong to the team by default. Done before anyone creates links, so
-   nothing has to be migrated. Brings in Alembic.
+2. **Organization and roles** (3.14): links belong to the organization by default; owner, admin and member.
+   Done before anyone creates links, so nothing has to be migrated. Brings in Alembic.
 3. **Frontend hosting** (4.10): S3 + CloudFront; AWS steps run with SSO.
-4. **Identity**: sign-up for @griddo.io (3.13) and OAuth 2.1 for the MCP (5.8). One decision covers both:
-   which identity provider.
+4. **Identity**: sign in with Google Workspace, for the web (3.13) and the MCP (5.8). One Google project covers
+   both.
 5. **MCP install guide**, in the app and in the user manual (5.9): after 5.8, since OAuth changes the steps.
 6. **Internal dogfood** with the frontend and the MCP (5.6).
 7. **Replace Shlink on `go.griddo.io`** (Phase 8): after the dogfood and error alerting (6.4).
@@ -591,6 +591,8 @@ scheduled later (sends, reports, digests) — which needs to know the user's loc
 created_at) — no name, country, timezone or avatar. The app header shows the user's initial in a `size-9`
 circle (`AppLayout.astro`, `data-user-initial`); `AccountPanel.astro` has no avatar; the backend has no
 file storage (no S3, no `UploadFile` endpoints).
+**Note (2026-09-27):** with sign-in through Google (3.13), the ID token already carries the name and a photo URL.
+Pre-fill the profile from them; the upload and crop below remain for changing the photo.
 
 ### 3.12.1 Data model — new `user_profiles` table ✅ decided
 Storage is the database, not S3 (the Phase 4.5/4.6 bucket + CloudFront doesn't exist yet). And it's a
@@ -680,83 +682,84 @@ Australia have several. So store `country` *and* `timezone`:
 
 ---
 
-## Phase 3.13: Sign-up limited to @griddo.io, confirmed by email 🔎 R1
+## Phase 3.13: Sign in with Google (Workspace), with an optional password 🔎 R1 · 🔎 R10
 
-**Goal:** only people with a `@griddo.io` mailbox can create an account, and they prove it by opening a link
-sent to that mailbox.
-**Priority:** 🔴 HIGH — `POST /api/v1/auth/register` has accepted any email since the first deploy
-(2026-04-27): no domain check, no confirmation, no rate limit. Anyone who finds `s.griddo.io` can create
+**Goal:** people at Griddo get in with their Griddo Google account. An account can also have a password, set by
+its owner once signed in, and both lead to the same account.
+**Priority:** 🔴 HIGH — before the dogfood. `POST /api/v1/auth/register` has accepted any email since the first
+deploy (2026-04-27): no domain check, no confirmation, no rate limit. Anyone who finds `s.griddo.io` can create
 links on a Griddo domain, which is how URL shorteners end up on phishing blocklists.
-**Decided (2026-09-27):** `@griddo.io` only, confirmed by a link. The domain check depends on the
-confirmation: without it anyone can type `x@griddo.io`.
-**Open (2026-09-27):** if Griddo's mail runs on Google Workspace or Microsoft 365, signing in with that provider
-(5.8) would replace 3.13.2–3.13.5: the provider limits access to `griddo.io` and handles passwords, MFA and
-offboarding, so no SES, no stored passwords and no reset flow. Decide before building.
+**Decided (2026-09-27):** Griddo's mail runs on Google Workspace. Accounts are created only by signing in with
+Google (`@griddo.io`); a password is optional. This replaces the email-confirmation design, which moved to 3.15
+for external users. No email sending needed here.
+
+Why both can live together: after either login Shurly issues its own JWT, as today, so the API, the dashboard and
+the MCP's API keys don't care how someone signed in. Changing methods later (enforcing SSO, or leaving Google)
+logs nobody out: JWTs keep working until they expire (7 days in `deploy_ecs.sh`), API keys until revoked.
 
 ### ~~3.13.1 Stopgap: close sign-up in production now~~ (dropped 2026-09-27)
 Not needed: production has no users and no frontend yet, and 3.13 locks sign-up down before anyone is invited.
 Until then `POST /auth/register` stays reachable through the public API and its `/docs` page.
 
-### 3.13.2 Flow: email first, password on confirmation
-The password is chosen on the confirmation page, not at sign-up. Corporate mail security scanners often
-open the links in incoming mail by themselves: if sign-up took a password and the link activated the
-account, an attacker could register `victim@griddo.io` with a password of their choosing and the victim's
-scanner would activate it.
-1. `POST /api/v1/auth/register {email}` → 422 outside the allowlist; otherwise the same 202 whether or not
-   the account exists (no account enumeration)
-2. Email with a single-use link to the frontend: `/register/confirm/?token=…`
-3. That page asks for the password → `POST /api/v1/auth/register/confirm {token, password}` creates the
-   user. Opening the link changes nothing, so a scanner opening it is harmless
-- [ ] `REGISTRATION_ALLOWED_DOMAINS=["griddo.io"]`: exact domain after lowercasing
-      (`x@griddo.io.evil.com` and `x@evilgriddo.io` are rejected)
-- [ ] Token: ≥32 random bytes, stored as a SHA-256 hash, single use, 24 h expiry, superseded by a newer one
-- [ ] New table (e.g. `email_tokens`: `token_hash`, `email`, `purpose`, `expires_at`, `used_at`) and **no new
-      columns on `users`**: `create_all()` never adds columns to an existing table (see 3.12.1). The user
-      row only exists once confirmed, so `users` needs no "unverified" state and current users stay as they are
-- [ ] **Password reset** on the same machinery (`purpose=reset`); there is none today 🔎 R2
-- [ ] Rate limit sign-up, resend and reset per email and per IP: each call sends an email, so without a
-      limit it becomes a mail bomb and burns the SES quota (first slice of the rate limiting in 6.3)
+### 3.13.2 Google sign-in
+- [ ] Google Cloud project inside the griddo.io organization, OAuth consent screen **Internal** (only Griddo
+      accounts can sign in), a web OAuth client with the redirect URIs of the web sign-in and of the MCP proxy
+      (5.8). Client secret in Secrets Manager (6.3). Done by whoever administers Workspace
+- [ ] `GET /api/v1/auth/google/start` → Google (OpenID Connect, `state` + PKCE, `hd=griddo.io` as a hint) →
+      `GET /api/v1/auth/google/callback`
+- [ ] Verify the ID token server-side: signature, `aud`, `iss`, `exp`, `email_verified`, and `hd` equal to the
+      organization's domain (the `hd` parameter sent to Google is only a hint)
+- [ ] New table `user_identities` (user_id, provider, subject, email, created_at; unique provider + subject): an
+      account is recognised by Google's `sub`, which survives an email rename
+- [ ] The first sign-in creates the user and adds them to the organization as a member (3.14); later ones match
+      by `sub`
+- [ ] Hand the session to the static frontend with a one-time code that the page exchanges by `POST` for the JWT,
+      so the JWT never travels in a URL
+- [ ] `auth.login` line in the event log with the method (`google` | `password`), needed before enforcing SSO
+- [ ] With Google as the only way in, `POST /auth/register` goes, and with it the MCP `register` tool
+      (`tests/test_phase52_mcp_tools.py` pins the surface). `POST /auth/login` stays, for passwords
 
-### 3.13.3 Email sending: Amazon SES (AWS steps run with SSO)
-- [ ] Verify the sender domain in SES (`griddo-main`, eu-south-2). The DKIM CNAMEs go in the `griddo.io`
-      zone in **`griddo-production`**, the same cross-account step as the ACM validation in 4.4
-- [ ] Agree the sender with whoever runs Griddo's mail, so the SPF/DMARC of `griddo.io` stay valid. Option:
-      a subdomain (e.g. `no-reply@notify.griddo.io`) keeps app mail apart from corporate mail
-- [ ] Stay in the SES sandbox: it only delivers to verified identities, and a verified domain covers every
-      address on it, so verifying `griddo.io` (also when sending from a subdomain) reaches any `@griddo.io`
-      (200 emails/day, 1/s). Production access only if sign-up ever opens to other domains
-- [ ] ECS **task role** for `shurly-api` with `ses:SendEmail` on that identity: `deploy_ecs.sh` sets no task
-      role today, so the app has no AWS permissions of its own. No SMTP password to store
-- [ ] Settings: `EMAIL_BACKEND` (`ses` | `console`), `EMAIL_FROM`, `FRONTEND_URL` (to build the link)
+### 3.13.3 Optional password, set by the account's owner
+- [ ] Settings → Account: set, change or remove a password, only while signed in, so it's always set by someone
+      who already proved they own the account
+- [ ] Never link a Google identity to a password nobody verified. That's account pre-hijacking: someone
+      registers `ana@griddo.io` with a password before Ana, Ana later signs in with Google, and the attacker keeps
+      a way in. With accounts created only through Google, the path doesn't exist
+- [ ] Forgot the password → sign in with Google and set a new one; no reset email 🔎 R2
 
-### 3.13.4 Backend
-- [ ] `server/utils/email.py` with a `console` backend for local dev and tests (tests never send mail)
-- [ ] Plain-text + HTML templates with Jinja2 (already a dependency); `boto3` for SES
-- [ ] Endpoints and schemas from 3.13.2, resend included
-- [ ] MCP: `register` and `login` are auto-generated tools today. Either they follow the new flow or they
-      leave the surface (an MCP caller is already authenticated); `tests/test_phase52_mcp_tools.py` pins it
+### 3.13.4 Changing methods without disruption
+- [ ] Setting to turn password login off for the organization's domain (SSO enforced), keeping one break-glass
+      account in case Google fails or is misconfigured. Before turning it off, the `auth.login` lines show who
+      still uses a password
+- [ ] Leaving Google some day: everyone sets a password while Google still works, then Google sign-in goes off
+- [ ] Offboarding checklist: suspending someone in Google blocks their Google sign-in, but a Shurly password and
+      their API key keep working until the account is deactivated in Shurly
 
 ### 3.13.5 Frontend
-- [ ] Register page: email only, then a "check your inbox" state
-- [ ] `/register/confirm/?token=` and reset pages: set the password, then signed in
-- [ ] "Forgot your password?" on the login page
-- [ ] Needs the frontend hosted (4.10). If 4.10 slips: a server-rendered confirm page with Jinja2, as
-      `preview.html` already does
+- [ ] "Sign in with Google" on the login page; the register page goes
+- [ ] Settings → Account: the password section of 3.13.3
+- [ ] Needs the frontend hosted (4.10)
 
 ### 3.13.6 Verification
-- [ ] Tests (TDD): allowlist edge cases, token single use / expiry / hashed at rest, identical response for
-      new and existing emails, confirm creates the user, reset, rate limits, `REGISTRATION_ENABLED=false`
-- [ ] End-to-end in production with a real `@griddo.io` mailbox
+- [ ] Tests (TDD) against a faked Google: `hd` and `email_verified` enforced, `state` checked, first sign-in
+      creates the user and the membership, matching by `sub` after an email change, one-time code single use and
+      short-lived, passwords set only while signed in, register gone
+- [ ] End to end against the real Google project with a Griddo account
 
 ---
 
-## Phase 3.14: Team workspace — links belong to the team by default 🔎 R7
+## Phase 3.14: Organization and roles — links belong to the organization by default 🔎 R7
 
-**Goal:** everyone at Griddo sees and works on the same links, as with Shlink today. A personal link is possible,
-but only when someone chooses it on purpose.
-**Decided (2026-09-27):** team model by default; personal links are opt-in.
-**Priority:** 🔴 HIGH — before the dogfood. With no users yet, nothing has to be migrated; every link created
-before this lands would need a backfill.
+**Goal:** everyone at Griddo sees and works on the same links, as with Shlink today, and three roles decide who
+may change what. A personal link is possible, but only when someone chooses it on purpose.
+**Decided (2026-09-27):**
+- Links and campaigns belong to the organization by default; personal ones are opt-in.
+- An **organization** entity (the "team" of earlier drafts) with three roles: **owner**, **admin**, **member**.
+- Admins can edit and delete the organization's links. Owners promote members to admin and demote them.
+- An admin can't demote an owner. An owner stops being one by stepping down or handing the role over, and the
+  only owner must hand it over first.
+
+**Priority:** 🔴 HIGH — before the dogfood. With no users yet, nothing has to be migrated.
 **Today:** every link, campaign and stat is scoped to its creator. Some 20 queries filter by `created_by`
 (`server/app/urls.py`, `campaigns.py`, `analytics.py`, `mcp_server/curated.py`), so each person sees only their
 own links. Tags are already global.
@@ -767,24 +770,81 @@ own links. Tags are already global.
       adding a column to an existing table already needs it)
 - [ ] Migrations run once per deploy, before the new tasks serve traffic: a one-off task in
       `deploy-backend.yml`, or at startup under a Postgres advisory lock so two tasks don't race
-- [ ] `teams` (id, name, created_at) and `team_members` (team_id, user_id, role, joined_at)
-- [ ] `urls.team_id` and `campaigns.team_id`, nullable: set = team link, NULL = personal link
+- [ ] `organizations` (id, name, google_domain, created_at) and `organization_members` (organization_id, user_id,
+      role: `owner` | `admin` | `member`, joined_at)
+- [ ] `urls.organization_id` and `campaigns.organization_id`, nullable: set = organization link, NULL = personal
 - [ ] Update "Adding a New Model" in `CLAUDE.md` with the migration step
 
-### 3.14.2 Behaviour
-- [ ] One team at launch ("Griddo"); every `@griddo.io` account joins it when it signs up (3.13 / 5.8)
-- [ ] New links and campaigns are team links unless the request asks for `visibility: "personal"`: API field,
-      MCP tool argument, and a UI toggle that starts off
-- [ ] Every read and write scoped to "my team's links + my personal links": link CRUD, bulk tags, redirect
-      rules, campaigns, analytics (overview, per link, per campaign, CSV) and the curated MCP tools
-- [ ] Decide what members may do with each other's team links: edit and delete, or edit only (in Shlink
-      everyone can do everything)
-- [ ] `created_by` stays, so the list can show who created each link
+### 3.14.2 Roles
+| | member | admin | owner |
+|---|:-:|:-:|:-:|
+| See the organization's links, campaigns and stats | ✓ | ✓ | ✓ |
+| Create links and campaigns (organization or personal) | ✓ | ✓ | ✓ |
+| Edit and delete the ones they created | ✓ | ✓ | ✓ |
+| Edit and delete anyone's organization links and campaigns | | ✓ | ✓ |
+| Remove members from the organization (proposed) | | ✓ | ✓ |
+| Promote members to admin, demote admins | | | ✓ |
+| Make other owners, step down, hand the role over | | | ✓ |
 
-### 3.14.3 Verification
-- [ ] Tests (TDD): visibility matrix (A sees B's team links, not B's personal ones), team is the default,
-      personal only on request, analytics and CSV follow the same scope, MCP tools too
+- [ ] Rule (proposed): nobody changes the role of someone whose role is equal to or above theirs, and nobody
+      grants a role above their own. So an admin can't demote an owner (decided), nor another admin (proposed:
+      otherwise two admins can strip each other)
+- [ ] At least one owner, always: the last owner can't step down, leave, be demoted or be deactivated until
+      another owner exists. Checked in one transaction, so two owners demoting each other at once can't leave none
+- [ ] "Hand the role over" = make someone owner and step down, in one action
+- [ ] The first owner comes from configuration (`BOOTSTRAP_OWNER_EMAIL`), not from whoever signs in first
+- [ ] Two owners from day one (proposed): if the only owner leaves Griddo and their Google account is suspended,
+      nobody can manage roles. Break-glass: changing `BOOTSTRAP_OWNER_EMAIL` restores an owner
+- [ ] Every role change writes an `org.role_changed` line to the event log (who, whom, from, to)
+
+### 3.14.3 Behaviour
+- [ ] One organization at launch, "Griddo", with `google_domain = griddo.io`: whoever signs in with a Griddo
+      Google account joins as a member (3.13)
+- [ ] New links and campaigns belong to the organization unless the request asks for `visibility: "personal"`:
+      API field, MCP tool argument, and a UI toggle that starts off
+- [ ] Every read scoped to "my organization's links + my personal links", and every write checked against the
+      role: link CRUD, bulk tags, redirect rules, campaigns, analytics (overview, per link, per campaign, CSV) and
+      the curated MCP tools. An API key acts with its user's role
+- [ ] `created_by` stays, so lists can show who created each link
+- [ ] Someone leaves (proposed): their personal links keep redirecting, and an owner can move them to the
+      organization so someone can still manage them
+- [ ] One organization per user at launch (the membership table allows more later). Tags stay global while
+      there's a single organization; scope them per organization before a second one
+- [ ] Settings → Organization: members, roles, remove, hand the role over
+
+### 3.14.4 Verification
+- [ ] Tests (TDD): visibility matrix (A sees B's organization links, not B's personal ones), organization by
+      default and personal only on request; the roles table row by row, through the API and the MCP; the
+      last-owner invariant (step down, demote, deactivate, two owners demoting each other); analytics and CSV
+      follow the same scope
 - [ ] Migrations run against PostgreSQL (docker-compose), not only the in-memory SQLite of the test suite
+
+---
+
+## Phase 3.15: External users by invitation (later)
+
+**Goal:** people outside Griddo's Google Workspace (agencies, freelancers) get an account when someone invites
+them.
+**Priority:** 🟢 LOW — no external users yet (2026-09-27). Build it when the first one arrives.
+**Needs email sending**: an invitation that reaches the person's mailbox is what proves the address is theirs, and
+without Workspace behind them a forgotten password can only be recovered by email.
+
+- [ ] Invitation: an owner or admin invites an email → email with a single-use link (≥32 random bytes, stored as
+      a SHA-256 hash, with an expiry) → the page asks for a password and creates the account. Opening the link
+      changes nothing, so mail security scanners that open links by themselves can't activate anything
+- [ ] Password reset by email, on the same token machinery
+- [ ] Amazon SES (`griddo-main`, eu-south-2): verify the sender domain (DKIM CNAMEs in the `griddo.io` zone in
+      `griddo-production`), agree the sender with whoever runs Griddo's mail so SPF/DMARC stay valid, and
+      **request production access**: the sandbox only delivers to verified domains (AWS usually answers within a
+      day). ECS task role with `ses:SendEmail`, so no SMTP password to store
+- [ ] `server/utils/email.py` with a `console` backend for dev and tests; templates with Jinja2
+- [ ] Rate limits on invitations, resends and resets, since each one sends an email
+- [ ] The role an external gets, and whether they see every organization link (maybe a guest role that only
+      sees what's shared with them)
+- Without SES, if externals stay few: (a) a copyable invitation link sent by the inviter's own means; it works
+  for whoever holds it, and resets are manual; (b) externals with their own Google account sign in with it: the
+  consent screen moves from Internal to External and Shurly admits only the organization's domain or invited
+  emails; no SES, but no help for people on Microsoft 365 or other mail
 
 ---
 
@@ -905,7 +965,8 @@ End-to-end run with the user driving SSO locally:
 - [x] `./scripts/setup_custom_domain.sh` (cert, rule, DNS)
 - [x] Update Lambda `RULE_SYNC_MAP`
 - [ ] Smoke checklist — only `/api/v1/health` (checked by CI on every deploy) and the forced redeploy are on record; re-run the rest against production and tick them here:
-  - `register` → `login` → returns JWT (once 3.13 lands, sign-up follows its new flow)
+  - `register` → `login` → returns JWT (once 3.13 lands, register goes: sign in with Google, or with a password
+    set afterwards)
   - `POST /api/v1/urls` creates a short URL bound to `s.griddo.io`
   - `GET /<code>` returns 302 to destination
   - `GET /<code>/track` returns 43-byte GIF
@@ -1014,8 +1075,8 @@ for this.
 - [x] **Reserved short codes**: custom codes `mcp`, `docs`, `redoc` get a suffixed code, as for a taken one (PR #35).
 
 ### 5.6 Internal dogfood + signal capture
-**Prerequisites:** the usage log (5.6.0), the team workspace (3.14), the hosted frontend (4.10), sign-up and
-OAuth (3.13, 5.8) and the install guide (5.9). **Decided (2026-09-27):** the dogfood runs with the frontend too.
+**Prerequisites:** the usage log (5.6.0), the organization and roles (3.14), the hosted frontend (4.10), Google
+sign-in and OAuth (3.13, 5.8) and the install guide (5.9). **Decided (2026-09-27):** the dogfood runs with the frontend too.
 
 #### 5.6.0 Usage log (prerequisite) 🔎 R4 — code ✅, AWS setup pending
 In the access log every MCP call is a `POST /mcp/`: the tool name travels inside the JSON-RPC body, so nothing
@@ -1050,17 +1111,17 @@ records which tools get used, how often, or how they fail.
 **Decided (2026-09-27):** MCP clients can sign in with OAuth 2.1; API keys keep working. claude.ai's custom
 connectors only authenticate with OAuth (their form has no field for a bearer token), so without it Shurly can't be
 added there; Claude Code gets by with `--header`.
-- [ ] **Choose the authorization server.** Proposed: Griddo's identity provider (Google Workspace or Microsoft
-      Entra ID) through fastmcp's OAuth proxy (`GoogleProvider` / `AzureProvider`, both in fastmcp 4.0.10), which
-      also handles client registration (Dynamic Client Registration, Client ID Metadata Documents). The same
-      provider can sign people into the web app (see the open note in 3.13). Alternatives: a hosted authorization
-      server (WorkOS, Auth0, Cognito…) or Shurly as its own (the most work and the largest attack surface)
-- [ ] Register the app in that provider, limited to `griddo.io`, with the redirect URIs of the MCP proxy (and of
-      the web sign-in, if 3.13 goes that way)
+- [x] **Authorization server: Google Workspace** (decided 2026-09-27), through fastmcp's OAuth proxy
+      (`GoogleProvider`, in fastmcp 4.0.10), which also handles client registration (Dynamic Client Registration,
+      Client ID Metadata Documents). Same Google project as the web sign-in (3.13.2)
+- [ ] Add the MCP proxy's redirect URI to the Google OAuth client of 3.13.2
 - [ ] Protected-resource metadata (RFC 9728), and 401s carrying `WWW-Authenticate: Bearer resource_metadata="…"`
       (answers the open question at the end of this phase)
-- [ ] Map the signed-in identity to a Shurly user by verified email: `@griddo.io` only, member of the team (3.14)
-- [ ] API keys keep working: the verifier accepts either an API key or an OAuth access token
+- [ ] Map the Google identity to the Shurly user through `user_identities` (3.13.2): organization domain only,
+      member of the organization (3.14)
+- [ ] API keys keep working: the verifier accepts either an API key or an OAuth access token. Check this first:
+      fastmcp takes a single auth provider, so it likely needs a small one wrapping `GoogleProvider` and
+      `ShurlyTokenVerifier`
 - [ ] No collisions with short codes: auth routes served at the root (`/authorize`, `/token`, `/register`,
       `/.well-known/…`) get reserved like `mcp`, `docs` and `redoc` (PR #35), or live under `/mcp/`
 - [ ] Pick the canonical MCP host (`s.griddo.io` or `go.griddo.io`) before people install it: OAuth ties the
@@ -1114,7 +1175,7 @@ live in `mcp_server/README.md`, written for developers. There is no user manual 
 - [ ] ~~Lambda cold start optimization~~ — not applicable on ECS; containers have no cold start
 
 ### 6.3 Security Hardening
-- [ ] Rate limiting — no API Gateway on this stack, so it needs app-level limiting or AWS WAF on the shared ALB (first slice: sign-up, resend and reset in 3.13.2)
+- [ ] Rate limiting — no API Gateway on this stack, so it needs app-level limiting or AWS WAF on the shared ALB (first slice: invitations and resets in 3.15, since each one sends an email)
 - [ ] Input validation review
 - [ ] SQL injection prevention check
 - [ ] XSS prevention in frontend (dynamic HTML goes through the escaping `html` tag from `@/utils/html`; audit the remaining raw `innerHTML` uses)
@@ -1157,7 +1218,7 @@ live in `mcp_server/README.md`, written for developers. There is no user manual 
 
 **Goal:** Shurly takes over `go.griddo.io` and the Shlink stack is retired (shlink-api, shlink-web on
 `links.griddo.io`, and its RDS). Every link already in circulation keeps working.
-**Priority:** 🟡 MEDIUM — after the dogfood (5.6), the team workspace (3.14) and error alerting (6.4): from the
+**Priority:** 🟡 MEDIUM — after the dogfood (5.6), the organization and roles (3.14) and error alerting (6.4): from the
 cutover on, links printed and emailed over the years depend on Shurly.
 
 **Can both coexist?** They already do: the shared ALB routes by hostname (`go.griddo.io` → Shlink,
@@ -1169,8 +1230,9 @@ with one ALB change, and rolling back restores it. Shurly resolves links by (Hos
 - [x] Hostname for new links after the cutover: **`go.griddo.io`** (decided 2026-09-27). A new address for links
       would confuse people; `s.griddo.io` keeps working in parallel. Until the cutover `go.griddo.io` still points
       at Shlink, so links made in Shurly before then live on `s.griddo.io` (and keep working)
-- [x] Shared or personal links 🔎 R7: **team by default, personal only on purpose** (decided 2026-09-27) → 3.14
-- [x] Owner of the migrated links: the Griddo team (3.14)
+- [x] Shared or personal links 🔎 R7: **the organization's by default, personal only on purpose** (decided
+      2026-09-27) → 3.14
+- [x] Owner of the migrated links: the Griddo organization (3.14)
 - [ ] Visit history: import it as `Visitor` rows (no schema change, but Shlink exposes no IPs, so unique-visitor
       counts won't cover it) or archive Shlink's export and start counting at the cutover
 
@@ -1208,8 +1270,8 @@ the import can be re-run.
       nothing is dropped silently
 - [ ] Import (idempotent, `--dry-run` first): exact code, original domain and creation date; fails on a
       conflict instead of suffixing like the custom-code path does. It writes to the private RDS, so it runs
-      as an admin-only endpoint or through ECS Exec (documented in `DEPLOYMENT.md`; it needs a task role with
-      SSM permissions, see 3.13.3)
+      as an admin-only endpoint or through ECS Exec (documented in `DEPLOYMENT.md`; it needs an ECS task role
+      with SSM permissions, and `deploy_ecs.sh` sets none today)
 
 ### 8.5 Cutover
 - [ ] Freeze link creation in Shlink; final delta export + import
@@ -1308,7 +1370,8 @@ check earlier in the next project.
 - **Decision:** the stopgap (3.13.1) was dropped on 2026-09-27, since production has no users and no frontend yet
 
 ### R2 — No password reset · missed · found 2026-09-27
-- **What:** a user who forgets the password has no way back → 3.13.2
+- **What:** a user who forgets the password has no way back → 3.13.3 (sign in with Google and set a new one;
+  external users get a reset email in 3.15)
 - **How it surfaced:** designing the confirmation email for R1
 - **Why it slipped:** with no email sending in the stack, every flow that needs a mailbox stayed invisible
 - **Lesson:** settle "can the app send email?" early; confirmation, reset and notifications all depend on it
@@ -1343,7 +1406,8 @@ check earlier in the next project.
 
 ### R7 — Links belong to a person; Shlink's belong to the team · missed · found 2026-09-27
 - **What:** every Shurly query filters by `created_by`; replacing a shared Shlink needs shared links or a team
-  model → 8.1. Decided: team by default, personal links on purpose → 3.14
+  model → 8.1. Decided: links belong to the organization by default, personal ones on purpose, with three
+  roles (owner, admin, member) → 3.14
 - **How it surfaced:** deciding who would own the migrated links
 - **Why it slipped:** the use cases at the top of this file are one person's flows; a team sharing links never
   was one
@@ -1363,3 +1427,12 @@ check earlier in the next project.
 - **How it surfaced:** the product owner asked for in-app instructions, mirrored in the user manual
 - **Why it slipped:** "document it" was read as developer docs; nobody pictured the people who'd install it
 - **Lesson:** onboarding docs for the real audience are part of a feature's definition of done
+
+### R10 — Sign-up designed before asking which identity provider the company runs · missed · found 2026-09-27
+- **What:** 3.13 was first planned as email confirmation over SES, with our own password reset. Griddo runs Google
+  Workspace, and signing in with it covers the domain check, email verification, MFA and resets → 3.13
+  rewritten; the email flow moved to 3.15, for external users
+- **How it surfaced:** planning OAuth for the MCP (5.8), which needed an identity provider anyway
+- **Why it slipped:** sign-up was designed from the app outwards, not from the accounts the company already has
+- **Lesson:** for an internal tool, ask first which identity provider the company runs; signing in with it
+  usually replaces sign-up, verification and password resets
