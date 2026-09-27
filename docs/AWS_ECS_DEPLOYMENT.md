@@ -433,7 +433,7 @@ aws logs filter-log-events \
     --region eu-south-2 --profile griddo-main
 ```
 
-(Once we add structured logging that includes the request id in every line, this becomes more useful. Today only the response header carries it.)
+Every `http.request` and `mcp.tool_call` line carries the id, so this finds the request, the MCP tool call and the API call it made. The event format and the Logs Insights queries are in `mcp_server/README.md` § Usage log.
 
 ### ECS Exec into a running task (psql or shell)
 

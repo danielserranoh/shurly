@@ -70,8 +70,11 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
 # Express scales horizontally by adding tasks, not by adding workers per task.
 # `--proxy-headers` lets uvicorn honor X-Forwarded-* set by the ALB; the actual
 # trust decision still goes through TRUSTED_PROXIES in server/utils/network.py.
+# `--no-access-log`: RequestIdMiddleware writes each request's `http.request`
+# JSON line (Phase 5.6.0), so uvicorn's own line would only duplicate it.
 CMD ["uvicorn", "main:app", \
      "--host", "0.0.0.0", \
      "--port", "8000", \
      "--proxy-headers", \
-     "--forwarded-allow-ips", "*"]
+     "--forwarded-allow-ips", "*", \
+     "--no-access-log"]

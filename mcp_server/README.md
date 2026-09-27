@@ -45,6 +45,7 @@ mcp_server/
 ├── server.py       # FastMCP.from_fastapi(...) bootstrap + curated-tool wrappers
 ├── curated.py      # hand-curated tool logic (Phase 5.3)
 ├── auth.py         # bearer verification + forwarding (Phase 5.4)
+├── usage.py        # usage log: one JSON line per tool call (Phase 5.6.0)
 └── README.md       # this file
 ```
 
@@ -297,6 +298,110 @@ policy is decided.
 stdio sessions can list (and, once a DB is wired, invoke) tools without
 a key. **Never set this in production.** The wrapper does not set it by
 default.
+
+## Usage log (Phase 5.6.0)
+
+The dogfood needs to know which tools get used, how often, and how they fail.
+The access log can't say: every MCP call is a `POST /mcp/`, with the tool name
+inside the JSON-RPC body. So the app writes its own events, one JSON object per
+line on **stderr** (under the stdio transport, stdout is the JSON-RPC channel).
+In production they land in the service's CloudWatch log group,
+`/aws/ecs/default/shurly-api-5fdb`, where Logs Insights discovers the fields by
+itself.
+
+`mcp.tool_call` — one per tool call, written by `UsageLogMiddleware`
+(`mcp_server/usage.py`):
+
+```json
+{"ts": "2026-09-27T18:04:12.311+00:00", "event": "mcp.tool_call", "request_id": "5c1e…",
+ "tool": "update_url", "args": ["short_code", "title"], "user_id": "0b6f…",
+ "outcome": "error", "error_type": "ValueError", "http_status": 404, "duration_ms": 18.4}
+```
+
+- `args` lists argument **names**, never values: campaign rows carry names,
+  companies and emails.
+- `outcome` is `ok` or `error`. `error_type` is the exception behind the failure
+  (fastmcp wraps them all in `ToolError`, so the cause says more), `tool_error`
+  when a tool returned an error result without raising, or `cancelled`.
+  `http_status` is set when a generated tool's call into the API failed.
+- `user_id` comes from the access token; `request_id` is null for a direct call
+  or under stdio, where there's no HTTP request.
+
+`http.request` — one per HTTP request, written by `RequestIdMiddleware` in
+`main.py`. It replaces uvicorn's access log, which the image turns off:
+
+```json
+{"ts": "2026-09-27T18:04:12.330+00:00", "event": "http.request", "request_id": "5c1e…",
+ "method": "POST", "path": "/mcp/", "status": 200, "duration_ms": 25.1}
+```
+
+The path goes without its query string, which can carry tokens. `duration_ms` runs
+until the response headers are ready.
+
+A generated tool calls the API over an in-process HTTP client, and that call
+carries the MCP request's id. So one `request_id` links the `POST /mcp/`, the
+`mcp.tool_call` and the API request behind it (which also gets its own
+`http.request` line).
+
+### Queries (CloudWatch Logs Insights)
+
+Calls per tool:
+
+```
+filter event = "mcp.tool_call"
+| stats count(*) as calls by tool
+| sort calls desc
+```
+
+Errors per tool:
+
+```
+filter event = "mcp.tool_call" and outcome = "error"
+| stats count(*) as errors by tool, error_type, http_status
+| sort errors desc
+```
+
+Latency per tool:
+
+```
+filter event = "mcp.tool_call"
+| stats count(*) as calls, pct(duration_ms, 50) as p50_ms, pct(duration_ms, 95) as p95_ms by tool
+| sort p95_ms desc
+```
+
+Active users per day:
+
+```
+filter event = "mcp.tool_call"
+| stats count_distinct(user_id) as users, count(*) as calls by bin(1d)
+```
+
+Everything that happened for one request:
+
+```
+filter request_id = "<id>"
+| fields @timestamp, event, method, path, status, tool, outcome, duration_ms
+| sort @timestamp asc
+```
+
+### Setup (once, with SSO)
+
+Keep the logs 90 days; CloudWatch keeps them forever unless told otherwise:
+
+```bash
+AWS_PROFILE=griddo-main aws logs put-retention-policy --region eu-south-2 \
+    --log-group-name /aws/ecs/default/shurly-api-5fdb --retention-in-days 90
+```
+
+Save a query so it shows up under **Saved queries** in the console (the `/` in the
+name makes a folder). Repeat for each query above:
+
+```bash
+AWS_PROFILE=griddo-main aws logs put-query-definition --region eu-south-2 \
+    --name "shurly/mcp-calls-per-tool" \
+    --log-group-names /aws/ecs/default/shurly-api-5fdb \
+    --query-string 'filter event = "mcp.tool_call" | stats count(*) as calls by tool | sort calls desc'
+```
 
 ## Roadmap reference
 

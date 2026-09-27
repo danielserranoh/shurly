@@ -122,6 +122,7 @@ def _build_mcp_server(fastapi_app=None) -> FastMCP:
     with auth on.
     """
     from mcp_server.auth import ShurlyTokenVerifier, forward_bearer_auth
+    from mcp_server.usage import UsageLogMiddleware, forward_request_id
 
     if fastapi_app is None:
         from main import app as fastapi_app  # local import — see docstring
@@ -134,13 +135,19 @@ def _build_mcp_server(fastapi_app=None) -> FastMCP:
         "name": name,
         "route_maps": EXCLUDED_ROUTE_MAPS,
         "mcp_names": MCP_TOOL_NAMES,
-        "httpx_client_kwargs": {"auth": forward_bearer_auth},
+        "httpx_client_kwargs": {
+            "auth": forward_bearer_auth,
+            # Phase 5.6.0 — the API call carries the MCP request's id.
+            "event_hooks": {"request": [forward_request_id]},
+        },
     }
     if not auth_disabled:
         kwargs["auth"] = ShurlyTokenVerifier()
 
     server = FastMCP.from_fastapi(**kwargs)
     _register_curated_tools(server)
+    # Phase 5.6.0 — one `mcp.tool_call` line per call (mcp_server/usage.py).
+    server.add_middleware(UsageLogMiddleware())
     return server
 
 
