@@ -50,6 +50,7 @@ Backend (FastAPI)               Frontend (Astro 7 + Tailwind 4)
 │   └── /rules                  ├── /dashboard/link/?code=…
 ├── /api/v1/campaigns/*         ├── /dashboard/campaigns/, …/create
 ├── /api/v1/tags/*              ├── /dashboard/campaign/?id=…
+├── /api/v1/organization/*      │   (members + roles)
 │                               └── /dashboard/analytics, /dashboard/settings
 ├── /api/v1/analytics/*
 │   └── /orphan-visits
@@ -59,7 +60,7 @@ Backend (FastAPI)               Frontend (Astro 7 + Tailwind 4)
     /robots.txt    — default-deny short URLs
 ```
 
-**Database (PostgreSQL)**: 8 models
+**Database (PostgreSQL)**: 10 models, schema migrated by Alembic (`server/migrations/`)
 - `User` (with `api_key_scope` enum + `api_key_constraints`)
 - `Domain` (single-domain at launch; UNIQUE `(domain_id, short_code)` on URLs)
 - `URL` (standard / custom / campaign + crawlable + validity window + visit cap)
@@ -68,6 +69,7 @@ Backend (FastAPI)               Frontend (Astro 7 + Tailwind 4)
 - `Tag` + `url_tags` association
 - `RedirectRule` (priority + JSONB conditions)
 - `OrphanVisit` (typo'd / unknown short codes)
+- `Organization` + `OrganizationMember` (role: owner / admin / member; rules in `server/utils/organization.py`)
 
 **Key features**:
 - URL shortening (standard 6-char, custom slugs, campaign bulk)

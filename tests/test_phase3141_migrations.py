@@ -9,19 +9,16 @@ locks, none of which the in-memory SQLite of the other suites has.
 
 from __future__ import annotations
 
-import os
 import subprocess
 import sys
 import uuid
 from pathlib import Path
 
-import pytest
 from alembic import command
 from alembic.autogenerate import compare_metadata
 from alembic.runtime.migration import MigrationContext
 from alembic.script import ScriptDirectory
-from sqlalchemy import create_engine, text
-from sqlalchemy.engine import make_url
+from sqlalchemy import text
 
 from server.core import Base
 from server.core.migrations import BASELINE_REVISION, alembic_config, run_migrations
@@ -34,26 +31,6 @@ def _head() -> str:
 def test_revisions_form_a_single_line():
     """Two branches that each add a revision leave two heads, and the app can't upgrade to both."""
     assert len(ScriptDirectory.from_config(alembic_config()).get_heads()) == 1
-
-
-@pytest.fixture
-def pg_engine():
-    """A fresh, empty PostgreSQL database for one test."""
-    url = os.getenv("TEST_DATABASE_URL")
-    if not url:
-        pytest.skip("TEST_DATABASE_URL is not set (a PostgreSQL server)")
-    admin = create_engine(url, isolation_level="AUTOCOMMIT")
-    name = f"shurly_test_{uuid.uuid4().hex[:12]}"
-    with admin.connect() as conn:
-        conn.execute(text(f'CREATE DATABASE "{name}"'))
-    engine = create_engine(make_url(url).set(database=name))
-    try:
-        yield engine
-    finally:
-        engine.dispose()
-        with admin.connect() as conn:
-            conn.execute(text(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)'))
-        admin.dispose()
 
 
 def _version(engine) -> str | None:

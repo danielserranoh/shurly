@@ -110,6 +110,7 @@ def _seed_database():
         Visitor,
     )
     from server.utils.domain import backfill_campaign_url_domains, get_or_create_default_domain
+    from server.utils.organization import ensure_memberships
     from server.utils.tags import initialize_predefined_tags
 
     run_migrations(engine)
@@ -119,6 +120,9 @@ def _seed_database():
         initialize_predefined_tags(db)
         get_or_create_default_domain(db)
         backfill_campaign_url_domains(db)
+        # Phase 3.14.2 — the organization, and a membership for every active account.
+        ensure_memberships(db)
+        db.commit()
     finally:
         db.close()
 

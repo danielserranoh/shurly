@@ -203,9 +203,15 @@ Two filters live in `mcp_server/server.py`:
   (`create_short_url_api_v1_urls_post`) to clean MCP tool names
   (`create_short_url`).
 
-The surface is now **38 tools**: auth (6), URL CRUD + tagging + previews (11),
-redirect rules (4), campaigns (6), analytics (7), tags (4). Phase 3.11 added
-`get_url` and `fetch_url_metadata` to the original 36.
+The surface is now **40 tools**: auth (6), organization (2), URL CRUD + tagging +
+previews (11), redirect rules (4), campaigns (6), analytics (7), tags (4). Phase 3.11
+added `get_url` and `fetch_url_metadata` to the original 36; Phase 3.14.2 added
+`get_organization` and `list_organization_members`.
+
+Changing the organization (roles, removals, handing ownership over) stays out of
+the MCP on purpose: an assistant that reads untrusted text, such as link titles or
+fetched pages, could be talked into "make X an owner". Those routes are excluded in
+`EXCLUDED_ROUTE_MAPS` and remain available through the web app and the REST API.
 
 `tests/test_phase52_mcp_tools.py` pins this list. When a route is added or
 renamed, the test fails until `MCP_TOOL_NAMES` (or `EXCLUDED_ROUTE_MAPS`) is
@@ -233,7 +239,7 @@ The pure logic lives in `mcp_server/curated.py` (takes `db: Session` and
 `mcp_server/server.py` open a `SessionLocal` per call and resolve the
 caller with `resolve_current_user(db)` (Phase 5.4).
 
-Total tool surface: **42 tools** (38 auto-generated + 4 curated). The 5.2 contract test (`tests/test_phase52_mcp_tools.py`) and
+Total tool surface: **44 tools** (40 auto-generated + 4 curated). The 5.2 contract test (`tests/test_phase52_mcp_tools.py`) and
 the 5.3 logic tests (`tests/test_phase53_curated_tools.py`) together pin
 the surface.
 

@@ -2,6 +2,7 @@
 
 from server.core.models.campaign import Campaign
 from server.core.models.domain import Domain
+from server.core.models.organization import Organization, OrganizationMember, OrgRole
 from server.core.models.orphan_visit import OrphanVisit, OrphanVisitType
 from server.core.models.redirect_rule import RedirectRule
 from server.core.models.tag import Tag, campaign_tags, url_tags
@@ -16,6 +17,9 @@ __all__ = [
     "URLType",
     "Campaign",
     "Domain",
+    "Organization",
+    "OrganizationMember",
+    "OrgRole",
     "OrphanVisit",
     "OrphanVisitType",
     "RedirectRule",

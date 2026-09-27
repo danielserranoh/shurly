@@ -26,6 +26,32 @@ implementation lifecycle and is independent of the URL version segment.
 
 ## [Unreleased]
 
+### Added — the organization, its members and their roles (Phase 3.14.2)
+- **Every account belongs to one organization** ("Griddo", from
+  `ORGANIZATION_NAME` / `ORGANIZATION_DOMAIN`), as owner, admin or member.
+  Sign-up joins it as member; at startup, active accounts without a membership
+  join too. Migration `0002` adds `organizations` and `organization_members`.
+- **The first owner comes from `BOOTSTRAP_OWNER_EMAIL`**, not from whoever signs
+  up first: that account joins as owner when the organization has none. If no
+  active owner is left, startup makes it owner again (break-glass). Set it
+  before the first sign-up, or nobody can change roles.
+- **`/api/v1/organization`**: the organization and your role; `GET /members`;
+  `PATCH /members/{user_id}` to change a role; `DELETE /members/{user_id}` to
+  remove someone (their account is closed and its API key revoked; their links
+  keep redirecting); `POST /transfer-ownership` to make someone owner and step
+  down to admin.
+- **The rules**: owners change the roles of admins and members, to any role, but
+  never another owner's; admins change no roles and remove members; nobody
+  removes or changes someone with a role equal to or above theirs; anyone may
+  lower their own role, except the last owner (409). That check locks the owner
+  rows, so two owners stepping down at once leave one (tested on PostgreSQL).
+- **Every change is logged**: `org.role_changed` and `org.member_removed` lines
+  in the event log, with who did it.
+- **MCP**: `get_organization` and `list_organization_members` are tools; role
+  changes, removals and handovers are not, so an assistant reading untrusted
+  text can't be talked into them.
+- Links and campaigns don't belong to the organization yet: that's 3.14.3.
+
 ### Changed — the schema is migrated with Alembic (Phase 3.14.1)
 - **Startup runs the migrations instead of `create_all()`**, which only created
   missing tables and never added a column to an existing one. Revisions live in

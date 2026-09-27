@@ -138,6 +138,7 @@ CONTAINER_JSON=$(jq -n \
     --arg default_domain "${DEFAULT_DOMAIN:-s.griddo.io}" \
     --arg redirect_status "${REDIRECT_STATUS_CODE:-302}" \
     --arg redirect_cache "${REDIRECT_CACHE_LIFETIME:-0}" \
+    --arg bootstrap_owner "${BOOTSTRAP_OWNER_EMAIL:-}" \
     '{
         image: $image,
         containerPort: $port,
@@ -160,7 +161,8 @@ CONTAINER_JSON=$(jq -n \
             {name: "SHORT_URL_MODE",                     value: $short_url_mode},
             {name: "DEFAULT_DOMAIN",                     value: $default_domain},
             {name: "REDIRECT_STATUS_CODE",               value: $redirect_status},
-            {name: "REDIRECT_CACHE_LIFETIME",            value: $redirect_cache}
+            {name: "REDIRECT_CACHE_LIFETIME",            value: $redirect_cache},
+            {name: "BOOTSTRAP_OWNER_EMAIL",              value: $bootstrap_owner}
         ]
     }')
 
