@@ -26,6 +26,18 @@ implementation lifecycle and is independent of the URL version segment.
 
 ## [Unreleased]
 
+### Security — link previews log the destination's origin, not the URL
+- **A failed link preview no longer writes the destination URL to the log.** The
+  Open Graph fetcher logged the whole URL when a fetch was refused, timed out,
+  got an error status or failed, and so did the preview endpoint's guard. A
+  destination URL is user input, and its path or query string can carry personal
+  data (`/in/jane-doe`, `?email=…`). Those warnings reach CloudWatch although
+  nothing configures logging: the root logger has no handler, so Python's
+  last-resort handler prints them to stderr. They now keep the URL's origin:
+  scheme, host and port (`url_origin` in `server/utils/url.py`). An unexpected
+  error logs its type, not its message, which can repeat the URL, and a refused
+  non-http(s) redirect names its scheme instead of the whole URL.
+
 ### Security — database errors leave out the SQL parameters
 - **A failed database statement no longer writes the user's input to the log.**
   SQLAlchemy ends a database error's message with the statement's parameters,
