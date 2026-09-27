@@ -1025,13 +1025,17 @@ records which tools get used, how often, or how they fail.
 - [x] Hooked as a fastmcp middleware (`on_call_tool`, `mcp_server/usage.py`), so auto-generated and curated tools
       are covered alike
 - [x] Never log argument values: campaign rows carry names, companies and emails (GDPR). Argument names only
+  - [x] Nor in fastmcp's own line for a failed call 🔎 R10: for an API error it printed the response body, and a 422
+        echoes the invalid values (the whole request body, CSV rows included, when a field is missing). Now it keeps
+        the tool and the status, without the body or the traceback (`ApiErrorLogFilter`, `mcp_server/usage.py`).
+        Other exceptions keep their traceback. Production never runs `FASTMCP_LOG_LEVEL=DEBUG`, which logs arguments
 - [x] Same JSON format for the HTTP request line (`http.request`, from `RequestIdMiddleware`), with `request_id`;
       uvicorn's access log is off in the image. A generated tool's call into the API carries the MCP request's id
 - [x] Logs Insights queries (calls, errors and latency per tool, daily users, one request end to end) documented
       in `mcp_server/README.md` § Usage log
 - [ ] Save those queries in CloudWatch and set retention on the log group (90 days): commands in the same section,
       to run once with SSO
-- [x] Tests: `tests/test_phase560_usage_log.py` (9)
+- [x] Tests: `tests/test_phase560_usage_log.py` (14)
 
 #### 5.6.1 Rollout and signal capture
 - [ ] Roll out to the Griddo team: 3–5 internal users, with the frontend and the MCP.
@@ -1363,3 +1367,15 @@ check earlier in the next project.
 - **How it surfaced:** the product owner asked for in-app instructions, mirrored in the user manual
 - **Why it slipped:** "document it" was read as developer docs; nobody pictured the people who'd install it
 - **Lesson:** onboarding docs for the real audience are part of a feature's definition of done
+
+### R10 — fastmcp's error line logged tool arguments · missed · found 2026-09-27
+- **What:** the usage log (5.6.0) logs argument names only, but fastmcp logs each failed call itself, with a
+  traceback. For a generated tool the error carries the API's response body, and a 422 body echoes the invalid
+  values: the whole request body, a campaign's CSV rows included, when a field is missing. So argument values
+  could reach CloudWatch → 5.6.0
+- **How it surfaced:** probing the usage log's test harness: a `create_short_url` call with an invalid URL put the
+  value on stderr
+- **Why it slipped:** "never log argument values" was checked against the lines we write; the test read only our
+  JSON lines, not everything the process wrote
+- **Lesson:** test a "never log X" rule against the whole of stderr for a call that carries X, failures included:
+  frameworks log on their own

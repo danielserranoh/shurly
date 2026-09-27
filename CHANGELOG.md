@@ -26,6 +26,20 @@ implementation lifecycle and is independent of the URL version segment.
 
 ## [Unreleased]
 
+### Security — MCP tool arguments kept out of fastmcp's error log
+- **A failed API call no longer writes the tool's arguments to the log.** fastmcp
+  logs each failed tool call with its traceback, and when a generated tool's call
+  into the API failed, the error carried the API's response body. A `422` body
+  echoes each invalid field's value, or the whole request body when a field is
+  missing, so a `create_campaign` CSV (names, companies, emails) could reach
+  CloudWatch. For an API error the line now keeps the tool and the status, without
+  the body or the traceback: `Error calling tool 'create_short_url': HTTP error 422
+  (response body not logged)`. The MCP client still gets the whole error, and any
+  other exception, including one raised inside the API, still logs its traceback
+  (`ApiErrorLogFilter` in `mcp_server/usage.py`).
+- **Never run production with `FASTMCP_LOG_LEVEL=DEBUG`**: at that level fastmcp
+  logs every tool call's arguments in full. The default, `INFO`, doesn't.
+
 ### Added — usage log for MCP tool calls and HTTP requests (Phase 5.6.0)
 - **One JSON line per MCP tool call** (`mcp.tool_call`): tool, argument names,
   user id, outcome, error type, HTTP status of a failed API call, duration and

@@ -396,6 +396,7 @@ Visitor logging is privacy-first by default, configured via env vars:
 - Tracking pixel responses set `Cache-Control: no-store` so HTML email clients re-fetch on every open.
 - The `User.api_key_scope` enum is in place so post-launch role rollouts (`READ_ONLY`, `CREATE_ONLY`, `DOMAIN_SPECIFIC`) ship without a destructive migration; only `FULL_ACCESS` is enforced today.
 - The `RequestIdMiddleware` echoes `X-Request-Id` on every response (or generates a UUID if absent), enabling log correlation in CloudWatch without leaking PII.
+- MCP tool arguments stay out of the logs: the usage log records argument names only, and fastmcp's own line for a failed API call leaves out the response body, which can echo them (`mcp_server/README.md` § Usage log). Never set `FASTMCP_LOG_LEVEL=DEBUG` in production: at that level fastmcp logs every tool call's arguments in full.
 
 If your privacy policy permits storing full IPs, set `ANONYMIZE_REMOTE_ADDR=false` — but document the decision.
 
