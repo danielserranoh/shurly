@@ -51,6 +51,7 @@ from server.utils.url import (
     is_valid_custom_code,
     make_code_unique,
     normalize_short_code,
+    url_origin,
 )
 from server.utils.user_agent import is_bot as ua_is_bot
 
@@ -371,7 +372,7 @@ async def fetch_url_metadata(
     except Exception:
         # fetch_opengraph_metadata already swallows network/parse errors; this guard
         # keeps the "never 500" contract even if the fetcher's behaviour changes.
-        logger.warning("Open Graph lookup failed for %s", url_data.url, exc_info=True)
+        logger.warning("Open Graph lookup failed for %s", url_origin(url_data.url), exc_info=True)
         return URLMetadataResponse()
 
     return URLMetadataResponse(
