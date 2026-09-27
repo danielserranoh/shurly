@@ -180,17 +180,14 @@ jobs:
 
       - name: Smoke test the public host
         # s.griddo.io is served by a custom ALB rule (priority 12) that Express
-        # doesn't manage: the ecs-alb-rule-sync Lambda copies Express's own rule
-        # onto it when the deployment COMPLETES. Two consequences, both measured
-        # on 27 Sep 2026:
-        #   - the public host gets no canary: it stays 100% on the old image
-        #     until the rollout completes, then switches at once;
-        #   - ECS stops the old task ~1 min before emitting "completed", so the
-        #     rule briefly points at an empty target group and the ALB answers
-        #     503 (00:16:20 -> 00:17:16 that night).
-        # So by the time this runs, the switch is seconds away — but tolerate
-        # that 503 gap. A 200 alone proves nothing (the old image answers 200
-        # too); wait for /health to report the commit we just built.
+        # doesn't manage; the ecs-alb-rule-sync Lambda copies Express's weights
+        # onto it (infra/ecs-alb-rule-sync). Until 27 Sep 2026 it did so only on
+        # COMPLETED, ~1 min after ECS had stopped the old task, so the ALB
+        # answered 503 in between and the public host never got the canary.
+        # It now follows the rollout from IN_PROGRESS, so the switch should
+        # already have happened when this runs. The retries stay as a margin.
+        # A 200 alone proves nothing (the old image answers 200 too); wait for
+        # /health to report the commit we just built.
         run: |
           PUBLIC_HOST="s.griddo.io"
           echo "Waiting for https://${PUBLIC_HOST}/api/v1/health to report commit ${GITHUB_SHA::8}"
