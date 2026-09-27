@@ -24,25 +24,19 @@ class TestOrphanLogging:
         assert rows[0].type == OrphanVisitType.INVALID_SHORT_URL
         assert rows[0].attempted_path == "/typo123"
 
-    def test_base_url_hit_logs_base_url_type(
-        self, client: TestClient, db_session: Session
-    ):
+    def test_base_url_hit_logs_base_url_type(self, client: TestClient, db_session: Session):
         get_or_create_default_domain(db_session)
 
         r = client.get("/", follow_redirects=False)
         assert r.status_code == 404
 
         rows = (
-            db_session.query(OrphanVisit)
-            .filter(OrphanVisit.type == OrphanVisitType.BASE_URL)
-            .all()
+            db_session.query(OrphanVisit).filter(OrphanVisit.type == OrphanVisitType.BASE_URL).all()
         )
         assert len(rows) == 1
         assert rows[0].attempted_path == "/"
 
-    def test_robots_txt_does_not_log_orphan(
-        self, client: TestClient, db_session: Session
-    ):
+    def test_robots_txt_does_not_log_orphan(self, client: TestClient, db_session: Session):
         # /robots.txt is a real route — must not be classified as an orphan
         r = client.get("/robots.txt")
         assert r.status_code == 200

@@ -1,4 +1,5 @@
 """Tag utility functions."""
+
 from sqlalchemy.orm import Session
 
 from server.core.config import settings
@@ -28,7 +29,7 @@ def initialize_predefined_tags(db: Session) -> None:
                 display_name=tag_name,
                 color=color,
                 is_predefined=True,
-                created_by=None
+                created_by=None,
             )
             db.add(tag)
 

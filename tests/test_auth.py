@@ -116,7 +116,9 @@ class TestUserLogin:
 class TestGetCurrentUser:
     """Test get current user endpoint."""
 
-    def test_get_current_user_success(self, client: TestClient, auth_headers: dict, test_user: User):
+    def test_get_current_user_success(
+        self, client: TestClient, auth_headers: dict, test_user: User
+    ):
         """Test getting current user info with valid token."""
         response = client.get("/api/v1/auth/me", headers=auth_headers)
         assert response.status_code == 200
@@ -218,7 +220,9 @@ class TestChangePassword:
 class TestAPIKeyManagement:
     """Test API key generation and revocation."""
 
-    def test_generate_api_key_success(self, client: TestClient, auth_headers: dict, db_session: Session, test_user: User):
+    def test_generate_api_key_success(
+        self, client: TestClient, auth_headers: dict, db_session: Session, test_user: User
+    ):
         """Test successful API key generation."""
         response = client.post("/api/v1/auth/api-key/generate", headers=auth_headers)
         assert response.status_code == 200
@@ -230,7 +234,9 @@ class TestAPIKeyManagement:
         db_session.refresh(test_user)
         assert test_user.api_key == data["api_key"]
 
-    def test_generate_api_key_replaces_existing(self, client: TestClient, auth_headers: dict, db_session: Session, test_user: User):
+    def test_generate_api_key_replaces_existing(
+        self, client: TestClient, auth_headers: dict, db_session: Session, test_user: User
+    ):
         """Test that generating new API key replaces the old one."""
         # Generate first key
         response1 = client.post("/api/v1/auth/api-key/generate", headers=auth_headers)
@@ -254,7 +260,9 @@ class TestAPIKeyManagement:
         response = client.post("/api/v1/auth/api-key/generate")
         assert response.status_code == 401  # HTTPBearer returns 401 when no credentials
 
-    def test_revoke_api_key_success(self, client: TestClient, auth_headers: dict, db_session: Session, test_user: User):
+    def test_revoke_api_key_success(
+        self, client: TestClient, auth_headers: dict, db_session: Session, test_user: User
+    ):
         """Test successful API key revocation."""
         # First generate a key
         generate_response = client.post("/api/v1/auth/api-key/generate", headers=auth_headers)
@@ -271,7 +279,9 @@ class TestAPIKeyManagement:
         db_session.refresh(test_user)
         assert test_user.api_key is None
 
-    def test_revoke_api_key_when_none_exists(self, client: TestClient, auth_headers: dict, db_session: Session, test_user: User):
+    def test_revoke_api_key_when_none_exists(
+        self, client: TestClient, auth_headers: dict, db_session: Session, test_user: User
+    ):
         """Test revoking API key when user has no API key."""
         # Ensure no API key exists
         assert test_user.api_key is None

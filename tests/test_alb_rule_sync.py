@@ -22,7 +22,9 @@ from pathlib import Path
 
 import pytest
 
-LAMBDA_PATH = Path(__file__).resolve().parents[1] / "infra" / "ecs-alb-rule-sync" / "alb-rule-sync.py"
+LAMBDA_PATH = (
+    Path(__file__).resolve().parents[1] / "infra" / "ecs-alb-rule-sync" / "alb-rule-sync.py"
+)
 SERVICE_ARN = "arn:aws:ecs:eu-south-2:686255983646:service/default/shurly-api"
 OLD_TG = "arn:tg/old"
 NEW_TG = "arn:tg/new"
@@ -40,12 +42,16 @@ def _rule(priority, weights):
     return {
         "Priority": priority,
         "RuleArn": f"arn:rule/{priority}",
-        "Actions": [{
-            "Type": "forward",
-            "ForwardConfig": {
-                "TargetGroups": [{"TargetGroupArn": tg, "Weight": w} for tg, w in weights.items()]
-            },
-        }],
+        "Actions": [
+            {
+                "Type": "forward",
+                "ForwardConfig": {
+                    "TargetGroups": [
+                        {"TargetGroupArn": tg, "Weight": w} for tg, w in weights.items()
+                    ]
+                },
+            }
+        ],
     }
 
 
@@ -59,7 +65,9 @@ class FakeElb:
         self.modified = []
 
     def describe_rules(self, ListenerArn):
-        weights = self.express_steps.pop(0) if len(self.express_steps) > 1 else self.express_steps[0]
+        weights = (
+            self.express_steps.pop(0) if len(self.express_steps) > 1 else self.express_steps[0]
+        )
         return {"Rules": [_rule("4", weights), _rule("12", self.custom), *self.extra_rules]}
 
     def modify_rule(self, RuleArn, Actions):
@@ -146,7 +154,7 @@ def test_in_progress_follows_the_canary_until_completed(lam):
     """The fix: the custom rule tracks every weight change during the rollout."""
     canary = [
         {OLD_TG: 100, NEW_TG: 0},  # rollout starts
-        {OLD_TG: 95, NEW_TG: 5},   # canary
+        {OLD_TG: 95, NEW_TG: 5},  # canary
         {OLD_TG: 95, NEW_TG: 5},
         {OLD_TG: 0, NEW_TG: 100},  # full shift, before the old task is stopped
         {OLD_TG: 0, NEW_TG: 100},
@@ -248,8 +256,10 @@ def test_log_reports_real_percentages(lam):
 def test_other_services_mappings_are_still_synced(lam):
     """The Lambda is shared: go.griddo.io (1→10) and links.griddo.io (3→11) too."""
     extra = [
-        _rule("1", {"arn:tg/api-new": 100}), _rule("10", {"arn:tg/api-old": 100}),
-        _rule("3", {"arn:tg/web": 100}), _rule("11", {"arn:tg/web": 100}),
+        _rule("1", {"arn:tg/api-new": 100}),
+        _rule("10", {"arn:tg/api-old": 100}),
+        _rule("3", {"arn:tg/web": 100}),
+        _rule("11", {"arn:tg/web": 100}),
     ]
     lam.elbv2 = FakeElb([{NEW_TG: 100}], {NEW_TG: 100}, extra_rules=extra)
     lam.ecs = FakeEcs(in_progress_polls=0)

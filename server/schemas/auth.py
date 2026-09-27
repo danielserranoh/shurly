@@ -44,7 +44,9 @@ class ChangePasswordRequest(BaseModel):
     """Schema for changing password."""
 
     current_password: str
-    new_password: str = Field(..., min_length=8, description="Password must be at least 8 characters")
+    new_password: str = Field(
+        ..., min_length=8, description="Password must be at least 8 characters"
+    )
 
 
 class APIKeyResponse(BaseModel):

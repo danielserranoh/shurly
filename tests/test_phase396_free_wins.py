@@ -175,8 +175,7 @@ class TestOGCharsetFallback:
         from server.utils.opengraph import _decode_response_body
 
         body = (
-            "<html><head><meta charset='ISO-8859-1'>"
-            "<title>caf\xe9</title></head></html>"
+            "<html><head><meta charset='ISO-8859-1'><title>caf\xe9</title></head></html>"
         ).encode("latin-1")
         # Simulate a server that DID NOT set Content-Type charset
         response = httpx.Response(200, content=body, headers={"Content-Type": "text/html"})

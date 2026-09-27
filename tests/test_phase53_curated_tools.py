@@ -46,7 +46,8 @@ def test_curated_tools_appear_in_mcp_surface():
 
 def test_create_campaign_from_rows_creates_one_url_per_row(db_session, test_user):
     result = curated.create_campaign_from_rows(
-        db_session, test_user,
+        db_session,
+        test_user,
         name="Spring Outreach",
         original_url="https://example.com/landing",
         rows=[
@@ -81,8 +82,10 @@ def test_create_campaign_from_rows_binds_urls_to_default_domain(db_session, test
 def test_create_campaign_from_rows_rejects_invalid_url(db_session, test_user):
     with pytest.raises(ValueError, match="valid http/https URL"):
         curated.create_campaign_from_rows(
-            db_session, test_user,
-            name="x", original_url="not-a-url",
+            db_session,
+            test_user,
+            name="x",
+            original_url="not-a-url",
             rows=[{"a": "1"}],
         )
 
@@ -90,8 +93,11 @@ def test_create_campaign_from_rows_rejects_invalid_url(db_session, test_user):
 def test_create_campaign_from_rows_rejects_empty_rows(db_session, test_user):
     with pytest.raises(ValueError, match="at least one entry"):
         curated.create_campaign_from_rows(
-            db_session, test_user,
-            name="x", original_url="https://example.com", rows=[],
+            db_session,
+            test_user,
+            name="x",
+            original_url="https://example.com",
+            rows=[],
         )
 
 
@@ -118,7 +124,8 @@ def _seed_url(db_session, user, code="abc123") -> URL:
 def test_add_redirect_rule_builds_conditions_from_named_args(db_session, test_user):
     url = _seed_url(db_session, test_user, code="ios001")
     result = curated.add_redirect_rule(
-        db_session, test_user,
+        db_session,
+        test_user,
         short_code="ios001",
         target_url="https://example.com/ios",
         priority=10,
@@ -134,7 +141,8 @@ def test_add_redirect_rule_builds_conditions_from_named_args(db_session, test_us
 def test_add_redirect_rule_query_param_presence_only(db_session, test_user):
     _seed_url(db_session, test_user, code="qpres1")
     result = curated.add_redirect_rule(
-        db_session, test_user,
+        db_session,
+        test_user,
         short_code="qpres1",
         target_url="https://example.com/track",
         query_param="utm_source",
@@ -146,7 +154,8 @@ def test_add_redirect_rule_query_param_presence_only(db_session, test_user):
 def test_add_redirect_rule_query_param_with_value(db_session, test_user):
     _seed_url(db_session, test_user, code="qval01")
     result = curated.add_redirect_rule(
-        db_session, test_user,
+        db_session,
+        test_user,
         short_code="qval01",
         target_url="https://example.com/track",
         query_param="utm_source",
@@ -164,7 +173,8 @@ def test_add_redirect_rule_requires_at_least_one_condition(db_session, test_user
     _seed_url(db_session, test_user, code="nocond")
     with pytest.raises(ValueError, match="At least one condition"):
         curated.add_redirect_rule(
-            db_session, test_user,
+            db_session,
+            test_user,
             short_code="nocond",
             target_url="https://example.com",
         )
@@ -173,7 +183,8 @@ def test_add_redirect_rule_requires_at_least_one_condition(db_session, test_user
 def test_add_redirect_rule_rejects_unknown_short_code(db_session, test_user):
     with pytest.raises(LookupError):
         curated.add_redirect_rule(
-            db_session, test_user,
+            db_session,
+            test_user,
             short_code="nope99",
             target_url="https://example.com",
             device="ios",
@@ -190,16 +201,49 @@ def test_get_url_analytics_summary_composes_overview_daily_geo(db_session, test_
 
     url = _seed_url(db_session, test_user, code="anasum")
     now = datetime.now(timezone.utc)
-    db_session.add_all([
-        Visitor(url_id=url.id, short_code=url.short_code, ip="1.1.1.1", country="Spain", visited_at=now, is_bot=False),
-        Visitor(url_id=url.id, short_code=url.short_code, ip="2.2.2.2", country="Spain", visited_at=now, is_bot=False),
-        Visitor(url_id=url.id, short_code=url.short_code, ip="3.3.3.3", country="France", visited_at=now, is_bot=False),
-        Visitor(url_id=url.id, short_code=url.short_code, ip="9.9.9.9", country="Botland", visited_at=now, is_bot=True),
-    ])
+    db_session.add_all(
+        [
+            Visitor(
+                url_id=url.id,
+                short_code=url.short_code,
+                ip="1.1.1.1",
+                country="Spain",
+                visited_at=now,
+                is_bot=False,
+            ),
+            Visitor(
+                url_id=url.id,
+                short_code=url.short_code,
+                ip="2.2.2.2",
+                country="Spain",
+                visited_at=now,
+                is_bot=False,
+            ),
+            Visitor(
+                url_id=url.id,
+                short_code=url.short_code,
+                ip="3.3.3.3",
+                country="France",
+                visited_at=now,
+                is_bot=False,
+            ),
+            Visitor(
+                url_id=url.id,
+                short_code=url.short_code,
+                ip="9.9.9.9",
+                country="Botland",
+                visited_at=now,
+                is_bot=True,
+            ),
+        ]
+    )
     db_session.commit()
 
     result = curated.get_url_analytics_summary(
-        db_session, test_user, short_code="anasum", days=7,
+        db_session,
+        test_user,
+        short_code="anasum",
+        days=7,
     )
     assert result["short_code"] == "anasum"
     assert result["totals"]["clicks"] == 3
@@ -215,10 +259,26 @@ def test_get_url_analytics_summary_include_bots_toggle(db_session, test_user):
 
     url = _seed_url(db_session, test_user, code="botsum")
     now = datetime.now(timezone.utc)
-    db_session.add_all([
-        Visitor(url_id=url.id, short_code=url.short_code, ip="1.1.1.1", country="Spain", visited_at=now, is_bot=False),
-        Visitor(url_id=url.id, short_code=url.short_code, ip="9.9.9.9", country="Botland", visited_at=now, is_bot=True),
-    ])
+    db_session.add_all(
+        [
+            Visitor(
+                url_id=url.id,
+                short_code=url.short_code,
+                ip="1.1.1.1",
+                country="Spain",
+                visited_at=now,
+                is_bot=False,
+            ),
+            Visitor(
+                url_id=url.id,
+                short_code=url.short_code,
+                ip="9.9.9.9",
+                country="Botland",
+                visited_at=now,
+                is_bot=True,
+            ),
+        ]
+    )
     db_session.commit()
 
     excl = curated.get_url_analytics_summary(db_session, test_user, short_code="botsum")
@@ -231,9 +291,7 @@ def test_get_url_analytics_summary_include_bots_toggle(db_session, test_user):
 
 def test_get_url_analytics_summary_rejects_unknown_short_code(db_session, test_user):
     with pytest.raises(LookupError):
-        curated.get_url_analytics_summary(
-            db_session, test_user, short_code="missing"
-        )
+        curated.get_url_analytics_summary(db_session, test_user, short_code="missing")
 
 
 # ---------------------------------------------------------------------------
@@ -245,16 +303,42 @@ def test_list_orphan_visits_grouped_clusters_by_path(db_session, test_user):
     from datetime import datetime, timezone
 
     now = datetime.now(timezone.utc)
-    db_session.add_all([
-        OrphanVisit(type=OrphanVisitType.INVALID_SHORT_URL, attempted_path="/badcode", ip="1.1.1.1", created_at=now),
-        OrphanVisit(type=OrphanVisitType.INVALID_SHORT_URL, attempted_path="/badcode", ip="2.2.2.2", created_at=now),
-        OrphanVisit(type=OrphanVisitType.INVALID_SHORT_URL, attempted_path="/badcode", ip="3.3.3.3", created_at=now),
-        OrphanVisit(type=OrphanVisitType.INVALID_SHORT_URL, attempted_path="/typo1", ip="4.4.4.4", created_at=now),
-        OrphanVisit(type=OrphanVisitType.BASE_URL, attempted_path="/", ip="5.5.5.5", created_at=now),
-    ])
+    db_session.add_all(
+        [
+            OrphanVisit(
+                type=OrphanVisitType.INVALID_SHORT_URL,
+                attempted_path="/badcode",
+                ip="1.1.1.1",
+                created_at=now,
+            ),
+            OrphanVisit(
+                type=OrphanVisitType.INVALID_SHORT_URL,
+                attempted_path="/badcode",
+                ip="2.2.2.2",
+                created_at=now,
+            ),
+            OrphanVisit(
+                type=OrphanVisitType.INVALID_SHORT_URL,
+                attempted_path="/badcode",
+                ip="3.3.3.3",
+                created_at=now,
+            ),
+            OrphanVisit(
+                type=OrphanVisitType.INVALID_SHORT_URL,
+                attempted_path="/typo1",
+                ip="4.4.4.4",
+                created_at=now,
+            ),
+            OrphanVisit(
+                type=OrphanVisitType.BASE_URL, attempted_path="/", ip="5.5.5.5", created_at=now
+            ),
+        ]
+    )
     db_session.commit()
 
-    result = curated.list_orphan_visits_grouped(db_session, test_user, since_days=30, limit_groups=10)
+    result = curated.list_orphan_visits_grouped(
+        db_session, test_user, since_days=30, limit_groups=10
+    )
     assert result["total_visits"] == 5
     assert result["distinct_paths"] == 3
     paths = {g["attempted_path"]: g["count"] for g in result["groups"]}
@@ -267,10 +351,17 @@ def test_list_orphan_visits_grouped_sample_cap(db_session, test_user):
     from datetime import datetime, timezone
 
     now = datetime.now(timezone.utc)
-    db_session.add_all([
-        OrphanVisit(type=OrphanVisitType.INVALID_SHORT_URL, attempted_path="/x", ip=f"1.1.1.{i}", created_at=now)
-        for i in range(10)
-    ])
+    db_session.add_all(
+        [
+            OrphanVisit(
+                type=OrphanVisitType.INVALID_SHORT_URL,
+                attempted_path="/x",
+                ip=f"1.1.1.{i}",
+                created_at=now,
+            )
+            for i in range(10)
+        ]
+    )
     db_session.commit()
 
     result = curated.list_orphan_visits_grouped(db_session, test_user)

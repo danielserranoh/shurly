@@ -28,17 +28,13 @@ def short_url(db_session: Session, test_user: User) -> URL:
 
 @pytest.mark.integration
 class TestConfigurableRedirect:
-    def test_default_is_302_with_no_store_cache(
-        self, client: TestClient, short_url: URL
-    ):
+    def test_default_is_302_with_no_store_cache(self, client: TestClient, short_url: URL):
         r = client.get("/cfg1", follow_redirects=False)
         assert r.status_code == 302
         assert "max-age=0" in r.headers.get("cache-control", "")
 
     @pytest.mark.parametrize("code", [301, 307, 308])
-    def test_status_code_override(
-        self, client: TestClient, short_url: URL, monkeypatch, code
-    ):
+    def test_status_code_override(self, client: TestClient, short_url: URL, monkeypatch, code):
         monkeypatch.setattr(settings, "redirect_status_code", code)
         r = client.get("/cfg1", follow_redirects=False)
         assert r.status_code == code

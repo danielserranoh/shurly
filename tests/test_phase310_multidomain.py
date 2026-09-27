@@ -20,9 +20,7 @@ class TestDomainHelpers:
         b = get_or_create_default_domain(db_session)
         assert a.id == b.id
         assert a.is_default is True
-        assert (
-            db_session.query(Domain).filter(Domain.is_default.is_(True)).count() == 1
-        )
+        assert db_session.query(Domain).filter(Domain.is_default.is_(True)).count() == 1
 
     def test_resolve_domain_strips_port(self, db_session: Session):
         get_or_create_default_domain(db_session)
@@ -36,9 +34,7 @@ class TestDomainHelpers:
 
 @pytest.mark.integration
 class TestMultiDomainUniqueness:
-    def test_same_code_on_different_domains_allowed(
-        self, db_session: Session, test_user: User
-    ):
+    def test_same_code_on_different_domains_allowed(self, db_session: Session, test_user: User):
         default = get_or_create_default_domain(db_session)
         other = Domain(hostname="alt.example.com", is_default=False)
         db_session.add(other)
@@ -69,9 +65,7 @@ class TestMultiDomainUniqueness:
         assert len(rows) == 2
         assert {row.domain_id for row in rows} == {default.id, other.id}
 
-    def test_same_code_same_domain_violates_unique(
-        self, db_session: Session, test_user: User
-    ):
+    def test_same_code_same_domain_violates_unique(self, db_session: Session, test_user: User):
         default = get_or_create_default_domain(db_session)
         db_session.add(
             URL(
@@ -110,22 +104,24 @@ class TestRedirectByDomain:
         db_session.refresh(other)
 
         # Same code on two domains, different destinations
-        db_session.add_all([
-            URL(
-                short_code="hop",
-                domain_id=default.id,
-                original_url="https://default-target.example",
-                url_type=URLType.STANDARD,
-                created_by=test_user.id,
-            ),
-            URL(
-                short_code="hop",
-                domain_id=other.id,
-                original_url="https://alt-target.example",
-                url_type=URLType.STANDARD,
-                created_by=test_user.id,
-            ),
-        ])
+        db_session.add_all(
+            [
+                URL(
+                    short_code="hop",
+                    domain_id=default.id,
+                    original_url="https://default-target.example",
+                    url_type=URLType.STANDARD,
+                    created_by=test_user.id,
+                ),
+                URL(
+                    short_code="hop",
+                    domain_id=other.id,
+                    original_url="https://alt-target.example",
+                    url_type=URLType.STANDARD,
+                    created_by=test_user.id,
+                ),
+            ]
+        )
         db_session.commit()
 
         r1 = client.get(

@@ -149,9 +149,7 @@ async def create_short_url(
     for _ in range(max_attempts):
         candidate = generate_short_code(length=6)
         existing = (
-            db.query(URL)
-            .filter(URL.domain_id == domain.id, URL.short_code == candidate)
-            .first()
+            db.query(URL).filter(URL.domain_id == domain.id, URL.short_code == candidate).first()
         )
         if not existing:
             short_code = candidate
@@ -289,7 +287,9 @@ async def create_custom_url(
             )
 
         reason = "is reserved" if is_reserved_short_code(requested_code) else "was already taken"
-        warning = f"The requested code '{url_data.custom_code}' {reason}. Modified to '{short_code}'."
+        warning = (
+            f"The requested code '{url_data.custom_code}' {reason}. Modified to '{short_code}'."
+        )
 
     # Auto-fetch Open Graph metadata if not provided
     og_title = url_data.og_title
@@ -557,7 +557,11 @@ def delete_url(
     **Note:** Only standard and custom URLs can be deleted directly. Campaign URLs must be deleted through the campaign.
     """
     # Find the URL
-    url = db.query(URL).filter(URL.short_code == short_code, URL.created_by == current_user.id).first()
+    url = (
+        db.query(URL)
+        .filter(URL.short_code == short_code, URL.created_by == current_user.id)
+        .first()
+    )
 
     if not url:
         raise HTTPException(
@@ -621,10 +625,14 @@ def update_url(
     **Note:** The short_code itself cannot be changed. Campaign URLs must be managed through the campaign.
     """
     # Find the URL
-    url = db.query(URL).filter(
-        URL.short_code == short_code,
-        URL.created_by == current_user.id,
-    ).first()
+    url = (
+        db.query(URL)
+        .filter(
+            URL.short_code == short_code,
+            URL.created_by == current_user.id,
+        )
+        .first()
+    )
 
     if not url:
         raise HTTPException(
@@ -685,10 +693,11 @@ def update_url_tags(
     """
     from server.core.models import Tag
 
-    url = db.query(URL).filter(
-        URL.short_code == short_code,
-        URL.created_by == current_user.id
-    ).first()
+    url = (
+        db.query(URL)
+        .filter(URL.short_code == short_code, URL.created_by == current_user.id)
+        .first()
+    )
 
     if not url:
         raise HTTPException(status_code=404, detail="URL not found")
@@ -697,6 +706,7 @@ def update_url_tags(
 
     # Convert string UUIDs to UUID objects
     from uuid import UUID
+
     try:
         tag_ids = [UUID(str(tid)) for tid in tag_ids_str]
     except (ValueError, AttributeError) as e:
@@ -714,9 +724,10 @@ def update_url_tags(
 
     # Build response
     from server.schemas.tag import TagResponse
+
     return {
         "short_code": url.short_code,
-        "tags": [TagResponse.model_validate(tag) for tag in url.tags]
+        "tags": [TagResponse.model_validate(tag) for tag in url.tags],
     }
 
 
@@ -755,6 +766,7 @@ def bulk_tag_urls(
 
     # Convert string UUIDs to UUID objects
     from uuid import UUID
+
     try:
         tag_ids = [UUID(str(tid)) for tid in tag_ids_str]
     except (ValueError, AttributeError) as e:
@@ -788,10 +800,7 @@ def bulk_tag_urls(
 
     db.commit()
 
-    return {
-        "updated": updated,
-        "failed": failed
-    }
+    return {"updated": updated, "failed": failed}
 
 
 @urls_router.get(
@@ -822,10 +831,14 @@ def get_url_preview(
     - **401**: Authentication required or invalid token
     - **404**: URL not found or doesn't belong to current user
     """
-    url = db.query(URL).filter(
-        URL.short_code == short_code,
-        URL.created_by == current_user.id,
-    ).first()
+    url = (
+        db.query(URL)
+        .filter(
+            URL.short_code == short_code,
+            URL.created_by == current_user.id,
+        )
+        .first()
+    )
 
     if not url:
         raise HTTPException(
@@ -876,10 +889,14 @@ async def refresh_url_preview(
 
     **Note:** Custom Open Graph values (manually set) will not be overwritten.
     """
-    url = db.query(URL).filter(
-        URL.short_code == short_code,
-        URL.created_by == current_user.id,
-    ).first()
+    url = (
+        db.query(URL)
+        .filter(
+            URL.short_code == short_code,
+            URL.created_by == current_user.id,
+        )
+        .first()
+    )
 
     if not url:
         raise HTTPException(
@@ -922,12 +939,9 @@ def _as_utc(dt: datetime | None) -> datetime | None:
 
 # Phase 3.10.2 — RedirectRule CRUD scoped to the URL's owner.
 
+
 def _get_owned_url(db: Session, short_code: str, user: User) -> URL:
-    url = (
-        db.query(URL)
-        .filter(URL.short_code == short_code, URL.created_by == user.id)
-        .first()
-    )
+    url = db.query(URL).filter(URL.short_code == short_code, URL.created_by == user.id).first()
     if not url:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -1100,11 +1114,7 @@ def tracking_pixel(short_code: str, request: Request, db: Session = Depends(get_
     analytics endpoints continue to count clicks separately.
     """
     domain = resolve_domain_for_host(db, request.headers.get("host"))
-    url = (
-        db.query(URL)
-        .filter(URL.domain_id == domain.id, URL.short_code == short_code)
-        .first()
-    )
+    url = db.query(URL).filter(URL.domain_id == domain.id, URL.short_code == short_code).first()
     if not url:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -1154,10 +1164,7 @@ def robots_txt(db: Session = Depends(get_db)) -> str:
     keeps short URLs out of search engines by default.
     """
     crawlable = (
-        db.query(URL.short_code)
-        .filter(URL.crawlable.is_(True))
-        .order_by(URL.short_code)
-        .all()
+        db.query(URL.short_code).filter(URL.crawlable.is_(True)).order_by(URL.short_code).all()
     )
     lines = ["User-agent: *", "Disallow: /"]
     for (code,) in crawlable:
@@ -1200,32 +1207,26 @@ def redirect_short_url(short_code: str, request: Request, db: Session = Depends(
     # the default domain (single-domain at launch, but this lets new vanity
     # hosts piggyback on the same backend without a code change).
     domain = resolve_domain_for_host(db, request.headers.get("host"))
-    url = (
-        db.query(URL)
-        .filter(URL.domain_id == domain.id, URL.short_code == short_code)
-        .first()
-    )
+    url = db.query(URL).filter(URL.domain_id == domain.id, URL.short_code == short_code).first()
 
     if not url:
         # Fallback: legacy rows that pre-date Phase 3.10.1 may have NULL domain_id
-        url = (
-            db.query(URL)
-            .filter(URL.domain_id.is_(None), URL.short_code == short_code)
-            .first()
-        )
+        url = db.query(URL).filter(URL.domain_id.is_(None), URL.short_code == short_code).first()
 
     if not url:
         # Phase 3.10.4 — log the orphan before returning 404. Useful for catching
         # typo'd codes leaked into print/QR campaigns. Anonymize IP same as for
         # regular visits so GDPR posture is consistent.
-        orphan_ip = anonymize_ip(
-            resolve_client_ip(
-                request.client.host if request.client else None,
-                request.headers.get("x-forwarded-for"),
-                settings.trusted_proxies,
+        orphan_ip = (
+            anonymize_ip(
+                resolve_client_ip(
+                    request.client.host if request.client else None,
+                    request.headers.get("x-forwarded-for"),
+                    settings.trusted_proxies,
+                )
             )
-        ) if settings.anonymize_remote_addr else (
-            request.client.host if request.client else None
+            if settings.anonymize_remote_addr
+            else (request.client.host if request.client else None)
         )
         db.add(
             OrphanVisit(

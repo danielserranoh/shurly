@@ -35,9 +35,7 @@ class OrphanVisit(Base):
     ip = Column(String(50), nullable=True)
     user_agent = Column(Text, nullable=True)
     referer = Column(Text, nullable=True)
-    created_at = Column(
-        DateTime, default=datetime.utcnow, nullable=False, index=True
-    )
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
 
     def __repr__(self) -> str:
         return f"<OrphanVisit(type={self.type}, path={self.attempted_path})>"

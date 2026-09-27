@@ -105,8 +105,7 @@ def resolve_current_user(db) -> User:
     access = get_access_token()
     if access is None:
         raise PermissionError(
-            "MCP request has no bound access token; auth is required for "
-            "curated tools."
+            "MCP request has no bound access token; auth is required for curated tools."
         )
     user_id = access.claims.get("user_id") if access.claims else None
     if user_id is None:

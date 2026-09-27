@@ -28,11 +28,15 @@ import server.core.models  # noqa: F401
 from server.core import Base
 
 
-def init_database(db_host: str, db_password: str, db_name: str = "shurly", db_user: str = "postgres"):
+def init_database(
+    db_host: str, db_password: str, db_name: str = "shurly", db_user: str = "postgres"
+):
     """Initialize database with all tables."""
 
     # Construct database URL
-    db_url = f"postgresql+psycopg2://{db_user}:{db_password}@{db_host}:5432/{db_name}?sslmode=require"
+    db_url = (
+        f"postgresql+psycopg2://{db_user}:{db_password}@{db_host}:5432/{db_name}?sslmode=require"
+    )
 
     print(f"Connecting to database at {db_host}...")
 
@@ -41,7 +45,7 @@ def init_database(db_host: str, db_password: str, db_name: str = "shurly", db_us
         engine = create_engine(
             db_url,
             echo=True,  # Show SQL statements
-            pool_pre_ping=True
+            pool_pre_ping=True,
         )
 
         # Test connection
@@ -64,12 +68,14 @@ def init_database(db_host: str, db_password: str, db_name: str = "shurly", db_us
 
         # Verify tables exist
         with engine.connect() as conn:
-            result = conn.execute(text("""
+            result = conn.execute(
+                text("""
                 SELECT tablename
                 FROM pg_tables
                 WHERE schemaname = 'public'
                 ORDER BY tablename
-            """))
+            """)
+            )
             tables = [row[0] for row in result]
 
             print("\nVerified tables in database:")

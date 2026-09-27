@@ -113,7 +113,13 @@ def test_public_routes_are_excluded():
 def test_legacy_stats_excluded():
     """Legacy /api/v1/stats/* routes must never be MCP tools."""
     names = _list_tool_names()
-    legacy_prefixes = ("day_statistics", "week_statistics", "world_statistics", "main_statistics", "next_statistics")
+    legacy_prefixes = (
+        "day_statistics",
+        "week_statistics",
+        "world_statistics",
+        "main_statistics",
+        "next_statistics",
+    )
     leaked = {n for n in names if n.startswith(legacy_prefixes)}
     assert not leaked, f"Legacy stats routes leaked: {sorted(leaked)}"
 
