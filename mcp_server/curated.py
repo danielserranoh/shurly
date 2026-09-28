@@ -36,6 +36,7 @@ from typing import Any
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from server.app.analytics import _exclude_bots
 from server.core.models import (
     URL,
     Campaign,
@@ -251,11 +252,9 @@ def get_url_analytics_summary(
     if url is None:
         raise LookupError(f"URL with short_code={short_code!r} not found for current user")
 
-    base = db.query(Visitor).filter(Visitor.url_id == url.id)
-    if not include_bots:
-        # Excludes both crawlers and the email tracking pixel — the same
-        # filter the regular analytics endpoints apply by default.
-        base = base.filter(Visitor.is_bot.is_(False), Visitor.is_pixel.is_(False))
+    # The app's clicks (`_exclude_bots`): never the email tracking pixel, which is an open,
+    # and crawlers only with include_bots.
+    base = _exclude_bots(db.query(Visitor).filter(Visitor.url_id == url.id), include_bots)
 
     total_clicks = base.count()
     # `func.count(func.distinct(...))` is portable across SQLite and Postgres;
