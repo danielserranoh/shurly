@@ -362,7 +362,7 @@ That's the only secret needed. No `AWS_ACCESS_KEY_ID`, no `AWS_SECRET_ACCESS_KEY
 
 ### Workflow trigger
 
-`deploy-backend.yml` is `workflow_dispatch`-only by default. Once the first manual deploy works end-to-end, optionally re-enable `push: branches: [main]` to get continuous delivery.
+`deploy-backend.yml` deploys on every push to `main`. `main` is branch-protected (a PR with passing tests), so a commit that lands there has already passed that gate. It also runs by hand from the Actions tab (`workflow_dispatch`), for a rollback or a redeploy.
 
 ---
 

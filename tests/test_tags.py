@@ -74,6 +74,28 @@ class TestTagCRUD:
         assert "marketing" in tag_names
         assert "sales" not in tag_names
 
+    def test_search_takes_percent_and_underscore_literally(
+        self, client: TestClient, auth_headers: dict, db_session: Session, test_user
+    ):
+        """Phase 6.3: `%` and `_` in a search are characters, not LIKE wildcards."""
+        db_session.add_all(
+            [
+                Tag(name=name, display_name=name, color="gray-500", created_by=test_user.id)
+                for name in ("q4_launch", "q4-launch", "100%")
+            ]
+        )
+        db_session.commit()
+
+        def names(search: str) -> set[str]:
+            response = client.get("/api/v1/tags", params={"search": search}, headers=auth_headers)
+            assert response.status_code == 200
+            return {tag["name"] for tag in response.json()["tags"]}
+
+        assert names("q4_") == {"q4_launch"}  # `_` isn't "any one character"
+        assert names("_") == set()
+        assert names("%") == set()  # `%` isn't "anything"
+        assert names("100%") == {"100%"}
+
     def test_filter_tags_by_type(
         self, client: TestClient, auth_headers: dict, init_predefined_tags
     ):

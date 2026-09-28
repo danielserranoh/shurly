@@ -1266,7 +1266,10 @@ live in `mcp_server/README.md`, written for developers. There is no user manual 
       the MCP's `create_campaign_from_rows` checks its name like the API
   - [x] CSV formula injection: the exports quote cells that start like a formula, and the CSV import unquotes them
         (`spreadsheet_safe`, `server/utils/csv_export.py`)
-- [ ] SQL injection prevention check
+- [x] SQL injection prevention check → the API binds every value (ORM and Core); the raw SQL left is static or
+      takes `:name` parameters. The one finding was a LIKE pattern, not an injection: the tag search let `%` and `_`
+      act as wildcards (fixed with `autoescape=True`, as the links search had). `tests/test_sql_safety.py` reads
+      `server/`, `mcp_server/` and `main.py` and fails on SQL built from strings or an unescaped LIKE on a column
 - [x] Content-Security-Policy → a `<meta>` on every built page, written by Astro (`security.csp`): scripts only from
       this site or by hash (the inline ones live in `frontend/src/inline-scripts.mjs`), no `'unsafe-inline'` or
       `'unsafe-eval'` for scripts; `'unsafe-inline'` only for style attributes. `npm run build` fails on a page it

@@ -50,6 +50,24 @@ implementation lifecycle and is independent of the URL version segment.
   unanonymized address without a proxy. An unknown short code with `ANONYMIZE_REMOTE_ADDR=false` stored the ALB's
   address too. Both now store what a visit stores (`visit_ip`): the client IP, resolved first and then anonymized.
 
+### Removed — `CI_CD_SETUP.md`, the Lambda-era deploy guide
+- It described access keys, SAM and API Gateway. The deploys it covered are in DEPLOYMENT.md:
+  § CI/CD with OIDC (the backend, to ECS) and § Frontend hosting (the frontend, to S3 + CloudFront).
+  Nothing linked to it.
+- **DEPLOYMENT.md § Workflow trigger** said the backend deploy ran only by hand. It runs on every push
+  to `main`, and by hand for a rollback.
+
+### Security — SQL built only from bound parameters, checked (Phase 6.3)
+- **Audited:** the API reaches the database through the ORM and SQLAlchemy Core, which bind every
+  value. The raw SQL left is static (`SELECT 1`) or takes `:name` parameters (the migration lock).
+  Migrations format only constant table names.
+- **Fixed: `%` and `_` in a tag search are characters now, not LIKE wildcards.** `GET /api/v1/tags?search=_`
+  returned every tag. The links search already escaped them.
+- **`tests/test_sql_safety.py`** parses the backend (`server/`, `mcp_server/`, `main.py`) and fails on:
+  - `text()`, `exec_driver_sql()` or `literal_column()` given anything but a string literal;
+  - a LIKE helper on a column fed a variable without `autoescape=True`.
+  Exceptions need an allowlist entry with a reason; the list starts empty.
+
 ### Security — no API keys, passwords or session tokens through the MCP (Phase 6.3)
 - **The `generate_api_key` and `revoke_api_key` tools are gone.** An assistant reads
   untrusted text, such as link titles and fetched pages, which could talk it into "generate a
