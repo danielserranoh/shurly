@@ -1045,9 +1045,13 @@ for this.
       CDN rewrites are needed only holds for the public website endpoint
 - [ ] Error response: 404 → `/404.html`
 - [ ] Route 53 alias record, from `griddo-production`
-- [ ] Rewrite `deploy-frontend.yml`: OIDC role as in 4.8 (it still uses access keys), the real bucket,
-      `PUBLIC_API_URL=https://s.griddo.io`, `PUBLIC_SITE_URL`; re-enable `push` on `frontend/**`. Its header
-      still points at the Lambda-era "Phase 4.5/4.6"
+- [ ] Rewrite `deploy-frontend.yml`: OIDC role as in 4.8 (it still uses access keys), the real bucket, the
+      production build values below, `PUBLIC_SITE_URL`; re-enable `push` on `frontend/**`. Its header still
+      points at the Lambda-era "Phase 4.5/4.6"
+- [ ] Production build values: `PUBLIC_API_URL=https://shurly.griddo.io` and `PUBLIC_SHORT_DOMAIN=s.griddo.io`
+      (`go.griddo.io` from Phase 8). Without `PUBLIC_SHORT_DOMAIN` the app shows short links on the API's host
+      (`shurly.griddo.io/abc`). The MCP address in the manual and Settings then derives as
+      `https://shurly.griddo.io/mcp/` (`PUBLIC_MCP_URL` only to override it)
 - [ ] `CORS_ORIGINS` in the task matches the chosen hostname (`deploy_ecs.sh` defaults to `https://shurl.griddo.io`)
 - [ ] Update the hostnames table in `DEPLOYMENT.md` (it still says "Future frontend | 7")
 
