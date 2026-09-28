@@ -9,7 +9,7 @@ import QrModal from '@/components/app/QrModal.astro';
 <AppLayout title="Campaign" section="campaigns">
   <a href="/dashboard/campaigns/" class="mb-4 inline-flex items-center gap-1.5 rounded-md text-sm font-medium text-ink-500 hover:text-ink-950"><Icon name="arrow-left" />Campaigns</a>
 
-  <EmptyState id="not-found" hidden illustration="not-found" title="We couldn’t find that campaign" body="It may have been deleted, or it belongs to another account.">
+  <EmptyState id="not-found" hidden illustration="not-found" title="We couldn’t find that campaign" body="It may have been deleted, or it’s someone else’s personal campaign.">
     <a href="/dashboard/campaigns/" class="btn btn-primary"><Icon name="list" />All campaigns</a>
   </EmptyState>
 
@@ -22,7 +22,10 @@ import QrModal from '@/components/app/QrModal.astro';
   <div id="content" hidden>
     <header class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
       <div class="min-w-0">
-        <h1 class="display text-3xl break-words text-ink-950" data-name></h1>
+        <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
+          <h1 class="display min-w-0 text-3xl break-words text-ink-950" data-name></h1>
+          <span class="flex gap-1.5" data-badges></span>
+        </div>
         <p class="mt-2 flex min-w-0 items-center gap-1.5 text-sm text-ink-500">
           <Icon name="corner-down-right" class="size-4 shrink-0" />
           <a class="truncate hover:text-ink-900 hover:underline" target="_blank" rel="noopener noreferrer" data-destination></a>
@@ -120,6 +123,7 @@ import QrModal from '@/components/app/QrModal.astro';
   import { linkHref, openQr } from '@/utils/links';
   import { tagPill } from '@/utils/tags';
   import { confirmDialog, copyWithFeedback, hydrateTimes, toast } from '@/utils/ui';
+  import { canChange, creatorName, getViewer, installLockedControls, lockControl, onForbidden, personalBadge, type Viewer } from '@/utils/viewer';
   import type { Campaign, CampaignRecipientStat, CampaignSummary } from '@/utils/types';
 
   const PAGE = 50;
@@ -136,6 +140,12 @@ import QrModal from '@/components/app/QrModal.astro';
   }
 
   let campaign: Campaign;
+  let viewer: Viewer | null = null;
+  installLockedControls();
+  onForbidden(async () => {
+    viewer = await getViewer();
+    if (campaign) renderHeader();
+  });
   let rows: Row[] = [];
   let view: Row[] = [];
   let page = 1;
@@ -157,7 +167,11 @@ import QrModal from '@/components/app/QrModal.astro';
     const dest = $<HTMLAnchorElement>('[data-destination]');
     dest.textContent = prettyUrl(campaign.original_url);
     dest.href = safeUrl(campaign.original_url);
-    $('[data-created]').textContent = `Created ${formatDate(campaign.created_at)}`;
+    const creator = creatorName(campaign, viewer);
+    $('[data-created]').textContent = `Created ${formatDate(campaign.created_at)}${creator ? ` by ${creator}` : ''}`;
+    setHTML($('[data-badges]'), html`${personalBadge(campaign)}`);
+    // On phones the header's actions sit at the left edge, so the tooltip opens rightwards.
+    if (!canChange(campaign, viewer)) lockControl($('[data-delete]'), 'campaign', 'start');
     setHTML($('[data-columns]'), columnChips(campaign.csv_columns, 8));
     setHTML($('[data-tags]'), html`${(campaign.tags ?? []).map((t) => tagPill(t))}`);
   }
@@ -169,7 +183,7 @@ import QrModal from '@/components/app/QrModal.astro';
       `${Math.round(s.click_through_rate)}%`,
       html`<span class="mb-2 block">${opened} of ${s.total_urls} recipients</span>${meter(opened, s.total_urls, `${opened} of ${s.total_urls} recipients opened their link`)}`,
     );
-    setStat('recipients', formatNumber(s.total_urls), 'One personal link each');
+    setStat('recipients', formatNumber(s.total_urls), 'One personalized link each');
     setStat('clicks', formatNumber(s.total_clicks), s.total_urls ? `${(s.total_clicks / s.total_urls).toFixed(1)} per recipient` : '');
     setStat('unique', formatNumber(s.unique_ips), 'Distinct visitors');
     const today = new Date().toISOString().slice(0, 10);
@@ -331,7 +345,7 @@ import QrModal from '@/components/app/QrModal.astro';
     $('#campaign-menu').hidePopover();
     const ok = await confirmDialog({
       title: `Delete “${campaign.name}”?`,
-      body: `All ${pluralize(campaign.url_count, 'personal link')} will stop working and their click history will be deleted. This can’t be undone.`,
+      body: `All ${pluralize(campaign.url_count, 'personalized link')} will stop working and their click history will be deleted. This can’t be undone.`,
       confirmLabel: 'Delete campaign',
       danger: true,
       onConfirm: () => deleteCampaign(id),
@@ -351,7 +365,7 @@ import QrModal from '@/components/app/QrModal.astro';
       return;
     }
     try {
-      campaign = await getCampaign(id);
+      [campaign, viewer] = await Promise.all([getCampaign(id), getViewer()]);
     } catch (err) {
       $('#loading').hidden = true;
       $('#not-found').hidden = false;

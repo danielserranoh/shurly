@@ -3,12 +3,13 @@ import AppLayout from '@/layouts/AppLayout.astro';
 import PageHeader from '@/components/ui/PageHeader.astro';
 import Icon from '@/components/ui/Icon.astro';
 import Illustration from '@/components/illustrations/Illustration.astro';
+import VisibilityToggle from '@/components/app/VisibilityToggle.astro';
 
 const steps = ['Details', 'Recipients', 'Review', 'Create'];
 ---
 
 <AppLayout title="New campaign" section="campaigns" width="narrow">
-  <PageHeader title="New campaign" description="Turn a list of recipients into personal, trackable links." back={{ href: '/dashboard/campaigns/', label: 'Campaigns' }} />
+  <PageHeader title="New campaign" description="Turn a list of recipients into personalized, trackable links." back={{ href: '/dashboard/campaigns/', label: 'Campaigns' }} />
 
   <ol class="mb-8 flex items-center gap-2 sm:gap-3" aria-label="Progress">
     {
@@ -50,6 +51,7 @@ const steps = ['Details', 'Recipients', 'Review', 'Create'];
         <span id="tags-label" class="label">Tags <span class="font-normal text-ink-500">— optional, added to every link</span></span>
         <div id="tags" aria-labelledby="tags-label"></div>
       </div>
+      <VisibilityToggle noun="campaign" />
       <div class="flex justify-end">
         <button type="button" class="btn btn-primary" data-next>Continue<Icon name="arrow-right" /></button>
       </div>
@@ -60,7 +62,7 @@ const steps = ['Details', 'Recipients', 'Review', 'Create'];
       <div class="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 id="s2-title" class="text-lg font-semibold text-ink-950">Who’s it for?</h2>
-          <p class="mt-1 text-sm text-ink-500">A CSV with a header row. Each row becomes one personal link.</p>
+          <p class="mt-1 text-sm text-ink-500">A CSV with a header row. Each row becomes one personalized link.</p>
         </div>
         <button type="button" class="btn btn-ghost btn-sm" data-sample><Icon name="download" />Sample CSV</button>
       </div>
@@ -110,7 +112,8 @@ const steps = ['Details', 'Recipients', 'Review', 'Create'];
         <div><dt class="text-xs text-ink-500">Campaign</dt><dd class="mt-1 font-semibold break-words text-ink-950" data-review-name></dd></div>
         <div class="sm:col-span-2"><dt class="text-xs text-ink-500">Destination</dt><dd class="mt-1 truncate text-sm font-medium text-ink-900" data-review-url></dd></div>
         <div><dt class="text-xs text-ink-500">Links to create</dt><dd class="mt-1 text-2xl font-semibold tracking-tight text-ink-950" data-review-count></dd></div>
-        <div class="sm:col-span-2"><dt class="text-xs text-ink-500">Personalized with</dt><dd class="mt-1.5 flex flex-wrap gap-1.5" data-review-columns></dd></div>
+        <div class="sm:col-span-2"><dt class="text-xs text-ink-500">Who sees it</dt><dd class="mt-1 text-sm font-medium text-ink-900" data-review-visibility></dd></div>
+        <div class="sm:col-span-3"><dt class="text-xs text-ink-500">Personalized with</dt><dd class="mt-1.5 flex flex-wrap gap-1.5" data-review-columns></dd></div>
       </dl>
 
       <div>
@@ -153,6 +156,8 @@ const steps = ['Details', 'Recipients', 'Review', 'Create'];
   import { iconSvg } from '@/utils/icons';
   import { campaignHref } from '@/utils/links';
   import { mountTagInput } from '@/utils/tag-input';
+  import { getMyOrganization, visibilityOf } from '@/utils/viewer';
+  import type { Organization } from '@/utils/types';
 
   const form = document.getElementById('wizard') as HTMLFormElement;
   const $ = <T extends HTMLElement = HTMLElement>(sel: string, root: ParentNode = document) => root.querySelector<T>(sel)!;
@@ -162,6 +167,9 @@ const steps = ['Details', 'Recipients', 'Review', 'Create'];
   let csvText = '';
   let parsed: ParsedCsv | null = null;
   let fileLabel = '';
+  // null: the account isn't in an organization, so the campaign is personal whatever the switch says.
+  let organization: Organization | null | undefined;
+  getMyOrganization().then((org) => (organization = org)).catch(() => undefined);
   const PASTED = 'Pasted data';
 
   function go(n: number) {
@@ -297,7 +305,13 @@ const steps = ['Details', 'Recipients', 'Review', 'Create'];
     $('[data-review-name]').textContent = field('name').value.trim();
     $('[data-review-url]').textContent = dest;
     $('[data-review-count]').textContent = formatNumber(rows.length);
-    $('[data-review-sub]').textContent = `From ${fileLabel}. We’ll create ${pluralize(rows.length, 'personal link')} — one per row.`;
+    $('[data-review-sub]').textContent = `From ${fileLabel}. We’ll create ${pluralize(rows.length, 'personalized link')} — one per row.`;
+    $('[data-review-visibility]').textContent =
+      visibilityOf(form) === 'personal' || organization === null
+        ? 'Only you'
+        : organization
+          ? `Everyone at ${organization.name}`
+          : 'Everyone in your organization';
     setHTML($('[data-review-columns]'), columnChips(headers, 8));
     const preview = rows.slice(0, 5);
     setHTML(
@@ -333,12 +347,13 @@ const steps = ['Details', 'Recipients', 'Review', 'Create'];
     e.preventDefault();
     if (step !== 3 || !parsed) return;
     go(4);
-    $('[data-creating-title]').textContent = `Creating ${pluralize(parsed.rows.length, 'personal link')}…`;
+    $('[data-creating-title]').textContent = `Creating ${pluralize(parsed.rows.length, 'personalized link')}…`;
     try {
       const campaign = await createCampaign({
         name: field('name').value.trim(),
         original_url: field('original_url').value,
         csv_data: csvText.trim(),
+        visibility: visibilityOf(form),
       });
       const tagIds = tags.getIds();
       if (tagIds.length) await setCampaignTags(campaign.id, tagIds).catch(() => undefined);

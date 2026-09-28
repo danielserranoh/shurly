@@ -808,19 +808,23 @@ own links. Tags are already global.
 ### 3.14.3 Behaviour
 - [ ] One organization at launch, "Griddo", with `google_domain = griddo.io`: whoever signs in with a Griddo
       Google account joins as a member (3.13)
-- [ ] New links and campaigns belong to the organization unless the request asks for `visibility: "personal"`:
-      API field, MCP tool argument, and a UI toggle that starts off. API and MCP done; the toggle is in the frontend
-      work, with Settings → Organization
+- [x] New links and campaigns belong to the organization unless the request asks for `visibility: "personal"`:
+      API field, MCP tool argument, and a UI toggle that starts off: the "Personal" switch on quick create, the
+      full editor and the campaign wizard (`components/app/VisibilityToggle.astro`). An account outside any
+      organization gets a note instead, since everything it creates is personal
 - [x] Every read scoped to "my organization's links + my personal links", and every write checked against the
       role: link CRUD, bulk tags, redirect rules, campaigns, analytics (overview, per link, per campaign, CSV) and
       the curated MCP tools. An API key acts with its user's role. `server/utils/access.py`: a link you can't see
       is a 404, one you can see but not change is a 403
-- [x] `created_by` stays, so lists can show who created each link (`created_by_email` in the responses)
+- [x] `created_by` stays, so lists can show who created each link (`created_by_email` in the responses). The
+      frontend shows "Created by …" ("you" for your own) and a "Personal" badge on link and campaign lists and
+      pages, and locks edit/delete where the viewer's role can't change the item (`utils/viewer.ts`)
 - [x] Someone leaves: their personal links keep redirecting, and an owner can move them to the
       organization so someone can still manage them (`POST /api/v1/organization/adopt-personal-links`)
 - [x] One organization per user at launch (the membership table allows more later). Tags stay global while
       there's a single organization; scope them per organization before a second one
-- [ ] Settings → Organization: members, roles, remove, hand the role over (the API is done, 3.14.2)
+- [x] Settings → Organization: members, roles, remove, hand the role over. Each row offers only what the
+      viewer's role allows; the API's 403/409 message is shown as is (`components/settings/OrganizationPanel.astro`)
 
 ### 3.14.4 Verification
 - [x] Tests (TDD): visibility matrix (A sees B's organization links, not B's personal ones), organization by

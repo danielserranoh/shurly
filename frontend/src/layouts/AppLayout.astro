@@ -111,8 +111,8 @@ const maxWidth = { default: 'max-w-6xl', narrow: 'max-w-3xl', wide: 'max-w-7xl' 
 </BaseLayout>
 
 <script>
-  import { apiGet } from '@/utils/api';
   import { logout } from '@/utils/auth';
+  import { getMe } from '@/utils/viewer';
   import type { User } from '@/utils/types';
 
   const CACHE_KEY = 'shurly_me';
@@ -133,7 +133,8 @@ const maxWidth = { default: 'max-w-6xl', narrow: 'max-w-3xl', wide: 'max-w-7xl' 
       sessionStorage.removeItem(CACHE_KEY);
     }
   }
-  apiGet<User>('/api/v1/auth/me')
+  // Shared with the page's own scripts, so /auth/me is fetched once per page.
+  getMe()
     .then((user) => {
       sessionStorage.setItem(CACHE_KEY, JSON.stringify({ email: user.email }));
       paint(user);

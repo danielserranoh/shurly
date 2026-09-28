@@ -11,7 +11,7 @@ import { BROWSERS, DEVICES, LANGUAGES } from '@/utils/rules';
 <AppLayout title="Link details" section="links">
   <a href="/dashboard/" class="mb-4 inline-flex items-center gap-1.5 rounded-md text-sm font-medium text-ink-500 hover:text-ink-950"><Icon name="arrow-left" />Links</a>
 
-  <EmptyState id="not-found" hidden illustration="not-found" title="We couldn’t find that link" body="It may have been deleted, or it belongs to another account.">
+  <EmptyState id="not-found" hidden illustration="not-found" title="We couldn’t find that link" body="It may have been deleted, or it’s someone else’s personal link.">
     <a href="/dashboard/" class="btn btn-primary"><Icon name="list" />Back to your links</a>
   </EmptyState>
 
@@ -61,7 +61,7 @@ import { BROWSERS, DEVICES, LANGUAGES } from '@/utils/rules';
     <div data-campaign hidden class="mt-6 flex flex-col gap-3 rounded-2xl border border-sky-200 bg-sky-50 p-4 sm:flex-row sm:items-center">
       <span class="grid size-9 shrink-0 place-items-center rounded-xl bg-white text-sky-700 ring-1 ring-sky-200"><Icon name="megaphone" /></span>
       <div class="min-w-0 flex-1 text-sm text-sky-900">
-        <p>This is a personal link in <a class="font-semibold underline underline-offset-2" data-campaign-link>a campaign</a>. It’s managed with the campaign, so it can’t be edited or deleted on its own.</p>
+        <p>This is a personalized link in <a class="font-semibold underline underline-offset-2" data-campaign-link>a campaign</a>. It’s managed with the campaign, so it can’t be edited or deleted on its own.</p>
         <div class="mt-2 flex flex-wrap gap-1.5" data-user-data></div>
       </div>
     </div>
@@ -202,6 +202,7 @@ import { BROWSERS, DEVICES, LANGUAGES } from '@/utils/rules';
   import { tagPill } from '@/utils/tags';
   import { confirmDialog, copyWithFeedback, hydrateTimes, setLoading, toast } from '@/utils/ui';
   import { apiPost } from '@/utils/api';
+  import { canChange, creatorName, getViewer, installLockedControls, lockControl, onForbidden, type Viewer } from '@/utils/viewer';
   import type { CampaignListResponse, DailyStatsResponse, GeoStatsResponse, PreviewMetadata, RedirectRule, RuleCondition, RuleConditionType, ShortLink, WeeklyStatsResponse } from '@/utils/types';
 
   const code = new URLSearchParams(location.search).get('code') ?? '';
@@ -211,6 +212,16 @@ import { BROWSERS, DEVICES, LANGUAGES } from '@/utils/rules';
   let weekly: WeeklyStatsResponse | null = null;
   let rules: RedirectRule[] = [];
   let period: 'daily' | 'weekly' = 'daily';
+  let viewer: Viewer | null = null;
+  /** The viewer may change this link (its creator, or an admin or owner for the organization's). */
+  const changeable = () => canChange(link, viewer);
+  installLockedControls();
+  onForbidden(async () => {
+    viewer = await getViewer();
+    if (!link) return;
+    renderHeader();
+    renderRules();
+  });
 
   // ------------------------------------------------------------------ Header
   function renderHeader() {
@@ -229,7 +240,7 @@ import { BROWSERS, DEVICES, LANGUAGES } from '@/utils/rules';
     dest.title = link.original_url;
     setHTML(
       $('[data-meta]'),
-      html`<span class="inline-flex items-center gap-1.5">${raw(iconSvg('calendar', 'size-3.5'))}Created ${formatDate(link.created_at)}</span>
+      html`<span class="inline-flex items-center gap-1.5">${raw(iconSvg('calendar', 'size-3.5'))}Created ${formatDate(link.created_at)}${creatorName(link, viewer) ? ` by ${creatorName(link, viewer)}` : ''}</span>
         <span class="inline-flex items-center gap-1.5">${raw(iconSvg('pencil', 'size-3.5'))}Updated <time data-relative datetime="${link.updated_at}"></time></span>
         ${link.valid_since ? html`<span class="inline-flex items-center gap-1.5">${raw(iconSvg('calendar-clock', 'size-3.5'))}Live from ${formatDateTime(link.valid_since)}</span>` : ''}
         ${link.valid_until ? html`<span class="inline-flex items-center gap-1.5">${raw(iconSvg('timer', 'size-3.5'))}Expires ${formatDateTime(link.valid_until)}</span>` : ''}
@@ -262,6 +273,12 @@ import { BROWSERS, DEVICES, LANGUAGES } from '@/utils/rules';
     const pixel = link.short_url ? `<img src="${link.short_url}/track" width="1" height="1" alt="" style="display:none">` : '';
     $('[data-pixel]').textContent = pixel;
     $('[data-utm-tip]').hidden = !link.forward_parameters || isCampaign;
+    if (!changeable()) {
+      // Tooltips open rightwards: on phones these controls sit at the left edge.
+      ['[data-edit]', '[data-edit-og]', '[data-refresh-og]', '[data-refresh-og-menu]', '[data-delete]', '[data-add-rule]'].forEach((sel) =>
+        lockControl($(sel), 'link', sel === '[data-edit-og]' || sel === '[data-refresh-og]' ? 'end' : 'start'),
+      );
+    }
   }
 
   // ------------------------------------------------------------------ Stats & chart
@@ -383,6 +400,7 @@ import { BROWSERS, DEVICES, LANGUAGES } from '@/utils/rules';
   // ------------------------------------------------------------------ Rules
   function renderRules() {
     setHTML($('[data-rules]'), html`${rules.map((r, i) => renderRule(r, i))}`);
+    if (!changeable()) $('[data-rules]').querySelectorAll<HTMLElement>('[data-delete-rule]').forEach((btn) => lockControl(btn, 'link'));
     $('[data-rules-empty]').classList.toggle('hidden', rules.length > 0);
   }
 
@@ -507,7 +525,7 @@ import { BROWSERS, DEVICES, LANGUAGES } from '@/utils/rules';
       return;
     }
     try {
-      link = await getLink(code);
+      [link, viewer] = await Promise.all([getLink(code), getViewer()]);
     } catch (err) {
       $('#loading').hidden = true;
       $('#not-found').hidden = false;
