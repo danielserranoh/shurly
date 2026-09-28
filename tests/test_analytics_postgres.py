@@ -93,3 +93,52 @@ def test_campaign_summary_works_on_postgresql(pg_client, pg_session):
     top = response.json()["top_performers"]
     assert [p["user_data"]["name"] for p in top] == ["Luis", "Ana"]  # most clicks first
     assert [p["clicks"] for p in top] == [2, 1]
+
+
+def test_a_links_analytics_on_postgresql(pg_client, pg_session):
+    """
+    Phase 3.16 — the per-link routes on PostgreSQL, and visits of the same instant paged
+    without repeats. SQL leaves the order of ties open, so the list breaks them by id.
+    """
+    user = User(email="owner@example.com", password_hash=hash_password("secret123"), is_active=True)
+    pg_session.add(user)
+    pg_session.flush()
+    url = URL(
+        short_code="pg316",
+        original_url="https://example.org",
+        created_by=user.id,
+        domain_id=get_or_create_default_domain(pg_session).id,
+    )
+    pg_session.add(url)
+    pg_session.flush()
+    instant = datetime.utcnow().replace(microsecond=0)
+    for n in range(40):
+        pg_session.add(
+            Visitor(
+                url_id=url.id,
+                short_code=url.short_code,
+                ip="203.0.113.0",
+                user_agent=f"Mozilla/5.0 (Windows NT 10.0) Chrome/{100 + n}.0 Safari/537.36",
+                referer=f"https://r{n}.example/",
+                country="ES" if n % 2 else None,
+                visited_at=instant,
+            )
+        )
+    pg_session.commit()
+    headers = {"Authorization": f"Bearer {create_access_token(data={'sub': user.email})}"}
+    base = "/api/v1/analytics/urls/pg316"
+
+    seen = []
+    for page in range(1, 7):
+        response = pg_client.get(f"{base}/visits?page={page}&page_size=7", headers=headers)
+        assert response.status_code == 200, response.text
+        seen += [visit["referrer"] for visit in response.json()["visits"]]
+    assert sorted(seen) == sorted(f"r{n}.example" for n in range(40))
+
+    for route in ("totals", "timeseries?group_by=week", "breakdown?type=all", "visits.csv"):
+        assert pg_client.get(f"{base}/{route}", headers=headers).status_code == 200, route
+    breakdown = pg_client.get(f"{base}/breakdown", headers=headers).json()
+    assert [(c["name"], c["count"]) for c in breakdown["countries"]] == [
+        ("ES", 20),
+        ("Unknown", 20),
+    ]

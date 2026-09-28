@@ -173,3 +173,24 @@ class BreakdownResponse(LinkPeriodResponse):
     devices: list[BreakdownItem]
     referrers: list[BreakdownItem]
     countries: list[BreakdownItem]
+
+
+class VisitRow(BaseModel):
+    """One visit, as the list shows it: never an IP, a user agent or a full referrer."""
+
+    visited_at: datetime = Field(description="Local, with the zone's offset, to the second")
+    kind: str = Field(description="click, open or bot")
+    country: str = Field(description='An ISO code, or "Unknown"')
+    browser: str
+    os: str
+    device: str
+    referrer: str = Field(description='The host, or "Direct" without one')
+
+
+class VisitsResponse(LinkPeriodResponse):
+    type: str = Field(description="The kind of visit listed: clicks, opens, bots or all")
+    total: int = Field(description="How many match, on every page")
+    page: int
+    page_size: int
+    pages: int
+    visits: list[VisitRow]

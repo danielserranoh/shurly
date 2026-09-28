@@ -1111,9 +1111,12 @@ and every link on it would pay for the header's numbers.
 - [x] `/timeseries`: the range's visits read once (`visited_at` and the kind), then bucketed in Python on local
       time: the days, weeks, months, hours and weekdays
 - [x] `/breakdown`: grouped in SQL by user agent, referrer and country, each distinct user agent parsed once
-- [ ] `/visits`: paged in SQL, each page's user agents parsed. `/visits.csv`, streamed
-- [ ] MCP: the tool names, `/visits.csv` excluded, `EXPECTED_TOOLS`
-- [ ] README endpoints, CHANGELOG
+- [x] `/visits`: paged in SQL, each page's user agents parsed. `/visits.csv`, streamed
+- [x] MCP: the tool names, `/visits.csv` excluded, `EXPECTED_TOOLS`
+- [x] README endpoints, CHANGELOG
+- [x] How long it takes on PostgreSQL (2026-09-29), a link with 10k visits in 90 days among 90k on 200 others:
+      a 90-day `/breakdown` in 9 ms (40 ms if nearly every visit has its own user agent), `/timeseries` 12 ms,
+      `/totals` 6 ms. So nothing is stored
 - [ ] Only if a link's volume makes parsing at query time slow: store the parsed fields on `visits` (browser,
       OS, device, referrer host), with a migration and a backfill. The contract stays the same
 

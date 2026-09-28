@@ -37,7 +37,7 @@ implementation lifecycle and is independent of the URL version segment.
 - **`dataTable()`** can add a share column: whole percents that add up to 100.
 
 ### Added — a link's analytics, as on Shlink's link page (Phase 3.16)
-- **Three new routes under `/api/v1/analytics/urls/{short_code}/`, for the link's page.** The contract is in
+- **Five new routes under `/api/v1/analytics/urls/{short_code}/`, for the link's page.** The contract is in
   ROADMAP 3.16.1:
   - **`/totals`**: the header's all-time numbers: clicks, email opens, the countries clicks came from, and the
     last click.
@@ -45,14 +45,21 @@ implementation lifecycle and is independent of the URL version segment.
     Also per hour of day and per day of week.
   - **`/breakdown`**: by OS and browser family, device, referrer host and country. Each value has its count
     and share, with "Unknown" and "Direct" (no referrer) as values.
+  - **`/visits`**: the visits, newest first, a page at a time (20 by default, up to 100), with a total for
+    "1–20 of N". Each shows its local time, kind, country, browser, OS, device and referrer host. **Never an
+    IP, a user agent or a full referrer.**
+  - **`/visits.csv`**: every visit of the period, streamed: the list's columns plus the raw user agent, still
+    no IP, every cell spreadsheet-safe.
 - **They take a period:** `period=N`, the last N local days with today (30 by default), or `from` and `to`, at
   most 731 days and ending today at the latest. With `tz` and `domain`, as the others.
 - **Every visit is one kind: a click, an email open (a pixel hit that isn't a bot's) or a bot's.**
-  `/breakdown` takes `type=clicks|opens|bots|all`. A click is what every other count calls one.
+  `/breakdown`, `/visits` and `/visits.csv` take `type=clicks|opens|bots|all` (the CSV defaults to `all`). A
+  click is what every other count calls one.
 - **Opens overcount:** Apple Mail Privacy Protection loads the pixel when a message arrives, read or not.
 - **User agents are parsed when the numbers are asked for, not stored.** So the labels always follow the parser.
-- **The MCP gains `get_url_totals`, `get_url_timeseries` and `get_url_breakdown`.** `/daily`, `/weekly` and
-  `/geo` are unchanged.
+- **The MCP gains `get_url_totals`, `get_url_timeseries`, `get_url_breakdown` and `list_url_visits`.** The
+  CSV isn't a tool: an assistant pages through the list instead of pulling every visit into its context.
+  `/daily`, `/weekly` and `/geo` are unchanged.
 
 ### Security — `deploy_ecs.sh` no longer overwrites production's settings
 - **The script only creates the ECS service now.** Run against the live service, its update path sent the
