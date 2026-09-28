@@ -177,15 +177,15 @@ def test_migration_0007_moves_every_key_to_its_hash(pg_engine):
 
 
 def test_the_model_no_longer_maps_the_plaintext_column():
-    """0009 drops users.api_key while this release still serves: nothing may name it."""
+    """0010 drops users.api_key while this release still serves: nothing may name it."""
     from server.core.models import User
 
     assert "api_key" not in User.__table__.columns
 
 
-def test_this_release_works_once_0009_drops_the_plaintext_column(pg_engine, monkeypatch):
+def test_this_release_works_once_0010_drops_the_plaintext_column(pg_engine, monkeypatch):
     """
-    Rolling deploys: 0009 drops users.api_key at the next release's startup, while this
+    Rolling deploys: 0010 drops users.api_key at the next release's startup, while this
     release's task still serves. The ORM names every mapped column in its SELECTs and
     INSERTs, so this release must not map it. Signing in, an API key, /me, the MCP
     (which loads the user itself, in ShurlyTokenVerifier) and revoking, without it.
@@ -206,7 +206,7 @@ def test_this_release_works_once_0009_drops_the_plaintext_column(pg_engine, monk
 
     run_migrations(pg_engine)
     with pg_engine.begin() as conn:
-        conn.execute(text("ALTER TABLE users DROP COLUMN api_key"))  # what 0009 will do
+        conn.execute(text("ALTER TABLE users DROP COLUMN api_key"))  # what 0010 will do
 
     sessions = sessionmaker(bind=pg_engine)
     with sessions() as db:
