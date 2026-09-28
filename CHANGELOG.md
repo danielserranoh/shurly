@@ -26,6 +26,27 @@ implementation lifecycle and is independent of the URL version segment.
 
 ## [Unreleased]
 
+### Changed — analytics days are the viewer's days
+- **Link daily and weekly stats, the overview's recent activity and the campaign summary's timeline count
+  days in the viewer's time zone.** That's their profile's zone, or UTC without one (as before).
+  - `?tz=` counts in another zone: an IANA name, with the profile's rules, and a 422 otherwise. It changes
+    how visits are grouped into days, never which visits count.
+  - Each response says which zone it used: `timezone`.
+  - A day runs from local midnight to local midnight, so a DST day lasts 23 or 25 hours.
+- **Behaviour change for API consumers: the overview's `recent_clicks_7d` is now the last 7 calendar days,
+  today included, where the viewer is.** It's the sum of `recent_activity`. It used to be a rolling 168
+  hours, so it didn't match the chart next to it.
+- **The MCP's `get_url_analytics_summary` counts its days the same way**, so the app and the MCP give the
+  same numbers. It says its `timezone` too.
+- **The charts' "Today" is today in that zone.** Without a time zone in the profile, a hint under the chart
+  says the days are in UTC and links to Settings → Account.
+
+### Fixed — the weekly stats count today
+- **The 8 weeks of `GET /api/v1/analytics/urls/{code}/weekly` ended yesterday.** So today's clicks were in
+  none of them, nor in the link page's "this week vs last". They end today now.
+- **Tests on SQLite read every day as 0**, because SQL's `date()` returns a string there. That hid wrong
+  counts. Days are now bounded by UTC instants, and the tests check exact counts.
+
 ### Added — a photo for your account (Phase 3.12)
 - **Settings → Account → Profile has a photo.** Pick a file or drop one on it: JPEG, PNG or WebP, up to 10 MB.
   - Then place it in a crop dialog: drag or arrow keys to move it; wheel, pinch, slider or + and − to zoom.

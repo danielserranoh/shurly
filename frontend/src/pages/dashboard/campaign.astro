@@ -65,6 +65,7 @@ import QrModal from '@/components/app/QrModal.astro';
         </div>
         <div class="mt-6" data-chart></div>
         <div class="mt-4 max-h-80 overflow-auto rounded-xl border border-line" data-table hidden></div>
+        <p class="hint mt-4" data-days-hint hidden></p>
       </section>
 
       <section class="card p-5 sm:p-6" aria-labelledby="top-title">
@@ -117,13 +118,14 @@ import QrModal from '@/components/app/QrModal.astro';
   import { ApiError, errorMessage } from '@/utils/api';
   import { campaignRecipients, campaignSummary, columnChips, deleteCampaign, exportCampaignLinks, exportCampaignReport, getCampaign } from '@/utils/campaigns';
   import { bindChartTableToggle, columnChart, dataTable, meter } from '@/utils/charts';
+  import { todayIn } from '@/utils/days';
   import { formatDate, formatDateTime, formatNumber, pluralize, prettyUrl } from '@/utils/format';
   import { html, raw, safeUrl, setHTML } from '@/utils/html';
   import { icon } from '@/utils/icons';
   import { linkHref, openQr } from '@/utils/links';
   import { tagPill } from '@/utils/tags';
   import { confirmDialog, copyWithFeedback, hydrateTimes, toast } from '@/utils/ui';
-  import { canChange, creatorName, getViewer, installLockedControls, lockControl, onForbidden, personalBadge, type Viewer } from '@/utils/viewer';
+  import { canChange, creatorName, getViewer, installLockedControls, lockControl, onForbidden, personalBadge, showDaysZoneHint, type Viewer } from '@/utils/viewer';
   import type { Campaign, CampaignRecipientStat, CampaignSummary } from '@/utils/types';
 
   const PAGE = 50;
@@ -186,7 +188,7 @@ import QrModal from '@/components/app/QrModal.astro';
     setStat('recipients', formatNumber(s.total_urls), 'One personalized link each');
     setStat('clicks', formatNumber(s.total_clicks), s.total_urls ? `${(s.total_clicks / s.total_urls).toFixed(1)} per recipient` : '');
     setStat('unique', formatNumber(s.unique_ips), 'Distinct visitors');
-    const today = new Date().toISOString().slice(0, 10);
+    const today = todayIn(s.timezone);
     const data = s.daily_timeline.map((d) => {
       const date = new Date(`${d.date}T12:00:00`);
       return {
@@ -197,6 +199,7 @@ import QrModal from '@/components/app/QrModal.astro';
     });
     columnChart($('[data-chart]'), data, { ariaLabel: `Campaign clicks per day, last 7 days. Total ${s.total_clicks}.`, height: 220 });
     setHTML($('[data-table]'), dataTable(data.map((d) => ({ label: d.title, value: d.value })), ['Day', 'Clicks']));
+    void showDaysZoneHint($('[data-days-hint]'));
 
     const top = s.top_performers.filter((p) => p.clicks > 0);
     setHTML(

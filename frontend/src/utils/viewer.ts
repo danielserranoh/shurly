@@ -4,7 +4,7 @@
 // and a 403 that gets through is shown like any other error.
 
 import { ApiError, apiGet } from './api';
-import { html, type RawHTML } from './html';
+import { html, setHTML, type RawHTML } from './html';
 import { icon } from './icons';
 import { toast } from './ui';
 import type { Organization, OrgRole, User, Visibility } from './types';
@@ -30,6 +30,18 @@ export async function refreshMe(): Promise<User> {
   const user = await getMe();
   window.dispatchEvent(new CustomEvent<User>('shurly:me', { detail: user }));
   return user;
+}
+
+/**
+ * Under a chart of days: when the viewer has no time zone, say the days are in UTC and where
+ * to set one. The API counts days in the profile's zone (server/utils/local_days.py).
+ */
+export async function showDaysZoneHint(el: HTMLElement | null): Promise<void> {
+  if (!el) return;
+  const me = await getMe().catch(() => null);
+  const inUtc = me !== null && !me.profile?.timezone;
+  if (inUtc) setHTML(el, html`Days are in UTC. Set your time zone in <a class="link" href="/dashboard/settings/#account">Settings → Account</a>.`);
+  el.hidden = !inUtc;
 }
 
 /** The letter in the avatar circle: the first name's, or the email's without one. */

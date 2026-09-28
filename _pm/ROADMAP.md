@@ -165,12 +165,14 @@ System creates:
 ### 2.1 Update Analytics Endpoints ✅
 - [x] Refactor existing statistics utilities for new schema
 - [x] GET /api/analytics/urls/{short_code}/daily - Daily clicks (last 7 days)
+      → today included, in the viewer's time zone since 3.12.8
 - [x] GET /api/analytics/urls/{short_code}/weekly - Weekly clicks (last 8 weeks)
+      → 8 seven-day weeks ending today (they ended yesterday until 3.12.8)
 - [x] GET /api/analytics/urls/{short_code}/geo - Geographic distribution (with configurable days)
 - [x] GET /api/analytics/campaigns/{id}/summary
   - [x] Total clicks, unique IPs, click-through rate
   - [x] Top 5 performing URLs
-  - [x] Daily timeline (last 7 days)
+  - [x] Daily timeline (last 7 days) → in the viewer's time zone since 3.12.8
 - [x] GET /api/analytics/campaigns/{id}/users
   - [x] List all campaign users with detailed click stats
   - [x] Clicks, unique IPs, last clicked timestamp
@@ -706,6 +708,26 @@ Australia have several. So store `country` *and* `timezone`:
 - [ ] Manual check on desktop (drop + picker) and mobile (picker + touch pan/pinch), 1440 px and 390 px
       → done at 1440 (picker, drop, drag, wheel, keys, a refused upload, cancel, remove) and the layout at
       390; left: touch pan and pinch on a real phone
+
+### 3.12.8 Analytics days where the viewer is ✅
+Every day was a UTC calendar day, whatever the viewer's zone: in Madrid, clicks from 00:00 to 02:00 counted
+for the day before. Now a day is local to the viewer (`server/utils/local_days.py`).
+- [x] The zone: `?tz=` (an IANA name, the profile's rules, 422 otherwise), else the profile's, else UTC. `tz`
+      changes only how visits are grouped into days, never which count. Responses say it (`timezone`)
+- [x] A day runs from local midnight to local midnight: aware in the zone, converted to naive UTC like
+      `visited_at`. DST days last 23 or 25 hours; a day can start at 18:30 UTC (Asia/Kolkata)
+- [x] One query per series, bounded by the whole range before a sum per day. No database time zone
+      functions, and no SQL `date()`, which returns a string on SQLite and hid wrong counts from the tests
+- [x] Link daily and weekly, the overview's recent activity, the campaign summary's timeline, and the MCP's
+      `get_url_analytics_summary`: the app and the MCP give the same numbers
+- [x] Fixed: the weekly stats left today out (their 8 weeks ended yesterday)
+- [x] Changed: the overview's `recent_clicks_7d` is the sum of its 7 local days, so it matches the chart
+      (it was a rolling 168 hours)
+- [x] The charts' "Today" is today in that zone; without a zone in the profile, a hint links to
+      Settings → Account
+- [ ] An index on `visits` for these queries: there are single-column ones (`url_id`, `short_code`,
+      `visited_at`), no composite `(url_id, visited_at)` or `(short_code, visited_at)`. Measure on real
+      volumes before adding one
 
 ---
 
