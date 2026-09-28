@@ -129,7 +129,9 @@ The report lists every rule left out or approximated. Nothing is dropped silentl
 
 **Visits, with `--visits`** (decision A, 2026-09-28): each of Shlink's visits becomes a Visitor row.
 - **`ip` is `"unknown"`**: Shlink exposes no addresses. That's how imported visits are told apart: a visit
-  Shurly records always has an address. It's also why **unique-visitor counts only cover the cutover onward**.
+  Shurly records has an address, unless it couldn't read one. An unknown address never counts as a visitor, so
+  **unique-visitor counts only cover the cutover onward**.
+- A link's last click is its latest imported click: neither Shlink's potential bots nor opens move it.
 - The country is `visitLocation.countryCode`, an ISO code as Shurly stores one: providers name some countries
   differently. The user agent, referer and date come as they were.
 - A bot is what Shlink flagged as `potentialBot`. The `/track` pixel is a visit Shlink didn't redirect

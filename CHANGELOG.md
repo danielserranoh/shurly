@@ -34,6 +34,19 @@ implementation lifecycle and is independent of the URL version segment.
 - The logic in `recipients-view.ts` (no imports, tested): sorting, the `/recipients` query, a recipient's name
   and line, the count, and why the list is empty. In `/styleguide/` → Data viz.
 
+### Fixed — a link's last click is a click, and an unknown address isn't a visitor
+- **A link's `last_click_at` moved on every visit the redirect logged, bots included.** So a link only bots had
+  visited showed "Last … ago" in the dashboard next to no clicks, instead of "No clicks yet". It moves on a click
+  now, as the analytics' `/totals` counts one: not a bot's visit, an email open, a crawler's preview or a
+  `?nostat` hit. The Shlink import counted Shlink's potential bots the same way; it doesn't anymore.
+- **Migration `0010` repairs what's stored:** each link's latest click, or nothing. Data only, in two
+  statements. During the rollout, the previous release can still set a bot's time. So `users.api_key`'s drop
+  takes `0011`.
+- **Unique visitors don't count an unknown address.** Every visit imported from Shlink has ip "unknown" (it
+  exposes none), and so does a visit whose address Shurly couldn't read. They made one extra "visitor" in the
+  overview, a campaign's summary, top performers and users, and the MCP's link summary. So unique-visitor counts
+  now cover the cutover onward, as the importer's README says.
+
 ### Added — a link's analytics, as on Shlink's link page (Phase 3.16)
 - **The link page has an Analytics section for a period:** 7, 30 or 90 days, or a custom range. The period
   stays in the address and the tab in its hash, so a reload or a shared link keeps both.
@@ -62,7 +75,7 @@ implementation lifecycle and is independent of the URL version segment.
   and each value names its unit for screen readers.
 - **`dataTable()`** can add a share column: whole percents that add up to 100.
 
-### Added — a link's analytics, as on Shlink's link page (Phase 3.16)
+### Added — the API for a link's analytics (Phase 3.16)
 - **Five new routes under `/api/v1/analytics/urls/{short_code}/`, for the link's page.** The contract is in
   ROADMAP 3.16.1:
   - **`/totals`**: the header's all-time numbers: clicks, email opens, the countries clicks came from, and the
@@ -341,7 +354,7 @@ implementation lifecycle and is independent of the URL version segment.
   running this one, mid-rollout: signing in, every authenticated call, the MCP.
 - This release doesn't map it. A PostgreSQL test drops the column by hand and runs this release against the result:
   signing in, generating an API key, `/me`, an MCP tool call with the key, revoking.
-- The release after drops it, in migration `0010` (0009 is the avatar, 3.12). Until then the migration drift test ignores exactly that column
+- The release after drops it, in migration `0011` (0009 is the avatar, 3.12; 0010 repairs `last_click_at`). Until then the migration drift test ignores exactly that column
   and its index, and a guard fails once they're gone.
 
 ### Security — the client IP behind CloudFront (Phase 6.3)

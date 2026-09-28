@@ -3,7 +3,7 @@
 Adds user_profiles.avatar (the 512×512 WebP), its content type and when it was
 uploaded. New nullable columns only: the previous release never selects them.
 
-Not here: dropping users.api_key, which the model no longer maps. That's 0010's.
+Not here: dropping users.api_key, which the model no longer maps. That's 0011's.
 
 Revision ID: 0009
 Revises: 0008

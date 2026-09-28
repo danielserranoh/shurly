@@ -767,7 +767,7 @@ An API key is kept as its SHA-256 hash and its first 12 characters (`users.api_k
   gets a 401 from it. The same key works again once the rollout ends. JWTs and signing in with Google
   aren't affected.
 - `users.api_key`, empty from then on, is no longer mapped from the release after `0007`'s: the ORM named it in every
-  SELECT and INSERT of a user. The release after that drops it (`0010`). Not sooner: a task still running the
+  SELECT and INSERT of a user. The release after that drops it (`0011`). Not sooner: a task still running the
   previous release would fail every user query mid-rollout.
 - A downgrade past `0007` can't give the keys back: everyone generates a new one.
 
