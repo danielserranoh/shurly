@@ -40,6 +40,7 @@ from server.schemas.url import (
     URLResponse,
     URLUpdate,
 )
+from server.utils.access import viewer
 from server.utils.domain import get_or_create_default_domain, resolve_domain_for_host
 from server.utils.network import anonymize_ip, resolve_client_ip
 from server.utils.opengraph import fetch_opengraph_metadata, is_social_media_crawler
@@ -131,6 +132,7 @@ async def create_short_url(
     - **og_title**: Custom Open Graph title (optional)
     - **og_description**: Custom Open Graph description (optional)
     - **og_image_url**: Custom Open Graph image URL (optional)
+    - **visibility**: `organization` (default) or `personal` (only you see it)
 
     **Responses:**
     - **201**: Short URL created successfully - Returns URL with generated 6-character code
@@ -194,6 +196,7 @@ async def create_short_url(
         max_visits=url_data.max_visits,
         crawlable=url_data.crawlable,
         created_by=current_user.id,
+        organization_id=viewer(db, current_user).organization_for(url_data.visibility),
     )
 
     db.add(url)
@@ -234,6 +237,7 @@ async def create_custom_url(
     - **og_title**: Custom Open Graph title (optional)
     - **og_description**: Custom Open Graph description (optional)
     - **og_image_url**: Custom Open Graph image URL (optional)
+    - **visibility**: `organization` (default) or `personal` (only you see it)
 
     **Responses:**
     - **201**: Custom short URL created successfully - May include warning if code was modified
@@ -324,6 +328,7 @@ async def create_custom_url(
         max_visits=url_data.max_visits,
         crawlable=url_data.crawlable,
         created_by=current_user.id,
+        organization_id=viewer(db, current_user).organization_for(url_data.visibility),
     )
 
     db.add(url)
@@ -408,7 +413,7 @@ def list_urls(
     limit: int = Query(100, ge=1, le=100, description="Maximum number of URLs to return (1-100)"),
 ):
     """
-    List all URLs created by the current user.
+    List the URLs the current user can see: the organization's and their own personal ones.
 
     Returns a paginated list of all shortened URLs (standard, custom, and campaign),
     newest first. Filters are optional and combine with AND; `total` counts every
@@ -436,7 +441,7 @@ def list_urls(
     """
     from server.core.models import Tag
 
-    query = db.query(URL).filter(URL.created_by == current_user.id)
+    query = db.query(URL).filter(viewer(db, current_user).sees(URL))
 
     # Apply tag filtering
     if tags:
@@ -472,9 +477,9 @@ def list_urls(
     if url_type:
         query = query.filter(URL.url_type.in_(url_type))
 
-    # Tags for the whole page in one query (no N+1 lazy load per URL)
+    # Tags and creators for the whole page in one query each (no N+1 lazy load per URL)
     urls = (
-        query.options(selectinload(URL.tags))
+        query.options(selectinload(URL.tags), selectinload(URL.creator))
         .order_by(URL.created_at.desc())
         .offset(skip)
         .limit(limit)
@@ -520,9 +525,9 @@ def get_url(
     **Responses:**
     - **200**: URL retrieved successfully
     - **401**: Authentication required or invalid token
-    - **404**: URL not found or doesn't belong to current user
+    - **404**: URL not found, or someone else's personal link
     """
-    url = _get_owned_url(db, short_code, current_user)
+    url = _get_visible_url(db, short_code, current_user)
     return _to_url_response(url, _click_count(db, url))
 
 
@@ -531,7 +536,7 @@ def get_url(
     status_code=status.HTTP_204_NO_CONTENT,
     responses={
         204: {"description": "URL deleted successfully"},
-        **get_responses(400, 401, 404),
+        **get_responses(400, 401, 403, 404),
     },
 )
 def delete_url(
@@ -553,22 +558,12 @@ def delete_url(
     - **204**: URL deleted successfully (no content returned)
     - **400**: Campaign URLs must be deleted through the campaign endpoint
     - **401**: Authentication required or invalid token
-    - **404**: URL not found or doesn't belong to current user
+    - **403**: Only its creator, or an admin or owner, can change this link
+    - **404**: URL not found, or someone else's personal link
 
     **Note:** Only standard and custom URLs can be deleted directly. Campaign URLs must be deleted through the campaign.
     """
-    # Find the URL
-    url = (
-        db.query(URL)
-        .filter(URL.short_code == short_code, URL.created_by == current_user.id)
-        .first()
-    )
-
-    if not url:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="URL not found",
-        )
+    url = _get_visible_url(db, short_code, current_user, to_change=True)
 
     # Prevent deleting campaign URLs directly
     if url.url_type == URLType.CAMPAIGN:
@@ -589,7 +584,7 @@ def delete_url(
     response_model=URLResponse,
     responses={
         200: {"description": "URL updated successfully"},
-        **get_responses(400, 401, 404, 422),
+        **get_responses(400, 401, 403, 404, 422),
     },
 )
 def update_url(
@@ -620,26 +615,13 @@ def update_url(
     - **200**: URL updated successfully
     - **400**: Campaign URLs cannot be updated
     - **401**: Authentication required or invalid token
-    - **404**: URL not found or doesn't belong to current user
+    - **403**: Only its creator, or an admin or owner, can change this link
+    - **404**: URL not found, or someone else's personal link
     - **422**: Validation error (invalid URL format)
 
     **Note:** The short_code itself cannot be changed. Campaign URLs must be managed through the campaign.
     """
-    # Find the URL
-    url = (
-        db.query(URL)
-        .filter(
-            URL.short_code == short_code,
-            URL.created_by == current_user.id,
-        )
-        .first()
-    )
-
-    if not url:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="URL not found",
-        )
+    url = _get_visible_url(db, short_code, current_user, to_change=True)
 
     # Prevent updating campaign URLs
     if url.url_type == URLType.CAMPAIGN:
@@ -664,7 +646,7 @@ def update_url(
     "/{short_code}/tags",
     responses={
         200: {"description": "URL tags updated successfully"},
-        **get_responses(400, 401, 404),
+        **get_responses(400, 401, 403, 404),
     },
 )
 def update_url_tags(
@@ -690,18 +672,12 @@ def update_url_tags(
     - **200**: Tags updated successfully
     - **400**: One or more tags not found
     - **401**: Authentication required or invalid token
-    - **404**: URL not found or doesn't belong to current user
+    - **403**: Only its creator, or an admin or owner, can change this link
+    - **404**: URL not found, or someone else's personal link
     """
     from server.core.models import Tag
 
-    url = (
-        db.query(URL)
-        .filter(URL.short_code == short_code, URL.created_by == current_user.id)
-        .first()
-    )
-
-    if not url:
-        raise HTTPException(status_code=404, detail="URL not found")
+    url = _get_visible_url(db, short_code, current_user, to_change=True)
 
     tag_ids_str = tag_data.get("tag_ids", [])
 
@@ -756,7 +732,8 @@ def bulk_tag_urls(
     - **tag_ids**: List of tag IDs to apply
 
     **Responses:**
-    - **200**: Bulk tagging completed with success count
+    - **200**: Bulk tagging completed with success count; links you can see but not
+      change are listed in `failed`
     - **400**: One or more tags not found
     - **401**: Authentication required or invalid token
     """
@@ -773,11 +750,12 @@ def bulk_tag_urls(
     except (ValueError, AttributeError) as e:
         raise HTTPException(status_code=400, detail=f"Invalid tag ID format: {str(e)}") from e
 
-    # Fetch URLs (only user's own URLs) with their current tags in one query (no N+1)
+    # Fetch the URLs the user can see, with their current tags in one query (no N+1)
+    who = viewer(db, current_user)
     urls = (
         db.query(URL)
         .options(selectinload(URL.tags))
-        .filter(URL.short_code.in_(short_codes), URL.created_by == current_user.id)
+        .filter(URL.short_code.in_(short_codes), who.sees(URL))
         .all()
     )
 
@@ -790,6 +768,11 @@ def bulk_tag_urls(
     failed = []
 
     for url in urls:
+        if not who.can_change(url):
+            failed.append(
+                {"short_code": url.short_code, "error": "Not allowed to change this link"}
+            )
+            continue
         try:
             # Add tags (don't replace, add to existing)
             for tag in tags:
@@ -830,22 +813,9 @@ def get_url_preview(
     **Responses:**
     - **200**: Preview metadata retrieved successfully
     - **401**: Authentication required or invalid token
-    - **404**: URL not found or doesn't belong to current user
+    - **404**: URL not found, or someone else's personal link
     """
-    url = (
-        db.query(URL)
-        .filter(
-            URL.short_code == short_code,
-            URL.created_by == current_user.id,
-        )
-        .first()
-    )
-
-    if not url:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="URL not found",
-        )
+    url = _get_visible_url(db, short_code, current_user)
 
     has_custom = bool(url.og_title or url.og_description or url.og_image_url)
 
@@ -864,7 +834,7 @@ def get_url_preview(
     response_model=OpenGraphMetadataResponse,
     responses={
         200: {"description": "Preview metadata refreshed from destination URL"},
-        **get_responses(401, 404),
+        **get_responses(401, 403, 404),
     },
 )
 async def refresh_url_preview(
@@ -886,24 +856,12 @@ async def refresh_url_preview(
     **Responses:**
     - **200**: Preview metadata refreshed successfully
     - **401**: Authentication required or invalid token
-    - **404**: URL not found or doesn't belong to current user
+    - **403**: Only its creator, or an admin or owner, can change this link
+    - **404**: URL not found, or someone else's personal link
 
     **Note:** Custom Open Graph values (manually set) will not be overwritten.
     """
-    url = (
-        db.query(URL)
-        .filter(
-            URL.short_code == short_code,
-            URL.created_by == current_user.id,
-        )
-        .first()
-    )
-
-    if not url:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="URL not found",
-        )
+    url = _get_visible_url(db, short_code, current_user, to_change=True)
 
     # Fetch metadata from destination
     metadata = await fetch_opengraph_metadata(str(url.original_url))
@@ -938,16 +896,20 @@ def _as_utc(dt: datetime | None) -> datetime | None:
     return dt if dt.tzinfo is not None else dt.replace(tzinfo=timezone.utc)
 
 
-# Phase 3.10.2 — RedirectRule CRUD scoped to the URL's owner.
+# Phase 3.14.3 — a link the user can't see is a 404; one they can see but not
+# change is a 403 (server/utils/access.py).
 
 
-def _get_owned_url(db: Session, short_code: str, user: User) -> URL:
-    url = db.query(URL).filter(URL.short_code == short_code, URL.created_by == user.id).first()
+def _get_visible_url(db: Session, short_code: str, user: User, *, to_change: bool = False) -> URL:
+    who = viewer(db, user)
+    url = db.query(URL).filter(URL.short_code == short_code, who.sees(URL)).first()
     if not url:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="URL not found",
         )
+    if to_change:
+        who.ensure_can_change(url)
     return url
 
 
@@ -961,7 +923,7 @@ def list_redirect_rules(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    url = _get_owned_url(db, short_code, current_user)
+    url = _get_visible_url(db, short_code, current_user)
     rules = (
         db.query(RedirectRule)
         .filter(RedirectRule.url_id == url.id)
@@ -975,7 +937,7 @@ def list_redirect_rules(
     "/{short_code}/rules",
     response_model=RedirectRuleResponse,
     status_code=status.HTTP_201_CREATED,
-    responses={201: {"description": "Rule created"}, **get_responses(401, 404, 422)},
+    responses={201: {"description": "Rule created"}, **get_responses(401, 403, 404, 422)},
 )
 def create_redirect_rule(
     short_code: str,
@@ -983,7 +945,7 @@ def create_redirect_rule(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    url = _get_owned_url(db, short_code, current_user)
+    url = _get_visible_url(db, short_code, current_user, to_change=True)
     rule = RedirectRule(
         url_id=url.id,
         priority=rule_data.priority,
@@ -999,7 +961,7 @@ def create_redirect_rule(
 @urls_router.patch(
     "/{short_code}/rules/{rule_id}",
     response_model=RedirectRuleResponse,
-    responses={200: {"description": "Rule updated"}, **get_responses(401, 404, 422)},
+    responses={200: {"description": "Rule updated"}, **get_responses(401, 403, 404, 422)},
 )
 def update_redirect_rule(
     short_code: str,
@@ -1008,7 +970,7 @@ def update_redirect_rule(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    url = _get_owned_url(db, short_code, current_user)
+    url = _get_visible_url(db, short_code, current_user, to_change=True)
     from uuid import UUID as _UUID
 
     try:
@@ -1032,7 +994,7 @@ def update_redirect_rule(
 @urls_router.delete(
     "/{short_code}/rules/{rule_id}",
     status_code=status.HTTP_204_NO_CONTENT,
-    responses={204: {"description": "Rule deleted"}, **get_responses(401, 404)},
+    responses={204: {"description": "Rule deleted"}, **get_responses(401, 403, 404)},
 )
 def delete_redirect_rule(
     short_code: str,
@@ -1040,7 +1002,7 @@ def delete_redirect_rule(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    url = _get_owned_url(db, short_code, current_user)
+    url = _get_visible_url(db, short_code, current_user, to_change=True)
     from uuid import UUID as _UUID
 
     try:

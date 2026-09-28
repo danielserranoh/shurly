@@ -11,6 +11,8 @@ Roles rank member < admin < owner:
   least one. That check locks the owner rows, so two owners stepping down at
   once can't both pass it.
 - The first owner comes from `settings.bootstrap_owner_email`.
+- Once someone has been removed, an owner can move their personal links and
+  campaigns to the organization, so the team keeps them.
 
 These functions flush but don't commit: the caller owns the transaction.
 """
@@ -21,7 +23,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from server.core.config import settings
-from server.core.models import Organization, OrganizationMember, OrgRole, User
+from server.core.models import URL, Campaign, Organization, OrganizationMember, OrgRole, User
 from server.utils.event_log import log_event
 
 _RANK = {OrgRole.MEMBER: 0, OrgRole.ADMIN: 1, OrgRole.OWNER: 2}
@@ -45,6 +47,10 @@ class LastOwner(OrganizationError):
 
 class CannotRemoveSelf(OrganizationError):
     """Removing yourself isn't done here."""
+
+
+class StillActive(OrganizationError):
+    """The person's account is still open."""
 
 
 def get_or_create_default_organization(db: Session) -> Organization:
@@ -220,3 +226,37 @@ def remove_member(db: Session, actor: User, target_user_id: UUID) -> None:
     db.delete(theirs)
     db.flush()
     log_event("org.member_removed", actor_id=str(actor.id), user_id=str(user.id), role=role.value)
+
+
+def adopt_personal_links(db: Session, actor: User, target_user_id: UUID) -> tuple[int, int]:
+    """
+    Move a removed person's personal links and campaigns to the actor's organization.
+
+    Returns how many links (a campaign's included) and campaigns moved. One
+    organization at launch, so any closed account is someone who left it.
+    """
+    mine = get_membership(db, actor)
+    if mine is None or mine.role != OrgRole.OWNER:
+        raise NotAllowed("Only owners move someone's personal links to the organization.")
+    target = db.get(User, target_user_id)
+    if target is None:
+        raise NotAMember("That person isn't in your organization.")
+    if target.is_active:
+        raise StillActive("Remove them from the organization first.")
+
+    moved = {}
+    for model in (URL, Campaign):
+        moved[model] = (
+            db.query(model)
+            .filter(model.created_by == target.id, model.organization_id.is_(None))
+            .update({model.organization_id: mine.organization_id}, synchronize_session=False)
+        )
+    db.flush()
+    log_event(
+        "org.links_adopted",
+        actor_id=str(actor.id),
+        user_id=str(target.id),
+        links=moved[URL],
+        campaigns=moved[Campaign],
+    )
+    return moved[URL], moved[Campaign]

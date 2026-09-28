@@ -34,3 +34,16 @@ class OwnershipTransfer(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     user_id: uuid_pkg.UUID
+
+
+class LinksAdoption(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    user_id: uuid_pkg.UUID
+
+
+class AdoptedLinks(BaseModel):
+    """How many links (a campaign's included) and campaigns moved to the organization."""
+
+    links: int
+    campaigns: int

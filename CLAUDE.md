@@ -77,6 +77,7 @@ Backend (FastAPI)               Frontend (Astro 7 + Tailwind 4)
 - Dynamic redirect rules (device/lang/qparam/date/browser, AND-of-conditions, priority-ordered)
 - Email tracking pixel
 - Multi-domain foundation (model-only at launch)
+- Links and campaigns belong to the organization; personal ones on request (`server/utils/access.py`)
 - Analytics with bot + pixel filtering by default
 - Orphan visit tracking
 - CSV export from analytics
@@ -104,6 +105,8 @@ Backend (FastAPI)               Frontend (Astro 7 + Tailwind 4)
   - Utilities: `server/utils/<topic>.py`
   - Tests: `tests/test_<topic>.py` or `tests/test_phase<N>_<topic>.py`
   - Format: `uv run ruff format .`
+  - Scope link and campaign queries with `viewer(db, user)` from `server/utils/access.py`: `sees(Model)` in the
+    filter, `ensure_can_change(item)` before a change. Never filter by `created_by == user.id`
 
 - **Frontend** (`frontend/`):
   - Pages: `frontend/src/pages/`
@@ -123,6 +126,8 @@ Backend (FastAPI)               Frontend (Astro 7 + Tailwind 4)
   - Use `auth_headers` fixture for authenticated requests
   - For network-touching tests (OG fetcher), monkey-patch `fetch_opengraph_metadata`
   - When seeding URLs directly via ORM, set `domain_id=get_or_create_default_domain(db).id` so per-domain UNIQUE checks behave
+  - `test_user` isn't in an organization, so its links are personal. URLs and campaigns seeded without
+    `organization_id` are personal to their creator
 
 ### Key Files to Know
 

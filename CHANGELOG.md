@@ -38,6 +38,32 @@ implementation lifecycle and is independent of the URL version segment.
   error logs its type, not its message, which can repeat the URL, and a refused
   non-http(s) redirect names its scheme instead of the whole URL.
 
+### Added — links and campaigns belong to the organization (Phase 3.14.3)
+- **Everyone in the organization sees its links and campaigns**, and their stats:
+  per link, per campaign, the overview and the CSV exports. New links and
+  campaigns are the organization's; send `"visibility": "personal"` when creating
+  one that only you see. Link and campaign responses carry `visibility` and
+  `created_by_email`.
+- **Who changes what**: the creator, and for the organization's links and
+  campaigns, admins and owners too. Anyone else who can see one gets a 403 when
+  editing, tagging, refreshing the preview, adding redirect rules or deleting.
+  Bulk tagging skips those links and lists them in `failed`.
+- **Someone else's personal link or campaign doesn't exist for you** (404),
+  whatever your role. Campaigns used to answer 403 here; they now match links.
+- **`POST /api/v1/organization/adopt-personal-links`**: once someone has been
+  removed, an owner moves their personal links and campaigns to the organization,
+  so the team can still manage them. Logs `org.links_adopted`. Not an MCP tool,
+  like the other organization changes.
+- **MCP**: `create_campaign_from_rows` takes `visibility`; `add_redirect_rule`
+  and `get_url_analytics_summary` follow the same rules. The generated tools
+  already did, since they call the API.
+- **Migration `0003`** adds `organization_id` to `urls` and `campaigns` (NULL
+  means personal) and gives the organization everything made so far. It creates
+  the organization when the app hasn't yet, as happens when `0002` and `0003`
+  run in the same deploy.
+- An account outside any organization only sees and makes personal links. None
+  exist in production: sign-up and startup put every active account in it.
+
 ### Added — the organization, its members and their roles (Phase 3.14.2)
 - **Every account belongs to one organization** ("Griddo", from
   `ORGANIZATION_NAME` / `ORGANIZATION_DOMAIN`), as owner, admin or member.
@@ -62,7 +88,6 @@ implementation lifecycle and is independent of the URL version segment.
 - **MCP**: `get_organization` and `list_organization_members` are tools; role
   changes, removals and handovers are not, so an assistant reading untrusted
   text can't be talked into them.
-- Links and campaigns don't belong to the organization yet: that's 3.14.3.
 
 ### Changed — the schema is migrated with Alembic (Phase 3.14.1)
 - **Startup runs the migrations instead of `create_all()`**, which only created
