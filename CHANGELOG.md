@@ -26,6 +26,32 @@ implementation lifecycle and is independent of the URL version segment.
 
 ## [Unreleased]
 
+### Added — the organization in the frontend (Phase 3.14)
+- **Settings → Organization**: the members, with their role and the date they joined.
+  Each row offers only what your role allows (the table in 3.14.2): owners change
+  roles, make other owners, hand the role over and remove people below them; admins
+  remove members; anyone can step down except the last owner. Removing someone and
+  handing the role over ask first, and so do making an owner and stepping down, which
+  you can't undo yourself. The API's 403/409 message is shown as it comes, and the list
+  reloads after a refusal. An account outside any organization gets a note instead.
+- **A "Personal" switch on every create flow** (quick create, the full editor and the
+  campaign wizard), off by default: new links and campaigns belong to the organization
+  unless it's on. Its hint names who will see them.
+- **Who created what**: link and campaign lists and pages say "Created by you" or the
+  creator's email, and personal ones carry a "Personal" badge.
+- **Locked controls**: editing, deleting, redirect rules and preview refreshes of an
+  organization link or campaign you can't change (someone else's, when you're a
+  member) are dimmed, say why on hover and explain on click. A 403 that still gets
+  through is shown like any other error, and the page checks your role again. Bulk
+  tagging says how many links it skipped.
+
+### Changed — copy that assumed every link was yours
+- A campaign's per-recipient links are "personalized links": "personal" now means only
+  you can see it.
+- The title hint says visitors never see it (it said "only you see this"), the links
+  page describes the team's links, and a link or campaign that isn't found may be
+  someone else's personal one.
+
 ### Security — only accounts on the organization's email domain join it
 - **A new account joins the organization only if its email is on `ORGANIZATION_DOMAIN`**
   (default `griddo.io`; exact, case-insensitive; empty lets anyone join). Sign-up is

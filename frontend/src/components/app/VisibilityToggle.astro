@@ -1,0 +1,86 @@
+---
+/**
+ * Phase 3.14 — the "Personal" switch of the create flows. Off by default: the new link or
+ * campaign belongs to the organization. The script names the organization in the hint and,
+ * for an account outside any organization, swaps the switch for a note (everything it
+ * creates is personal anyway). Read the choice with `visibilityOf()` from `@/utils/viewer`.
+ */
+import Icon from '@/components/ui/Icon.astro';
+
+interface Props {
+  noun: 'link' | 'campaign';
+  /** `row`: bordered row with a hint, for full forms. `inline`: switch and label, for quick create. */
+  variant?: 'row' | 'inline';
+}
+
+const { noun, variant = 'row' } = Astro.props;
+const hintId = `visibility-hint-${noun}-${variant}`;
+---
+
+{
+  variant === 'row' ? (
+    <div data-visibility>
+      <label class="flex items-start justify-between gap-4 rounded-xl border border-line p-4" data-visibility-switch>
+        <span>
+          <span class="block text-sm font-medium text-ink-900">Personal {noun}</span>
+          <span id={hintId} class="hint mt-0.5 block" data-visibility-hint>
+            Everyone in your organization can see it.
+          </span>
+        </span>
+        <span class="switch mt-0.5">
+          <input type="checkbox" name="personal" role="switch" aria-describedby={hintId} />
+          <span />
+        </span>
+      </label>
+      <p class="flex items-start gap-2.5 rounded-xl border border-line p-4 text-sm text-ink-600" data-visibility-note hidden>
+        <Icon name="lock" class="mt-0.5 size-4 shrink-0 text-ink-500" />
+        Only you can see it: your account isn’t part of an organization.
+      </p>
+    </div>
+  ) : (
+    <label class="inline-flex items-center gap-2 text-sm text-ink-700" data-visibility>
+      <span class="switch">
+        <input type="checkbox" name="personal" role="switch" aria-describedby={hintId} />
+        <span />
+      </span>
+      <span>
+        Personal <span id={hintId} class="text-ink-500">— only you’ll see it</span>
+      </span>
+    </label>
+  )
+}
+
+<script>
+  import { getMyOrganization } from '@/utils/viewer';
+
+  document.querySelectorAll<HTMLElement>('[data-visibility]').forEach((root) => {
+    const input = root.querySelector<HTMLInputElement>('input[name="personal"]')!;
+    const hint = root.querySelector<HTMLElement>('[data-visibility-hint]');
+    const row = root.querySelector<HTMLElement>('[data-visibility-switch]');
+    let orgName: string | null = null;
+
+    const paint = () => {
+      if (!hint) return;
+      hint.textContent = input.checked ? 'Only you can see it.' : orgName ? `Everyone at ${orgName} can see it.` : 'Everyone in your organization can see it.';
+    };
+    input.addEventListener('change', paint);
+    // `reset` fires before the form resets its fields, and a reset fires no `change`.
+    input.form?.addEventListener('reset', () => setTimeout(paint));
+
+    getMyOrganization()
+      .then((org) => {
+        if (org) {
+          orgName = org.name;
+          paint();
+        } else if (row) {
+          row.hidden = true;
+          root.querySelector<HTMLElement>('[data-visibility-note]')!.hidden = false;
+        } else {
+          root.hidden = true;
+        }
+      })
+      .catch(() => {
+        /* Unknown: keep the switch, and let the API decide. */
+      });
+  });
+</script>

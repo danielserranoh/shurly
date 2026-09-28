@@ -83,7 +83,11 @@ export async function apiFetch<T>(endpoint: string, options: FetchOptions = {}):
     throw new ApiError('Your session has expired. Please sign in again.', 401);
   }
 
-  if (!response.ok) throw await toApiError(response);
+  if (!response.ok) {
+    // A refused change: the page's idea of the viewer's role may be out of date (see onForbidden).
+    if (response.status === 403) window.dispatchEvent(new CustomEvent('shurly:forbidden'));
+    throw await toApiError(response);
+  }
   if (response.status === 204) return undefined as T;
   return (await response.json()) as T;
 }

@@ -2172,6 +2172,8 @@ const colorCount = allColors.length;
     crawlable: false,
     campaign_id: null,
     user_data: null,
+    visibility: 'organization' as const,
+    created_by_email: 'ana@griddo.io',
   };
   const demoLinks: ShortLink[] = [
     {
@@ -2198,6 +2200,8 @@ const colorCount = allColors.length;
       url_type: 'standard',
       title: 'Spring catalogue',
       forward_parameters: false,
+      visibility: 'personal',
+      created_by_email: 'luis@griddo.io',
       valid_until: at(3 * DAY),
       tags: [tag('social', 'blue-500'), tag('b2b', 'orange-500')],
       click_count: 42,

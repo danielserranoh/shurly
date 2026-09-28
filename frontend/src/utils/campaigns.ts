@@ -6,6 +6,7 @@ import { html, safeUrl, type RawHTML } from './html';
 import { icon } from './icons';
 import { campaignHref } from './links';
 import { tagPill } from './tags';
+import { canChange, creatorName, lockedMenuAttrs, personalBadge, type Viewer } from './viewer';
 import type { Campaign, CampaignListResponse, CampaignSummary, CampaignUsersResponse, CreateCampaignRequest, Tag } from './types';
 
 export const listCampaigns = () => apiGet<CampaignListResponse>('/api/v1/campaigns?limit=100');
@@ -34,13 +35,18 @@ export function columnChips(columns: string[], max = 4): RawHTML {
   }`;
 }
 
-export function renderCampaignCard(c: Campaign): RawHTML {
+export function renderCampaignCard(c: Campaign, viewer: Viewer | null = null): RawHTML {
   const menuId = `campaign-menu-${c.id}`;
+  const creator = creatorName(c, viewer);
+  const locked = canChange(c, viewer) ? '' : lockedMenuAttrs('campaign');
   return html`<li class="card card-interactive flex flex-col gap-4 p-5" data-campaign="${c.id}">
     <div class="flex items-start gap-3">
       <span class="grid size-10 shrink-0 place-items-center rounded-xl bg-ink-950 text-brand-300">${icon('megaphone', 'size-5')}</span>
       <div class="min-w-0 flex-1">
-        <a href="${campaignHref(c.id)}" class="block truncate font-semibold text-ink-950 hover:underline decoration-ink-300 underline-offset-4">${c.name}</a>
+        <div class="flex min-w-0 items-center gap-2">
+          <a href="${campaignHref(c.id)}" class="truncate font-semibold text-ink-950 hover:underline decoration-ink-300 underline-offset-4">${c.name}</a>
+          ${personalBadge(c)}
+        </div>
         <p class="mt-0.5 flex min-w-0 items-center gap-1.5 text-[13px] text-ink-500">${icon('corner-down-right', 'size-3.5 shrink-0')}
           <a class="truncate hover:text-ink-800" href="${safeUrl(c.original_url)}" target="_blank" rel="noopener noreferrer">${prettyUrl(c.original_url)}</a></p>
       </div>
@@ -49,7 +55,7 @@ export function renderCampaignCard(c: Campaign): RawHTML {
         <a class="menu-item" href="${campaignHref(c.id)}">${icon('chart')}View campaign</a>
         <button type="button" class="menu-item" data-action="export" data-id="${c.id}">${icon('download')}Export links (CSV)</button>
         <div class="menu-sep"></div>
-        <button type="button" class="menu-item" data-danger data-action="delete" data-id="${c.id}">${icon('trash')}Delete campaign</button>
+        <button type="button" class="menu-item" data-danger data-action="delete" data-id="${c.id}" ${locked}>${icon('trash')}Delete campaign</button>
       </div>
     </div>
 
@@ -65,9 +71,9 @@ export function renderCampaignCard(c: Campaign): RawHTML {
     </div>
     ${c.tags?.length ? html`<div class="flex flex-wrap gap-1.5">${c.tags.map((t) => tagPill(t))}</div>` : ''}
 
-    <div class="mt-auto flex items-center justify-between border-t border-line pt-3 text-xs text-ink-500">
-      <span>Created ${formatDate(c.created_at)}</span>
-      <a class="inline-flex items-center gap-1 font-semibold text-ink-900 hover:text-ink-950" href="${campaignHref(c.id)}">View campaign ${icon('arrow-right', 'size-3.5')}</a>
+    <div class="mt-auto flex items-center justify-between gap-3 border-t border-line pt-3 text-xs text-ink-500">
+      <span class="min-w-0 truncate">Created ${formatDate(c.created_at)}${creator ? ` by ${creator}` : ''}</span>
+      <a class="inline-flex shrink-0 items-center gap-1 font-semibold text-ink-900 hover:text-ink-950" href="${campaignHref(c.id)}">View campaign ${icon('arrow-right', 'size-3.5')}</a>
     </div>
   </li>`;
 }
