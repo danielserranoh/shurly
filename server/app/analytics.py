@@ -12,7 +12,8 @@ from sqlalchemy.orm import Session
 
 from server.core import get_db
 from server.core.auth import get_current_user
-from server.core.models import URL, Campaign, OrphanVisit, User, Visitor
+from server.core.config import settings
+from server.core.models import URL, Campaign, Domain, OrphanVisit, User, Visitor
 from server.schemas.analytics import (
     CampaignSummary,
     CampaignUsersResponse,
@@ -26,11 +27,20 @@ from server.schemas.analytics import (
     WeeklyStatsResponse,
 )
 from server.schemas.responses import get_responses
-from server.utils.access import viewer
+from server.utils.access import LinkDomain, find_url, viewer
 from server.utils.csv_export import stream_csv
+from server.utils.domain import normalize_hostname
 from server.utils.local_days import LocalDays, count_per_period, last_days
 from server.utils.profile import clean_timezone
 from server.utils.url import build_short_url
+
+
+def _visible_url_or_404(db: Session, user: User, short_code: str, domain: str | None) -> URL:
+    """Phase 8.3 — the link a code names on `domain`, or the default rule (`find_url`)."""
+    url = find_url(db, viewer(db, user), short_code, domain)
+    if not url:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="URL not found")
+    return url
 
 
 def _exclude_bots(query: SAQuery, include_bots: bool) -> SAQuery:
@@ -70,6 +80,7 @@ analytics_router = APIRouter()
 )
 def get_url_daily_stats(
     short_code: str,
+    domain: LinkDomain = None,
     include_bots: bool = Query(False, description="Include bot/crawler visits in counts"),
     format: str = Query("json", pattern="^(json|csv)$", description="Response format"),
     tz: TimeZoneParam = None,
@@ -92,16 +103,7 @@ def get_url_daily_stats(
     - **404**: URL not found, or someone else's personal link
     """
     # Verify the user can see the URL (Phase 3.14.3 — the organization's, or their own)
-    url = (
-        db.query(URL)
-        .filter(URL.short_code == short_code, viewer(db, current_user).sees(URL))
-        .first()
-    )
-    if not url:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="URL not found",
-        )
+    url = _visible_url_or_404(db, current_user, short_code, domain)
 
     # The last 7 days where the viewer is, today included. Keyed on the link, never its code:
     # the same code can name links on two domains.
@@ -135,6 +137,7 @@ def get_url_daily_stats(
 )
 def get_url_weekly_stats(
     short_code: str,
+    domain: LinkDomain = None,
     include_bots: bool = Query(False, description="Include bot/crawler visits in counts"),
     format: str = Query("json", pattern="^(json|csv)$", description="Response format"),
     tz: TimeZoneParam = None,
@@ -157,16 +160,7 @@ def get_url_weekly_stats(
     - **404**: URL not found, or someone else's personal link
     """
     # Verify the user can see the URL (Phase 3.14.3 — the organization's, or their own)
-    url = (
-        db.query(URL)
-        .filter(URL.short_code == short_code, viewer(db, current_user).sees(URL))
-        .first()
-    )
-    if not url:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="URL not found",
-        )
+    url = _visible_url_or_404(db, current_user, short_code, domain)
 
     # 8 seven-day weeks where the viewer is, the last ending today (it used to end yesterday).
     days = LocalDays.of(current_user, tz)
@@ -208,6 +202,7 @@ def get_url_weekly_stats(
 )
 def get_url_geo_stats(
     short_code: str,
+    domain: LinkDomain = None,
     days: int = 30,
     include_bots: bool = Query(False, description="Include bot/crawler visits in counts"),
     format: str = Query("json", pattern="^(json|csv)$", description="Response format"),
@@ -233,16 +228,7 @@ def get_url_geo_stats(
     - **404**: URL not found, or someone else's personal link
     """
     # Verify the user can see the URL (Phase 3.14.3 — the organization's, or their own)
-    url = (
-        db.query(URL)
-        .filter(URL.short_code == short_code, viewer(db, current_user).sees(URL))
-        .first()
-    )
-    if not url:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="URL not found",
-        )
+    url = _visible_url_or_404(db, current_user, short_code, domain)
 
     cutoff_date = datetime.utcnow() - timedelta(days=days)
 
@@ -632,11 +618,15 @@ def get_overview_stats(
             URL.original_url,
             URL.url_type,
             URL.title,
+            Domain.hostname,
             func.count(Visitor.id).label("click_count"),
         )
         .join(Visitor, visitor_join, isouter=True)
+        .outerjoin(Domain, URL.domain_id == Domain.id)
         .filter(who.sees(URL))
-        .group_by(URL.id, URL.short_code, URL.original_url, URL.url_type, URL.title)
+        .group_by(
+            URL.id, URL.short_code, URL.original_url, URL.url_type, URL.title, Domain.hostname
+        )
         .order_by(func.count(Visitor.id).desc())
         .limit(5)
         .all()
@@ -645,8 +635,10 @@ def get_overview_stats(
     top_urls = [
         {
             "short_code": url.short_code,
-            # Phase 3.11 — absolute short URL + title so the dashboard can render/copy links
-            "short_url": build_short_url(url.short_code),
+            # Phase 3.11 — absolute short URL + title so the dashboard can render/copy links;
+            # Phase 8.3 — on the link's own domain, which the dashboard links to it with
+            "short_url": build_short_url(url.short_code, url.hostname),
+            "domain": url.hostname or normalize_hostname(settings.default_domain),
             "title": url.title,
             "original_url": url.original_url,
             "url_type": url.url_type.value,

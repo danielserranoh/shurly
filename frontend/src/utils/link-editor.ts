@@ -144,9 +144,9 @@ function init() {
     setLoading(save, true, 'Saving…');
     try {
       let updated = link;
-      if (Object.keys(patch).length) updated = await updateLink(link.short_code, patch);
+      if (Object.keys(patch).length) updated = await updateLink(link, patch);
       if (tagsChanged) {
-        const res = await setLinkTags(link.short_code, tagIds);
+        const res = await setLinkTags(link, tagIds);
         updated = { ...updated, tags: res.tags };
       }
       current = updated;

@@ -173,7 +173,8 @@ import VisibilityToggle from '@/components/app/VisibilityToggle.astro';
   let total = 0;
   let firstLoad = true;
   let allTags: Tag[] = [];
-  const selected = new Set<string>();
+  // Phase 8.3 — keyed by the link's id: one code can name links on two domains.
+  const selected = new Map<string, ShortLink>();
   let requestId = 0;
   // Who's looking: cards name the creator "you" and lock what the viewer can't change.
   let viewer: Viewer | null = null;
@@ -225,7 +226,7 @@ import VisibilityToggle from '@/components/app/VisibilityToggle.astro';
         return load();
       }
       total = res.total;
-      links = new Map(res.urls.map((l) => [l.short_code, l]));
+      links = new Map(res.urls.map((l) => [l.id, l]));
       render();
     } catch (err) {
       if (id !== requestId) return;
@@ -242,9 +243,9 @@ import VisibilityToggle from '@/components/app/VisibilityToggle.astro';
     }
   }
 
-  function render(freshCode?: string) {
+  function render(freshId?: string) {
     const items = [...links.values()];
-    setHTML(list, html`${items.map((l) => renderLinkCard(l, { selected: selected.has(l.short_code), fresh: l.short_code === freshCode, viewer }))}`);
+    setHTML(list, html`${items.map((l) => renderLinkCard(l, { selected: selected.has(l.id), fresh: l.id === freshId, viewer }))}`);
     list.classList.toggle('selecting', selected.size > 0);
     hydrateTimes(list);
     renderTagChips();
@@ -406,7 +407,8 @@ import VisibilityToggle from '@/components/app/VisibilityToggle.astro';
   list.addEventListener('change', (e) => {
     const box = (e.target as HTMLElement).closest<HTMLInputElement>('[data-select]');
     if (!box) return;
-    if (box.checked) selected.add(box.dataset.select!);
+    const link = links.get(box.dataset.select!);
+    if (box.checked && link) selected.set(link.id, link);
     else selected.delete(box.dataset.select!);
     updateBulkBar();
   });
@@ -414,12 +416,12 @@ import VisibilityToggle from '@/components/app/VisibilityToggle.astro';
   list.addEventListener('click', async (e) => {
     const btn = (e.target as HTMLElement).closest<HTMLElement>('[data-action]');
     if (!btn) return;
-    const link = links.get(btn.dataset.code!);
+    const link = links.get(btn.dataset.id!);
     btn.closest<HTMLElement>('[popover]')?.hidePopover();
     if (!link) return;
     if (btn.dataset.action === 'edit') {
       openLinkEditor(link, (updated) => {
-        links.set(updated.short_code, updated);
+        links.set(updated.id, updated);
         render();
       });
     } else if (btn.dataset.action === 'qr') {
@@ -431,10 +433,10 @@ import VisibilityToggle from '@/components/app/VisibilityToggle.astro';
         body: `${link.short_url?.replace(/^https?:\/\//, '')} will stop working for everyone who has it${clicks ? `, and its ${pluralize(clicks, 'click')} of history will be deleted` : ''}. This can’t be undone.`,
         confirmLabel: 'Delete link',
         danger: true,
-        onConfirm: () => deleteLink(link.short_code),
+        onConfirm: () => deleteLink(link),
       });
       if (confirmed) {
-        selected.delete(link.short_code);
+        selected.delete(link.id);
         updateBulkBar();
         toast('Link deleted', 'success');
         load();
@@ -451,7 +453,7 @@ import VisibilityToggle from '@/components/app/VisibilityToggle.astro';
     updateBulkBar();
   });
   $('[data-bulk-copy]').addEventListener('click', async (e) => {
-    const urls = [...selected].map((c) => links.get(c)?.short_url).filter(Boolean).join('\n');
+    const urls = [...selected.values()].map((l) => l.short_url).filter(Boolean).join('\n');
     await copyWithFeedback(urls, e.currentTarget as HTMLElement, `${pluralize(selected.size, 'link')} copied`);
   });
   $('[data-bulk-tag]').addEventListener('click', () => {
@@ -467,7 +469,7 @@ import VisibilityToggle from '@/components/app/VisibilityToggle.astro';
     }
     setLoading(btn, true, 'Adding…');
     try {
-      const res = await bulkTagLinks([...selected], ids);
+      const res = await bulkTagLinks([...selected.values()], ids);
       closeDialog(document.getElementById('bulk-tag') as HTMLDialogElement);
       // The API skips the links the viewer can't change and lists them in `failed`.
       const skipped = res.failed.length;
@@ -520,9 +522,9 @@ import VisibilityToggle from '@/components/app/VisibilityToggle.astro';
       result.hidden = false;
       toast(copied ? 'Link created and copied' : 'Link created', 'success');
       if (state.page === 1 && !hasFilters()) {
-        links = new Map([[link.short_code, link], ...links]);
+        links = new Map([[link.id, link], ...links]);
         total += 1;
-        render(link.short_code);
+        render(link.id);
       }
       loadStats();
     } catch (err) {
@@ -540,8 +542,8 @@ import VisibilityToggle from '@/components/app/VisibilityToggle.astro';
     if (!lastCreated) return;
     openLinkEditor(lastCreated, (updated) => {
       lastCreated = updated;
-      if (links.has(updated.short_code)) {
-        links.set(updated.short_code, updated);
+      if (links.has(updated.id)) {
+        links.set(updated.id, updated);
         render();
       }
     });

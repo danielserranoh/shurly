@@ -24,7 +24,7 @@ from server.utils.domain import get_or_create_default_domain
 
 # Phase 3.11 — campaign short URLs (detail + CSV export) use the shared resolver
 # (BASE_URL → https://DEFAULT_DOMAIN → localhost) instead of a hard-coded host.
-from server.utils.url import build_short_url
+from server.utils.url import link_hostname, link_short_url
 
 campaigns_router = APIRouter()
 
@@ -294,7 +294,8 @@ def get_campaign(
     url_responses = []
     for url in urls:
         url_response = CampaignURLResponse.model_validate(url)
-        url_response.short_url = build_short_url(url.short_code)
+        url_response.short_url = link_short_url(url)
+        url_response.domain = link_hostname(url)
         url_responses.append(url_response)
 
     # Build campaign response
@@ -372,7 +373,7 @@ def export_campaign(
     rows = (
         [
             url.short_code,
-            build_short_url(url.short_code),
+            link_short_url(url),
             url.original_url,
             *((url.user_data or {}).get(key, "") for key in user_data_columns),
         ]

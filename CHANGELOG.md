@@ -35,6 +35,27 @@ implementation lifecycle and is independent of the URL version segment.
   and the MCP's campaign tools. The list loads every creator's profile with the page: one query, not one
   per campaign.
 
+### Added — a link is its code and its domain (Phase 8.3)
+- **The routes that take a link's code take `?domain=`**: `/api/v1/urls/{short_code}` and its tags, previews and
+  rules, and the link's daily, weekly and geo analytics. Once Shlink's links are imported, one code can name a
+  link on the default domain and another on `go.griddo.io`. Until now the API answered with whichever it found
+  first.
+- **Without `?domain=`, the default domain's link answers**, then the other domains' by hostname. A link from
+  before domains counts as the default domain's. So a bookmark of a link's page without a domain keeps working.
+- **`?domain=` is read like a request's `Host`:** lowercase, without a port or a trailing dot
+  (`normalize_hostname`). The redirect path now drops a trailing dot too: `go.griddo.io.` finds `go.griddo.io`
+  instead of falling back to the default domain.
+- **Each link says its `domain`**, and its `short_url` is built on that domain: in link responses, campaigns and
+  their CSV export, the analytics overview, link previews, and the page a social crawler gets. `BASE_URL` still
+  applies only to the default domain.
+- **Bulk tagging takes `links: [{short_code, domain}]`.** A plain `short_codes` entry tags one link per code, by
+  the same default rule.
+- **The MCP's tools take `domain` too:** the generated ones from the API, plus `add_redirect_rule` and
+  `get_url_analytics_summary`. The summary also names the domain that answered.
+- **The dashboard passes the domain.** Links in the list and in the analytics carry it. The link page sends it with
+  every call, and puts it in its address once the link has loaded. The list keys its cards and its selection by
+  the link's id, not its code.
+
 ### Added — names in Settings → Organization (Phase 3.12)
 - **Members and removed people show their name, with the email under it.** Someone without a name in
   their profile shows the email, as before.

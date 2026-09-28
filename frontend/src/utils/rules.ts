@@ -4,6 +4,7 @@ import { apiDelete, apiGet, apiPost } from './api';
 import { formatDateTime, prettyUrl } from './format';
 import { html, safeUrl, type RawHTML } from './html';
 import { icon } from './icons';
+import { linkApi, type LinkAddress } from './link-address';
 import type { RedirectRule, RuleCondition, RuleConditionType } from './types';
 
 export const DEVICES: Record<string, string> = {
@@ -83,9 +84,9 @@ export function renderRule(rule: RedirectRule, index: number): RawHTML {
   </li>`;
 }
 
-export const listRules = (code: string) => apiGet<RedirectRule[]>(`/api/v1/urls/${encodeURIComponent(code)}/rules`);
+export const listRules = (link: LinkAddress) => apiGet<RedirectRule[]>(linkApi(link, '/rules'));
 
-export const createRule = (code: string, body: { priority: number; conditions: RuleCondition[]; target_url: string }) =>
-  apiPost<RedirectRule>(`/api/v1/urls/${encodeURIComponent(code)}/rules`, body);
+export const createRule = (link: LinkAddress, body: { priority: number; conditions: RuleCondition[]; target_url: string }) =>
+  apiPost<RedirectRule>(linkApi(link, '/rules'), body);
 
-export const deleteRule = (code: string, id: string) => apiDelete(`/api/v1/urls/${encodeURIComponent(code)}/rules/${encodeURIComponent(id)}`);
+export const deleteRule = (link: LinkAddress, id: string) => apiDelete(linkApi(link, `/rules/${encodeURIComponent(id)}`));

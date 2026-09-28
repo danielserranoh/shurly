@@ -56,6 +56,8 @@ export interface ShortLink {
   id: string;
   short_code: string;
   short_url: string | null;
+  /** Phase 8.3: the link's domain; one code can name links on several. Absent from older APIs. */
+  domain?: string | null;
   original_url: string;
   url_type: URLType;
   title: string | null;
@@ -239,6 +241,7 @@ export interface CampaignUsersResponse {
 export interface TopLink {
   short_code: string;
   short_url?: string;
+  domain?: string;
   title?: string | null;
   original_url: string;
   url_type: URLType;
