@@ -59,12 +59,13 @@ CSS classes (in `global.css`): `btn` (+ `btn-primary | accent | secondary | ghos
 
 Astro components (`frontend/src/components/`): `brand/Logo`, `ui/Icon` (Lucide), `ui/PageHeader`,
 `ui/StatCard`, `ui/EmptyState`, `ui/Modal`, `ui/ProBadge`, `ui/PasswordField`,
-`illustrations/Illustration` (11 line illustrations), `app/EditLinkModal`, `app/QrModal`.
+`illustrations/Illustration` (11 line illustrations), `app/EditLinkModal`, `app/QrModal`,
+`app/VisibilityToggle` (the "Personal" switch of the create flows).
 
 Rendered in TypeScript (`frontend/src/utils/`): link card (`links.ts`), campaign card
 (`campaigns.ts`), tag pill and tag picker (`tags.ts`, `tag-input.ts`), charts (`charts.ts`),
-toasts, confirm dialogs and copy feedback (`ui.ts`). Every interpolation goes through the
-escaping `html` template tag (`html.ts`).
+toasts, confirm dialogs and copy feedback (`ui.ts`), who's looking and locked controls
+(`viewer.ts`). Every interpolation goes through the escaping `html` template tag (`html.ts`).
 
 ## Patterns
 
@@ -76,7 +77,12 @@ escaping `html` template tag (`html.ts`).
   collapsed sections open). Form-level API errors go in an alert inside the form. Background or
   async failures show a toast. A page that fails to load gets an error state with **Try again**.
 - **Destructive actions** use a confirm dialog that names the consequence ("…will stop working for everyone
-  who has it") and a red, specific button ("Delete link").
+  who has it") and a red, specific button ("Delete link"). So do changes you can't undo yourself, such as
+  handing over ownership or stepping down, with a primary button.
+- **Ownership.** Links and campaigns say who created them ("Created by you", or the email), and personal ones
+  carry a "Personal" badge. A control the viewer's role can't use stays visible but dimmed (`aria-disabled`):
+  it says why on hover (a native `title` inside popover menus, which clip CSS tooltips) and in a toast on
+  click. The API still decides: a 403 that gets through shows its message and the page checks the role again.
 - **Copy.** The button turns blue and reads "Copied!" for 2 s. A toast is added only when the button
   isn't where you're looking (auto-copy after quick create, bulk copy).
 - **Toasts** appear top-right under the header: 4 s, or 6 s for errors.
@@ -127,4 +133,5 @@ instead of a dynamic path.
 `/` landing · `/login/` · `/register/` · `/404` · `/styleguide/` · `/dashboard/` links ·
 `/dashboard/create/` · `/dashboard/link/?code=…` · `/dashboard/campaigns/` ·
 `/dashboard/campaigns/create/` (4-step wizard) · `/dashboard/campaign/?id=…` ·
-`/dashboard/analytics/` · `/dashboard/settings/` (`#account`, `#api`, `#tags`, `#notifications`, `#plan`).
+`/dashboard/analytics/` · `/dashboard/settings/` (`#account`, `#organization`, `#api`, `#tags`, `#notifications`,
+`#plan`).

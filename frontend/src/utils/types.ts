@@ -294,3 +294,9 @@ export interface OrgMember {
   role: OrgRole;
   joined_at: string;
 }
+
+/** POST /api/v1/organization/adopt-personal-links: links (a campaign's included) and campaigns moved. */
+export interface AdoptedLinks {
+  links: number;
+  campaigns: number;
+}

@@ -26,6 +26,13 @@ implementation lifecycle and is independent of the URL version segment.
 
 ## [Unreleased]
 
+### Added — move a removed person's personal links from Settings (Phase 3.14)
+- **When an owner removes someone** in Settings → Organization, a follow-up asks whether
+  to move that person's personal links and campaigns to the organization, so the team
+  can manage them. Skipping is fine: the links keep redirecting either way. A toast says
+  what moved, and a 403, 404 or 409 shows the API's message in the dialog. Admins, who
+  can remove members but not move their links, aren't asked.
+
 ### Added — the organization in the frontend (Phase 3.14)
 - **Settings → Organization**: the members, with their role and the date they joined.
   Each row offers only what your role allows (the table in 3.14.2): owners change
