@@ -1031,8 +1031,9 @@ for this.
   costs cents. A container means a Fargate task running around the clock (a second Express service, as
   shlink-web does), or frontend releases tied to backend deploys (served from the API container, where the
   root path belongs to short codes).
-- *Safest.* No server to patch; the bucket stays private behind Origin Access Control (OAC); HSTS and CSP
-  headers come from a CloudFront response-headers policy. CSP matters here: the JWT lives in `localStorage` (3.1).
+- *Safest.* No server to patch; the bucket stays private behind Origin Access Control (OAC); HSTS comes from a
+  CloudFront response-headers policy, and the CSP from the build itself, a `<meta>` on every page (6.3). CSP matters
+  here: the JWT lives in `localStorage` (3.1).
 
 - [x] Choose the hostname → **`shurly.griddo.io`** (decided 2026-09-28), for the web, the app, the API and the
       MCP, split by path; `go.griddo.io` is for short links only. `links.griddo.io` retires with Shlink (Phase 8)
@@ -1259,6 +1260,12 @@ live in `mcp_server/README.md`, written for developers. There is no user manual 
   - [x] CSV formula injection: the exports quote cells that start like a formula, and the CSV import unquotes them
         (`spreadsheet_safe`, `server/utils/csv_export.py`)
 - [ ] SQL injection prevention check
+- [x] Content-Security-Policy → a `<meta>` on every built page, written by Astro (`security.csp`): scripts only from
+      this site or by hash (the inline ones live in `frontend/src/inline-scripts.mjs`), no `'unsafe-inline'` or
+      `'unsafe-eval'` for scripts; `'unsafe-inline'` only for style attributes. `npm run build` fails on a page it
+      doesn't cover (`frontend/scripts/check-csp.mjs`); DEPLOYMENT.md § Frontend hosting
+- [ ] Trusted Types (`require-trusted-types-for 'script'`): every HTML sink through a policy. The next step up from the
+      CSP; `setHTML` and `toElement` would become that policy
 - [x] XSS prevention in frontend (dynamic HTML goes through the escaping `html` tag from `@/utils/html`; audit the remaining raw `innerHTML` uses) → audited: data goes through `html`/`setHTML`, URLs through `safeUrl`; two raw sinks left, documented; `frontend/tests/no-raw-html.test.mjs` fails on new ones
 - [x] CORS configuration review → no credentials, only the methods and headers the API uses, `Retry-After`
       and `X-Request-Id` exposed (`tests/test_cors.py`). Production needs no cross-origin entry once the

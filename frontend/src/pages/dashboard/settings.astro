@@ -1,5 +1,6 @@
 ---
 import AppLayout from '@/layouts/AppLayout.astro';
+import { SETTINGS_TAB_FROM_HASH } from '@/inline-scripts.mjs';
 import PageHeader from '@/components/ui/PageHeader.astro';
 import Icon from '@/components/ui/Icon.astro';
 import EmptyState from '@/components/ui/EmptyState.astro';
@@ -73,18 +74,7 @@ const panelProps = (key: string, index: number): HTMLAttributes<'div'> => ({
   </div>
 
   <!-- Open the tab named in the URL hash before first paint, so #tags never flashes the Account tab. -->
-  <script is:inline>
-    (function () {
-      var tab = document.getElementById('tab-' + location.hash.slice(1).toLowerCase());
-      if (!tab || tab.getAttribute('role') !== 'tab') return;
-      document.querySelectorAll('[data-tablist] [role="tab"]').forEach(function (t) {
-        var on = t === tab;
-        t.setAttribute('aria-selected', String(on));
-        t.tabIndex = on ? 0 : -1;
-        document.getElementById(t.getAttribute('aria-controls')).hidden = !on;
-      });
-    })();
-  </script>
+  <script is:inline set:html={SETTINGS_TAB_FROM_HASH}></script>
 
   <EmptyState id="settings-error" hidden illustration="error" title="We couldn’t load your settings" body="Check your connection and try again.">
     <button type="button" class="btn btn-primary" data-settings-retry><Icon name="refresh" />Try again</button>
