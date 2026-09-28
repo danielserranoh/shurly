@@ -174,7 +174,7 @@ def _build_mcp_server(fastapi_app=None, auth=None) -> FastMCP:
     main).
 
     Auth (Phase 5.4): a `ShurlyTokenVerifier` validates the inbound bearer
-    against `User.api_key` (or a JWT). For the auto-generated tools that go
+    as an API key (or a JWT). For the auto-generated tools that go
     through fastmcp's httpx2 client → FastAPI, we install an auth hook that
     re-attaches the same bearer to the outbound request so
     `get_current_user` resolves the same user. The `MCP_DISABLE_AUTH=1`

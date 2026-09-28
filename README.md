@@ -351,12 +351,14 @@ full versioning policy.
   one-time code
 - `POST /api/v1/auth/google/exchange` — the one-time code → JWT
 - `POST /api/v1/auth/login` — email and password, for an account that has one
-- `GET /api/v1/auth/me` — says `has_password` and `has_google`
+- `GET /api/v1/auth/me` — says `has_password` and `has_google`, and `has_api_key` and
+  `api_key_prefix`: whether there's an API key and how it starts, never the key (Phase 6.3)
 - `PUT /api/v1/auth/password` · `DELETE /api/v1/auth/password` — set or remove the password
   (signed-in sessions only, Phase 3.13.3)
 - `POST /api/v1/auth/change-password`
 - `POST /api/v1/auth/register` — off unless `ALLOW_PASSWORD_SIGNUP` (local development only)
-- `POST /api/v1/auth/api-key/generate` — returns `{api_key, scope}` (Phase 3.9.6)
+- `POST /api/v1/auth/api-key/generate` — returns `{api_key, scope}` (Phase 3.9.6), the only time
+  the key is shown: Shurly keeps its SHA-256 hash (Phase 6.3)
 - `DELETE /api/v1/auth/api-key`
 
 ### URL Shortening

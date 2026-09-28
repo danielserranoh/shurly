@@ -120,9 +120,9 @@ def sign_in_with_google(db: Session, account: GoogleAccount) -> User:
 def _lock_out_whoever_made_it(db: Session, user: User) -> None:
     """An account made with an address nobody verified: take back every way in."""
     password_cleared = user.password_hash is not None
-    api_key_revoked = user.api_key is not None
+    api_key_revoked = user.has_api_key
     user.password_hash = None
-    user.api_key = None
+    user.clear_api_key()
     user.sessions_valid_from = _now()
     db.flush()
     log_event(

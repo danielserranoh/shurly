@@ -26,6 +26,25 @@ implementation lifecycle and is independent of the URL version segment.
 
 ## [Unreleased]
 
+### Security — API keys are stored as a hash and shown once (Phase 6.3)
+- **The database no longer holds API keys.** It keeps each key's SHA-256 hash and first
+  12 characters (`users.api_key_hash`, `users.api_key_prefix`). Migration `0007` moves every
+  existing key there and empties `users.api_key`, which a later release drops. Keys made before
+  keep working. A key is looked up by its hash, through a unique index, so the key itself is never
+  compared.
+- **`GET /api/v1/auth/me` no longer returns `api_key`.** It returns `has_api_key` and
+  `api_key_prefix` instead. This breaks the versioning policy above, on purpose: the key can't be
+  returned once only its hash is kept. The only client that read the field, Settings → API & MCP,
+  changes in the same release. `/auth/me` is also the MCP's `get_current_user_info` tool, which
+  used to put the key in an assistant's context whenever it asked who you are.
+- **The key is shown once, by `POST /api/v1/auth/api-key/generate`.** Settings says "copy it now:
+  it won't be shown again". Later it shows how the key starts, and Regenerate. "Copy with my
+  key" is there right after you generate a key; otherwise the command keeps `<your API key>`.
+- **New keys start with `shurly_`**, so people and secret scanners can recognise a leaked one. A
+  token with two dots is still a JWT, whatever it starts with.
+- While `0007` rolls out, the task still on the previous release answers 401 to API keys
+  (`DEPLOYMENT.md` § API keys).
+
 ### Changed — the frontend deploy, ready for S3 + CloudFront (Phase 4.10)
 - **`deploy-frontend.yml` rewritten for the chosen setup:**
   - OIDC with its own least-privilege role (`AWS_FRONTEND_DEPLOY_ROLE_ARN`), no access keys.

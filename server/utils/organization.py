@@ -246,7 +246,7 @@ def remove_member(db: Session, actor: User, target_user_id: UUID) -> None:
 
     user = theirs.user
     user.is_active = False
-    user.api_key = None
+    user.clear_api_key()
     role = theirs.role
     db.delete(theirs)
     db.flush()
