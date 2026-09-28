@@ -207,6 +207,14 @@ def change_password(
     return {"message": "Password changed successfully"}
 
 
+def _reauth_required(message: str) -> HTTPException:
+    """Phase 3.13.3 — a 403 the frontend can act on: send the person through Google, retry."""
+    return HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail={"code": "reauth_required", "message": message},
+    )
+
+
 @auth_router.put(
     "/password",
     response_model=MessageResponse,
@@ -250,10 +258,7 @@ def set_password(
             detail="Give your current password to replace it.",
         )
     elif not session.is_fresh():
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Sign in with Google again to set a password, or give your current one.",
-        )
+        raise _reauth_required("Sign in with Google again to set a password.")
 
     user.password_hash = hash_password(body.new_password)
     db.commit()
@@ -276,12 +281,13 @@ def remove_password(
 ):
     """
     Remove the password (Phase 3.13.3), leaving sign in with Google. Signed-in
-    sessions only: an API key gets a 403.
+    sessions only (an API key gets a 403), at most 10 minutes old, so a stolen
+    token can't take the owner's password away.
 
     **Responses:**
     - **200**: Password removed, or there was none
     - **401**: Authentication required or invalid token
-    - **403**: An API key
+    - **403**: An API key, or a session older than 10 minutes (`reauth_required`)
     - **409**: The account doesn't sign in with Google: it would have no way in
     """
     user = session.user
@@ -291,6 +297,8 @@ def remove_password(
             detail="Sign in with Google once first: without a password, this account "
             "would have no way in.",
         )
+    if not session.is_fresh():
+        raise _reauth_required("Sign in with Google again to remove the password.")
 
     if user.password_hash is not None:
         user.password_hash = None

@@ -194,7 +194,13 @@ class TestSetPassword:
         response = _set(client, stale, new_password="new-password-1")
 
         assert response.status_code == 403
-        assert "Sign in with Google again" in response.json()["detail"]
+        # Machine-readable, so the frontend can send people through Google first.
+        assert response.json() == {
+            "detail": {
+                "code": "reauth_required",
+                "message": "Sign in with Google again to set a password.",
+            }
+        }
         db_session.refresh(user)
         assert user.password_hash is None
 
@@ -224,16 +230,20 @@ class TestSetPassword:
         assert response.status_code == 400
         assert _login(client, "ana@griddo.io", _PASSWORD).status_code == 200
 
-    def test_an_api_key_cannot_set_a_password(self, client, db_session):
-        user = _person(db_session, password=False, google=True)
+    @pytest.mark.parametrize("current_password", [None, _PASSWORD])
+    def test_an_api_key_cannot_set_a_password(self, client, db_session, current_password):
+        """Not even with the current password: a leaked key must not become a password."""
+        user = _person(db_session, password=True, google=True)
         user.api_key = "k" * 43
         db_session.commit()
 
-        response = _set(client, user.api_key, new_password="new-password-1")
+        response = _set(
+            client, user.api_key, new_password="new-password-1", current_password=current_password
+        )
 
         assert response.status_code == 403
-        db_session.refresh(user)
-        assert user.password_hash is None
+        assert "API key" in response.json()["detail"]
+        assert _login(client, "ana@griddo.io", _PASSWORD).status_code == 200
 
     def test_it_needs_a_session(self, client):
         response = client.put("/api/v1/auth/password", json={"new_password": "new-password-1"})
@@ -257,6 +267,17 @@ class TestRemovePassword:
         assert _login(client, "ana@griddo.io", _PASSWORD).status_code == 401
         assert [e["user_id"] for e in _events(capsys, "auth.password_removed")] == [str(user.id)]
 
+    def test_the_session_must_be_fresh(self, client, db_session):
+        """A stolen JWT can't take the owner's password away either."""
+        user = _person(db_session, password=True, google=True)
+        stale = _jwt(user, issued_at=datetime.utcnow() - timedelta(minutes=11))
+
+        response = client.delete("/api/v1/auth/password", headers=_bearer(stale))
+
+        assert response.status_code == 403
+        assert response.json()["detail"]["code"] == "reauth_required"
+        assert _login(client, "ana@griddo.io", _PASSWORD).status_code == 200
+
     def test_refused_when_it_is_the_only_way_in(self, client, db_session):
         user = _person(db_session, password=True, google=False)
 
@@ -273,6 +294,7 @@ class TestRemovePassword:
         response = client.delete("/api/v1/auth/password", headers=_bearer(user.api_key))
 
         assert response.status_code == 403
+        assert "API key" in response.json()["detail"]
         assert _login(client, "ana@griddo.io", _PASSWORD).status_code == 200
 
 
@@ -302,3 +324,20 @@ class TestRegister:
         response = client.post("/api/v1/auth/register", json=self._BODY)
 
         assert response.status_code == 201
+
+    def test_the_app_warns_when_it_is_on(self, allow_password_signup, capsys):
+        from main import create_app
+
+        capsys.readouterr()
+        create_app()
+
+        (event,) = _events(capsys, "auth.password_signup_enabled")
+        assert "never in production" in event["warning"].lower()
+
+    def test_and_says_nothing_when_it_is_off(self, capsys):
+        from main import create_app
+
+        capsys.readouterr()
+        create_app()
+
+        assert _events(capsys, "auth.password_signup_enabled") == []
