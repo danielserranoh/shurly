@@ -30,7 +30,7 @@ from sqlalchemy.orm import Session
 from server.core import SessionLocal
 from server.core.config import settings
 from server.core.models import URL, Domain, OrgRole, RedirectRule, Tag, URLType, User, Visitor
-from server.tools.shlink.mapping import map_condition
+from server.tools.shlink.mapping import is_bot, is_pixel, map_condition
 from server.utils.columns import fit
 from server.utils.csv_export import unquote_spreadsheet_text
 from server.utils.domain import normalize_hostname
@@ -353,9 +353,8 @@ def _visits(db, report, url: URL, visits: list[dict]) -> None:
                 country=fit(location.get("countryCode") or None, Visitor.country),
                 user_agent=visit.get("userAgent"),
                 referer=visit.get("referer"),
-                is_bot=bool(visit.get("potentialBot")),
-                # Shlink's /track pixel: a visit without a redirect.
-                is_pixel="redirectUrl" in visit and visit["redirectUrl"] is None,
+                is_bot=is_bot(visit),
+                is_pixel=is_pixel(visit),
                 visited_at=moment,
             )
         )

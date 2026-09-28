@@ -1131,7 +1131,9 @@ for this.
       (`go.griddo.io` from Phase 8). Without `PUBLIC_SHORT_DOMAIN` the app shows short links on the API's host
       (`shurly.griddo.io/abc`). The MCP address in the manual and Settings then derives as
       `https://shurly.griddo.io/mcp/` (`PUBLIC_MCP_URL` only to override it)
-- [ ] `CORS_ORIGINS` in the task matches the chosen hostname (`deploy_ecs.sh` defaults to `https://shurl.griddo.io`)
+- [ ] `CORS_ORIGINS` in the task → `'[]'` once the frontend is hosted, as it shares the API's host (DEPLOYMENT.md
+      § CORS). `deploy_ecs.sh` and `.env.production.example` default to it; production keeps
+      `["http://localhost:4232"]` until then (6.3)
 - [x] Update the hostnames table in `DEPLOYMENT.md` (it still says "Future frontend | 7") → done in #74
 - [x] CI builds the frontend (`npm ci`, `npm test`, `npm run build` in the Tests workflow), so a PR can't break the
       deploy unseen

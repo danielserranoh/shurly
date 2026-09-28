@@ -19,7 +19,7 @@ from urllib.parse import urlsplit
 
 import httpx
 
-from server.tools.shlink.mapping import CONDITION_TYPES
+from server.tools.shlink.mapping import CONDITION_TYPES, is_click
 from server.utils.csv_export import spreadsheet_safe
 from server.utils.opengraph import FetchRefusedError, guarded_request
 
@@ -35,6 +35,7 @@ COLUMNS = [
     "last_visit",
     "expired",
     "capped",
+    "capped_in_shurly",
     "redirect_rules",
     "rules_to_check",
     "destination_status",
@@ -72,6 +73,9 @@ def review_rows(
                 "last_visit": _last_visit(entry.get("visits")),
                 "expired": "yes" if _is_before(meta.get("validUntil"), now) else "",
                 "capped": "yes" if _is_capped(meta.get("maxVisits"), visits.get("total")) else "",
+                "capped_in_shurly": (
+                    "yes" if _is_capped(meta.get("maxVisits"), _clicks(entry.get("visits"))) else ""
+                ),
                 "redirect_rules": len(rules),
                 "rules_to_check": ", ".join(_conditions_without_equivalent(rules)),
                 "destination_status": statuses.get(link["longUrl"], ""),
@@ -146,6 +150,12 @@ def _is_before(value: str | None, now: datetime) -> bool:
 
 def _is_capped(max_visits: int | None, visits: int | None) -> bool:
     return max_visits is not None and visits is not None and visits >= max_visits
+
+
+def _clicks(visits: list[dict] | None) -> int:
+    """What Shurly's click limit counts once an import with `--visits` brings them: Shlink's cap
+    counted every visit. None in the snapshot, none imported: the link keeps its whole limit."""
+    return sum(map(is_click, visits or []))
 
 
 def _last_visit(visits: list[dict] | None) -> str:
