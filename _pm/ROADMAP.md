@@ -1172,9 +1172,9 @@ Every route below:
 
   `/recipients` shows each recipient's `user_data`, names and emails included, as `/users` does: to the same people,
   and no one else;
-- takes a period, as in 3.16.1, except `/totals`.
+- takes a period, as in 3.16.1, except `/totals` and `/recipients`, which are all time.
 
-Every response starts with the same fields. `/totals` has no `from` or `to`:
+Every response starts with the same fields. `/totals` and `/recipients` have no `from` or `to`:
 
 ```json
 {"campaign_id": "3f2c…", "campaign_name": "Q4 webinar", "from": "2026-07-01", "to": "2026-09-28",
@@ -1190,7 +1190,8 @@ Every response starts with the same fields. `/totals` has no `from` or `to`:
 ```
 
 - `recipients` is the number of links.
-- `clicked` and `opened` count the recipients with at least one click, or at least one open.
+- `clicked` is **Clicked**: the recipients with at least one click. `opened` is **Opened**: the recipients with at
+  least one pixel open that isn't a bot's. A recipient can be both.
 - `click_rate` is clicked ÷ recipients, and `open_rate` opened ÷ recipients: 0 to 1, with 4 decimals, and 0 when the
   campaign has no recipients.
 - `countries` and `last_click_at` are as for a link.
@@ -1198,28 +1199,38 @@ Every response starts with the same fields. `/totals` has no `from` or `to`:
 **`GET …/timeseries?group_by=day|week|month`** and **`GET …/breakdown?type=…`** have a link's shapes (3.16.1), over
 all the campaign's links.
 
-**`GET …/recipients?page=1&page_size=20&sort=clicks`**
+**`GET …/recipients?filter=all&q=&sort=clicks&order=desc&page=1&page_size=50`**: all time, for following up with
+people (who clicked, who hasn't). It takes no period: the period scopes the charts only. It takes `tz`, for its times.
 
 ```json
-{...the common fields..., "total": 250, "page": 1, "page_size": 20, "pages": 13, "sort": "clicks",
- "recipients": [{"user_data": {"name": "Ana", "email": "ana@example.com"}, "short_code": "q4-ana",
-                 "domain": "shurl.griddo.io", "clicks": 3, "opens": 5,
-                 "first_click_at": "2026-09-20T10:02:11+02:00", "last_click_at": "2026-09-27T23:54:12+02:00"}, …]}
+{"campaign_id": "3f2c…", "campaign_name": "Q4 webinar", "timezone": "Europe/Madrid",
+ "filter": "all", "q": "", "sort": "clicks", "order": "desc", "total": 250, "page": 1, "page_size": 50, "pages": 5,
+ "recipients": [{"short_code": "q4-ana", "short_url": "https://shurl.griddo.io/q4-ana", "domain": "shurl.griddo.io",
+                 "user_data": {"name": "Ana", "email": "ana@example.com"}, "clicks": 3, "opens": 5,
+                 "first_click_at": "2026-09-20T10:02:11+02:00", "last_click_at": "2026-09-27T23:54:12+02:00",
+                 "last_open_at": "2026-09-27T23:50:02+02:00"}, …]}
 ```
 
-- Every recipient is listed, with zeros if need be. Each shows their clicks and opens in the period, and their first
-  and last click in it (null without one). Bots don't count.
-- `sort`, with the short code breaking ties:
-  - `clicks`: the default, most first, then most opens;
-  - `opens`;
-  - `last`: latest click first, recipients without one last;
-  - `code`.
-- `page_size` is 1 to 100, default 20.
+- Every recipient that matches, with zeros if need be. Times are all time, local like 3.16.1's, and null without
+  one. Bots don't count.
+- `filter`:
+  - `all`, the default;
+  - `clicked`: Clicked, at least one click;
+  - `opened`: Opened, at least one pixel open;
+  - `none`: neither clicked nor opened.
+- `q` searches, ignoring case, the values of `user_data` (not its keys) and the short code.
+  - It's done in SQL: `json_each_text` on PostgreSQL, SQLite's `json_each` in the tests.
+  - The search text is escaped (`autoescape=True`, as #84's guard requires), so `%` and `_` match themselves.
+- `sort` is `clicks` (the default), `opens`, `last_click` or `code`, and `order` is `desc` (the default) or `asc`.
+  - Ties go to the latest click, most recent first, then the code, A to Z.
+  - With `last_click`, recipients without a click come last in either order.
+- `page_size` is 1 to 200, default 50. `total` and `pages` count what matches.
+- Filtering, searching, sorting and paging all happen in SQL, since a campaign can have thousands of recipients.
 
-**`GET …/recipients.csv`**: every recipient for the period, streamed.
+**`GET …/recipients.csv`**: the same `filter`, `q`, `sort` and `order`, and every row that matches, streamed.
 - The columns are the recipient's `user_data`, flattened as in `/users`' CSV, then
-  `short_code,clicks,opens,first_click_at,last_click_at`.
-- Every cell is spreadsheet-safe.
+  `short_code,short_url,clicks,opens,first_click_at,last_click_at,last_open_at`.
+- Every cell is spreadsheet-safe: `user_data` comes from people's CSVs.
 - Not an MCP tool, like `/visits.csv`.
 
 **No list of visits at campaign level, on purpose: privacy.** A campaign's visits tied to its recipients' rows would
@@ -1241,8 +1252,9 @@ Their `click_through_rate` stays a percentage, 0 to 100.
 - [ ] 3.16's routes become functions over a query of visits: a link's, or a campaign's links', joined on
       `urls.campaign_id` rather than a list of ids
 - [ ] PR 1: `/totals`, `/timeseries` and `/breakdown`
-- [ ] PR 2: `/recipients` and `/recipients.csv`. One grouped query per period: each link's clicks, opens, and first
-      and last click. Every recipient is kept with zeros, then sorted and paged
+- [ ] PR 2: `/recipients` and `/recipients.csv`, all time. Each link is joined to its visits' totals (clicks, opens,
+      first and last click, last open), and every recipient is kept with zeros. Then `filter`, `q`, `sort` and the
+      page are all done in SQL
 - [ ] MCP: the tool names, `/recipients.csv` excluded, `EXPECTED_TOOLS`. README endpoints and CHANGELOG
 - [ ] Timings on PostgreSQL: a campaign of 2,000 recipients with 20k visits
 
