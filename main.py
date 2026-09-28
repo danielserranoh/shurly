@@ -184,6 +184,7 @@ def create_app(mcp_auth=None) -> FastAPI:
         allow_credentials=settings.cors_allow_credentials,
         allow_methods=settings.cors_allow_methods,
         allow_headers=settings.cors_allow_headers,
+        expose_headers=settings.cors_expose_headers,
     )
 
     # Phase 3.9.6 — request-id correlation. Add after CORS so the header is on every

@@ -432,6 +432,20 @@ What anyone can call is limited per client IP, counted in the database (`rate_li
 - If the database can't count, requests go through and `rate_limit.store_failed` is logged: the limits protect, they mustn't become an outage.
 - AWS WAF on the shared ALB would add limiting before the app; that's an AWS decision, not in this code.
 
+## CORS (Phase 6.3)
+
+The frontend calls the API with a bearer token, never cookies, so CORS allows no credentials, only the
+methods (`GET`, `POST`, `PUT`, `PATCH`, `DELETE`) and request headers (`Authorization`, `Content-Type`,
+`X-Request-Id`) the API uses, and exposes `Retry-After` and `X-Request-Id` to the frontend.
+
+- **Production needs no cross-origin entry** once the frontend is hosted (4.10): it and the API share an
+  origin (`shurly.griddo.io`), so the browser makes no cross-origin calls. Set `CORS_ORIGINS='[]'` then,
+  unless the frontend is served from another origin.
+- **Today's production value lists `https://shurl.griddo.io`, a host that doesn't exist.** It's harmless
+  (no browser comes from there) but wrong; it gets corrected at the release.
+- Locally the defaults cover the dev server (`http://localhost:4232`) on another port, so the middleware
+  stays.
+
 If you ever front the ALB with CloudFront, append the CloudFront edge CIDRs from <https://ip-ranges.amazonaws.com/ip-ranges.json> (filter `service=CLOUDFRONT`).
 
 ## Sign in with Google (Phase 3.13)

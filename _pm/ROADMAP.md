@@ -1237,12 +1237,18 @@ live in `mcp_server/README.md`, written for developers. There is no user manual 
 
 ### 6.3 Security Hardening
 - [x] Rate limiting — no API Gateway on this stack, so it needs app-level limiting or AWS WAF on the shared ALB (first slice: invitations and resets in 3.15, since each one sends an email) → app-level, in the database so both tasks share the counts (`server/utils/rate_limit.py`, migration `0006`): the password login per IP and failed logins per address, the Google and MCP sign-in per IP. Invitations and resets (3.15) take a limit of their own when they arrive; WAF stays an AWS option
-- [ ] Input validation review
+- [x] Input validation review → request fields stored in a bounded column carry a `max_length` within it
+      (pinned by `tests/test_input_lengths.py`); values from outside a schema (a fetched page's title,
+      an address from `X-Forwarded-For`) are cut to their column instead of failing with a PostgreSQL 500;
+      the MCP's `create_campaign_from_rows` checks its name like the API
   - [x] CSV formula injection: the exports quote cells that start like a formula, and the CSV import unquotes them
         (`spreadsheet_safe`, `server/utils/csv_export.py`)
 - [ ] SQL injection prevention check
 - [x] XSS prevention in frontend (dynamic HTML goes through the escaping `html` tag from `@/utils/html`; audit the remaining raw `innerHTML` uses) → audited: data goes through `html`/`setHTML`, URLs through `safeUrl`; two raw sinks left, documented; `frontend/tests/no-raw-html.test.mjs` fails on new ones
-- [ ] CORS configuration review
+- [x] CORS configuration review → no credentials, only the methods and headers the API uses, `Retry-After`
+      and `X-Request-Id` exposed (`tests/test_cors.py`). Production needs no cross-origin entry once the
+      frontend shares the API's origin (4.10); its `CORS_ORIGINS` still lists `https://shurl.griddo.io`, a
+      host that doesn't exist, to be corrected at the release
 - [ ] Environment secrets audit (DB password and JWT secret are plain task env vars; Secrets Manager is the planned move)
 - [x] SSRF guard on the Open Graph fetcher (PR #21, see CHANGELOG § Security)
 - [x] Campaign-link takeover via custom codes (see CHANGELOG § Security)

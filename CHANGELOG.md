@@ -26,6 +26,29 @@ implementation lifecycle and is independent of the URL version segment.
 
 ## [Unreleased]
 
+### Fixed — a long value from outside a schema no longer fails with a 500
+- **A link to a page with a long title is created.** The title fetched for the preview
+  went into `og_title` (255 characters) as it was, and PostgreSQL refused a longer one:
+  a 500 on creating the link, on refreshing its preview, or on the live preview's
+  suggestion. Fetched titles are cut to the column now.
+- **A redirect with a long `X-Forwarded-For` redirects.** Behind a trusted proxy, the
+  address stored with a visit or an orphan visit came from that header, and a value
+  longer than the column (50) was a 500 on the redirect itself. Addresses are cut to
+  their column (`fit`, `server/utils/columns.py`).
+- **The MCP's `create_campaign_from_rows` refuses a name over 255 characters**, as the
+  API does; it writes through the ORM, past the API's schema, and a longer name was a
+  500. A test pins every request field stored in a bounded column to a `max_length`
+  within that column, so the gap can't come back unnoticed.
+
+### Changed — CORS allows only what the frontend uses
+- **No credentials**, and only the methods (`GET`, `POST`, `PUT`, `PATCH`, `DELETE`) and
+  request headers (`Authorization`, `Content-Type`, `X-Request-Id`) the API uses, instead
+  of `*`: the frontend sends a bearer token, never cookies. It can now read
+  `Retry-After` and `X-Request-Id` from a response. Origins are unchanged.
+- In production the frontend and the API will share an origin (`shurly.griddo.io`, once
+  the frontend is hosted, 4.10), so `CORS_ORIGINS` needs no entry there; the defaults
+  are for the dev server (`localhost:4232`).
+
 ### Security — rate limits on the login and the sign-in endpoints (Phase 6.3)
 - **What anyone can call is limited per client IP**, counted in the database so both
   tasks share the counts (the new `rate_limits` table, migration `0006`): the password
