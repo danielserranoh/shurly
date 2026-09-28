@@ -10,7 +10,9 @@ os.environ["TESTING"] = "1"
 import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 from sqlalchemy import create_engine, event, text  # noqa: E402
+from sqlalchemy.dialects.postgresql import UUID  # noqa: E402
 from sqlalchemy.engine import make_url  # noqa: E402
+from sqlalchemy.ext.compiler import compiles  # noqa: E402
 from sqlalchemy.orm import Session, sessionmaker  # noqa: E402
 from sqlalchemy.pool import StaticPool  # noqa: E402
 
@@ -43,6 +45,13 @@ def set_sqlite_pragma(dbapi_conn, connection_record):
     cursor = dbapi_conn.cursor()
     cursor.execute("PRAGMA foreign_keys=ON")
     cursor.close()
+
+
+@compiles(UUID, "sqlite")
+def _uuid_as_text_on_sqlite(type_, compiler, **kw):
+    # SQLite gives a declared type of UUID numeric affinity, so a hex id that
+    # looks like a number would be stored as REAL.
+    return "CHAR(32)"
 
 
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
