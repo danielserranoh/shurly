@@ -26,6 +26,17 @@ implementation lifecycle and is independent of the URL version segment.
 
 ## [Unreleased]
 
+### Security — SQL built only from bound parameters, checked (Phase 6.3)
+- **Audited:** the API reaches the database through the ORM and SQLAlchemy Core, which bind every
+  value. The raw SQL left is static (`SELECT 1`) or takes `:name` parameters (the migration lock).
+  Migrations format only constant table names.
+- **Fixed: `%` and `_` in a tag search are characters now, not LIKE wildcards.** `GET /api/v1/tags?search=_`
+  returned every tag. The links search already escaped them.
+- **`tests/test_sql_safety.py`** parses the backend (`server/`, `mcp_server/`, `main.py`) and fails on:
+  - `text()`, `exec_driver_sql()` or `literal_column()` given anything but a string literal;
+  - a LIKE helper on a column fed a variable without `autoescape=True`.
+  Exceptions need an allowlist entry with a reason; the list starts empty.
+
 ### Security — a Content-Security-Policy on every page (Phase 6.3)
 - **Every built page carries a Content-Security-Policy**, a `<meta>` written by Astro with the hashes of
   the scripts it emits.
