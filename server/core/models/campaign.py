@@ -43,5 +43,17 @@ class Campaign(Base):
         """Lists eager-load `creator`, or this costs a query per campaign."""
         return self.creator.email if self.creator else None
 
+    # Phase 3.12 — the creator's name, from their profile. Lists eager-load `creator` and
+    # its `profile`, or these cost queries per campaign.
+    @property
+    def created_by_first_name(self) -> str | None:
+        profile = self.creator.profile if self.creator else None
+        return profile.first_name if profile else None
+
+    @property
+    def created_by_last_name(self) -> str | None:
+        profile = self.creator.profile if self.creator else None
+        return profile.last_name if profile else None
+
     def __repr__(self):
         return f"<Campaign(id={self.id}, name={self.name})>"

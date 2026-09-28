@@ -488,11 +488,11 @@ filter request_id = "<id>"
 
 ### Setup (once, with SSO)
 
-Keep the logs 90 days; CloudWatch keeps them forever unless told otherwise:
+Keep the logs 60 days (set 2026-09-28); CloudWatch keeps them forever unless told otherwise:
 
 ```bash
 AWS_PROFILE=griddo-main aws logs put-retention-policy --region eu-south-2 \
-    --log-group-name /aws/ecs/default/shurly-api-5fdb --retention-in-days 90
+    --log-group-name /aws/ecs/default/shurly-api-5fdb --retention-in-days 60
 ```
 
 Save a query so it shows up under **Saved queries** in the console (the `/` in the

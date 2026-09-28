@@ -159,6 +159,8 @@ def create_campaign(
         created_at=campaign.created_at,
         visibility=campaign.visibility,
         created_by_email=current_user.email,
+        created_by_first_name=campaign.created_by_first_name,
+        created_by_last_name=campaign.created_by_last_name,
     )
 
     return response
@@ -201,7 +203,10 @@ def list_campaigns(
     visible = viewer(db, current_user).sees(Campaign)
     campaigns = (
         db.query(Campaign)
-        .options(selectinload(Campaign.tags), selectinload(Campaign.creator))
+        # Creators and their profiles with the page (Phase 3.12: names), not per campaign.
+        .options(
+            selectinload(Campaign.tags), selectinload(Campaign.creator).selectinload(User.profile)
+        )
         .filter(visible)
         .order_by(Campaign.created_at.desc())
         .offset(skip)
@@ -233,6 +238,8 @@ def list_campaigns(
             "tags": campaign.tags,  # Include tags from relationship
             "visibility": campaign.visibility,
             "created_by_email": campaign.created_by_email,
+            "created_by_first_name": campaign.created_by_first_name,
+            "created_by_last_name": campaign.created_by_last_name,
         }
         response = CampaignResponse.model_validate(campaign_dict)
         campaign_responses.append(response)
@@ -303,6 +310,8 @@ def get_campaign(
         urls=url_responses,
         visibility=campaign.visibility,
         created_by_email=campaign.created_by_email,
+        created_by_first_name=campaign.created_by_first_name,
+        created_by_last_name=campaign.created_by_last_name,
     )
 
     return response

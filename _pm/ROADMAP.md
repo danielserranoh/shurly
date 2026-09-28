@@ -736,6 +736,8 @@ for the day before. Now a day is local to the viewer (`server/utils/local_days.p
       and so does the MCP's `list_organization_members`; the profiles load with the list, not one per person.
       Dialogs name the account too ("Their account is …"), as two people can share a name
 - [ ] "Created by" on links and campaigns by name: `created_by_email` across the URL and campaign responses
+      → campaigns done: `created_by_first_name` and `created_by_last_name` next to the email, the card and
+      the campaign page by name, the email as tooltip. Links next, once 8.3 reshapes the URL responses
 - [ ] Photos in the members list: needs an endpoint that serves another member's avatar
 
 ---
@@ -1213,8 +1215,8 @@ records which tools get used, how often, or how they fail.
       uvicorn's access log is off in the image. A generated tool's call into the API carries the MCP request's id
 - [x] Logs Insights queries (calls, errors and latency per tool, daily users, one request end to end) documented
       in `mcp_server/README.md` § Usage log
-- [ ] Save those queries in CloudWatch and set retention on the log group (90 days): commands in the same section,
-      to run once with SSO
+- [x] Retention on the log group: **60 days** (decided and set 2026-09-28)
+- [ ] Save those queries in CloudWatch: commands in the same section, to run once with SSO
 - [x] Tests: `tests/test_phase560_usage_log.py` (14)
 
 #### 5.6.1 Rollout and signal capture
