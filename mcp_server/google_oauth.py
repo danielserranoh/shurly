@@ -142,6 +142,9 @@ class ShurlyGoogleProvider(GoogleProvider):
         """Sign in (code exchange) or check the account again (refresh); refuse with no token.
 
         Nothing goes into the proxy's JWT: requests find the account by `sub`.
+        fastmcp calls this after storing Google's tokens, so a refused sign-in leaves
+        them in the store, encrypted and expiring; nothing reaches them without the
+        proxy's JWT, which a refusal never issues.
         """
         if _SIGNING_IN.get():
             await anyio.to_thread.run_sync(self._sign_in, idp_tokens.get("id_token"))

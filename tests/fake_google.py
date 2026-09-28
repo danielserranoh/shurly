@@ -163,7 +163,9 @@ class FakeGoogle:
         import httpx2
 
         url = str(request.url).split("?")[0]
+        # Google takes the token either way; fastmcp before 4.0.6 put it in the URL.
         token = request.headers.get("authorization", "").removeprefix("Bearer ")
+        token = token or request.url.params.get("access_token", "")
         account = self.access_tokens.get(token)
         if url == TOKENINFO_URL:
             self.tokeninfo_calls += 1
