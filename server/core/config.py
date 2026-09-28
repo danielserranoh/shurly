@@ -58,6 +58,11 @@ class Settings(BaseSettings):
     # only if a downstream legal review approves storing full addresses.
     anonymize_remote_addr: bool = True
 
+    # Phase 8.4 — DB-IP's IP to Country Lite database (CC BY 4.0), fetched into the image by
+    # scripts/fetch_geoip.py; a visit's country comes from it (server/utils/geo.py). Empty
+    # turns lookups off; a missing file means no country, never a failed redirect.
+    geoip_database: str = "data/dbip-country-lite.mmdb"
+
     # Phase 3.9.6 — Trust boundaries for X-Forwarded-For. Empty list (default) = never
     # trust X-F-F. Set this to the ALB's CIDR in prod; CloudFront isn't listed here, see
     # cloudfront_origin_secrets below.

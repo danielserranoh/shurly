@@ -58,6 +58,8 @@ uv.lock
 .coverage.*
 htmlcov/
 _exchange/
+# Phase 8.4 — the geolocation database (scripts/fetch_geoip.py)
+/data/
 # Phase 8.4 — Shlink snapshots can hold personal data (server/tools/shlink/README.md)
 *.snapshot.json
 *.review.csv

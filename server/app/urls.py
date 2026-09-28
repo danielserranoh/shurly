@@ -43,6 +43,7 @@ from server.schemas.url import (
 from server.utils.access import LinkDomain, find_url, find_urls, viewer
 from server.utils.columns import fit
 from server.utils.domain import get_or_create_default_domain, resolve_domain_for_host
+from server.utils.geo import country_of
 from server.utils.network import visit_ip
 from server.utils.opengraph import fetch_opengraph_metadata, is_social_media_crawler
 from server.utils.redirect_rules import pick_target
@@ -1116,6 +1117,8 @@ def tracking_pixel(short_code: str, request: Request, db: Session = Depends(get_
             url_id=url.id,
             short_code=short_code,
             ip=fit(stored_ip or "unknown", Visitor.ip),
+            # Phase 8.4 — from the stored address: anonymized, when that's on.
+            country=country_of(stored_ip),
             user_agent=visit_user_agent,
             referer=request.headers.get("referer"),
             is_bot=ua_is_bot(visit_user_agent),
@@ -1314,6 +1317,7 @@ def redirect_short_url(short_code: str, request: Request, db: Session = Depends(
         url_id=url.id,
         short_code=short_code,
         ip=fit(stored_ip or "unknown", Visitor.ip),
+        country=country_of(stored_ip),  # Phase 8.4 — from the stored address
         user_agent=visit_user_agent,
         referer=request.headers.get("referer"),
         is_bot=ua_is_bot(visit_user_agent),

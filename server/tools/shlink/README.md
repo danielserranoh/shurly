@@ -129,11 +129,12 @@ The report lists every rule left out or approximated. Nothing is dropped silentl
 **Visits, with `--visits`** (decision A, 2026-09-28): each of Shlink's visits becomes a Visitor row.
 - **`ip` is `"unknown"`**: Shlink exposes no addresses. That's how imported visits are told apart: a visit
   Shurly records always has an address. It's also why **unique-visitor counts only cover the cutover onward**.
-- The country comes from `visitLocation.countryName`, and the user agent, referer and date as they were.
+- The country is `visitLocation.countryCode`, an ISO code as Shurly stores one: providers name some countries
+  differently. The user agent, referer and date come as they were.
 - A bot is what Shlink flagged as `potentialBot`. The `/track` pixel is a visit Shlink didn't redirect
   (`redirectUrl` null), so the pixel's opens don't count as clicks.
 - A run imports only the visits newer than the link's last imported one. The cutover's final snapshot
   therefore adds what happened since the first import. A second visit in the very same second as that last
   one would be missed.
-- Shurly doesn't fill `Visitor.country` for its own visits yet (ROADMAP 8.4). Until it does, the geo view
-  shows the imported history only.
+- Shurly's own visits get their country from DB-IP's database (`server/utils/geo.py`), also as an ISO code, so
+  the geo view counts imported and new visits together.

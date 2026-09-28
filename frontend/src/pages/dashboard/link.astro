@@ -117,6 +117,7 @@ import { BROWSERS, DEVICES, LANGUAGES } from '@/utils/rules';
         <h2 id="geo-title" class="font-semibold text-ink-950">Top countries</h2>
         <p class="text-sm text-ink-500">Last 30 days</p>
         <div class="mt-5" data-geo></div>
+        <p class="mt-4 text-xs text-ink-500">Countries by <a class="link" href="https://db-ip.com" target="_blank" rel="noopener">DB-IP</a></p>
       </section>
 
       <!-- Tracking -->
@@ -201,6 +202,7 @@ import { BROWSERS, DEVICES, LANGUAGES } from '@/utils/rules';
   import { openLinkEditor } from '@/utils/link-editor';
   import { campaignHref, deleteLink, getLink, linkBadges, linkThumb, openQr } from '@/utils/links';
   import { analyticsApi, linkApi, linkHref } from '@/utils/link-address';
+  import { countryName } from '@/utils/country';
   import { createRule, deleteRule, listRules, renderRule } from '@/utils/rules';
   import { tagPill } from '@/utils/tags';
   import { confirmDialog, copyWithFeedback, hydrateTimes, setLoading, toast } from '@/utils/ui';
@@ -394,10 +396,10 @@ import { BROWSERS, DEVICES, LANGUAGES } from '@/utils/rules';
   function renderGeo(geo: GeoStatsResponse | null) {
     const el = $('[data-geo]');
     if (!geo || geo.stats.length === 0) {
-      setHTML(el, html`<div class="flex items-start gap-3 rounded-xl bg-ink-50 p-4 text-sm text-ink-600"><span class="mt-0.5 text-ink-400">${icon('globe', 'size-4')}</span><p>No location data for these clicks yet. Countries show up here when location lookup is available for the visits.</p></div>`);
+      setHTML(el, html`<div class="flex items-start gap-3 rounded-xl bg-ink-50 p-4 text-sm text-ink-600"><span class="mt-0.5 text-ink-400">${icon('globe', 'size-4')}</span><p>No location data for these clicks yet.</p></div>`);
       return;
     }
-    const items = geo.stats.slice(0, 6).map((g) => ({ label: g.country, value: g.clicks }));
+    const items = geo.stats.slice(0, 6).map((g) => ({ label: countryName(g.country), value: g.clicks }));
     setHTML(el, barList(items));
     if (geo.stats.length > 6) {
       const more = document.createElement('p');

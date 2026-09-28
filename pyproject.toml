@@ -34,6 +34,9 @@ dependencies = [
     # (server/utils/avatar.py). It parses untrusted input: watch its CVEs, and keep
     # the floor above the last fixed one (11.3.0, CVE-2025-48379).
     "pillow>=11.3",
+    # Phase 8.4 — reads DB-IP's IP to Country Lite database (server/utils/geo.py), memory-
+    # mapped, in process. Capped like alembic: there's no committed uv.lock.
+    "maxminddb>=3.2,<4",
 ]
 
 [project.optional-dependencies]
@@ -47,6 +50,8 @@ dev = [
     "pytest-asyncio>=0.23.0",
     "pytest-cov>=4.0.0",
     "httpx>=0.26.0",
+    # Phase 8.4 — writes the tiny geolocation databases the tests read (tests/test_geolocation.py).
+    "mmdb-writer>=0.2.7,<0.3",
 ]
 # Phase 5 — MCP server. Optional so it doesn't bloat the production image
 # unless deliberately enabled. Install with `uv sync --extra mcp` for local

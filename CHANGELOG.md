@@ -26,6 +26,20 @@ implementation lifecycle and is independent of the URL version segment.
 
 ## [Unreleased]
 
+### Added — a visit's country (Phase 8.4)
+- **Visits record their country**, as an ISO 3166-1 alpha-2 code, from DB-IP's IP to Country Lite database
+  (CC BY 4.0, no account). It had been null for every visit Shurly recorded.
+  - The lookup is in process, against a memory-mapped file, with no network call on the redirect path.
+  - It uses the address that's stored: the anonymized one when `ANONYMIZE_REMOTE_ADDR` is on. Only the country is
+    kept.
+  - Without the database, visits simply have no country, and the app logs `geo.database_missing` once.
+- **The image build fetches the database** (`scripts/fetch_geoip.py`): this month's or last month's, installed
+  only if it places 8.8.8.8 in the US. A failed fetch doesn't fail the build: the deploy job warns on the run's page.
+  `GEOIP_DATABASE` names the file; empty turns lookups off.
+- **The link page shows country names**, from the browser (`Intl.DisplayNames`), with "Countries by DB-IP".
+- **The Shlink import stores country codes too** (`visitLocation.countryCode`), since providers name some countries
+  differently. The geo CSV and the MCP's summary carry codes.
+
 ### Security — Trusted Types on every page (Phase 6.3)
 - **Every page's policy now includes `require-trusted-types-for 'script'` and `trusted-types shurly-html`.**
   The DOM's HTML sinks (`innerHTML` and the like) take TrustedHTML only, from one policy.
