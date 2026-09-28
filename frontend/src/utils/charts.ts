@@ -73,6 +73,10 @@ function drawColumns(container: HTMLElement, data: ColumnDatum[], opts: ColumnCh
   const slot = plotW / Math.max(data.length, 1);
   const barW = Math.min(24, Math.max(6, slot * 0.56));
   const maxIndex = max > 0 ? data.findIndex((d) => d.value === max) : -1;
+  // Axis labels thin out when columns get narrow (30 days on a phone), counting back from the latest.
+  const longest = Math.max(0, ...data.map((d) => d.label.length));
+  const every = Math.max(1, Math.ceil((longest * 6.2 + 10) / slot));
+  const labelled = (i: number) => (data.length - 1 - i) % every === 0;
   const y = (v: number) => pad.top + plotH - (v / top) * plotH;
 
   const grid = ticks.map(
@@ -89,12 +93,12 @@ function drawColumns(container: HTMLElement, data: ColumnDatum[], opts: ColumnCh
         i === maxIndex
           ? html`<text x="${cx}" y="${y(d.value) - 7}" text-anchor="middle" class="fill-ink-700 num" font-size="11" font-weight="600">${formatNumber(d.value)}</text>`
           : '';
-      return html`<g class="chart-col outline-none" tabindex="0" role="listitem" aria-label="${label}" data-i="${i}">
+      return html`<g class="chart-col outline-none" tabindex="${i === data.length - 1 ? 0 : -1}" role="listitem" aria-label="${label}" data-i="${i}">
         <rect x="${pad.left + slot * i}" y="${pad.top}" width="${slot}" height="${plotH}" fill="transparent"/>
         <path class="chart-bar" d="${columnPath(x, y(d.value), barW, h, 4)}" fill="${SERIES}"/>
         ${d.value === 0 ? html`<rect x="${x}" y="${y(0) - 2}" width="${barW}" height="2" rx="1" fill="${BASELINE}"/>` : ''}
         ${tip}
-        <text x="${cx}" y="${height - 8}" text-anchor="middle" class="fill-ink-500" font-size="11">${d.label}</text>
+        ${labelled(i) ? html`<text x="${cx}" y="${height - 8}" text-anchor="middle" class="fill-ink-500" font-size="11">${d.label}</text>` : ''}
       </g>`;
   });
 
@@ -121,11 +125,20 @@ function drawColumns(container: HTMLElement, data: ColumnDatum[], opts: ColumnCh
     tipEl.hidden = false;
   };
   const hide = () => (tipEl.hidden = true);
-  container.querySelectorAll<SVGGElement>('.chart-col').forEach((g) => {
+  // One tab stop per chart, on the latest column; the arrow keys, Home and End move between columns.
+  const columns = [...container.querySelectorAll<SVGGElement>('.chart-col')];
+  columns.forEach((g, i) => {
     g.addEventListener('pointerenter', () => show(g));
     g.addEventListener('pointerleave', hide);
     g.addEventListener('focus', () => show(g));
     g.addEventListener('blur', hide);
+    g.addEventListener('keydown', (e) => {
+      const next = ({ ArrowRight: i + 1, ArrowLeft: i - 1, Home: 0, End: columns.length - 1 } as Record<string, number>)[e.key];
+      if (next === undefined || next < 0 || next >= columns.length) return;
+      e.preventDefault();
+      columns.forEach((c, j) => (c.tabIndex = j === next ? 0 : -1));
+      columns[next].focus();
+    });
   });
 }
 
