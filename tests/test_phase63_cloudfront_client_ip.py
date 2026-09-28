@@ -18,12 +18,13 @@ from starlette.requests import Request
 from server.core.config import Settings, settings
 from server.core.models import URL, OrphanVisit, URLType, Visitor
 from server.utils.domain import get_or_create_default_domain
-from server.utils.network import came_through_cloudfront, client_ip
+from server.utils.network import came_through_cloudfront, client_ip, cloudfront_viewer
 
 SECRET = "cf-origin-0123456789abcdef0123456789abcdef"
 PREVIOUS = "cf-origin-fedcba9876543210fedcba9876543210"  # still accepted while it rotates
 ALB = "172.31.0.10"
 EDGE = "130.176.0.1"  # a CloudFront edge, as the ALB sees it
+VIEWER = "203.0.113.7"
 
 
 @pytest.fixture
@@ -45,9 +46,15 @@ def _request(headers: dict[str, str], peer: str | None = ALB) -> Request:
     )
 
 
-def _through_cloudfront(viewer: str | None, secret: str | None = SECRET) -> dict[str, str]:
-    """What the ALB passes on for a request that came through CloudFront."""
-    headers = {"x-forwarded-for": f"198.51.100.200, {EDGE}"}  # the viewer's own, then the edge
+def _through_cloudfront(
+    viewer: str | None, appended: str = VIEWER, secret: str | None = SECRET
+) -> dict[str, str]:
+    """
+    What reaches the app through CloudFront and the ALB: `viewer` is the
+    CloudFront-Viewer-Address, and X-Forwarded-For is what the viewer sent, then the
+    address CloudFront appended (`appended`), then the edge the ALB appended.
+    """
+    headers = {"x-forwarded-for": f"198.51.100.200, {appended}, {EDGE}"}
     if secret is not None:
         headers["x-origin-verify"] = secret
     if viewer is not None:
@@ -58,28 +65,53 @@ def _through_cloudfront(viewer: str | None, secret: str | None = SECRET) -> dict
 @pytest.mark.usefixtures("behind_cloudfront")
 class TestClientIp:
     def test_the_viewer_address_is_the_client(self):
-        assert client_ip(_request(_through_cloudfront("203.0.113.7:46532"))) == "203.0.113.7"
+        assert client_ip(_request(_through_cloudfront(f"{VIEWER}:46532"))) == VIEWER
 
     def test_either_secret_works_while_it_rotates(self):
-        headers = _through_cloudfront("203.0.113.7:46532", secret=PREVIOUS)
+        headers = _through_cloudfront(f"{VIEWER}:46532", secret=PREVIOUS)
 
-        assert client_ip(_request(headers)) == "203.0.113.7"
+        assert client_ip(_request(headers)) == VIEWER
 
     @pytest.mark.parametrize(
-        ("viewer", "ip"),
+        ("viewer", "appended", "ip"),
         [
-            ("2001:db8:85a3::8a2e:370:7334:46532", "2001:db8:85a3::8a2e:370:7334"),
-            ("2001:0db8:0000:0000:0000:0000:0000:0001:443", "2001:db8::1"),
-            ("[2001:db8::1]:443", "2001:db8::1"),
+            (
+                "2001:db8:85a3::8a2e:370:7334:46532",
+                "2001:db8:85a3::8a2e:370:7334",
+                "2001:db8:85a3::8a2e:370:7334",
+            ),
+            # The same address written two ways still matches.
+            ("2001:0db8:0000:0000:0000:0000:0000:0001:443", "2001:db8::1", "2001:db8::1"),
+            ("[2001:db8::1]:443", "2001:0db8::0001", "2001:db8::1"),
         ],
     )
-    def test_ipv6_the_port_follows_the_last_colon(self, viewer, ip):
-        assert client_ip(_request(_through_cloudfront(viewer))) == ip
+    def test_ipv6_the_port_follows_the_last_colon(self, viewer, appended, ip):
+        assert client_ip(_request(_through_cloudfront(viewer, appended))) == ip
+
+    def test_a_viewer_address_other_than_the_one_cloudfront_appended_falls_back(self):
+        """Under an origin request policy that doesn't add CloudFront's headers
+        (AllViewer), the viewer's own `CloudFront-Viewer-Address` reaches the app next
+        to a genuine secret. It can't match the address CloudFront appended."""
+        headers = _through_cloudfront("6.6.6.6:1234")
+
+        assert client_ip(_request(headers)) == EDGE
+
+    @pytest.mark.parametrize("forwarded_for", [EDGE, None])
+    def test_without_the_address_cloudfront_appended_it_falls_back(self, forwarded_for):
+        """The ALB no longer appends ("append" isn't its X-Forwarded-For mode), or
+        nothing reached it: nothing to check the viewer address against."""
+        headers = _through_cloudfront(f"{VIEWER}:46532")
+        del headers["x-forwarded-for"]
+        if forwarded_for:
+            headers["x-forwarded-for"] = forwarded_for
+
+        assert client_ip(_request(headers)) == (forwarded_for or ALB)
 
     @pytest.mark.parametrize("secret", [None, "", "wrong-0123456789abcdef0123456789abcdef"])
     def test_without_the_secret_the_viewer_address_is_ignored(self, secret):
-        """A forged viewer header, straight to the ALB: X-Forwarded-For decides."""
-        headers = _through_cloudfront("6.6.6.6:1234", secret=secret)
+        """Straight to the ALB with a forged pair that passes the cross-check: the
+        viewer header, and the same address sent in X-Forwarded-For."""
+        headers = _through_cloudfront("6.6.6.6:1234", appended="6.6.6.6", secret=secret)
 
         assert client_ip(_request(headers)) == EDGE
 
@@ -99,8 +131,15 @@ def test_off_by_default_the_viewer_address_is_ignored(monkeypatch):
     assert settings.cloudfront_origin_secrets == []
 
     for secret in (None, "", SECRET):
-        headers = _through_cloudfront("6.6.6.6:1234", secret=secret)
+        headers = _through_cloudfront("6.6.6.6:1234", appended="6.6.6.6", secret=secret)
         assert client_ip(_request(headers)) == EDGE
+
+
+def test_one_forwarded_address_is_never_the_one_cloudfront_appended():
+    """Even when it's the viewer's: without the edge the ALB appends after it, nothing
+    says which entry CloudFront wrote."""
+    assert cloudfront_viewer(f"{VIEWER}:46532", VIEWER) is None
+    assert cloudfront_viewer(f"{VIEWER}:46532", f"{VIEWER}, {EDGE}") == VIEWER
 
 
 def test_no_header_never_proves_it_even_against_an_empty_secret():
@@ -156,9 +195,8 @@ class TestVisits:
         wrong network."""
         monkeypatch.setattr(settings, "anonymize_remote_addr", anonymize)
 
-        response = client.get(
-            "/cfvisit", headers=_through_cloudfront("203.0.113.77:5555"), follow_redirects=False
-        )
+        headers = _through_cloudfront("203.0.113.77:5555", "203.0.113.77")
+        response = client.get("/cfvisit", headers=headers, follow_redirects=False)
 
         assert response.status_code == 302
         assert db_session.query(Visitor).one().ip == stored
@@ -173,7 +211,9 @@ class TestVisits:
         """They stored the socket's address: the ALB's, or unanonymized for the bare URL."""
         monkeypatch.setattr(settings, "anonymize_remote_addr", anonymize)
 
-        response = client.get(path, headers=_through_cloudfront("203.0.113.77:5555"))
+        response = client.get(
+            path, headers=_through_cloudfront("203.0.113.77:5555", "203.0.113.77")
+        )
 
         assert response.status_code == 404
         assert db_session.query(OrphanVisit).one().ip == stored

@@ -94,6 +94,33 @@ def viewer_address(value: str | None) -> str | None:
         return None
 
 
+def _canonical_ip(value: str) -> str | None:
+    try:
+        return str(ipaddress.ip_address(value))
+    except ValueError:
+        return None
+
+
+def cloudfront_viewer(viewer_header: str | None, forwarded_for: str | None) -> str | None:
+    """
+    Phase 6.3 — the viewer's IP from `CloudFront-Viewer-Address`, if it's the address
+    CloudFront appended to X-Forwarded-For: second from the right, since the ALB appends
+    the edge after it ("append", its default X-Forwarded-For mode).
+
+    CloudFront writes both from the same connection, so they differ only when one isn't
+    CloudFront's: an origin request policy that doesn't add CloudFront's headers
+    (AllViewer) forwards the viewer's own `CloudFront-Viewer-Address`, or the ALB stopped
+    appending. Then None, and X-Forwarded-For decides. Compared in canonical form. It
+    takes both going wrong at once to believe a forged address: with the ALB not
+    appending, the entry second from the right can be one the viewer sent.
+    """
+    viewer = viewer_address(viewer_header)
+    hops = [hop.strip() for hop in (forwarded_for or "").split(",") if hop.strip()]
+    if viewer is None or len(hops) < 2 or _canonical_ip(hops[-2]) != viewer:
+        return None
+    return viewer
+
+
 def _digest(value: str) -> bytes:
     return hashlib.sha256(value.encode()).digest()
 
@@ -124,19 +151,21 @@ def client_ip(request: Request) -> str:
     X-Forwarded-For's rightmost untrusted address is the edge's. CloudFront sends the
     viewer's own address in `CloudFront-Viewer-Address`, believed only on a request that
     carries the distribution's secret origin header: the ALB is shared and reachable
-    directly, and anyone can send the viewer header, but not the secret. Otherwise, and
-    when that header is missing or doesn't parse, `resolve_client_ip`.
+    directly, and anyone can send the viewer header, but not the secret. And only when
+    it's the address CloudFront appended to X-Forwarded-For (`cloudfront_viewer`).
+    Otherwise, and when that header is missing or doesn't parse, `resolve_client_ip`.
     """
     headers = request.headers
+    forwarded_for = headers.get("x-forwarded-for")
     if settings.cloudfront_origin_secrets and came_through_cloudfront(
         headers.get(settings.cloudfront_origin_header), settings.cloudfront_origin_secrets
     ):
-        viewer = viewer_address(headers.get(VIEWER_ADDRESS_HEADER))
+        viewer = cloudfront_viewer(headers.get(VIEWER_ADDRESS_HEADER), forwarded_for)
         if viewer is not None:
             return viewer
     return resolve_client_ip(
         request.client.host if request.client else None,
-        headers.get("x-forwarded-for"),
+        forwarded_for,
         settings.trusted_proxies,
     )
 

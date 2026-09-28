@@ -1061,8 +1061,9 @@ for this.
       deploy unseen
 - [x] Client IPs through CloudFront: decide how the API gets the viewer's address once `shurly.griddo.io` goes
       through the distribution → `CloudFront-Viewer-Address`, believed only on a request carrying the
-      distribution's secret origin header (`CLOUDFRONT_ORIGIN_SECRETS`, two values to rotate); otherwise
-      X-Forwarded-For as before. One `client_ip` for the rate limits and the visit log
+      distribution's secret origin header (`CLOUDFRONT_ORIGIN_SECRETS`, two values to rotate) and matching the
+      address CloudFront appended to X-Forwarded-For; otherwise X-Forwarded-For as before. One `client_ip` for the
+      rate limits and the visit log
       (`tests/test_phase63_cloudfront_client_ip.py`)
   - [ ] AWS, with the distribution: the custom origin header, HTTPS to the origin, the origin request policy
         AllViewerAndCloudFrontHeaders-2022-06 and the task's `CLOUDFRONT_ORIGIN_SECRETS` (DEPLOYMENT.md § Frontend

@@ -35,6 +35,10 @@ implementation lifecycle and is independent of the URL version segment.
   while it rotates, each at least 32 characters). The ALB is shared and reachable directly, and anyone can send
   `CloudFront-Viewer-Address`, but not the secret. Without the secret, or when the header is missing or doesn't
   parse, the address comes from `X-Forwarded-For` as before. It's off until the secret is set.
+- **And only when it's the address CloudFront appended to `X-Forwarded-For`**, second from the right, before the
+  edge the ALB appends; compared in canonical form, so an IPv6 address written two ways still matches. That holds
+  if the origin request policy is wrong, or the ALB stops appending: either way the address comes from
+  `X-Forwarded-For`.
 - **One `client_ip`** (`server/utils/network.py`) decides the address for the rate limits and the visit log.
 - The secrets print as `**********` in the settings, and are never logged.
 - `DEPLOYMENT.md` § Frontend hosting sets up the distribution for this. Its API behaviours now use the origin

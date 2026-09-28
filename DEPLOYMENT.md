@@ -383,6 +383,10 @@ Function and this section. The AWS resources below are still to be created (ROAD
 | `/docs*`, `/redoc`, `/openapi.json` | the ALB | CachingDisabled | AllViewerAndCloudFrontHeaders-2022-06 | — |
 | Default (`*`) | the S3 bucket, with Origin Access Control | CachingOptimized | — | `static-paths`, viewer request |
 
+The client IP assumes the ALB's X-Forwarded-For processing mode is **append**, its default
+(`routing.http.xff_header_processing.mode`): the edge's address goes after the one CloudFront appended (§ Client IPs
+behind CloudFront).
+
 - **ALB behaviours:** all HTTP methods (the API takes `POST`, `PUT`, `PATCH`, `DELETE`). The origin request policy
   forwards the `Host` header (`shurly.griddo.io`), so the ALB's host rule (priority 12) and its certificate match as
   they do today, and it adds `CloudFront-Viewer-Address`, the client IP (§ Client IPs behind CloudFront). Not plain
@@ -587,6 +591,12 @@ the distribution by carrying a secret that the distribution adds as a custom ori
 `server/utils/network.py`). The ALB is shared and reachable directly: anyone can send `CloudFront-Viewer-Address`, but
 not the secret. Without the secret, and when the header is missing or doesn't parse, the client IP comes from
 `X-Forwarded-For` as before (§ Trusted-Proxy Configuration). The rate limits and the visit log both use it.
+
+The app also checks the address against the one CloudFront appended to `X-Forwarded-For`: second from the right,
+before the edge the ALB appends (its "append" mode, above). CloudFront writes both from the same connection, so they
+differ only when one isn't CloudFront's: an origin request policy that doesn't add CloudFront's headers, or an ALB
+that no longer appends. Then `X-Forwarded-For` decides, as without the secret. It would take both of those going
+wrong at once to believe a forged address.
 
 **The distribution:**
 
