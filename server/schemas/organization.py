@@ -20,6 +20,9 @@ class OrganizationResponse(BaseModel):
 class MemberResponse(BaseModel):
     user_id: uuid_pkg.UUID
     email: str
+    # Phase 3.12 — from their profile; null without one.
+    first_name: str | None = None
+    last_name: str | None = None
     role: OrgRole
     joined_at: datetime
 
@@ -54,5 +57,8 @@ class RemovedMember(BaseModel):
 
     user_id: uuid_pkg.UUID
     email: str
+    # Phase 3.12 — from their profile; null without one.
+    first_name: str | None = None
+    last_name: str | None = None
     links: int
     campaigns: int

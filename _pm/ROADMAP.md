@@ -729,6 +729,15 @@ for the day before. Now a day is local to the viewer (`server/utils/local_days.p
       `visited_at`), no composite `(url_id, visited_at)` or `(short_code, visited_at)`. Measure on real
       volumes before adding one
 
+
+### 3.12.9 Names where people are listed
+- [x] Settings → Organization: members and removed people by name, the email under it (the email alone
+      without a name). `GET /organization/members` and `/removed-members` gain `first_name` and `last_name`,
+      and so does the MCP's `list_organization_members`; the profiles load with the list, not one per person.
+      Dialogs name the account too ("Their account is …"), as two people can share a name
+- [ ] "Created by" on links and campaigns by name: `created_by_email` across the URL and campaign responses
+- [ ] Photos in the members list: needs an endpoint that serves another member's avatar
+
 ---
 
 ## Phase 3.13: Sign in with Google (Workspace), with an optional password 🔎 R1 · 🔎 R11

@@ -47,6 +47,18 @@ implementation lifecycle and is independent of the URL version segment.
   every call, and puts it in its address once the link has loaded. The list keys its cards and its selection by
   the link's id, not its code.
 
+### Added — names in Settings → Organization (Phase 3.12)
+- **Members and removed people show their name, with the email under it.** Someone without a name in
+  their profile shows the email, as before.
+- **Confirmations, toasts and labels use the name**, e.g. "Remove Ana García?" and "Ana García is now an
+  admin". A dialog also names the account ("Their account is ana@griddo.io."), as two people can share a
+  name.
+- **`GET /api/v1/organization/members` and `/removed-members` gain `first_name` and `last_name`**, null
+  without a profile. So do the role-change and ownership-transfer answers, and the MCP's
+  `list_organization_members`. The order is unchanged.
+- **The members list loads the users and their profiles with it:** two queries, not one per member, which it
+  was for the users already.
+
 ### Fixed — a link's analytics count only its own visits
 - **Daily, weekly and geo stats (and their CSVs) and the campaign timeline counted visits by code.** The same
   code can name links on two domains, as at the Phase 8 import, next to the test links on `s.griddo.io`. So one

@@ -369,6 +369,9 @@ class TestRemovedPeople:
         return {
             "user_id": str(person.id),
             "email": person.email,
+            # Phase 3.12: from their profile; these people have none.
+            "first_name": None,
+            "last_name": None,
             "links": links,
             "campaigns": campaigns,
         }

@@ -21,7 +21,7 @@ These functions flush but don't commit: the caller owns the transaction.
 from uuid import UUID
 
 from sqlalchemy import func
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from server.core.config import settings
 from server.core.models import URL, Campaign, Organization, OrganizationMember, OrgRole, User
@@ -266,7 +266,10 @@ def removed_members(db: Session, actor: User) -> list[tuple[User, int, int]]:
     mine = get_membership(db, actor)
     if mine is None or mine.role != OrgRole.OWNER:
         raise NotAllowed("Only owners see who was removed.")
-    closed = db.query(User).filter(User.is_active.is_(False)).all()
+    # Their profiles (Phase 3.12: names) in one more query, not one per person.
+    closed = (
+        db.query(User).options(selectinload(User.profile)).filter(User.is_active.is_(False)).all()
+    )
     people = [user for user in closed if on_organization_domain(user.email)]
     if not people:
         return []
