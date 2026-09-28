@@ -223,12 +223,12 @@ def update_my_profile(
     status_code=status.HTTP_200_OK,
     responses={
         200: {"description": "Password changed successfully"},
-        **get_responses(400, 401, 409, 422),
+        **get_responses(400, 401, 403, 409, 422),
     },
 )
 def change_password(
     password_data: ChangePasswordRequest,
-    current_user: User = Depends(get_current_user),
+    session: SignedInSession = Depends(get_signed_in_session),
     db: Session = Depends(get_db),
 ):
     """
@@ -236,7 +236,8 @@ def change_password(
 
     Updates the user's password after verifying the current password.
 
-    **Authentication:** Required (JWT Bearer token)
+    **Authentication:** A signed-in session (JWT Bearer token). An API key gets a 403, even
+    with the current password: a leaked key must not become a password.
 
     **Request Body:**
     - **current_password**: User's current password (required)
@@ -246,9 +247,11 @@ def change_password(
     - **200**: Password changed successfully
     - **400**: Current password is incorrect
     - **401**: Authentication required or invalid token
+    - **403**: An API key
     - **409**: The account has no password yet (set one with `PUT /api/v1/auth/password`)
     - **422**: Validation error (new password too short, etc.)
     """
+    current_user = session.user
     if current_user.password_hash is None:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,

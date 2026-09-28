@@ -356,7 +356,7 @@ full versioning policy.
   `api_key_prefix`: whether there's an API key and how it starts, never the key (Phase 6.3)
 - `PUT /api/v1/auth/password` · `DELETE /api/v1/auth/password` — set or remove the password
   (signed-in sessions only, Phase 3.13.3)
-- `POST /api/v1/auth/change-password`
+- `POST /api/v1/auth/change-password` — with the current password (signed-in sessions only)
 - `POST /api/v1/auth/register` — off unless `ALLOW_PASSWORD_SIGNUP` (local development only)
 - `POST /api/v1/auth/api-key/generate` — returns `{api_key, scope}` (Phase 3.9.6), the only time
   the key is shown: Shurly keeps its SHA-256 hash (Phase 6.3)
