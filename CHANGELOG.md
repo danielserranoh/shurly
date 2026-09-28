@@ -26,6 +26,20 @@ implementation lifecycle and is independent of the URL version segment.
 
 ## [Unreleased]
 
+### Added — exporting and reviewing Shlink's links (Phase 8.4)
+- **`python -m server.tools.shlink export`** reads Shlink's REST API into one raw JSON snapshot. It holds every
+  short URL as Shlink returned it, its redirect rules, and with `--visits` every visit. It's read-only, and the
+  API key (`SHLINK_API_KEY`) is only ever sent in its header: never written to the file or printed.
+- **The snapshot can hold personal data** (visits' user agents, referers and locations). It's written readable by
+  its owner only, into `_exchange/` by default. `*.snapshot.json` and `*.review.csv` are git-ignored.
+- **`… review <snapshot>`** writes a CSV to decide `keep`, `archive` or `drop` for each link, `keep` by default.
+  It flags duplicates, codes that differ only in case, expired or capped links, and redirect-rule conditions
+  Shurly has no equivalent for. Every cell is spreadsheet-safe.
+- **`--check-destinations`** fills in each destination's HTTP status. It goes through the link previews' SSRF
+  guard, now also exposed as `guarded_request` (`HEAD` as well as `GET`): public http(s) addresses only, each
+  redirect hop checked, 8 at a time.
+- `server/tools/shlink/README.md` documents both. The import comes next.
+
 ### Changed — `users.api_key` is no longer mapped, ahead of its drop (Phase 6.3)
 - The plaintext column, empty since `0007`, stayed mapped as `_legacy_api_key`, so the ORM still named it in every
   SELECT and INSERT of a user. Dropping it in the next release would have failed every user query on the task still

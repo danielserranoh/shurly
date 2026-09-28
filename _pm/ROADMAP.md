@@ -1375,13 +1375,17 @@ case-insensitively.
 ### 8.4 Export → clean → import
 Clean in the export, not in Shlink: Shlink stays intact as the rollback, every decision is written down, and
 the import can be re-run.
-- [ ] Export script over Shlink's REST API (`/rest/v3/short-urls`, `…/redirect-rules`, `…/visits`) with an API
-      key → raw JSON snapshot, archived untouched
-- [ ] Review sheet (CSV), one row per link: code, domain, destination, title, tags, created, visits, last visit,
+- [x] Export script over Shlink's REST API (`/rest/v3/short-urls`, `…/redirect-rules`, `…/visits`) with an API
+      key → raw JSON snapshot, archived untouched → `python -m server.tools.shlink export`
+      (`server/tools/shlink/README.md`). The snapshot can hold personal data: `_exchange/` or an encrypted store,
+      never the repo
+- [x] Review sheet (CSV), one row per link: code, domain, destination, title, tags, created, visits, last visit,
       expired/capped, destination HTTP status, duplicate-of, and a `decision` column: `keep`, `archive` or `drop`
-- [ ] Default to `keep`: a kept link costs a row; a dropped one that turns out to be on a poster, a QR code or a
+      → `… review`, plus the redirect-rule conditions Shurly lacks and codes that differ only in case (8.2). The
+      destination status goes through the link previews' SSRF guard
+- [x] Default to `keep`: a kept link costs a row; a dropped one that turns out to be on a poster, a QR code or a
       PDF breaks for good. `archive` = migrate with a `legacy` tag the dashboard can hide; `drop` only for tests
-      and duplicates
+      and duplicates → the sheet fills `keep`; the import applies the rest
 - [ ] Field mapping: long URL, title, tags, valid since/until, max visits, crawlable, `forwardQuery` →
       `forward_parameters`, redirect rules. Conditions Shurly lacks (e.g. IP or geolocation) go in the report;
       nothing is dropped silently
