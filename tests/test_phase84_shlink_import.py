@@ -290,6 +290,19 @@ class TestVisits:
         )
         assert report.visits == 3
 
+    def test_the_clicks_count_toward_the_cap(self, client, db_session, owner):
+        """As Shurly's own: the bot and the pixel don't. Shlink counted all three."""
+        link = short_url("abc", meta={"validSince": None, "validUntil": None, "maxVisits": 2})
+        run(db_session, owner, {"short_url": link, "visits": self.VISITS}, visits=True)
+        db_session.commit()
+
+        answers = [
+            client.get("/abc", headers={"host": HOST}, follow_redirects=False).status_code
+            for _ in range(2)
+        ]
+
+        assert answers == [302, 410]  # one imported click, one left
+
     def test_without_the_flag_none(self, db_session, owner):
         run(db_session, owner, {"short_url": short_url("abc"), "visits": self.VISITS})
         db_session.commit()

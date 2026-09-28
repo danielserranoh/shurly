@@ -64,7 +64,8 @@ class URL(Base):
 
     # Phase 3.9.2 — Validity window and visit cap (Shlink-inspired)
     # All NULL by default → no constraint. valid_since/valid_until enforce a date window;
-    # max_visits enforces a hard cap on real (non-crawler) visits before serving 410 Gone.
+    # max_visits enforces a hard cap on clicks (`click_count`: bots and pixel opens aside) before
+    # serving 410 Gone.
     valid_since = Column(DateTime(timezone=True), nullable=True)
     valid_until = Column(DateTime(timezone=True), nullable=True)
     max_visits = Column(Integer, nullable=True)
