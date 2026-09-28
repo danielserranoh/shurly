@@ -491,12 +491,13 @@ Note: Update the Docker configuration with environment variables for production 
 
 ## Production Deployment
 
-See [DEPLOYMENT.md](DEPLOYMENT.md) for the full AWS Lambda + RDS guide. Pre-flight
+See [DEPLOYMENT.md](DEPLOYMENT.md) for the full ECS Express + RDS guide, and
+[docs/AWS_ECS_DEPLOYMENT.md](docs/AWS_ECS_DEPLOYMENT.md) for the operational playbook. Pre-flight
 checklist:
 
 1. Set a strong `JWT_SECRET_KEY` (`openssl rand -hex 32`)
 2. Configure CORS origins as a JSON array string
-3. **Configure `TRUSTED_PROXIES`** with your ALB / CloudFront / API Gateway source CIDRs — without it, `X-Forwarded-For` is ignored and visit IPs will be the proxy's
+3. **Configure `TRUSTED_PROXIES`** with your ALB / CloudFront source CIDRs — without it, `X-Forwarded-For` is ignored and visit IPs will be the proxy's
 4. Confirm `ANONYMIZE_REMOTE_ADDR=true` matches your privacy policy (default ON)
 5. Pick `REDIRECT_STATUS_CODE` (302 = analytics-friendly; 301 = SEO-friendly but cached)
 6. Pick `REDIRECT_CACHE_LIFETIME` (0 = every hit reaches backend; >0 = `Cache-Control: public, max-age=N`)

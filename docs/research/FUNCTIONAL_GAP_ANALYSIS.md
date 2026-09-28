@@ -1,5 +1,10 @@
 # Shurly vs YOURLS - Functional Gap Analysis
 
+> **Historical snapshot (November 2025)**, from when Shurly was planned for AWS Lambda + API Gateway. The
+> stack moved to ECS Express behind an ALB before the first deploy (decided 2026-04-26), so what it says about
+> Lambda, API Gateway, SAM templates or usage plans no longer applies; rate limits are app-level (6.3). Current
+> status: [`_pm/ROADMAP.md`](../../_pm/ROADMAP.md); how it deploys: [`DEPLOYMENT.md`](../../DEPLOYMENT.md).
+
 **Date:** November 8, 2025
 **Purpose:** Identify functional gaps between Shurly and YOURLS to guide future development
 
