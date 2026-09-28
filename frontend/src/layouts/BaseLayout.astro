@@ -4,6 +4,7 @@ import '@fontsource-variable/jetbrains-mono';
 import '@fontsource/shadows-into-light-two';
 import '@/styles/global.css';
 import figtreeLatin from '@fontsource-variable/figtree/files/figtree-latin-wght-normal.woff2?url';
+import { GUEST_GUARD, PROTECTED_GUARD } from '@/inline-scripts.mjs';
 
 interface Props {
   title: string;
@@ -43,7 +44,6 @@ const ogImage = new URL('/og-image.png', Astro.site ?? Astro.url).href;
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <link rel="manifest" href="/site.webmanifest" />
-    <link rel="preload" as="font" type="font/woff2" href={figtreeLatin} crossorigin />
 
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="Shurly" />
@@ -52,27 +52,17 @@ const ogImage = new URL('/og-image.png', Astro.site ?? Astro.url).href;
     <meta property="og:image" content={ogImage} />
     <meta name="twitter:card" content="summary_large_image" />
 
-    {
-      isProtected && (
-        <script is:inline>
-          if (!localStorage.getItem('shurly_auth_token')) {
-            location.replace('/login/?next=' + encodeURIComponent(location.pathname + location.search));
-          }
-        </script>
-      )
-    }
-    {
-      guestOnly && (
-        <script is:inline>
-          // Google's answer (#code=… or #error=…) is for the page even with a session: that new
-          // sign-in replaces it, as when someone signs in again to set a password.
-          if (localStorage.getItem('shurly_auth_token') && !/^#(code|error)=/.test(location.hash)) location.replace('/dashboard/');
-        </script>
-      )
-    }
     <slot name="head" />
   </head>
   <body class:list={['min-h-dvh', bodyClass]}>
+    {/*
+      The guards go first in <body>, not in <head>: Astro writes its CSP <meta> at the end of <head>,
+      and a <meta> policy only governs what comes after it. Here they still run before anything
+      paints. Their text lives in src/inline-scripts.mjs, whose hashes the policy allows.
+    */}
+    {isProtected && <script is:inline set:html={PROTECTED_GUARD}></script>}
+    {guestOnly && <script is:inline set:html={GUEST_GUARD}></script>}
+    <link rel="preload" as="font" type="font/woff2" href={figtreeLatin} crossorigin />
     <slot />
     <div id="toast-region" class="toast-region" aria-live="polite"></div>
     <script>

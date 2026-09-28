@@ -425,8 +425,35 @@ Add a response-headers policy on the default behaviour with:
 - `Referrer-Policy: strict-origin-when-cross-origin`
 - `X-Frame-Options: DENY`
 
-The Content-Security-Policy is a separate item: the inline sign-in guards in `BaseLayout.astro` need hashes
-computed at build time.
+### Content-Security-Policy (Phase 6.3)
+
+The Content-Security-Policy is not in this headers policy: **it ships with the build.** Every page carries
+`<meta http-equiv="content-security-policy">`, written by Astro (`security.csp` in `astro.config.mjs`) with the
+hashes of the scripts it emits. Those hashes change whenever the code does, so they belong with the pages, not in a
+CloudFront setting that would need updating on every deploy. The policy:
+
+| Directive | Value | Why |
+|---|---|---|
+| `script-src` | `'self'` plus hashes | Bundled scripts, and the inline ones in `src/inline-scripts.mjs`: the sign-in guards and the Settings tab picker. No `'unsafe-inline'`, no `'unsafe-eval'` |
+| `style-src` | `'self'` plus hashes | `<style>` elements only by hash |
+| `style-src-attr` | `'unsafe-inline'` | Style attributes are set from data (chart widths, tag colours), and no hash can cover an attribute |
+| `img-src` | `'self' https: data: blob:` | Link previews from any site, small assets the build inlines, the QR code's PNG export |
+| `font-src` | `'self' data:` | The build inlines one small font |
+| `connect-src` | `'self'` plus the origin of `PUBLIC_API_URL` | The API: the same origin in production |
+| `default-src`, `base-uri`, `form-action` | `'self'` | |
+| `object-src` | `'none'` | |
+
+- **What a `<meta>` policy can't do:** it can't set `frame-ancestors`. `X-Frame-Options: DENY` above covers
+  framing.
+- **Placement:** a `<meta>` policy only governs what comes after it. Astro writes it at the end of `<head>`, so the
+  inline guards run first in `<body>`, still before anything paints.
+- **The build check:** `npm run build` ends with `scripts/check-csp.mjs`, and the build fails if any page:
+  - lacks the policy;
+  - has a script or preload before it;
+  - has an inline script or `<style>` its hashes don't cover;
+  - has an inline event handler or a `javascript:` URL.
+- **Local testing:** `astro dev` has no CSP (an Astro limitation). To see it, run `npm run build` and then
+  `npx astro preview`, with `PUBLIC_API_URL` pointing at a running API.
 
 ### Certificate
 

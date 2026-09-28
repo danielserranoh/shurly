@@ -90,6 +90,9 @@ test('set:html is build-time only, with our own markup', () => {
     ['src/components/ui/Icon.astro', 'set:html={iconSvg(name, className, strokeWidth)}', 'icons, at build time'],
     ['src/pages/styleguide.astro', 'set:html={pill(', 'specimens with literal tag names, at build time'],
     ['src/components/manual/ManualArticle.astro', 'set:html={body}', 'the manual: our own Markdown, rendered and filled at build time'],
+    ['src/layouts/BaseLayout.astro', 'set:html={PROTECTED_GUARD}', 'a constant from src/inline-scripts.mjs, allowed by its CSP hash'],
+    ['src/layouts/BaseLayout.astro', 'set:html={GUEST_GUARD}', 'a constant from src/inline-scripts.mjs, allowed by its CSP hash'],
+    ['src/pages/dashboard/settings.astro', 'set:html={SETTINGS_TAB_FROM_HASH}', 'a constant from src/inline-scripts.mjs, allowed by its CSP hash'],
   ];
   // The styleguide has many specimens: one entry covers them all.
   const found = [...occurrences(/set:html/)];
