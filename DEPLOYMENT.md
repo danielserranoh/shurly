@@ -423,7 +423,8 @@ before, so API keys and the MCP don't change.
 
 ### Prerequisite: the Google Cloud project
 
-Done once, by whoever administers Google Workspace (ROADMAP 3.13.2):
+Done once, by whoever administers Google Workspace (ROADMAP 3.13.2). Step by step:
+[docs/setup_google_app.md](docs/setup_google_app.md).
 
 1. A Google Cloud project inside the griddo.io organization.
 2. OAuth consent screen **Internal**, so only Griddo accounts can sign in. Scopes: `openid`, `email`.
@@ -449,8 +450,9 @@ Done once, by whoever administers Google Workspace (ROADMAP 3.13.2):
   `ORGANIZATION_DOMAIN` keeps it off: it would let any Google account in, Gmail included.
 - `CORS_ORIGINS` must include the frontend's origin: the page `POST`s the one-time code to
   `/api/v1/auth/google/exchange`.
-- **Not wired yet:** `scripts/deploy_ecs.sh` builds the task's environment variable by variable, and
-  the four Google ones aren't in it. Until they are, production runs with sign in with Google off.
+- **Where they go:** the GitHub deploy keeps the live service's environment and swaps only the image,
+  so add these variables to the live ECS config ([docs/setup_google_app.md](docs/setup_google_app.md),
+  step 7). `scripts/deploy_ecs.sh` only builds the environment when the service is first created.
 - To rotate the client secret: add a new secret to the OAuth client, update Secrets Manager, redeploy,
   then delete the old secret in Google Cloud.
 

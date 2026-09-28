@@ -26,6 +26,12 @@ implementation lifecycle and is independent of the URL version segment.
 
 ## [Unreleased]
 
+### Security — a refused login no longer tells whether the address has an account
+- **`POST /api/v1/auth/login` takes as long for an unknown address, or an account without a
+  password, as for a wrong password.** It returned before checking any password, so the response
+  time showed which addresses have an account. It now runs a dummy bcrypt check on those paths
+  (passlib's `dummy_verify`).
+
 ### Added — sign in with Google (Phase 3.13.2)
 - **People at Griddo sign in with their Google Workspace account.** `GET /api/v1/auth/google/start`
   sends the browser to Google (OpenID Connect, authorization code with PKCE), and
