@@ -836,6 +836,40 @@ Google client and `ORGANIZATION_DOMAIN` above:
 
 ---
 
+## Error alerting (Phase 6.4)
+
+The app writes one JSON line per request (`http.request`, with its `status`) to the task's log group,
+`/aws/ecs/default/shurly-api-5fdb`. A generated MCP tool calls the API in-process, so its failures get a line too.
+Alerting therefore needs no code: a CloudWatch metric filter counts the errors, an alarm watches the count, and SNS
+sends the email. None of it is set up yet (ROADMAP 6.4).
+
+| Metric filter | Pattern | Alarm |
+|---|---|---|
+| `shurly-5xx` | `{ $.event = "http.request" && $.status >= 500 }` | Sum ≥ 5 in 5 minutes |
+| `shurly-rate-limit-store` | `{ $.event = "rate_limit.store_failed" }` | Sum ≥ 1 in 5 minutes: the limits are letting everything through |
+
+- Each filter publishes a metric in namespace `Shurly`, value `1`, default `0`. The alarms notify an SNS topic with
+  an email subscription.
+- The ALB's `HTTPCode_Target_5XX_Count` and `HTTPCode_ELB_5XX_Count` catch a task that doesn't answer at all.
+- MCP tool errors (`{ $.event = "mcp.tool_call" && $.outcome = "error" }`) include invalid input, a 4xx. They belong
+  on a dashboard, not an alarm (`mcp_server/README.md` § Usage log).
+
+### When it fires (runbook stub)
+
+1. **Which requests fail.** In Logs Insights:
+   ```
+   filter event = "http.request" and status >= 500
+   | stats count(*) as errors by path, status
+   | sort errors desc
+   ```
+   Then follow one `request_id`: `filter request_id = "…"` shows its `http.request` line, the `mcp.tool_call` line if
+   it came through the MCP, and the traceback next to them.
+2. **Did a deploy just happen?** Check the service's events and the last backend deploy. If the errors started with
+   it, roll back by redeploying the previous image (§ Workflow trigger).
+3. **Is the database there?** `GET /api/v1/health/db`, then RDS's connections and CPU.
+4. **Write it down** in the troubleshooting catalog (`docs/AWS_ECS_DEPLOYMENT.md`): the symptom, the cause and the
+   fix.
+
 ## Routine operations
 
 ### View logs

@@ -1301,6 +1301,9 @@ live in `mcp_server/README.md`, written for developers. There is no user manual 
 ### 6.4 Monitoring & Logging
 - [x] CloudWatch Logs setup → `/aws/ecs/default/shurly-api-5fdb`; `X-Request-Id` correlates requests
 - [ ] Error alerting (SNS/email) — required before the Shlink cutover (8.5)
+  - [x] What to count, and a runbook stub: `DEPLOYMENT.md` § Error alerting. No code: `http.request` lines already
+        carry the status, so a metric filter on 5xx does it
+  - [ ] AWS: the metric filters, the alarms and an SNS topic with an email subscription
 - [ ] Key metrics dashboard
   - [ ] ECS task count / CPU / memory
   - [ ] ALB 5xx and target health
