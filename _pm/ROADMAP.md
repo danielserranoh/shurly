@@ -735,9 +735,10 @@ for the day before. Now a day is local to the viewer (`server/utils/local_days.p
       without a name). `GET /organization/members` and `/removed-members` gain `first_name` and `last_name`,
       and so does the MCP's `list_organization_members`; the profiles load with the list, not one per person.
       Dialogs name the account too ("Their account is …"), as two people can share a name
-- [ ] "Created by" on links and campaigns by name: `created_by_email` across the URL and campaign responses
-      → campaigns done: `created_by_first_name` and `created_by_last_name` next to the email, the card and
-      the campaign page by name, the email as tooltip. Links next, once 8.3 reshapes the URL responses
+- [x] "Created by" on links and campaigns by name: `created_by_email` across the URL and campaign responses
+      → `created_by_first_name` and `created_by_last_name` next to the email, on campaigns and links; the
+      cards and the campaign and link pages by name, the email as tooltip. Each list loads its creators'
+      profiles in one query, pinned by `tests/test_phase312_creator_names.py`
 - [ ] Photos in the members list: needs an endpoint that serves another member's avatar
 
 ---
