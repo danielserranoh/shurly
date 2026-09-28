@@ -26,6 +26,13 @@ class ProfileResponse(BaseModel):
     last_name: str | None = None
     country: str | None = Field(None, description=COUNTRY)
     timezone: str | None = Field(None, description=TIMEZONE)
+    avatar_version: str | None = Field(
+        None,
+        description=(
+            "Changes with each upload; null without an avatar. "
+            "The image: GET /api/v1/auth/me/avatar?v=<avatar_version>."
+        ),
+    )
 
 
 class ProfileUpdate(BaseModel):

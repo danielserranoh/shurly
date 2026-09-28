@@ -1,4 +1,5 @@
 ---
+import AvatarCropper from '@/components/ui/AvatarCropper.astro';
 import Icon from '@/components/ui/Icon.astro';
 import GoogleLogo from '@/components/ui/GoogleLogo.astro';
 import PasswordField from '@/components/ui/PasswordField.astro';
@@ -6,10 +7,26 @@ import SettingsSection from './SettingsSection.astro';
 ---
 
 <div class="grid gap-10">
-  <SettingsSection id="profile-title" title="Profile" description="Your name, where you work from, and how you log in.">
+  <SettingsSection id="profile-title" title="Profile" description="Your photo and name, where you work from, and how you log in.">
     <!-- POST: submitted before the script loads, the fields must not end up in the URL -->
     <form class="card overflow-hidden" data-profile-form method="post" novalidate aria-labelledby="profile-title">
       <div class="grid gap-5 p-5 sm:p-6">
+        <!-- Phase 3.12: the photo. Saved on its own, from the crop dialog; the file never reaches the form -->
+        <div class="-m-2 flex items-center gap-4 rounded-xl border-2 border-dashed border-transparent p-2 transition-colors data-dragging:border-brand-400 data-dragging:bg-brand-50" data-avatar-block>
+          <span class="relative grid size-16 shrink-0 place-items-center overflow-hidden rounded-full bg-ink-950 text-2xl font-semibold text-brand-300">
+            <span data-avatar-initial aria-hidden="true"></span>
+            <img class="absolute inset-0 size-full object-cover" alt="Your photo" data-avatar-image hidden />
+          </span>
+          <div class="grid min-w-0 gap-1.5">
+            <div class="flex flex-wrap items-center gap-2">
+              <button type="button" class="btn btn-secondary btn-sm" data-avatar-pick disabled><Icon name="upload" />Upload photo</button>
+              <button type="button" class="btn btn-ghost btn-sm" data-avatar-remove hidden>Remove</button>
+            </div>
+            <p class="hint">JPEG, PNG or WebP, up to 10 MB. Or drop it here.</p>
+            <p class="field-error" role="alert" data-avatar-error hidden></p>
+          </div>
+          <input type="file" accept="image/jpeg,image/png,image/webp" hidden data-avatar-file />
+        </div>
         <div data-form-alert hidden></div>
         <!-- Disabled until the account loads (Save too): nothing typed is overwritten, nothing saved is cleared -->
         <fieldset class="grid min-w-0 items-start gap-5 sm:grid-cols-2" data-profile-fields disabled>
@@ -98,11 +115,15 @@ import SettingsSection from './SettingsSection.astro';
       </div>
     </div>
   </SettingsSection>
+
+  <AvatarCropper />
 </div>
 
 <script>
   import timezoneData from '@/data/timezones.json';
-  import { ApiError, apiDelete, apiPatch, apiPut } from '@/utils/api';
+  import { ApiError, apiDelete, apiPatch, apiPut, errorMessage } from '@/utils/api';
+  import { avatarFileProblem, avatarUrl, removeAvatar, uploadAvatar } from '@/utils/avatar';
+  import { cropAvatar } from '@/utils/avatar-cropper';
   import { applyApiError, clearErrors, setFieldError } from '@/utils/forms';
   import { formatDate } from '@/utils/format';
   import { startGoogleSignIn } from '@/utils/google-signin';
@@ -110,7 +131,7 @@ import SettingsSection from './SettingsSection.astro';
   import { icon } from '@/utils/icons';
   import { confirmDialog, setLoading, toast } from '@/utils/ui';
   import { countryOptions, onlyZone, pickerZone, zoneLabel, zonesFor } from '@/utils/timezones';
-  import { refreshMe } from '@/utils/viewer';
+  import { initialOf, refreshMe } from '@/utils/viewer';
   import { currentUser } from './store';
   import type { Profile, User } from '@/utils/types';
 
@@ -214,6 +235,102 @@ import SettingsSection from './SettingsSection.astro';
     fillProfile(saved, { suggestZone: false });
     toast('Profile saved', 'success');
     await refresh(); // the header's initial comes from the first name
+  });
+
+  // ---------------------------------------------------------------- Photo (Phase 3.12)
+  // Picked or dropped, checked, cropped in the dialog and saved from there. The image comes
+  // from the API as a blob (it needs the bearer header), shown from an object URL.
+  const avatarBlock = document.querySelector<HTMLElement>('[data-avatar-block]')!;
+  const avatarImage = avatarBlock.querySelector<HTMLImageElement>('[data-avatar-image]')!;
+  const avatarInitial = avatarBlock.querySelector<HTMLElement>('[data-avatar-initial]')!;
+  const avatarPick = avatarBlock.querySelector<HTMLButtonElement>('[data-avatar-pick]')!;
+  const avatarRemove = avatarBlock.querySelector<HTMLButtonElement>('[data-avatar-remove]')!;
+  const avatarFile = avatarBlock.querySelector<HTMLInputElement>('[data-avatar-file]')!;
+  const avatarError = avatarBlock.querySelector<HTMLElement>('[data-avatar-error]')!;
+  let shownVersion: string | null = null;
+
+  async function showAvatar(version: string | null | undefined) {
+    shownVersion = version ?? null;
+    avatarRemove.hidden = !shownVersion;
+    const url = await avatarUrl(shownVersion);
+    if (shownVersion !== (version ?? null)) return; // a newer one came meanwhile
+    avatarImage.hidden = !url;
+    if (url) avatarImage.src = url;
+    else avatarImage.removeAttribute('src');
+  }
+
+  function showAvatarError(message: string | null) {
+    avatarError.textContent = message ?? '';
+    avatarError.hidden = !message;
+  }
+
+  currentUser.subscribe((user) => {
+    avatarInitial.textContent = initialOf(user.email, user.profile?.first_name);
+    void showAvatar(user.profile?.avatar_version);
+    avatarPick.disabled = false;
+  });
+
+  async function takePhoto(file: File | undefined) {
+    showAvatarError(null);
+    if (!file) return;
+    const problem = avatarFileProblem(file);
+    if (problem) {
+      showAvatarError(problem);
+      return;
+    }
+    try {
+      const saved = await cropAvatar(file, async (square) => {
+        const profile = await uploadAvatar(square);
+        await showAvatar(profile.avatar_version);
+      });
+      if (!saved) return;
+    } catch (err) {
+      showAvatarError(errorMessage(err));
+      return;
+    }
+    toast('Photo saved', 'success');
+    await refresh(); // the header shows it too
+  }
+
+  avatarPick.addEventListener('click', () => avatarFile.click());
+  avatarFile.addEventListener('change', () => {
+    const file = avatarFile.files?.[0];
+    avatarFile.value = ''; // the same file can be picked again
+    void takePhoto(file);
+  });
+
+  // Drop a file on the photo block.
+  const dragging = (on: boolean) => avatarBlock.toggleAttribute('data-dragging', on);
+  avatarBlock.addEventListener('dragover', (e) => {
+    if (avatarPick.disabled || !e.dataTransfer?.types.includes('Files')) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+    dragging(true);
+  });
+  avatarBlock.addEventListener('dragleave', (e) => {
+    if (!avatarBlock.contains(e.relatedTarget as Node | null)) dragging(false);
+  });
+  avatarBlock.addEventListener('drop', (e) => {
+    if (avatarPick.disabled) return;
+    e.preventDefault();
+    dragging(false);
+    void takePhoto(e.dataTransfer?.files[0]);
+  });
+
+  avatarRemove.addEventListener('click', async () => {
+    showAvatarError(null);
+    setLoading(avatarRemove, true, 'Removing…');
+    try {
+      await removeAvatar();
+    } catch (err) {
+      setLoading(avatarRemove, false);
+      showAvatarError(errorMessage(err));
+      return;
+    }
+    setLoading(avatarRemove, false);
+    await showAvatar(null);
+    toast('Photo removed', 'success');
+    await refresh();
   });
 
   // ---------------------------------------------------------------- Password (Phase 3.13.3)

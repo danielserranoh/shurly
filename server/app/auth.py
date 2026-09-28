@@ -214,7 +214,6 @@ def update_my_profile(
     for field, value in changes.items():
         setattr(profile, field, value)
     db.commit()
-    db.refresh(profile)
     return profile
 
 

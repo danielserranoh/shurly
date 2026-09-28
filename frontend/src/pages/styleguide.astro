@@ -12,6 +12,7 @@ import EmptyState from '@/components/ui/EmptyState.astro';
 import Modal from '@/components/ui/Modal.astro';
 import ProBadge from '@/components/ui/ProBadge.astro';
 import PasswordField from '@/components/ui/PasswordField.astro';
+import AvatarCropper from '@/components/ui/AvatarCropper.astro';
 import Illustration from '@/components/illustrations/Illustration.astro';
 import Section from '@/components/styleguide/Section.astro';
 import Specimen from '@/components/styleguide/Specimen.astro';
@@ -1353,6 +1354,14 @@ const colorCount = allColors.length;
             </PasswordField>
           </div>
         </Specimen>
+
+        <Specimen title="Photo" description="An initial until there’s a photo. A photo is cropped in a dialog where the circle is always covered: zoom out stops when the picture’s short side fills it, and it can’t be dragged off. Saved as a 512 px square." code={['<AvatarCropper />', 'cropAvatar(file, onSave)']} stage="white">
+          <div class="flex flex-wrap items-center gap-5">
+            <span class="grid size-16 place-items-center rounded-full bg-ink-950 text-2xl font-semibold text-brand-300" aria-hidden="true">A</span>
+            <span class="grid size-16 place-items-center overflow-hidden rounded-full bg-ink-100 text-ink-400" data-sg-avatar><Icon name="image" class="size-5" /></span>
+            <button type="button" class="btn btn-secondary btn-sm" data-sg-crop><Icon name="image" />Try the crop</button>
+          </div>
+        </Specimen>
       </Section>
 
       <!-- 08 Badges & tags =============================================== -->
@@ -1929,6 +1938,8 @@ const colorCount = allColors.length;
     </div>
   </footer>
 
+  <AvatarCropper />
+
   <Modal id="sg-modal" title="Add tags" description="Tags are added to every selected link. Existing tags stay." width="30rem">
     <div class="grid gap-2 px-6 py-5">
       <span class="label" id="sg-modal-tags-label">Tags to add</span>
@@ -1966,6 +1977,7 @@ const colorCount = allColors.length;
   import { html, setHTML } from '@/utils/html';
   import { renderLinkCard, renderLinkSkeleton } from '@/utils/links';
   import { closeDialog, confirmDialog, hydrateTimes, setLoading, toast } from '@/utils/ui';
+  import { cropAvatar } from '@/utils/avatar-cropper';
   import type { ShortLink, Tag } from '@/utils/types';
 
   const $ = <T extends HTMLElement = HTMLElement>(sel: string, root: ParentNode = document) => root.querySelector<T>(sel);
@@ -2322,5 +2334,33 @@ const colorCount = allColors.length;
     if (count) count.textContent = q ? `${shown} of ${iconTiles.length} icons` : `${iconTiles.length} icons`;
     const empty = $('[data-sg-icon-empty]');
     if (empty) empty.hidden = shown > 0;
+  });
+
+  // ------------------------------------------------------------ Photo: the crop dialog, on a drawn sample
+  $('[data-sg-crop]')?.addEventListener('click', async () => {
+    const sample = document.createElement('canvas');
+    [sample.width, sample.height] = [960, 640];
+    const paint = sample.getContext('2d')!;
+    const sky = paint.createLinearGradient(0, 0, 0, 640);
+    sky.addColorStop(0, '#dbe7ff');
+    sky.addColorStop(1, '#1d3b8a');
+    paint.fillStyle = sky;
+    paint.fillRect(0, 0, 960, 640);
+    paint.fillStyle = '#ffd166';
+    paint.beginPath();
+    paint.arc(480, 300, 150, 0, Math.PI * 2);
+    paint.fill();
+    const image = await new Promise<Blob | null>((resolve) => sample.toBlob(resolve, 'image/png'));
+    if (!image) return;
+    await cropAvatar(image, async (square) => {
+      const result = $('[data-sg-avatar]');
+      if (!result) return;
+      const photo = document.createElement('img');
+      photo.src = URL.createObjectURL(square);
+      photo.alt = 'The cropped photo';
+      photo.className = 'size-full object-cover';
+      result.replaceChildren(photo);
+      toast('Photo saved', 'success', { description: `${square.type}, ${Math.round(square.size / 1024)} KB` });
+    });
   });
 </script>

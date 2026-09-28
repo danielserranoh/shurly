@@ -59,13 +59,14 @@ CSS classes (in `global.css`): `btn` (+ `btn-primary | accent | secondary | ghos
 
 Astro components (`frontend/src/components/`): `brand/Logo`, `ui/Icon` (Lucide), `ui/PageHeader`,
 `ui/StatCard`, `ui/EmptyState`, `ui/Modal`, `ui/ProBadge`, `ui/PasswordField`, `ui/GoogleLogo`,
+`ui/AvatarCropper` (the photo's crop dialog),
 `illustrations/Illustration` (11 line illustrations), `app/EditLinkModal`, `app/QrModal`,
 `app/VisibilityToggle` (the "Personal" switch of the create flows).
 
 Rendered in TypeScript (`frontend/src/utils/`): link card (`links.ts`), campaign card
 (`campaigns.ts`), tag pill and tag picker (`tags.ts`, `tag-input.ts`), charts (`charts.ts`),
 toasts, confirm dialogs and copy feedback (`ui.ts`), who's looking and locked controls
-(`viewer.ts`). Every interpolation goes through the escaping `html` template tag (`html.ts`).
+(`viewer.ts`), the avatar and its crop (`avatar.ts`, `avatar-cropper.ts`, `avatar-crop.ts`). Every interpolation goes through the escaping `html` template tag (`html.ts`).
 
 ## Patterns
 
@@ -87,6 +88,11 @@ toasts, confirm dialogs and copy feedback (`ui.ts`), who's looking and locked co
   isn't where you're looking (auto-copy after quick create, bulk copy).
 - **Toasts** appear top-right under the header: 4 s, or 6 s for errors.
 - **Dialogs** fade and scale in and become bottom sheets under 640 px. **Menus** use the Popover API.
+- **Photos.** An avatar is the first name's initial (the email's without one) until there's a photo. A
+  photo is picked or dropped, then placed in the crop dialog: drag or arrow keys to move it; wheel, pinch,
+  slider or + and − to zoom. The circle is always covered: zooming out stops when the photo's short side
+  fills it, and it can't be dragged off. It's saved as a 512 px square from the dialog, which stays open
+  to show an error.
 - **Keyboard.** `N` opens a new link and `/` focuses search. Every control has a visible focus ring
   (ink ring + blue halo).
 - **Responsive.** Desktop-first, checked at 1440 and 390 px. Under `md` the nav moves into a menu dialog.

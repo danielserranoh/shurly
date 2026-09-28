@@ -80,7 +80,14 @@ test('href and src built from a URL go through safeUrl', () => {
   const attr = /\b(?:href|src)="\$\{(?!safeUrl\()[^}]*(?:url|image)[^}]*\}/i;
   // Set on an element: a.href = …, img.src = ….
   const prop = /\.(?:href|src)\s*=(?!\s*safeUrl\()[^;]*(?:url|image)/i;
-  const allowed = [['src/utils/qr.ts', 'img.src = url;', 'a blob: URL from URL.createObjectURL, for the PNG export']];
+  const allowed = [
+    ['src/utils/qr.ts', 'img.src = url;', 'a blob: URL from URL.createObjectURL, for the PNG export'],
+    // Phase 3.12: the avatar is fetched with the bearer header, so it's shown from blob: URLs.
+    ['src/utils/avatar-cropper.ts', 'img.src = url;', 'a blob: URL from URL.createObjectURL, of the file being cropped'],
+    ['src/components/settings/AccountPanel.astro', 'if (url) avatarImage.src = url;', 'a blob: URL from avatarUrl()'],
+    ['src/layouts/AppLayout.astro', 'photo.src = url;', 'a blob: URL from avatarUrl()'],
+    ['src/pages/styleguide.astro', 'photo.src = URL.createObjectURL(square);', 'a blob: URL of the cropped sample'],
+  ];
   const problems = check([...occurrences(attr), ...occurrences(prop)], allowed);
   assert.deepEqual(problems, [], 'Wrap it in safeUrl(…): http and https only.\n' + problems.join('\n'));
 });
