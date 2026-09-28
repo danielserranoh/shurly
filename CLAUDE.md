@@ -115,6 +115,7 @@ Backend (FastAPI)               Frontend (Astro 7 + Tailwind 4)
   - Run dev: `npm run dev` on **port 4232**
   - Tailwind 4 CSS-first config in `src/styles/global.css`: design tokens (`@theme`) + component classes (`btn`, `card`, `tag`, …)
   - **Static output, no adapter**: record pages use query params (`/dashboard/link/?code=`), never `[param].astro`
+  - Build-time content pages may use `[slug].astro` with `getStaticPaths` (e.g. `/manual/`); runtime records use query params
   - Render dynamic HTML with the escaping `html` tag from `@/utils/html` (never raw `innerHTML` with API data)
   - Astro 7 strips whitespace with JSX rules (`compressHTML: 'jsx'`): a line break between text and an inline
     element renders as *no* space. Keep them on one line or write `{' '}` (e.g. `</b>{' '}` then `{caption}`)
