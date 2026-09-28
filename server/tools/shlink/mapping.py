@@ -18,6 +18,24 @@ CONDITION_TYPES: dict[str, str | None] = {
 }
 
 
+# A Shlink visit arrives as a Visitor with these flags (decision A). Shurly's clicks, which its
+# click limit, `click_count` and the stats count (`_exclude_bots`), are the visits with neither.
+
+
+def is_bot(visit: dict) -> bool:
+    """What Shlink flagged as `potentialBot`."""
+    return bool(visit.get("potentialBot"))
+
+
+def is_pixel(visit: dict) -> bool:
+    """Shlink's /track pixel: a visit without a redirect."""
+    return "redirectUrl" in visit and visit["redirectUrl"] is None
+
+
+def is_click(visit: dict) -> bool:
+    return not is_bot(visit) and not is_pixel(visit)
+
+
 def map_condition(condition: dict) -> tuple[dict | None, str | None]:
     """
     A Shlink redirect-rule condition as Shurly's (server/utils/redirect_rules.py), and a note

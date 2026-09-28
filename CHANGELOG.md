@@ -194,6 +194,8 @@ implementation lifecycle and is independent of the URL version segment.
 - **`… review <snapshot>`** writes a CSV to decide `keep`, `archive` or `drop` for each link, `keep` by default.
   It flags duplicates, codes that differ only in case, expired or capped links, and redirect-rule conditions
   Shurly has no equivalent for. Every cell is spreadsheet-safe.
+  - `capped` is Shlink's rule, every visit. `capped_in_shurly` is Shurly's, clicks only: whether the link
+    arrives capped from an import with `--visits`. A link with the first and not the second reopens.
 - **`--check-destinations`** fills in each destination's HTTP status. It goes through the link previews' SSRF
   guard, now also exposed as `guarded_request` (`HEAD` as well as `GET`): public http(s) addresses only, each
   redirect hop checked, 8 at a time.

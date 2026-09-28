@@ -65,6 +65,7 @@ spreadsheet-safe: a title that starts like a formula gets a leading quote.
 | `visits`, `non_bot_visits` | Shlink's counts |
 | `last_visit` | The latest visit's date, when the snapshot has visits |
 | `expired`, `capped` | `yes` when `validUntil` has passed, or `visits` reached `maxVisits` (Shlink's rule: every visit counts) |
+| `capped_in_shurly` | `yes` when the link arrives capped from an import with `--visits`: its clicks reach `maxVisits`, bots and pixel opens aside (Shurly's rule, see Visits below). Without visits in the snapshot, no link does |
 | `redirect_rules`, `rules_to_check` | How many rules, and the conditions Shurly has no equivalent for (IP address, geolocation) |
 | `destination_status` | The destination's HTTP status, with `--check-destinations` |
 | `duplicate_of` | The oldest link on the same domain with the same destination |
@@ -134,7 +135,8 @@ The report lists every rule left out or approximated. Nothing is dropped silentl
 - A bot is what Shlink flagged as `potentialBot`. The `/track` pixel is a visit Shlink didn't redirect
   (`redirectUrl` null), so the pixel's opens don't count as clicks.
 - **They count toward the link's visit cap (`max_visits`) as Shurly's own do: clicks only.** A bot or a pixel
-  open doesn't use it up. Shlink counted every visit, so a link Shlink had capped can have clicks left here.
+  open doesn't use it up. Shlink counted every visit, so a link Shlink had capped can have clicks left here:
+  the review's `capped_in_shurly` says which stay capped.
   Without `--visits`, a link's cap starts again from zero.
 - A run imports only the visits newer than the link's last imported one. The cutover's final snapshot
   therefore adds what happened since the first import. A second visit in the very same second as that last

@@ -139,6 +139,27 @@ class TestRows:
             ("", ""),
         ]
 
+    def test_capped_in_shurly_counts_the_clicks_an_import_brings(self):
+        """Shlink's cap counts every visit, Shurly's only clicks: a capped link can reopen."""
+        cap = {"validSince": None, "validUntil": None, "maxVisits": 2}
+        bot = {**visit("2025-03-01T10:00:00+00:00"), "potentialBot": True}
+        pixel = {**visit("2025-03-02T10:00:00+00:00"), "redirectUrl": None}
+        click = visit("2025-03-03T10:00:00+00:00")
+        rows = review_rows(
+            snapshot(
+                {"short_url": short_url("reopens", meta=cap), "visits": [bot, pixel, click]},
+                {"short_url": short_url("stays", meta=cap), "visits": [click, bot, click]},
+                {"short_url": short_url("unexported", meta=cap)},  # no visits to import
+            ),
+            now=NOW,
+        )
+
+        assert [(row["capped"], row["capped_in_shurly"]) for row in rows] == [
+            ("yes", ""),
+            ("yes", "yes"),
+            ("yes", ""),
+        ]
+
     def test_the_last_visit_when_visits_were_exported(self):
         rows = review_rows(
             snapshot(
