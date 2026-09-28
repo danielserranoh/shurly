@@ -119,6 +119,22 @@ class Settings(BaseSettings):
         "http://127.0.0.1:*",
     ]
 
+    # Phase 6.3 — rate limits on what anyone can call (server/utils/rate_limit.py),
+    # per minute unless said otherwise; 0 turns one off. Per client IP, so behind the
+    # ALB TRUSTED_PROXIES must name it: otherwise every request seems to come from
+    # the ALB and each per-IP limit becomes one limit for everybody.
+    # POST /auth/login: every attempt runs a bcrypt check.
+    rate_limit_login_per_ip: int = 20
+    # Failed password logins per address, per 15 minutes; the right password counts
+    # for nothing. Anyone can lock an address's password route for the window;
+    # signing in with Google stays open.
+    rate_limit_login_failures_per_account: int = 10
+    # Google's and the MCP's sign-in pages and endpoints: each writes a row.
+    rate_limit_sign_in_per_ip: int = 30
+    # /mcp/register and /mcp/token: claude.ai calls them from Anthropic's addresses,
+    # shared by everybody, so this one is generous.
+    rate_limit_mcp_clients_per_ip: int = 60
+
     @property
     def mcp_oauth_configured(self) -> bool:
         return all(

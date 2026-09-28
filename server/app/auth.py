@@ -27,8 +27,10 @@ from server.schemas.auth import (
     UserResponse,
 )
 from server.schemas.responses import MessageResponse, get_responses
+from server.utils import rate_limit
 from server.utils.event_log import log_event
 from server.utils.organization import join_default_organization
+from server.utils.rate_limit import LOGIN_FAILURES_PER_ACCOUNT
 
 auth_router = APIRouter()
 
@@ -115,9 +117,26 @@ def login(user_data: UserLogin, db: Session = Depends(get_db)):
     - **401**: Incorrect email or password
     - **422**: Validation error (invalid email format, missing fields, etc.)
     """
+    # Phase 6.3 — failed attempts per account (the per-IP limit is the middleware's).
+    # Only failures count, so the right password isn't counted with a guesser's; the
+    # address needn't have an account, so a 429 tells nothing about who has one.
+    account = user_data.email.strip().lower()
+    locked = rate_limit.check(LOGIN_FAILURES_PER_ACCOUNT, account)
+    if not locked.allowed:
+        log_event(
+            "http.rate_limited", path="/api/v1/auth/login", limit=LOGIN_FAILURES_PER_ACCOUNT.name
+        )
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=f"Too many failed attempts. Try again in {locked.retry_after} seconds, "
+            "or sign in with Google.",
+            headers={"Retry-After": str(locked.retry_after)},
+        )
+
     user = authenticate_user(db, user_data.email, user_data.password)
 
     if not user:
+        rate_limit.hit(LOGIN_FAILURES_PER_ACCOUNT, account)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect email or password",

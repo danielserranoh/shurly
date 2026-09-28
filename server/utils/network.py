@@ -47,14 +47,18 @@ def resolve_client_ip(
     """
     Phase 3.9.6 — Pick the client IP given a TRUSTED_PROXIES allowlist.
 
-    If the request's source IP is in `trusted_proxies`, honor the leftmost
-    `X-Forwarded-For` entry. Otherwise return the socket address (never trust
-    `X-Forwarded-For` from arbitrary clients — they can spoof it).
+    `X-Forwarded-For` is read only when the request comes from a trusted proxy
+    (never from arbitrary clients: they can spoof it), and then from the right.
+    Each proxy appends the address it saw, so the first entry from the right that
+    isn't a trusted proxy is the client. The left end is whatever the client sent:
+    Phase 6.3 stopped trusting it, since rate limits key on this address.
     """
     socket_addr = socket_addr or "unknown"
-    if not forwarded_for or not list(trusted_proxies):
+    trusted = list(trusted_proxies)
+    if not forwarded_for or not trusted or not _addr_in_any_cidr(socket_addr, trusted):
         return socket_addr
-    if not _addr_in_any_cidr(socket_addr, trusted_proxies):
-        return socket_addr
-    first = forwarded_for.split(",")[0].strip()
-    return first or socket_addr
+    hops = [hop.strip() for hop in forwarded_for.split(",") if hop.strip()]
+    for hop in reversed(hops):
+        if not _addr_in_any_cidr(hop, trusted):
+            return hop
+    return hops[0] if hops else socket_addr
