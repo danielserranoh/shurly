@@ -780,9 +780,10 @@ Not needed: production has no users and no frontend yet, and 3.13 locks sign-up 
 Until then `POST /auth/register` stays reachable through the public API and its `/docs` page.
 
 ### 3.13.2 Google sign-in
-- [ ] Google Cloud project inside the griddo.io organization, OAuth consent screen **Internal** (only Griddo
+- [x] Google Cloud project inside the griddo.io organization, OAuth consent screen **Internal** (only Griddo
       accounts can sign in), a web OAuth client with the redirect URIs of the web sign-in and of the MCP proxy
-      (5.8). Client secret in Secrets Manager (6.3). Done by whoever administers Workspace
+      (5.8). Done by whoever administers Workspace → created by the user; its redirect URIs (the web's, local
+      and the MCP's) verified 2026-09-28. Its client secret in Secrets Manager is an open line under 6.3
 - [x] `GET /api/v1/auth/google/start` → Google (OpenID Connect, `state` + PKCE, `hd=griddo.io` as a hint) →
       `GET /api/v1/auth/google/callback` → `server/app/google_auth.py`, whose docstring is the frontend's
       contract. The state is hashed, single use and 10 minutes, and bound to the browser by a cookie
@@ -1257,8 +1258,9 @@ added there; Claude Code gets by with `--header`.
 - [x] **Authorization server: Google Workspace** (decided 2026-09-27), through fastmcp's OAuth proxy
       (`GoogleProvider`, in fastmcp 4.0.10), which also handles client registration (Dynamic Client Registration,
       Client ID Metadata Documents). Same Google project as the web sign-in (3.13.2)
-- [ ] Add the MCP proxy's redirect URI to the Google OAuth client of 3.13.2 → `{MCP_PUBLIC_URL}/auth/callback`,
-      → `https://shurly.griddo.io/mcp/auth/callback` (docs/setup_google_app.md, step 9)
+- [x] Add the MCP proxy's redirect URI to the Google OAuth client of 3.13.2 → `{MCP_PUBLIC_URL}/auth/callback`,
+      → `https://shurly.griddo.io/mcp/auth/callback` (docs/setup_google_app.md, step 9); verified in the
+      Google client 2026-09-28
 - [x] Protected-resource metadata (RFC 9728), and 401s carrying `WWW-Authenticate: Bearer resource_metadata="…"`
       (answers the open question at the end of this phase) → at `/.well-known/oauth-protected-resource/mcp/`,
       with the authorization server's metadata at `/.well-known/oauth-authorization-server/mcp`
@@ -1285,7 +1287,8 @@ added there; Claude Code gets by with `--header`.
       → `tests/test_phase58_mcp_oauth.py`, against a fake Google, including two app instances completing one
       sign-in
 - [ ] Check it end to end: Claude Code (`claude mcp add --transport http …`, sign-in in the browser) and a
-      claude.ai custom connector
+      claude.ai custom connector → in production (2026-09-28) the metadata documents and the 401 with
+      `resource_metadata` are verified; nobody has completed a sign-in from claude.ai or Claude Code yet
 
 ### 5.9 MCP install guide, in the app and in the user manual 🔎 R9
 **Decided (2026-09-27):** the app explains how to install the MCP, and the user manual carries the same instructions.
@@ -1356,9 +1359,11 @@ live in `mcp_server/README.md`, written for developers. There is no user manual 
 - [x] XSS prevention in frontend (dynamic HTML goes through the escaping `html` tag from `@/utils/html`; audit the remaining raw `innerHTML` uses) → audited: data goes through `html`/`setHTML`, URLs through `safeUrl`; two raw sinks left, documented; `frontend/tests/no-raw-html.test.mjs` fails on new ones
 - [x] CORS configuration review → no credentials, only the methods and headers the API uses, `Retry-After`
       and `X-Request-Id` exposed (`tests/test_cors.py`). Production needs no cross-origin entry once the
-      frontend shares the API's origin (4.10); its `CORS_ORIGINS` still lists `https://shurl.griddo.io`, a
-      host that doesn't exist, to be corrected at the release
+      frontend shares the API's origin (4.10). At release #81 (2026-09-28) its `CORS_ORIGINS` became
+      `["http://localhost:4232"]`: `https://shurl.griddo.io`, a host that doesn't exist, is gone, and
+      localhost stays for running the frontend locally against production until 4.10
 - [ ] Environment secrets audit (DB password and JWT secret are plain task env vars; Secrets Manager is the planned move)
+  - [ ] The Google OAuth client's secret (3.13.2, `GOOGLE_CLIENT_SECRET`) in Secrets Manager
 - [x] SSRF guard on the Open Graph fetcher (PR #21, see CHANGELOG § Security)
 - [x] Campaign-link takeover via custom codes (see CHANGELOG § Security)
 - [x] API keys stored as a hash → SHA-256 and the first 12 characters (migration `0007`), shown once when
@@ -1401,7 +1406,7 @@ live in `mcp_server/README.md`, written for developers. There is no user manual 
 
 ### 7.2 Operational Runbook
 - [ ] How to add new users → self-service sign-up for `@griddo.io`: signing in with Google makes the account
-      (3.13.2); left: the Google project, and writing it down here
+      (3.13.2); the Google project is done. Left: writing it down here
 - [x] How to investigate issues → troubleshooting catalog in `docs/AWS_ECS_DEPLOYMENT.md`
 - [x] How to scale if needed → "Scale up/down" in the same runbook
 - [ ] Backup and recovery procedures

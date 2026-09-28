@@ -740,8 +740,9 @@ methods (`GET`, `POST`, `PUT`, `PATCH`, `DELETE`) and request headers (`Authoriz
 - **Production needs no cross-origin entry** once the frontend is hosted (4.10): it and the API share one
   host (the Hostnames table under Architecture), so the browser makes no cross-origin calls. Set
   `CORS_ORIGINS='[]'` then, unless the frontend is served from another origin.
-- **Today's production value lists `https://shurl.griddo.io`, a host that doesn't exist.** It's harmless
-  (no browser comes from there) but wrong; it gets corrected at the release.
+- **Production's value since release #81 (2026-09-28) is `["http://localhost:4232"]`.** It listed
+  `https://shurl.griddo.io`, a host that doesn't exist, until then. Localhost stays for running the frontend
+  locally against production until 4.10.
 - Locally the defaults cover the dev server (`http://localhost:4232`) on another port, so the middleware
   stays.
 
@@ -772,7 +773,8 @@ Done once, by whoever administers Google Workspace (ROADMAP 3.13.2). Step by ste
 [docs/setup_google_app.md](docs/setup_google_app.md).
 
 1. A Google Cloud project inside the griddo.io organization.
-2. OAuth consent screen **Internal**, so only Griddo accounts can sign in. Scopes: `openid`, `email`.
+2. OAuth consent screen **Internal**, so only Griddo accounts can sign in. Scopes: `openid`, `email` and
+   `profile`: the web sign-in asks for `profile` to name a new account (3.12); the MCP's, for the first two.
 3. An OAuth client of type **Web application**, with the authorized redirect URI
    `https://shurly.griddo.io/api/v1/auth/google/callback` (the MCP proxy's joins it in 5.8).
 4. The client secret goes to Secrets Manager (6.3), never into the repo or a task definition in clear.
