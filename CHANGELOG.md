@@ -49,6 +49,20 @@ implementation lifecycle and is independent of the URL version segment.
   the frontend is hosted, 4.10), so `CORS_ORIGINS` needs no entry there; the defaults
   are for the dev server (`localhost:4232`).
 
+### Added — the user manual, starting with how to connect Claude (Phase 5.9)
+- **`/manual/`**: Markdown in `frontend/src/content/manual/` (an Astro content collection),
+  rendered at build time. Its first page, "Connect Claude to Shurly", covers Claude Code and
+  claude.ai / Claude Desktop: signing in with Google first, an API key as the route that works on
+  its own, and what to do when something goes wrong.
+- **Settings → API & MCP shows the same page**, so the app and the manual can't drift, with
+  "Copy with my key": it builds the API key command when clicked, from the key the page already
+  holds, and never writes the key into the page, a URL or storage.
+- **The MCP address comes from `PUBLIC_MCP_URL`** at build time, or the API's `/mcp/`, always
+  with the trailing slash people must use.
+- **Fixed:** the API key panel wrote the full key into its Copy buttons' `data-copy` attributes
+  when the page loaded, behind the masked display. The buttons now copy from memory when
+  clicked.
+
 ### Changed — Shurly's public host is `shurly.griddo.io`
 - **`shurly.griddo.io` serves the web, the app, the API and the MCP** (decided 2026-09-28):
   `MCP_PUBLIC_URL=https://shurly.griddo.io/mcp`, the Google redirect URIs

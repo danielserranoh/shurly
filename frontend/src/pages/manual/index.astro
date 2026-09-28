@@ -1,0 +1,27 @@
+---
+import { getCollection } from 'astro:content';
+import ManualLayout from '@/layouts/ManualLayout.astro';
+import Icon from '@/components/ui/Icon.astro';
+
+const pages = (await getCollection('manual')).sort((a, b) => a.data.order - b.data.order);
+---
+
+<ManualLayout title="User manual" description="How to use Shurly, and how to connect Claude to it.">
+  <h1 class="display text-4xl text-ink-950">User manual</h1>
+  <p class="mt-3 text-[15px] leading-7 text-ink-500">How to use Shurly, and how to connect Claude to it.</p>
+  <ul class="mt-8 grid gap-3">
+    {
+      pages.map((page) => (
+        <li>
+          <a href={`/manual/${page.id}/`} class="card flex items-center gap-4 p-5 transition-colors hover:border-ink-300">
+            <div class="min-w-0 flex-1">
+              <p class="font-semibold text-ink-950">{page.data.title}</p>
+              <p class="mt-1 text-sm text-ink-500">{page.data.description}</p>
+            </div>
+            <Icon name="arrow-right" class="size-4 shrink-0 text-ink-400" />
+          </a>
+        </li>
+      ))
+    }
+  </ul>
+</ManualLayout>

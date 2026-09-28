@@ -1,0 +1,22 @@
+---
+import { getCollection, type CollectionEntry } from 'astro:content';
+import ManualLayout from '@/layouts/ManualLayout.astro';
+import ManualArticle from '@/components/manual/ManualArticle.astro';
+
+// One static page per Markdown file, made at build time. Not a record page: records are
+// read at runtime and take a query parameter instead (see astro.config.mjs).
+export async function getStaticPaths() {
+  const pages = await getCollection('manual');
+  return pages.map((entry) => ({ params: { slug: entry.id }, props: { entry } }));
+}
+
+const { entry } = Astro.props as { entry: CollectionEntry<'manual'> };
+---
+
+<ManualLayout title={entry.data.title} description={entry.data.description}>
+  <h1 class="display text-4xl text-ink-950">{entry.data.title}</h1>
+  <p class="mt-3 text-[15px] leading-7 text-ink-500">{entry.data.description}</p>
+  <div class="mt-8">
+    <ManualArticle entry={entry} />
+  </div>
+</ManualLayout>

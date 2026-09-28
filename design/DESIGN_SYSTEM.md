@@ -131,6 +131,7 @@ Static routes, so `frontend/dist/` can be served from S3. Record pages take a qu
 instead of a dynamic path.
 
 `/` landing · `/login/` (password, or Google: it reads `#code=` / `#error=` back from the API) · `/404` ·
+`/manual/` user manual (Markdown in `src/content/manual/`, one page per file) ·
 `/styleguide/` · `/dashboard/` links ·
 `/dashboard/create/` · `/dashboard/link/?code=…` · `/dashboard/campaigns/` ·
 `/dashboard/campaigns/create/` (4-step wizard) · `/dashboard/campaign/?id=…` ·
