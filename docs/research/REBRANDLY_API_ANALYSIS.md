@@ -1,5 +1,10 @@
 # Rebrandly API Analysis for Shurly Development
 
+> **Historical snapshot (November 2025)**, from when Shurly was planned for AWS Lambda + API Gateway. The
+> stack moved to ECS Express behind an ALB before the first deploy (decided 2026-04-26), so what it says about
+> Lambda, API Gateway, SAM templates or usage plans no longer applies; rate limits are app-level (6.3). Current
+> status: [`_pm/ROADMAP.md`](../../_pm/ROADMAP.md); how it deploys: [`DEPLOYMENT.md`](../../DEPLOYMENT.md).
+
 **Analysis Date**: 2025-11-09
 **Source**: https://developers.rebrandly.com/docs/get-started
 **Purpose**: Extract insights and feature gaps for Shurly enhancement

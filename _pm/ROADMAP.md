@@ -1,11 +1,13 @@
 # Shurly - Project Roadmap
 
 ## Project Overview
-Modern URL shortener for B2B campaigns with analytics, built for AWS serverless deployment.
+Modern URL shortener for B2B campaigns with analytics, running on AWS.
 
-**Target Domain**: `shurl.griddo.io`
+**Hosts**: `shurly.griddo.io` for the web, the app, the API and the MCP; `go.griddo.io` for short links, once
+Shurly replaces Shlink there (Phase 8). Until then test links live on `s.griddo.io`, deleted at the cutover.
 **Expected Volume**: ~100-150 URLs/month (20-50 standard + 1 campaign of ~100 users)
-**Deployment**: AWS Lambda + API Gateway + RDS PostgreSQL + S3 + CloudFront
+**Deployment**: ECS Express (Fargate, behind the shared ALB) + RDS PostgreSQL for the API and the MCP;
+S3 + CloudFront for the frontend (4.10, pending).
 
 ---
 
@@ -13,20 +15,32 @@ Modern URL shortener for B2B campaigns with analytics, built for AWS serverless 
 
 Order agreed in the 2026-09-27 review; confirm each item before starting it.
 
-1. **MCP usage log** (5.6.0): without it the dogfood produces no numbers. Code done; retention and saved queries
-   are an AWS step.
+1. **MCP usage log** (5.6.0): without it the dogfood produces no numbers. Code done, and the log group keeps
+   60 days (set 2026-09-28). Left: saving the Logs Insights queries in CloudWatch, an AWS step.
 2. ✅ **Organization and roles** (3.14): links belong to the organization by default; owner, admin and member.
    Done: API, MCP and frontend (Settings → Organization, the personal toggle, who created each link, removed
    people). Left: two owners from day one, once people have signed up.
-3. **Frontend hosting** (4.10): S3 + CloudFront; AWS steps run with SSO.
+3. **Frontend hosting** (4.10): S3 + CloudFront; AWS steps run with SSO. The deploy workflow is ready and runs on
+   merges to `main` that touch the frontend, but skips until the AWS side exists (`FRONTEND_BUCKET` unset), as it
+   did for release #81.
 4. **Identity**: sign in with Google Workspace, for the web (3.13) and the MCP (5.8). One Google project covers
-   both. The code of both is done (3.13's backend and frontend, 5.8); left: the Google project, hosting the
-   frontend (4.10) and wiring `shurly.griddo.io` (chosen 2026-09-28 for the app, API and MCP).
+   both. The code of both is done (3.13's backend and frontend, 5.8), and in production since release #81
+   (2026-09-28) on `shurly.griddo.io`, which the deploy's smoke test checks. The MCP's Google sign-in is live.
+   Left: the web's sign-in, which needs the hosted frontend (the sign-in ends on its `/login/`, 4.10), and the
+   end-to-end checks (3.13.6, 5.8).
 5. ✅ **MCP install guide**, in the app and in the user manual (5.9): `/manual/install-mcp/` and Settings → API &
    MCP. Its address comes from the build: `https://shurly.griddo.io/mcp/` once 4.10's production build sets
    `PUBLIC_API_URL`.
 6. **Internal dogfood** with the frontend and the MCP (5.6).
-7. **Replace Shlink on `go.griddo.io`** (Phase 8): after the dogfood and error alerting (6.4).
+7. **Replace Shlink on `go.griddo.io`** (Phase 8): after the dogfood and error alerting (6.4). Done on `dev`: a
+   link is its code and its domain (8.3); exporting, reviewing and importing Shlink's links and visits, and a
+   visit's country (8.4). Left: how the import runs in production (8.4, decision B), the `go.griddo.io` domain
+   row and switching the default to it (8.3), error alerting (6.4), and the cutover (8.5).
+
+Also landed on 2026-09-28, outside this list: the account profile (3.12: name, country, time zone and a photo;
+people by name in Settings → Organization and "Created by"), analytics days in the viewer's time zone (3.12.8),
+and a Content-Security-Policy and Trusted Types on every page (6.3). Release #81 took #65–#80; everything merged
+since (#82 on) is on `dev`, for the next release.
 
 Tasks marked 🔎 were not in the original plan. Each one points to an entry in the
 [retro log](#retro-log--work-we-did-not-see-coming) at the end of this file.
@@ -62,24 +76,26 @@ System creates:
 - **FastAPI** - API framework
 - **PostgreSQL** - Database (RDS)
 - **SQLAlchemy 2.0** - ORM
+- **Alembic** - Schema migrations, run at startup (3.14.1)
 - **Pydantic v2** - Validation
 - **JWT** - Authentication
-- **Mangum** - Lambda adapter for FastAPI
+- **uvicorn** - ASGI server, in a container (`dockerfile`)
+- **fastmcp** - The MCP server, in the same container (Phase 5)
 - **uv** - Package management
 - **ruff** - Linting/formatting
 
 ### Frontend
-- **Astro** - Static site generator
-- **Tailwind CSS** - Styling
+- **Astro 7** - Static site generator (static output, no adapter)
+- **Tailwind CSS 4** - Styling
 - **TypeScript** - Type safety
-- **Chart.js / Recharts** - Analytics visualization
+- **SVG charts** - Analytics visualization, no chart library (`frontend/src/utils/charts.ts`)
 
 ### Infrastructure
-- **AWS Lambda** - Compute
-- **API Gateway (HTTP API)** - API routing
-- **RDS PostgreSQL (t4g.micro)** - Database
-- **S3** - Static frontend hosting
-- **CloudFront** - CDN
+- **ECS Express Mode (Fargate)** - Compute: the API, the redirects and the MCP (`griddo-main`, eu-south-2)
+- **Shared ALB** - Routing by host (rule 12), kept on the active target group by the `ecs-alb-rule-sync` Lambda
+- **ECR** - Container images
+- **RDS PostgreSQL (db.t4g.micro)** - Database
+- **S3 + CloudFront** - Static frontend hosting (4.10, pending)
 - **Route 53** - DNS
 
 ---
