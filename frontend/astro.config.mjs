@@ -9,6 +9,9 @@ export default defineConfig({
   output: 'static',
   site: process.env.PUBLIC_SITE_URL || 'http://localhost:4232',
   devToolbar: { enabled: false },
+  // Phase 3.13: accounts are created by signing in with Google, so the sign-up page went.
+  // Old bookmarks and emails land on the login page instead of a 404.
+  redirects: { '/register': '/login/' },
   vite: {
     plugins: [tailwindcss()],
   },

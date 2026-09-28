@@ -58,7 +58,7 @@ CSS classes (in `global.css`): `btn` (+ `btn-primary | accent | secondary | ghos
 (Popover API), `modal` (native `<dialog>`), `toast`, `disclosure`, `nav-link`, `tab`, `[data-tooltip]`.
 
 Astro components (`frontend/src/components/`): `brand/Logo`, `ui/Icon` (Lucide), `ui/PageHeader`,
-`ui/StatCard`, `ui/EmptyState`, `ui/Modal`, `ui/ProBadge`, `ui/PasswordField`,
+`ui/StatCard`, `ui/EmptyState`, `ui/Modal`, `ui/ProBadge`, `ui/PasswordField`, `ui/GoogleLogo`,
 `illustrations/Illustration` (11 line illustrations), `app/EditLinkModal`, `app/QrModal`,
 `app/VisibilityToggle` (the "Personal" switch of the create flows).
 
@@ -130,7 +130,8 @@ showing the same data. Stat numbers use the UI sans, not the display face.
 Static routes, so `frontend/dist/` can be served from S3. Record pages take a query parameter
 instead of a dynamic path.
 
-`/` landing · `/login/` · `/register/` · `/404` · `/styleguide/` · `/dashboard/` links ·
+`/` landing · `/login/` (password, or Google: it reads `#code=` / `#error=` back from the API) · `/404` ·
+`/styleguide/` · `/dashboard/` links ·
 `/dashboard/create/` · `/dashboard/link/?code=…` · `/dashboard/campaigns/` ·
 `/dashboard/campaigns/create/` (4-step wizard) · `/dashboard/campaign/?id=…` ·
 `/dashboard/analytics/` · `/dashboard/settings/` (`#account`, `#organization`, `#api`, `#tags`, `#notifications`,

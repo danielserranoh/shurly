@@ -727,17 +727,19 @@ Until then `POST /auth/register` stays reachable through the public API and its 
       unless `ALLOW_PASSWORD_SIGNUP` (local development and tests only)
 
 ### 3.13.3 Optional password, set by the account's owner
-- [ ] Settings → Account: set, change or remove a password, only while signed in, so it's always set by someone
+- [x] Settings → Account: set, change or remove a password, only while signed in, so it's always set by someone
       who already proved they own the account → API done: `PUT`/`DELETE /api/v1/auth/password`, JWT sessions
       only, and without the current password a sign-in at most 10 minutes old (`reauth_required`);
-      `/auth/me` says `has_password` and `has_google`. The page is 3.13.5
+      `/auth/me` says `has_password` and `has_google`. The page is 3.13.5: a `reauth_required` offers "Sign in
+      with Google again" and comes back to Settings
 - [x] Never link a Google identity to a password nobody verified. That's account pre-hijacking: someone
       registers `ana@griddo.io` with a password before Ana, Ana later signs in with Google, and the attacker keeps
       a way in. With accounts created only through Google, the path doesn't exist → for accounts from before
       3.13, the first Google sign-in links them but clears the password, revokes the API key and ends every
       session (`users.sessions_valid_from`), and logs `auth.identity_linked`
-- [ ] Forgot the password → sign in with Google and set a new one; no reset email 🔎 R2 → API done (the
-      `PUT /api/v1/auth/password` above, right after signing in with Google); the page is 3.13.5
+- [x] Forgot the password → sign in with Google and set a new one; no reset email 🔎 R2 → API done (the
+      `PUT /api/v1/auth/password` above, right after signing in with Google); the page is 3.13.5, and the login
+      page's "Forgot password?" says so
 
 ### 3.13.4 Changing methods without disruption
 - [ ] Setting to turn password login off for the organization's domain (SSO enforced), keeping one break-glass
@@ -750,8 +752,8 @@ Until then `POST /auth/register` stays reachable through the public API and its 
       cached check); their Google tokens stay in `mcp_oauth_store`, encrypted and unusable, until they expire
 
 ### 3.13.5 Frontend
-- [ ] "Sign in with Google" on the login page; the register page goes
-- [ ] Settings → Account: the password section of 3.13.3
+- [x] "Sign in with Google" on the login page; the register page goes
+- [x] Settings → Account: the password section of 3.13.3
 - [ ] Needs the frontend hosted (4.10)
 
 ### 3.13.6 Verification

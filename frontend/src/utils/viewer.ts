@@ -21,6 +21,12 @@ export function getMe(): Promise<User> {
   return me;
 }
 
+/** Fetch /auth/me again, e.g. after the password was set or removed. */
+export function refreshMe(): Promise<User> {
+  me = null;
+  return getMe();
+}
+
 /** The viewer's organization, or null when they don't belong to one (a 404). Fetched once per page. */
 export function getMyOrganization(): Promise<Organization | null> {
   organization ??= apiGet<Organization>('/api/v1/organization').catch((err) => {

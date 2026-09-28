@@ -19,10 +19,42 @@ export function isAuthenticated(): boolean {
   return getToken() !== null;
 }
 
-/** Only allow same-site relative paths as post-login destinations. */
-export function safeNext(next: string | null | undefined, fallback = '/dashboard/'): string {
-  if (!next || !next.startsWith('/') || next.startsWith('//') || next.startsWith('/\\')) return fallback;
-  return next;
+/**
+ * Only same-site paths are post-login destinations. `next` comes from a link anyone can craft
+ * (`?next=`) or from sessionStorage, so it's resolved the way the browser will resolve it rather
+ * than judged by its first characters: browsers drop tabs and line breaks ("/\t/evil.com" is
+ * "//evil.com"), and dot segments can leave a path that starts with "//" ("/.//evil.com").
+ * `origin` is for the tests (tests/auth.test.mjs).
+ */
+export function safeNext(next: string | null | undefined, fallback = '/dashboard/', origin = window.location.origin): string {
+  // No control characters or backslashes in a path of ours: refused outright, rather than
+  // guessing how each browser rewrites them.
+  if (!next || !next.startsWith('/') || /[\x00-\x1f\x7f\\]/.test(next)) return fallback;
+  let url: URL;
+  try {
+    url = new URL(next, origin);
+  } catch {
+    return fallback;
+  }
+  const path = url.pathname + url.search + url.hash;
+  return url.origin === origin && !path.startsWith('//') ? path : fallback;
+}
+
+const NEXT_KEY = 'shurly_next';
+
+/**
+ * Remember where to land after signing in. The round trip through Google can't carry it:
+ * /auth/google/start takes no `next`, on purpose (that's how open redirects happen).
+ */
+export function rememberNext(path: string | null | undefined): void {
+  sessionStorage.setItem(NEXT_KEY, safeNext(path));
+}
+
+/** The remembered landing page, used once, and only if it's a same-site relative path. */
+export function takeNext(fallback = '/dashboard/'): string {
+  const stored = sessionStorage.getItem(NEXT_KEY);
+  sessionStorage.removeItem(NEXT_KEY);
+  return safeNext(stored, fallback);
 }
 
 /** Send the user to /login, remembering where they were. */
