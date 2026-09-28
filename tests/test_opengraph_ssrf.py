@@ -211,6 +211,19 @@ def test_public_url_is_fetched(dns, web):
     assert metadata.url == "https://example.com/article"
 
 
+def test_user_agent_names_a_host_that_exists(dns, web):
+    """A site owner who finds the fetcher in their logs follows its URL to see who it is."""
+    dns.records["example.com"] = [PUBLIC_IP]
+    web.routes["example.com/article"] = page()
+
+    fetch("https://example.com/article")
+
+    [request] = web.requests
+    assert (
+        request.headers["user-agent"] == "Shurly/1.0 (+https://shurly.griddo.io; Link Preview Bot)"
+    )
+
+
 def test_request_is_pinned_to_the_checked_address(dns, web):
     """httpx must not resolve the name a second time: a DNS-rebinding attacker would answer
     that lookup with an internal IP. The connection goes to the address that was checked,

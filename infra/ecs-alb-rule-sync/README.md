@@ -5,11 +5,11 @@ griddo-main / `eu-south-2`) in step with the rules ECS Express manages.
 
 **Shared infrastructure.** It serves three services, not just Shurly:
 
-| Express rule | Custom rule | Domain | Service |
+| Express rule | Custom rule | Domains | Service |
 |---|---|---|---|
 | 1 | 10 | `go.griddo.io` | shlink-api |
 | 3 | 11 | `links.griddo.io` | shlink-web |
-| 4 | 12 | `s.griddo.io` | shurly-api |
+| 4 | 12 | `shurly.griddo.io`, `s.griddo.io` | shurly-api |
 
 A change here changes routing for all three.
 
