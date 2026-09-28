@@ -37,15 +37,21 @@ class Settings(BaseSettings):
     api_version: str = "0.1.0"
     api_description: str = "A modern URL shortener API"
 
-    # CORS settings (4232 = frontend dev server, see docker-compose.yml)
+    # CORS settings (4232 = frontend dev server, see docker-compose.yml). Phase 6.3:
+    # in production the frontend and the API share an origin (shurly.griddo.io, once
+    # the frontend is hosted, 4.10), so CORS_ORIGINS needs no entry there; this is for
+    # the dev server on another port. The frontend sends a bearer token, never cookies,
+    # so no credentials, and only the methods and request headers the API uses.
     cors_origins: list[str] = [
         "http://localhost:4321",
         "http://localhost:4232",
         "http://localhost:3000",
     ]
-    cors_allow_credentials: bool = True
-    cors_allow_methods: list[str] = ["*"]
-    cors_allow_headers: list[str] = ["*"]
+    cors_allow_credentials: bool = False
+    cors_allow_methods: list[str] = ["GET", "POST", "PUT", "PATCH", "DELETE"]
+    cors_allow_headers: list[str] = ["Authorization", "Content-Type", "X-Request-Id"]
+    # Readable by the frontend: when to retry after a 429, and the id to report.
+    cors_expose_headers: list[str] = ["Retry-After", "X-Request-Id"]
 
     # Phase 3.9.5 — GDPR. Truncate visitor IPs at insert time:
     # IPv4 → /24 (zero last octet), IPv6 → /64. Default ON; disable explicitly via env

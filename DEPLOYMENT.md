@@ -416,6 +416,8 @@ TRUSTED_PROXIES='["172.31.0.0/16"]'
 
 The resolver (`server/utils/network.py::resolve_client_ip`) checks the request's source against every CIDR; only when it matches does it read `X-Forwarded-For`, and then from the right: each proxy appends the address it saw, so the first entry from the right that isn't a trusted proxy is the client. The left end is whatever the client sent, so it's never trusted (before Phase 6.3 it was, and a client could choose the address the visit was recorded under). Outside the allowlist the socket address wins.
 
+If you ever front the ALB with CloudFront, append the CloudFront edge CIDRs from <https://ip-ranges.amazonaws.com/ip-ranges.json> (filter `service=CLOUDFRONT`).
+
 ## Rate limits (Phase 6.3)
 
 What anyone can call is limited per client IP, counted in the database (`rate_limits`) so both tasks share the counts: the password login (every attempt runs a bcrypt check, on the tasks that also serve redirects) and the Google and MCP sign-in endpoints (each request writes a row). Redirects, anything signed in and CORS preflights are never limited.
@@ -435,7 +437,19 @@ What anyone can call is limited per client IP, counted in the database (`rate_li
 - If the database can't count, requests go through and `rate_limit.store_failed` is logged: the limits protect, they mustn't become an outage.
 - AWS WAF on the shared ALB would add limiting before the app; that's an AWS decision, not in this code.
 
-If you ever front the ALB with CloudFront, append the CloudFront edge CIDRs from <https://ip-ranges.amazonaws.com/ip-ranges.json> (filter `service=CLOUDFRONT`).
+## CORS (Phase 6.3)
+
+The frontend calls the API with a bearer token, never cookies, so CORS allows no credentials, only the
+methods (`GET`, `POST`, `PUT`, `PATCH`, `DELETE`) and request headers (`Authorization`, `Content-Type`,
+`X-Request-Id`) the API uses, and exposes `Retry-After` and `X-Request-Id` to the frontend.
+
+- **Production needs no cross-origin entry** once the frontend is hosted (4.10): it and the API share one
+  host (the Hostnames table under Architecture), so the browser makes no cross-origin calls. Set
+  `CORS_ORIGINS='[]'` then, unless the frontend is served from another origin.
+- **Today's production value lists `https://shurl.griddo.io`, a host that doesn't exist.** It's harmless
+  (no browser comes from there) but wrong; it gets corrected at the release.
+- Locally the defaults cover the dev server (`http://localhost:4232`) on another port, so the middleware
+  stays.
 
 ## Sign in with Google (Phase 3.13)
 
