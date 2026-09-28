@@ -26,6 +26,14 @@ implementation lifecycle and is independent of the URL version segment.
 
 ## [Unreleased]
 
+### Fixed — campaign summary returned 500 on PostgreSQL
+- **`GET /api/v1/analytics/campaigns/{id}/summary` failed for every campaign on PostgreSQL**
+  ("could not identify an equality operator for type json"). Its top-performers query
+  grouped by `urls.user_data`, a `json` column PostgreSQL can't GROUP BY; the SQLite test
+  suite allows it, so it never showed. It now groups by `urls.id`, on which the other
+  selected columns depend. Regression test against PostgreSQL:
+  `tests/test_analytics_postgres.py`. Found in the 3.14 frontend's manual pass.
+
 ### Fixed — random test failure on UUIDs that look like numbers
 - **The test suite no longer fails at random with `'float' object has no attribute
   'replace'`.** Its in-memory SQLite created the models' UUID columns as `UUID`, a

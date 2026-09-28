@@ -67,7 +67,7 @@ Backend (FastAPI)               Frontend (Astro 7 + Tailwind 4)
 - `Visitor` (with `is_bot`, `is_pixel` flags)
 - `Campaign` (CSV-driven personalized URLs)
 - `Tag` + `url_tags` association
-- `RedirectRule` (priority + JSONB conditions)
+- `RedirectRule` (priority + JSON conditions)
 - `OrphanVisit` (typo'd / unknown short codes)
 - `Organization` + `OrganizationMember` (role: owner / admin / member; rules in `server/utils/organization.py`)
 
