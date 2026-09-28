@@ -8,6 +8,7 @@ and failed logins per account, in the database so both tasks share the counts.
 import json
 import re
 import time
+from itertools import pairwise
 
 import pytest
 from fastapi.testclient import TestClient
@@ -16,9 +17,9 @@ from sqlalchemy.exc import OperationalError
 
 from main import app, create_app
 from server.core import get_db
-from server.core.auth import hash_password
+from server.core.auth import create_access_token, hash_password
 from server.core.config import settings
-from server.core.models import RateLimit, User
+from server.core.models import RateLimit, User, UserIdentity
 from server.utils import rate_limit
 from tests.conftest import TestingSessionLocal
 
@@ -137,6 +138,77 @@ class TestLoginPerAccount:
             assert _login(client, email="nobody@griddo.io").status_code == 401
 
         assert _login(client, email="nobody@griddo.io").status_code == 429
+
+
+class TestCurrentPasswordPerAccount:
+    """Changing or setting the password with the current one is a guess like a login's. So
+    a wrong one counts with the login's failures, by the account's address, and guesses
+    spread over every path add up. The same trade-off too: over the limit, the right
+    password waits for the window, while signing in with Google stays open."""
+
+    @pytest.fixture
+    def ana(self, db_session, monkeypatch) -> User:
+        monkeypatch.setattr(settings, "rate_limit_login_per_ip", 100)
+        user = User(email="ana@griddo.io", password_hash=hash_password(_PASSWORD), is_active=True)
+        db_session.add(user)
+        db_session.commit()
+        return user
+
+    @staticmethod
+    def _signed_in(user: User) -> dict:
+        return {"Authorization": f"Bearer {create_access_token(data={'sub': user.email})}"}
+
+    def _change(self, client, user, current="wrong-password", new="new-password-1"):
+        body = {"current_password": current, "new_password": new}
+        return client.post("/api/v1/auth/change-password", json=body, headers=self._signed_in(user))
+
+    def _set(self, client, user, current="wrong-password", new="new-password-1"):
+        body = {"current_password": current, "new_password": new}
+        return client.put("/api/v1/auth/password", json=body, headers=self._signed_in(user))
+
+    @pytest.mark.parametrize(
+        ("guess", "path"),
+        [("_change", "/api/v1/auth/change-password"), ("_set", "/api/v1/auth/password")],
+    )
+    def test_wrong_ones_lock_it_even_for_the_right_password(
+        self, client, limits, ana, capsys, guess, path
+    ):
+        for _ in range(3):
+            assert getattr(self, guess)(client, ana).status_code == 400
+
+        response = getattr(self, guess)(client, ana, current=_PASSWORD)
+
+        assert response.status_code == 429
+        assert 60 < int(response.headers["retry-after"]) <= 15 * 60
+        assert [e["path"] for e in _events(capsys, "http.rate_limited")] == [path]
+
+    def test_guesses_on_every_path_add_up(self, client, limits, ana):
+        assert _login(client).status_code == 401
+        assert self._change(client, ana).status_code == 400
+        assert self._set(client, ana).status_code == 400
+
+        assert _login(client, password=_PASSWORD).status_code == 429
+        assert self._change(client, ana, current=_PASSWORD).status_code == 429
+        assert self._set(client, ana, current=_PASSWORD).status_code == 429
+
+    def test_the_right_one_does_not_count(self, client, limits, ana):
+        """Four changes: one over the limit, had they counted."""
+        passwords = [_PASSWORD, "second-pass-1", "third-pass-1", "fourth-pass-1", "fifth-pass-1"]
+
+        for i, (current, new) in enumerate(pairwise(passwords)):
+            change = self._set if i % 2 else self._change
+            assert change(client, ana, current=current, new=new).status_code == 200
+
+    def test_google_stays_the_way_back(self, client, db_session, limits, ana):
+        """Locked, an account that signs in with Google sets a new password without the old one."""
+        db_session.add(
+            UserIdentity(user_id=ana.id, provider="google", subject="g-ana", email=ana.email)
+        )
+        db_session.commit()
+        for _ in range(3):
+            assert _login(client).status_code == 401
+
+        assert self._set(client, ana, current=None).status_code == 200
 
 
 class TestSignIn:
