@@ -282,7 +282,8 @@ export function confirmDialog(opts: ConfirmOptions): Promise<boolean> {
 // Menus (popover API, positioned next to their trigger)
 // ---------------------------------------------------------------------------
 
-function positionMenu(menu: HTMLElement, trigger: HTMLElement): void {
+/** Place a popover menu under its trigger (or any anchor), inside the viewport. */
+export function positionMenu(menu: HTMLElement, trigger: HTMLElement): void {
   const r = trigger.getBoundingClientRect();
   const align = menu.dataset.align ?? 'end';
   menu.style.position = 'fixed';

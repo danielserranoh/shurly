@@ -1124,8 +1124,22 @@ and every link on it would pay for the header's numbers.
       OS, device, referrer host), with a migration and a backfill. The contract stays the same
 
 ### 3.16.3 Page (Agent 2)
-- [ ] Agent 2's approved layout: the period, the header's numbers, By time, By context, By location, the list and
-      its export. Agent 2 breaks it down
+- [x] Agent 2's approved layout: the period, the header's numbers, By time, By context, By location, the list and
+      its export. Broken down below; built against the contract, with a development-only mock (`&mock`,
+      `src/utils/link-analytics-mock.ts`, left out of production builds) until the routes are deployed
+- [x] Components: a donut with Show numbers and a table twin with shares, and bar lists with Show all (#115)
+- [x] The period: 7, 30 or 90 days, or Custom (two dates, checked as the API's 422s before asking), kept in the
+      address; the tab in the hash (`src/utils/analytics-view.ts`, `src/utils/tabs.ts`, tested)
+- [x] The header's all-time numbers from `/totals`: clicks, email opens (with Apple Mail's automatic opens noted),
+      countries, last click
+- [x] By time: clicks or email opens by day, week or month, and by hour and weekday, each with its table
+- [x] By context: OS, browser and device donuts, and referrers (top 10, then Show all). By location: countries,
+      Unknown last
+- [x] Visits: clicks, email opens, bots or all; a table on wide screens, stacked rows on phones; 20 a page
+- [x] Export CSV: `/visits.csv` for the period, every kind
+- [x] Check it against the real routes once Agent 1's two PRs land, at 1440 and 390 px, empty periods included
+      → on seeded data: 95 days of clicks, opens and bots, a link with only opens, one with nothing; Europe/Madrid
+      and UTC; the CSV downloaded from the page, with formula-like user agents and referrers quoted as text
 
 ---
 

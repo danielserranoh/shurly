@@ -479,6 +479,9 @@ CloudFront setting that would need updating on every deploy. The policy:
 
   It also fails unless exactly one built script chunk defines the policy. Two chunks would mean `html.ts` was
   bundled twice, and a page loading both would throw at the second `createPolicy`.
+
+  Then `scripts/check-dev-only.mjs` fails the build if a script carries development-only code: the link
+  analytics' mock (`&mock` under `astro dev`, Phase 3.16), found by its marker or its chunk's name.
 - **Local testing:** `astro dev` has no CSP (an Astro limitation). To see it, run `npm run build` and then
   `npx astro preview`, with `PUBLIC_API_URL` pointing at a running API.
 
