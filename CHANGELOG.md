@@ -26,6 +26,19 @@ implementation lifecycle and is independent of the URL version segment.
 
 ## [Unreleased]
 
+### Security — no API keys, passwords or session tokens through the MCP (Phase 6.3)
+- **The `generate_api_key` and `revoke_api_key` tools are gone.** An assistant reads
+  untrusted text, such as link titles and fetched pages, which could talk it into "generate a
+  new API key". The new key would then land in its context, the leak that taking the key out of
+  `/auth/me` closed, and the key the person uses would stop working. Like changing the
+  organization or the password, this is left to the person: Settings → API & MCP, or
+  `POST /api/v1/auth/api-key/generate` and `DELETE /api/v1/auth/api-key`, which are unchanged.
+- **So are `login` and `change_password`.** `login` put a JWT in the assistant's context, and
+  both took a password from it. The MCP is already signed in, so neither did anything there that
+  the person needs. `POST /api/v1/auth/login` and `POST /api/v1/auth/change-password` are
+  unchanged.
+- The MCP now has 39 tools (35 generated from the API, 4 curated).
+
 ### Security — a Content-Security-Policy on every page (Phase 6.3)
 - **Every built page carries a Content-Security-Policy**, a `<meta>` written by Astro with the hashes of
   the scripts it emits.
