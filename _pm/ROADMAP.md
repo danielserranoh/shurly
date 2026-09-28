@@ -21,7 +21,7 @@ Order agreed in the 2026-09-27 review; confirm each item before starting it.
 3. **Frontend hosting** (4.10): S3 + CloudFront; AWS steps run with SSO.
 4. **Identity**: sign in with Google Workspace, for the web (3.13) and the MCP (5.8). One Google project covers
    both. The code of both is done (3.13's backend and frontend, 5.8); left: the Google project, hosting the
-   frontend (4.10) and choosing the MCP's host.
+   frontend (4.10) and wiring `shurly.griddo.io` (chosen 2026-09-28 for the app, API and MCP).
 5. **MCP install guide**, in the app and in the user manual (5.9): after 5.8, since OAuth changes the steps.
 6. **Internal dogfood** with the frontend and the MCP (5.6).
 7. **Replace Shlink on `go.griddo.io`** (Phase 8): after the dogfood and error alerting (6.4).
@@ -910,7 +910,9 @@ written, with notes where reality differed.
 
 **Hostnames**:
 - `s.griddo.io` — Shurly API + redirect path (short, optimized for printing/QR — short URLs benefit from short hosts).
-- `shurl.griddo.io` (or `shurly.griddo.io`) — reserved for the frontend (4.10).
+- `shurly.griddo.io` — the web, the app, the API and the MCP (decided 2026-09-28): served whole by the API
+  through rule 12 until the frontend is hosted (4.10), then split by path (`/api/*`, `/mcp*`,
+  `/.well-known/oauth-*` to the API, the rest to the frontend), so the frontend calls its own origin.
 
 **Existing reusable infrastructure** (created during the Shlink deploy):
 - VPC `vpc-01b31e19aa032bcff` (default)
@@ -1162,7 +1164,7 @@ added there; Claude Code gets by with `--header`.
       (`GoogleProvider`, in fastmcp 4.0.10), which also handles client registration (Dynamic Client Registration,
       Client ID Metadata Documents). Same Google project as the web sign-in (3.13.2)
 - [ ] Add the MCP proxy's redirect URI to the Google OAuth client of 3.13.2 → `{MCP_PUBLIC_URL}/auth/callback`,
-      e.g. `https://s.griddo.io/mcp/auth/callback` (docs/setup_google_app.md, step 9)
+      → `https://shurly.griddo.io/mcp/auth/callback` (docs/setup_google_app.md, step 9)
 - [x] Protected-resource metadata (RFC 9728), and 401s carrying `WWW-Authenticate: Bearer resource_metadata="…"`
       (answers the open question at the end of this phase) → at `/.well-known/oauth-protected-resource/mcp/`,
       with the authorization server's metadata at `/.well-known/oauth-authorization-server/mcp`
@@ -1182,9 +1184,9 @@ added there; Claude Code gets by with `--header`.
       `MCP_OAUTH_SIGNING_KEY`, never the Google secret
 - [x] Only the clients we target can register (consent phishing): `MCP_OAUTH_ALLOWED_REDIRECT_URIS`, by
       default claude.ai's and claude.com's callbacks and loopback on any port (Claude Code)
-- [ ] Pick the canonical MCP host (`s.griddo.io` or `go.griddo.io`) before people install it: OAuth ties the
-      client's configuration to the resource URL → `MCP_PUBLIC_URL` is a setting; people connect to it with
-      the trailing slash
+- [x] Pick the canonical MCP host (`s.griddo.io` or `go.griddo.io`) before people install it: OAuth ties the
+      client's configuration to the resource URL → **`shurly.griddo.io`** (decided 2026-09-28), with the web,
+      the app and the API; `go.griddo.io` is for short links only. `MCP_PUBLIC_URL=https://shurly.griddo.io/mcp`
 - [x] Tests: metadata documents, the 401 header, both token types, user mapping, non-griddo identities refused
       → `tests/test_phase58_mcp_oauth.py`, against a fake Google, including two app instances completing one
       sign-in
@@ -1207,7 +1209,7 @@ live in `mcp_server/README.md`, written for developers. There is no user manual 
 ### Open questions (resolve during 5.1)
 - Does `fastmcp.from_fastapi()` produce useful tool descriptions, or do we need to enrich them via Pydantic `Field(..., description=...)` everywhere first? (Likely yes — most of our schemas already have descriptions; sweep the gaps.) → still open: nobody has done the sweep
 - ~~Should pixel/redirect endpoints be exposed as tools at all?~~ **Resolved:** no — excluded in `EXCLUDED_ROUTE_MAPS` (5.2).
-- ~~Per-user MCP config in Claude Code: how does the team add their personal API key without committing it?~~ **Resolved:** `claude mcp add shurly --transport http --url https://s.griddo.io/mcp/ --header "Authorization: Bearer <api_key>"`, documented in `mcp_server/README.md`.
+- ~~Per-user MCP config in Claude Code: how does the team add their personal API key without committing it?~~ **Resolved:** `claude mcp add --transport http shurly https://shurly.griddo.io/mcp/ --header "Authorization: Bearer <api_key>"`, documented in `mcp_server/README.md`.
 - Authorization discovery: we publish no RFC 9728 protected-resource metadata. All four `.well-known` paths 404, and the 401 carries a bare `WWW-Authenticate: Bearer` with no `resource_metadata=` pointer, so MCP clients cannot auto-discover how to authenticate and must be handed an API key. Not a flag we can flip — it needs our own authorization server or delegation to an IdP (fastmcp ships providers for Auth0, Azure, Clerk, Google, Keycloak, WorkOS, …). A product decision, not a technical one. **Decided 2026-09-27:** yes, OAuth 2.1 alongside API keys → 5.8. **Built (2026-09-28):** the metadata at `/.well-known/oauth-protected-resource/mcp/` and a 401 pointing at it, once the 5.8 settings are set.
 
 ---
@@ -1298,8 +1300,10 @@ with one ALB change, and rolling back restores it. Shurly resolves links by (Hos
 
 ### 8.1 Decisions first
 - [x] Hostname for new links after the cutover: **`go.griddo.io`** (decided 2026-09-27). A new address for links
-      would confuse people; `s.griddo.io` keeps working in parallel. Until the cutover `go.griddo.io` still points
-      at Shlink, so links made in Shurly before then live on `s.griddo.io` (and keep working)
+      would confuse people. Until the cutover `go.griddo.io` still points at Shlink, so test links made in Shurly
+      live on `s.griddo.io`
+- [x] `s.griddo.io` is deleted entirely at the cutover, with no redirects kept (decided 2026-09-28): nothing was
+      ever published on it. The app, API and MCP are on `shurly.griddo.io` before then
 - [x] Shared or personal links 🔎 R7: **the organization's by default, personal only on purpose** (decided
       2026-09-27) → 3.14
 - [x] Owner of the migrated links: the Griddo organization (3.14)
@@ -1349,6 +1353,9 @@ the import can be re-run.
       recreate rule 10. Update `RULE_SYNC_MAP` in `infra/ecs-alb-rule-sync/`. The `go.griddo.io` certificate is
       already on the listener
 - [ ] Switch the default domain to `go.griddo.io` (8.3) in the same window
+- [ ] Delete `s.griddo.io` entirely: out of rule 12's host condition, its certificate off the listener and deleted,
+      its Route 53 record (griddo-production), its `Domain` row and test links; the docs and scripts that still
+      name it
 - [ ] Smoke on `go.griddo.io` with a sample of migrated codes, mixed case included
 - [ ] Watch orphan visits on `go.griddo.io` for 2–4 weeks: hits on dropped codes show what was still in use →
       re-import them from the raw export

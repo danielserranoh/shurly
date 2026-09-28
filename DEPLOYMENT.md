@@ -18,7 +18,7 @@ shared ALB (eu-south-2) — created by ECS Express for Shlink, reused for Shurly
    ↓
    ├─ priority 10 → shlink-api      → go.griddo.io
    ├─ priority 11 → shlink-web      → links.griddo.io
-   └─ priority 12 → shurly-api      → s.griddo.io
+   └─ priority 12 → shurly-api      → shurly.griddo.io (the app, API, MCP), s.griddo.io (interim, until Phase 8)
         ↓
         Fargate task (ARM64, 0.25 vCPU / 0.5 GB)
         FastAPI + uvicorn  ⇄  RDS PostgreSQL t4g.micro
@@ -36,8 +36,11 @@ Hostnames:
 
 | Host | Service | Phase |
 |---|---|---|
-| `s.griddo.io` | Shurly API + redirect path | 4 (this guide) |
-| `shurl.griddo.io` (or `shurly.griddo.io`) | Future frontend | 7 |
+| `shurly.griddo.io` | The web, the app (`/dashboard/`), the API (`/api/v1/*`) and the MCP (`/mcp/`) | 4; the frontend at 4.10 |
+| `go.griddo.io` | Short links only | Shlink until Phase 8, then Shurly |
+| `s.griddo.io` | Interim: the API and test links until Phase 8, then deleted entirely | 4 |
+
+Decided 2026-09-28. Nothing was published on `s.griddo.io`, so it goes at the Phase 8 cutover with no redirects kept.
 
 ## Prerequisites
 
@@ -130,7 +133,7 @@ cat > .env <<EOF
 DB_HOST=<from create_rds.sh output>
 DB_PASSWORD=<from create_rds.sh output>
 JWT_SECRET_KEY=<from step 3>
-CORS_ORIGINS=["https://shurl.griddo.io"]
+CORS_ORIGINS=["https://shurly.griddo.io"]
 EOF
 chmod 600 .env  # avoid accidental git add
 ```
@@ -215,28 +218,28 @@ aws ecs update-express-gateway-service --region eu-south-2 --profile griddo-main
     --service-arn "$SERVICE_ARN" --force-new-deployment
 
 # Wait ~2 min, then:
-curl https://s.griddo.io/api/v1/health
+curl https://shurly.griddo.io/api/v1/health
 ```
 
 ### 7. Smoke checklist
 
 ```bash
 # Liveness
-curl https://s.griddo.io/api/v1/health
+curl https://shurly.griddo.io/api/v1/health
 # Readiness (DB connectivity)
-curl https://s.griddo.io/api/v1/health/db
+curl https://shurly.griddo.io/api/v1/health/db
 
 # Sign in with Google, once configured: /start redirects to accounts.google.com
-curl -s -o /dev/null -w '%{http_code} %{redirect_url}\n' https://s.griddo.io/api/v1/auth/google/start
+curl -s -o /dev/null -w '%{http_code} %{redirect_url}\n' https://shurly.griddo.io/api/v1/auth/google/start
 
 # Login → JWT. There's no sign-up with a password in production since 3.13: the smoke
 # account predates it, and keeps its password until someone signs in with Google as it.
-TOKEN=$(curl -s -X POST https://s.griddo.io/api/v1/auth/login \
+TOKEN=$(curl -s -X POST https://shurly.griddo.io/api/v1/auth/login \
     -H "Content-Type: application/json" \
     -d '{"email":"smoke@griddo.io","password":"smoke-test-1234"}' | jq -r .access_token)
 
 # Create a short URL
-curl -X POST https://s.griddo.io/api/v1/urls \
+curl -X POST https://shurly.griddo.io/api/v1/urls \
     -H "Authorization: Bearer $TOKEN" \
     -H "Content-Type: application/json" \
     -d '{"url":"https://griddo.io"}'
@@ -253,7 +256,7 @@ curl https://s.griddo.io/robots.txt
 # Orphan visit logging
 curl https://s.griddo.io/typoXYZ
 curl -H "Authorization: Bearer $TOKEN" \
-    https://s.griddo.io/api/v1/analytics/orphan-visits
+    https://shurly.griddo.io/api/v1/analytics/orphan-visits
 ```
 
 ---
@@ -413,6 +416,8 @@ TRUSTED_PROXIES='["172.31.0.0/16"]'
 
 The resolver (`server/utils/network.py::resolve_client_ip`) checks the request's source against every CIDR; only when it matches does it read `X-Forwarded-For`, and then from the right: each proxy appends the address it saw, so the first entry from the right that isn't a trusted proxy is the client. The left end is whatever the client sent, so it's never trusted (before Phase 6.3 it was, and a client could choose the address the visit was recorded under). Outside the allowlist the socket address wins.
 
+If you ever front the ALB with CloudFront, append the CloudFront edge CIDRs from <https://ip-ranges.amazonaws.com/ip-ranges.json> (filter `service=CLOUDFRONT`).
+
 ## Rate limits (Phase 6.3)
 
 What anyone can call is limited per client IP, counted in the database (`rate_limits`) so both tasks share the counts: the password login (every attempt runs a bcrypt check, on the tasks that also serve redirects) and the Google and MCP sign-in endpoints (each request writes a row). Redirects, anything signed in and CORS preflights are never limited.
@@ -438,15 +443,13 @@ The frontend calls the API with a bearer token, never cookies, so CORS allows no
 methods (`GET`, `POST`, `PUT`, `PATCH`, `DELETE`) and request headers (`Authorization`, `Content-Type`,
 `X-Request-Id`) the API uses, and exposes `Retry-After` and `X-Request-Id` to the frontend.
 
-- **Production needs no cross-origin entry** once the frontend is hosted (4.10): it and the API share an
-  origin (`shurly.griddo.io`), so the browser makes no cross-origin calls. Set `CORS_ORIGINS='[]'` then,
-  unless the frontend is served from another origin.
+- **Production needs no cross-origin entry** once the frontend is hosted (4.10): it and the API share one
+  host (the Hostnames table under Architecture), so the browser makes no cross-origin calls. Set
+  `CORS_ORIGINS='[]'` then, unless the frontend is served from another origin.
 - **Today's production value lists `https://shurl.griddo.io`, a host that doesn't exist.** It's harmless
   (no browser comes from there) but wrong; it gets corrected at the release.
 - Locally the defaults cover the dev server (`http://localhost:4232`) on another port, so the middleware
   stays.
-
-If you ever front the ALB with CloudFront, append the CloudFront edge CIDRs from <https://ip-ranges.amazonaws.com/ip-ranges.json> (filter `service=CLOUDFRONT`).
 
 ## Sign in with Google (Phase 3.13)
 
@@ -462,7 +465,7 @@ Done once, by whoever administers Google Workspace (ROADMAP 3.13.2). Step by ste
 1. A Google Cloud project inside the griddo.io organization.
 2. OAuth consent screen **Internal**, so only Griddo accounts can sign in. Scopes: `openid`, `email`.
 3. An OAuth client of type **Web application**, with the authorized redirect URI
-   `https://s.griddo.io/api/v1/auth/google/callback` (the MCP proxy's joins it in 5.8).
+   `https://shurly.griddo.io/api/v1/auth/google/callback` (the MCP proxy's joins it in 5.8).
 4. The client secret goes to Secrets Manager (6.3), never into the repo or a task definition in clear.
 
 ### Settings
@@ -471,7 +474,7 @@ Done once, by whoever administers Google Workspace (ROADMAP 3.13.2). Step by ste
 |---|---|---|
 | `GOOGLE_CLIENT_ID` | `1234-abc.apps.googleusercontent.com` | The OAuth client's id |
 | `GOOGLE_CLIENT_SECRET` | from Secrets Manager | Never logged |
-| `GOOGLE_REDIRECT_URI` | `https://s.griddo.io/api/v1/auth/google/callback` | Exactly as registered with the client |
+| `GOOGLE_REDIRECT_URI` | `https://shurly.griddo.io/api/v1/auth/google/callback` | Exactly as registered with the client |
 | `FRONTEND_URL` | the frontend's origin | After Google, the browser goes to `{FRONTEND_URL}/login/` |
 | `ORGANIZATION_DOMAIN` | `griddo.io` (default) | Only ID tokens whose `hd` claim is this domain get in |
 | `ALLOW_PASSWORD_SIGNUP` | `false` (default) | `POST /auth/register`, for local development and tests. **Never** `true` in production; the app logs `auth.password_signup_enabled` at startup when it is |
@@ -517,11 +520,11 @@ Google client and `ORGANIZATION_DOMAIN` above:
 
 | Variable | Example | Notes |
 |---|---|---|
-| `MCP_PUBLIC_URL` | `https://s.griddo.io/mcp` | The MCP endpoint as clients reach it, without the slash. People connect to `{MCP_PUBLIC_URL}/`, with it: the metadata's `resource` has to match what they enter. `s.griddo.io` or `go.griddo.io` is still to be chosen |
+| `MCP_PUBLIC_URL` | `https://shurly.griddo.io/mcp` | The MCP endpoint as clients reach it, without the slash. People connect to `{MCP_PUBLIC_URL}/`, with it: the metadata's `resource` has to match what they enter |
 | `MCP_OAUTH_SIGNING_KEY` | `openssl rand -hex 32` | Signs the MCP's tokens and, derived, encrypts what the proxy stores. High entropy (it goes through HKDF, not a password hash), the same on every task, never the Google secret. Changing it signs every MCP client out. Masked in the deploy logs like any `*KEY*` |
 | `MCP_OAUTH_ALLOWED_REDIRECT_URIS` | the default | Who may register as an MCP client. Default: `https://claude.ai/api/mcp/auth_callback`, `https://claude.com/api/mcp/auth_callback` (where Anthropic says it may move) and loopback on any port (`http://localhost:*`, `http://127.0.0.1:*`, Claude Code). A JSON array to change it; any other client is refused |
 
-- **Google:** add `{MCP_PUBLIC_URL}/auth/callback` (e.g. `https://s.griddo.io/mcp/auth/callback`) as a
+- **Google:** add `{MCP_PUBLIC_URL}/auth/callback` (`https://shurly.griddo.io/mcp/auth/callback`) as a
   second authorized redirect URI of the same OAuth client ([docs/setup_google_app.md](docs/setup_google_app.md),
   step 9).
 - **State:** client registrations, sign-ins in progress, codes and Google's tokens (refresh tokens
