@@ -236,7 +236,8 @@ uv run pytest -m integration
 
 #### Run Tests
 
-Unit tests for the parts that decide where the browser goes (Node 22.18+, no install needed):
+Unit tests for where the browser goes and what reaches the page as markup, plus a scan that fails on
+new raw HTML sinks (Node 22.18+, no install needed):
 
 ```bash
 cd frontend

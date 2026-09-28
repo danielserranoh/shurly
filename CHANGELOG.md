@@ -26,6 +26,25 @@ implementation lifecycle and is independent of the URL version segment.
 
 ## [Unreleased]
 
+### Security — the frontend's markup, audited (Phase 6.3)
+- **Every raw `innerHTML` that carried data now goes through the escaping `html` tag and
+  `setHTML`**: toasts, confirm dialogs, form alerts, the tag picker, charts and their
+  tooltips, the link page and the new-link preview. They were escaped by hand before; nothing
+  exploitable was found. Two raw sinks remain, each explained in the code and the test:
+  `setHTML` itself, and the QR code (numbers and fixed colours only).
+- **Links and images from data go through `safeUrl`** (http and https only, anything else is
+  `#`), now also the short link after creating one and the tracking pixel's snippet. A
+  `javascript:` destination, OG image or redirect target stays inert even in rows the API's
+  own checks never saw.
+- **A tag colour must be a hex colour to reach a `style` attribute**, so a stored value can't
+  add CSS (`#fff;background:…`).
+- **Regression tests** (`cd frontend && npm test`, in CI): a scan of `frontend/src` fails on
+  any new raw HTML sink, `raw()` on data, or `href`/`src` built from a URL without
+  `safeUrl`; unit tests pin the escaping and `safeUrl` against `javascript:`, `data:` and
+  obfuscated schemes.
+- A copy button clicked twice within two seconds no longer stays on "Copied!", and a loading
+  button gets its own content back (nodes, not re-parsed markup).
+
 ### Added — Removed people, in Settings → Organization (Phase 3.14.3)
 - **Owners can move someone's personal links later, not only right after removing them.**
   `GET /api/v1/organization/removed-members` lists the people removed from the organization

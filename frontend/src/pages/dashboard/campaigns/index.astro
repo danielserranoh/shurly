@@ -71,7 +71,7 @@ import Icon from '@/components/ui/Icon.astro';
     try {
       campaigns = (await Promise.all([listCampaigns(), viewerReady]))[0].campaigns;
     } catch (err) {
-      list.innerHTML = '';
+      list.replaceChildren();
       errorState.hidden = false;
       errorState.querySelector('[data-empty-body]')!.textContent = errorMessage(err);
       return;

@@ -2,8 +2,8 @@
 // elements and flip aria-invalid on the matching control, so screen readers get them too.
 
 import { ApiError } from './api';
-import { escapeHtml } from './html';
-import { iconSvg } from './icons';
+import { html, setHTML } from './html';
+import { icon } from './icons';
 
 export function fieldControl(form: HTMLElement, name: string): HTMLElement | null {
   return form.querySelector<HTMLElement>(`[name="${name}"]`);
@@ -39,7 +39,7 @@ export function showAlert(form: HTMLElement, message: string | null, kind: 'erro
   if (!box) return;
   if (!message) {
     box.hidden = true;
-    box.innerHTML = '';
+    box.replaceChildren();
     return;
   }
   const styles = {
@@ -50,7 +50,7 @@ export function showAlert(form: HTMLElement, message: string | null, kind: 'erro
   const [cls, ic, icCls] = styles[kind];
   box.className = `flex gap-2.5 rounded-xl border px-3.5 py-3 text-sm ${cls}`;
   box.setAttribute('role', kind === 'error' ? 'alert' : 'status');
-  box.innerHTML = `<span class="mt-0.5 shrink-0 ${icCls}">${iconSvg(ic, 'size-4')}</span><p>${escapeHtml(message)}</p>`;
+  setHTML(box, html`<span class="mt-0.5 shrink-0 ${icCls}">${icon(ic, 'size-4')}</span><p>${message}</p>`);
   box.hidden = false;
 }
 

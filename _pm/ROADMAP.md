@@ -1222,7 +1222,7 @@ live in `mcp_server/README.md`, written for developers. There is no user manual 
 - [ ] Rate limiting — no API Gateway on this stack, so it needs app-level limiting or AWS WAF on the shared ALB (first slice: invitations and resets in 3.15, since each one sends an email)
 - [ ] Input validation review
 - [ ] SQL injection prevention check
-- [ ] XSS prevention in frontend (dynamic HTML goes through the escaping `html` tag from `@/utils/html`; audit the remaining raw `innerHTML` uses)
+- [x] XSS prevention in frontend (dynamic HTML goes through the escaping `html` tag from `@/utils/html`; audit the remaining raw `innerHTML` uses) → audited: data goes through `html`/`setHTML`, URLs through `safeUrl`; two raw sinks left, documented; `frontend/tests/no-raw-html.test.mjs` fails on new ones
 - [ ] CORS configuration review
 - [ ] Environment secrets audit (DB password and JWT secret are plain task env vars; Secrets Manager is the planned move)
 - [x] SSRF guard on the Open Graph fetcher (PR #21, see CHANGELOG § Security)

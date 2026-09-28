@@ -143,7 +143,7 @@ import VisibilityToggle from '@/components/app/VisibilityToggle.astro';
   import { errorMessage } from '@/utils/api';
   import { clearErrors, setFieldError } from '@/utils/forms';
   import { formatNumber, isValidHttpUrl, normalizeUrlInput, pluralize } from '@/utils/format';
-  import { html, setHTML } from '@/utils/html';
+  import { html, safeUrl, setHTML } from '@/utils/html';
   import { sparkline } from '@/utils/charts';
   import { openLinkEditor } from '@/utils/link-editor';
   import { bulkTagLinks, createLink, deleteLink, listLinks, openQr, renderLinkCard, renderLinkSkeleton } from '@/utils/links';
@@ -229,7 +229,7 @@ import VisibilityToggle from '@/components/app/VisibilityToggle.astro';
       render();
     } catch (err) {
       if (id !== requestId) return;
-      list.innerHTML = '';
+      list.replaceChildren();
       $('#pagination').hidden = true;
       $('#load-error').hidden = false;
       $('#load-error [data-empty-body]').textContent = errorMessage(err);
@@ -516,7 +516,7 @@ import VisibilityToggle from '@/components/app/VisibilityToggle.astro';
       $('[data-result-title]').textContent = copied ? 'Copied to your clipboard' : 'Your link is ready';
       const a = $<HTMLAnchorElement>('[data-result-link]');
       a.textContent = link.short_url?.replace(/^https?:\/\//, '') ?? link.short_code;
-      a.href = link.short_url ?? '#';
+      a.href = safeUrl(link.short_url);
       result.hidden = false;
       toast(copied ? 'Link created and copied' : 'Link created', 'success');
       if (state.page === 1 && !hasFilters()) {

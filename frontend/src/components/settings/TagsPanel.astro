@@ -163,7 +163,7 @@ import SettingsSection from './SettingsSection.astro';
     customTagCount.set(list.length);
     emptyState.hidden = list.length > 0;
     if (!list.length) {
-      listHost.innerHTML = '';
+      listHost.replaceChildren();
       return;
     }
     setHTML(
