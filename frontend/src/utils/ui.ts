@@ -342,6 +342,19 @@ export function installGlobalUI(): void {
       return;
     }
 
+    // A bar list's "Show all N" (charts.ts → barList): the rows past its limit, and back.
+    const showAll = target.closest<HTMLButtonElement>('[data-show-all]');
+    if (showAll) {
+      const open = showAll.getAttribute('aria-expanded') !== 'true';
+      document
+        .getElementById(showAll.getAttribute('aria-controls') ?? '')
+        ?.querySelectorAll<HTMLElement>('[data-extra]')
+        .forEach((row) => (row.hidden = !open));
+      showAll.setAttribute('aria-expanded', String(open));
+      showAll.textContent = open ? 'Show fewer' : (showAll.dataset.more ?? 'Show all');
+      return;
+    }
+
     // Light-dismiss: clicking the backdrop (the dialog element itself) closes it.
     if (target instanceof HTMLDialogElement && target.classList.contains('modal') && !target.hasAttribute('data-static')) {
       closeDialog(target);

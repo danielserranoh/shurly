@@ -116,6 +116,17 @@ or thinner with a 4 px rounded data end. Grid lines are hairlines. Only the maxi
 labelled, and every mark has a hover/focus tooltip. Each chart has a **Table** toggle
 showing the same data. Stat numbers use the UI sans, not the display face.
 
+**Donuts** show shares of one total (operating systems, browsers, devices) in the same one hue: four
+blues from the brand ramp, light and dark in turn so neighbours never look alike (`brand-400`, `800`,
+`300`, `600`), then a grey tail (`ink-400`): the fifth item, or *Other* for everything past the top four.
+White gaps separate the slices, and the total sits in the hole. The legend is what screen readers read,
+counts and percents included; **Show numbers** only shows them on screen. Hovering a slice or a key, or
+focusing a key, lights it up and puts its share in the hole. The table lists every item, not grouped,
+with whole-percent shares that add up to 100, and the legend's percents are the table's.
+
+**Bar lists** rank counts with long labels (countries, referrers): the value at the bar tip, the full
+label on hover when it's cut. Past a limit the rest wait behind **Show all N**.
+
 ## Decisions on the brief's open questions (§11)
 
 | # | Question | Decision |

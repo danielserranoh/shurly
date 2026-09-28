@@ -26,6 +26,16 @@ implementation lifecycle and is independent of the URL version segment.
 
 ## [Unreleased]
 
+### Added — a donut chart, and "Show all" for bar lists (styleguide)
+- **`donutChart()`** (`frontend/src/utils/charts.ts`, geometry in `donut.ts`), for the link's analytics by
+  context: shares of one total in one hue, four blues and a grey tail ("Other" past five), the total in
+  the hole, a legend with a **Show numbers** switch (`bindShowNumbers()`), and a table twin with shares
+  (`donutTable()`). The legend is the list screen readers read, numbers included; its keys take focus.
+  In `/styleguide/` → Data viz.
+- **`barList()`** takes a `limit`: the rest wait behind **Show all N**. A cut label shows in full on hover,
+  and each value names its unit for screen readers.
+- **`dataTable()`** can add a share column: whole percents that add up to 100.
+
 ### Added — a link's analytics, as on Shlink's link page (Phase 3.16)
 - **Three new routes under `/api/v1/analytics/urls/{short_code}/`, for the link's page.** The contract is in
   ROADMAP 3.16.1:
