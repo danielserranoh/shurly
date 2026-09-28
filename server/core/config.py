@@ -59,8 +59,17 @@ class Settings(BaseSettings):
     anonymize_remote_addr: bool = True
 
     # Phase 3.9.6 — Trust boundaries for X-Forwarded-For. Empty list (default) = never
-    # trust X-F-F. Set this to your ALB/CloudFront/API-GW source CIDR list in prod.
+    # trust X-F-F. Set this to the ALB's CIDR in prod; CloudFront isn't listed here, see
+    # cloudfront_origin_secrets below.
     trusted_proxies: list[str] = []
+
+    # Phase 6.3 — behind CloudFront (shurly.griddo.io, 4.10) the client IP comes from
+    # CloudFront-Viewer-Address, believed only on a request that carries one of these
+    # values in CLOUDFRONT_ORIGIN_HEADER, a custom origin header the distribution adds.
+    # Two values while the secret rotates, each at least 32 characters. Empty (the
+    # default): X-Forwarded-For, as before (`client_ip`, server/utils/network.py).
+    cloudfront_origin_secrets: list[SecretStr] = []
+    cloudfront_origin_header: str = "X-Origin-Verify"
 
     # Phase 3.9.6 — Visit-suppression query param ("nostat" by default). When the
     # redirect handler sees this param it skips Visitor logging entirely. Useful for QA.
@@ -197,7 +206,11 @@ class Settings(BaseSettings):
     db_ssl_mode: str = "prefer"  # Use "require" for RDS SSL
 
     @field_validator(
-        "cors_origins", "trusted_proxies", "mcp_oauth_allowed_redirect_uris", mode="before"
+        "cors_origins",
+        "trusted_proxies",
+        "mcp_oauth_allowed_redirect_uris",
+        "cloudfront_origin_secrets",
+        mode="before",
     )
     @classmethod
     def parse_string_list(cls, v: Any) -> list[str]:
@@ -213,6 +226,14 @@ class Settings(BaseSettings):
                     return [item.strip() for item in v.split(",") if item.strip()]
                 return [v]
         return v
+
+    @field_validator("cloudfront_origin_secrets")
+    @classmethod
+    def long_enough(cls, secrets: list[SecretStr]) -> list[SecretStr]:
+        """Whoever guesses one chooses the address they're counted and logged under."""
+        if any(len(secret.get_secret_value()) < 32 for secret in secrets):
+            raise ValueError("each CLOUDFRONT_ORIGIN_SECRETS value needs at least 32 characters")
+        return secrets
 
     # Tags configuration
     predefined_tags: dict[str, dict] = {

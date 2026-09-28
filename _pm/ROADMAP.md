@@ -1059,8 +1059,14 @@ for this.
 - [x] Update the hostnames table in `DEPLOYMENT.md` (it still says "Future frontend | 7") → done in #74
 - [x] CI builds the frontend (`npm ci`, `npm test`, `npm run build` in the Tests workflow), so a PR can't break the
       deploy unseen
-- [ ] Client IPs through CloudFront: decide how the API gets the viewer's address once `shurly.griddo.io` goes
-      through the distribution (DEPLOYMENT.md § Frontend hosting, open decision; backend and AWS work)
+- [x] Client IPs through CloudFront: decide how the API gets the viewer's address once `shurly.griddo.io` goes
+      through the distribution → `CloudFront-Viewer-Address`, believed only on a request carrying the
+      distribution's secret origin header (`CLOUDFRONT_ORIGIN_SECRETS`, two values to rotate); otherwise
+      X-Forwarded-For as before. One `client_ip` for the rate limits and the visit log
+      (`tests/test_phase63_cloudfront_client_ip.py`)
+  - [ ] AWS, with the distribution: the custom origin header, HTTPS to the origin, the origin request policy
+        AllViewerAndCloudFrontHeaders-2022-06 and the task's `CLOUDFRONT_ORIGIN_SECRETS` (DEPLOYMENT.md § Frontend
+        hosting); optionally the per-host ALB rules
 
 ---
 
