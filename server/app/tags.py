@@ -34,7 +34,8 @@ def list_tags(
     )
 
     if search:
-        query = query.filter(Tag.name.startswith(search.lower()))
+        # Phase 6.3 — `autoescape`: `%` and `_` in the search are characters, not LIKE wildcards.
+        query = query.filter(Tag.name.startswith(search.lower(), autoescape=True))
 
     if is_predefined is not None:
         query = query.filter(Tag.is_predefined == is_predefined)
