@@ -121,7 +121,7 @@ Shurly lee esta configuración de variables de entorno (servicio `shurly-api`, E
 | `GOOGLE_REDIRECT_URI` | `https://shurly.griddo.io/api/v1/auth/google/callback` |
 | `FRONTEND_URL` | `https://shurly.griddo.io` |
 | `ORGANIZATION_DOMAIN` | `griddo.io` (ya es el valor por defecto) |
-| `CORS_ORIGINS` | tiene que **incluir el origen del frontend**: la página canjea el código con un `POST` desde otro dominio, y sin esto el login falla en el último paso |
+| `CORS_ORIGINS` | nada para esto en producción: la página canjea el código con un `POST` al mismo origen (`shurly.griddo.io`, 4.10). Solo un frontend servido desde otro origen necesita el suyo aquí |
 
 Si falta cualquiera de ellas, Shurly arranca igualmente y el login con Google responde "no
 disponible". Nada se rompe.

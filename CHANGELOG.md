@@ -36,6 +36,17 @@ implementation lifecycle and is independent of the URL version segment.
   and each value names its unit for screen readers.
 - **`dataTable()`** can add a share column: whole percents that add up to 100.
 
+### Security — `deploy_ecs.sh` no longer overwrites production's settings
+- **The script only creates the ECS service now.** Run against the live service, its update path sent the
+  container it builds, whose environment holds 20 variables, and so dropped every setting added on the service
+  since: sign in with Google, the MCP's OAuth, `FRONTEND_URL`, and whatever gets added there later.
+- Once the service exists it stops before building anything, and says where to go: a merge to `main` for an
+  image (the deploy workflow changes only the image), the live service for a setting (DEPLOYMENT.md § Settings).
+  A failed lookup stops it too. `tests/test_deploy_ecs_script.py` runs it against stubbed `aws` and `docker`.
+- The playbook's "Deploy from local", and its JWT and database password rotations, no longer re-run it.
+- Docs: in production the Google sign-in's code exchange is same-origin, so `CORS_ORIGINS` needs no entry for
+  it (DEPLOYMENT.md § Settings, `docs/setup_google_app.md` step 7).
+
 ### Removed — the legacy `/api/v1/stats/*` routes
 - **`GET /api/v1/stats/day/{surl}`, `…/week/{surl}`, `…/world/{surl}`, `…/main` and `…/next/{surl}` answer `404`.**
   They were mounted without authentication, and broken since Phase 1.4: they queried columns that don't exist
@@ -80,6 +91,20 @@ implementation lifecycle and is independent of the URL version segment.
   password there, where the login's limit on failed attempts doesn't apply, and a right guess replaced it. It
   takes a signed-in session now, like setting and removing a password (Phase 3.13.3): an API key gets a `403`,
   even with the current password.
+
+### Security — every password check is limited, and an API key can't make a new one
+- **A wrong current password counts as a failed login.** `POST /api/v1/auth/change-password` and
+  `PUT /api/v1/auth/password` (with `current_password`) checked it without a limit. So a stolen session could guess
+  the password for as long as it lived, then set one that outlives it.
+  - A wrong one now counts with the login's failures for that account (`RATE_LIMIT_LOGIN_FAILURES_PER_ACCOUNT`,
+    10 per 15 minutes), so guesses on any of the three add up. Over the limit, each answers `429` with
+    `Retry-After`.
+  - The right password never counts. As with the login, over the limit it waits for the window too. Signing in
+    with Google stays open, and with it a new password without the old one.
+- **`POST /api/v1/auth/api-key/generate` takes a signed-in session.** An API key could call it, so a leaked key
+  could mint its own replacement, ending the owner's. It gets a `403` now. Revoking with a key still works: that
+  gives nothing away.
+- The API docs list the `429` of these endpoints, and the login's.
 
 ### Security — Trusted Types on every page (Phase 6.3)
 - **Every page's policy now includes `require-trusted-types-for 'script'` and `trusted-types shurly-html`.**
