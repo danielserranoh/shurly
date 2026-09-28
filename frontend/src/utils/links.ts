@@ -6,7 +6,7 @@ import { html, raw, safeUrl, type RawHTML } from './html';
 import { icon } from './icons';
 import { tagPill } from './tags';
 import { openDialog } from './ui';
-import { canChange, creatorName, lockedMenuAttrs, personalBadge, type Viewer } from './viewer';
+import { canChange, creatorEmailBehindName, creatorName, lockedMenuAttrs, personalBadge, type Viewer } from './viewer';
 import { linkApi, linkHref, type LinkAddress } from './link-address';
 import type { CreateLinkRequest, LinkListResponse, LinkMetadata, ShortLink, Tag, UpdateLinkRequest, URLType } from './types';
 
@@ -139,6 +139,7 @@ export function renderLinkCard(link: ShortLink, opts: CardOptions = {}): RawHTML
   const canDelete = link.url_type !== 'campaign';
   const shortUrl = link.short_url ?? '';
   const creator = creatorName(link, opts.viewer ?? null);
+  const creatorEmail = creatorEmailBehindName(link, opts.viewer ?? null);
   const locked = canChange(link, opts.viewer ?? null) ? '' : lockedMenuAttrs('link');
 
   return html`<li class="card card-interactive group relative flex gap-3 p-4 sm:gap-4 sm:p-5 ${opts.fresh ? 'animate-flash' : ''}" data-link="${link.id}">
@@ -160,7 +161,7 @@ export function renderLinkCard(link: ShortLink, opts: CardOptions = {}): RawHTML
         ${icon('corner-down-right', 'size-3.5 shrink-0')}
         <a href="${safeUrl(link.original_url)}" target="_blank" rel="noopener noreferrer" class="truncate hover:text-ink-800" title="${link.original_url}">${prettyUrl(link.original_url)}</a>
       </p>
-      ${creator ? html`<p class="mt-1 flex min-w-0 items-center gap-1.5 text-[13px] text-ink-500">${icon('user', 'size-3.5 shrink-0')}<span class="truncate">Created by ${creator}</span></p>` : ''}
+      ${creator ? html`<p class="mt-1 flex min-w-0 items-center gap-1.5 text-[13px] text-ink-500">${icon('user', 'size-3.5 shrink-0')}<span class="truncate" ${creatorEmail ? html`title="${creatorEmail}"` : ''}>Created by ${creator}</span></p>` : ''}
       ${link.tags.length ? html`<div class="mt-2.5 flex flex-wrap gap-1.5">${link.tags.map((t) => tagPill(t, { href: `/dashboard/?tags=${encodeURIComponent(t.id)}` }))}</div>` : ''}
       <p class="mt-3 flex items-center gap-3 text-[13px] text-ink-500 sm:hidden">
         <span><b class="font-semibold text-ink-900">${formatNumber(link.click_count)}</b> ${link.click_count === 1 ? 'click' : 'clicks'}</span>

@@ -205,7 +205,7 @@ import { BROWSERS, DEVICES, LANGUAGES } from '@/utils/rules';
   import { tagPill } from '@/utils/tags';
   import { confirmDialog, copyWithFeedback, hydrateTimes, setLoading, toast } from '@/utils/ui';
   import { apiPost } from '@/utils/api';
-  import { canChange, creatorName, getViewer, installLockedControls, lockControl, onForbidden, showDaysZoneHint, type Viewer } from '@/utils/viewer';
+  import { canChange, creatorEmailBehindName, creatorName, getViewer, installLockedControls, lockControl, onForbidden, showDaysZoneHint, type Viewer } from '@/utils/viewer';
   import type { CampaignListResponse, DailyStatsResponse, GeoStatsResponse, PreviewMetadata, RedirectRule, RuleCondition, RuleConditionType, ShortLink, WeeklyStatsResponse } from '@/utils/types';
 
   // Phase 8.3 — a link is its code and its domain. Without `?domain=` (an old bookmark),
@@ -247,7 +247,7 @@ import { BROWSERS, DEVICES, LANGUAGES } from '@/utils/rules';
     dest.title = link.original_url;
     setHTML(
       $('[data-meta]'),
-      html`<span class="inline-flex items-center gap-1.5">${icon('calendar', 'size-3.5')}Created ${formatDate(link.created_at)}${creatorName(link, viewer) ? ` by ${creatorName(link, viewer)}` : ''}</span>
+      html`<span class="inline-flex items-center gap-1.5" ${creatorEmailBehindName(link, viewer) ? html`title="${creatorEmailBehindName(link, viewer)}"` : ''}>${icon('calendar', 'size-3.5')}Created ${formatDate(link.created_at)}${creatorName(link, viewer) ? ` by ${creatorName(link, viewer)}` : ''}</span>
         <span class="inline-flex items-center gap-1.5">${icon('pencil', 'size-3.5')}Updated <time data-relative datetime="${link.updated_at}"></time></span>
         ${link.valid_since ? html`<span class="inline-flex items-center gap-1.5">${icon('calendar-clock', 'size-3.5')}Live from ${formatDateTime(link.valid_since)}</span>` : ''}
         ${link.valid_until ? html`<span class="inline-flex items-center gap-1.5">${icon('timer', 'size-3.5')}Expires ${formatDateTime(link.valid_until)}</span>` : ''}
