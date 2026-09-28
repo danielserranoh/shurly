@@ -61,12 +61,12 @@ import SettingsSection from './SettingsSection.astro';
 
 <script>
   import { apiDelete, apiGet, apiPatch, apiPost, errorMessage } from '@/utils/api';
-  import { formatDate } from '@/utils/format';
+  import { formatDate, pluralize } from '@/utils/format';
   import { html, setHTML, type RawHTML } from '@/utils/html';
   import { icon, type IconName } from '@/utils/icons';
   import { confirmDialog, toast, type ConfirmOptions } from '@/utils/ui';
   import { forgetOrganization, getMe, getMyOrganization, installLockedControls } from '@/utils/viewer';
-  import type { OrgMember, OrgRole, Organization, User } from '@/utils/types';
+  import type { AdoptedLinks, OrgMember, OrgRole, Organization, User } from '@/utils/types';
 
   const ROLES: Record<OrgRole, { label: string; icon: IconName; badge: string; rank: number }> = {
     member: { label: 'Member', icon: 'user', badge: 'badge-neutral', rank: 0 },
@@ -321,6 +321,34 @@ import SettingsSection from './SettingsSection.astro';
     if (!ok) return;
     toast(`${m.email} removed`, 'success');
     await reload();
+    if (org.role === 'owner') await offerAdoption(m);
+  }
+
+  /**
+   * Owners only: move a removed person's personal links and campaigns to the organization.
+   * Offered right after the removal, the one moment the page knows who it was (no endpoint
+   * lists removed people yet). Skipping is safe: the links keep redirecting either way.
+   */
+  async function offerAdoption(m: OrgMember) {
+    let moved: AdoptedLinks | null = null;
+    const ok = await confirmThen(
+      {
+        title: `Move ${m.email}’s personal links to ${org.name}?`,
+        body: `Nobody else can see or change them now. Moved, everyone at ${org.name} sees them and admins manage them. Skipping is fine: they keep working either way.`,
+        confirmLabel: `Move to ${org.name}`,
+        cancelLabel: 'Skip',
+      },
+      async () => {
+        moved = await apiPost<AdoptedLinks>('/api/v1/organization/adopt-personal-links', { user_id: m.user_id });
+      },
+    );
+    if (!ok || !moved) return;
+    const { links, campaigns } = moved as AdoptedLinks;
+    if (!links && !campaigns) toast('Nothing to move', 'info', { description: `${m.email} had no personal links or campaigns.` });
+    else {
+      const what = [links && pluralize(links, 'link'), campaigns && pluralize(campaigns, 'campaign')].filter(Boolean).join(' and ');
+      toast(`Moved to ${org.name}`, 'success', { description: `${what} now ${links + campaigns === 1 ? 'belongs' : 'belong'} to the organization.` });
+    }
   }
 
   host.addEventListener('click', (e) => {

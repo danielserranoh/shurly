@@ -820,11 +820,14 @@ own links. Tags are already global.
       frontend shows "Created by …" ("you" for your own) and a "Personal" badge on link and campaign lists and
       pages, and locks edit/delete where the viewer's role can't change the item (`utils/viewer.ts`)
 - [x] Someone leaves: their personal links keep redirecting, and an owner can move them to the
-      organization so someone can still manage them (`POST /api/v1/organization/adopt-personal-links`)
+      organization so someone can still manage them (`POST /api/v1/organization/adopt-personal-links`). The UI
+      offers it to an owner right after they remove someone in Settings → Organization; skipping is safe
 - [x] One organization per user at launch (the membership table allows more later). Tags stay global while
       there's a single organization; scope them per organization before a second one
 - [x] Settings → Organization: members, roles, remove, hand the role over. Each row offers only what the
       viewer's role allows; the API's 403/409 message is shown as is (`components/settings/OrganizationPanel.astro`)
+- [ ] Removed people list in Settings → Organization, so an owner who skipped the move at removal time can still
+      move someone's personal links later (needs `GET /api/v1/organization/removed-members`)
 
 ### 3.14.4 Verification
 - [x] Tests (TDD): visibility matrix (A sees B's organization links, not B's personal ones), organization by
