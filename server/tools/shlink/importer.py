@@ -34,15 +34,17 @@ from server.tools.shlink.mapping import is_bot, is_pixel, map_condition
 from server.utils.columns import fit
 from server.utils.csv_export import unquote_spreadsheet_text
 from server.utils.domain import normalize_hostname
+from server.utils.network import UNKNOWN_IP
 from server.utils.organization import get_membership
 from server.utils.tags import normalize_tag_name, validate_tag_name
 from server.utils.url import MAX_SHORT_CODE_LENGTH, RESERVED_SHORT_CODES, is_valid_url
+from server.utils.visit_facets import kind_of
 
 # Tests point this at their database.
 session_factory = SessionLocal
 
 # Shlink exposes no visitor addresses: an imported visit's `ip`, and how it's told apart.
-IMPORTED_IP = "unknown"
+IMPORTED_IP = UNKNOWN_IP  # Shlink exposes no addresses
 LEGACY_TAG = "legacy"
 DECISIONS = ("keep", "archive", "drop")
 
@@ -360,7 +362,8 @@ def _visits(db, report, url: URL, visits: list[dict]) -> None:
         )
     db.add_all(added)
     report.visits += len(added)
-    clicks = [visit.visited_at for visit in added if not visit.is_pixel]
+    # The link's last click is a click (Phase 3.16): neither Shlink's potential bots nor opens.
+    clicks = [v.visited_at for v in added if kind_of(v.is_pixel, v.is_bot) == "click"]
     if clicks:
         newest = max(clicks).replace(tzinfo=timezone.utc)
         current = url.last_click_at

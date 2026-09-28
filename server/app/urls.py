@@ -44,7 +44,7 @@ from server.utils.access import LinkDomain, find_url, find_urls, viewer
 from server.utils.columns import fit
 from server.utils.domain import get_or_create_default_domain, resolve_domain_for_host
 from server.utils.geo import country_of
-from server.utils.network import visit_ip
+from server.utils.network import UNKNOWN_IP, visit_ip
 from server.utils.opengraph import fetch_opengraph_metadata, is_social_media_crawler
 from server.utils.redirect_rules import pick_target
 from server.utils.url import (
@@ -1116,7 +1116,7 @@ def tracking_pixel(short_code: str, request: Request, db: Session = Depends(get_
         Visitor(
             url_id=url.id,
             short_code=short_code,
-            ip=fit(stored_ip or "unknown", Visitor.ip),
+            ip=fit(stored_ip or UNKNOWN_IP, Visitor.ip),
             # Phase 8.4 — from the stored address: anonymized, when that's on.
             country=country_of(stored_ip),
             user_agent=visit_user_agent,
@@ -1244,9 +1244,6 @@ def redirect_short_url(short_code: str, request: Request, db: Session = Depends(
                 detail="This short URL has reached its visit limit",
             )
 
-    # Update last_click_at timestamp
-    url.last_click_at = datetime.now(timezone.utc)
-
     # Phase 3.10.2 — let conditional rules override the destination before we
     # append campaign params or forwarded query params. First-match wins by
     # priority; if no rule matches, fall through to the URL's original_url.
@@ -1318,14 +1315,19 @@ def redirect_short_url(short_code: str, request: Request, db: Session = Depends(
     visit = Visitor(
         url_id=url.id,
         short_code=short_code,
-        ip=fit(stored_ip or "unknown", Visitor.ip),
+        ip=fit(stored_ip or UNKNOWN_IP, Visitor.ip),
         country=country_of(stored_ip),  # Phase 8.4 — from the stored address
         user_agent=visit_user_agent,
         referer=request.headers.get("referer"),
         is_bot=ua_is_bot(visit_user_agent),
+        visited_at=now.replace(tzinfo=None),  # naive UTC, like the column's default
     )
 
     db.add(visit)
+    # Phase 3.16 — the link's last click is a click, as `/totals` counts one: a bot's visit
+    # doesn't move it, nor do a crawler's preview or a `?nostat` hit, which return above.
+    if not visit.is_bot:
+        url.last_click_at = now
     db.commit()
 
     # Phase 3.10.6 — honor REDIRECT_STATUS_CODE + REDIRECT_CACHE_LIFETIME.
