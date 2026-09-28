@@ -870,6 +870,17 @@ sends the email. None of it is set up yet (ROADMAP 6.4).
 4. **Write it down** in the troubleshooting catalog (`docs/AWS_ECS_DEPLOYMENT.md`): the symptom, the cause and the
    fix.
 
+## Moving Shlink's links (Phase 8.4)
+
+Three commands, `python -m server.tools.shlink export | review | import`, each from the previous one's file
+(`server/tools/shlink/README.md`). Snapshots can hold personal data: keep them in `_exchange/` or an encrypted
+store, never in the repository.
+
+- **The import writes to the database the `DB_*` settings name.** Always run it with `--dry-run` first.
+- **How it runs against the private RDS is still open (decision B, ROADMAP 8.4).** The recommendation is a one-off
+  ECS task running the same image. Until that's decided, rehearse locally against a restored copy.
+- **With `--visits`,** imported visits carry ip "unknown". Unique-visitor counts cover the cutover onward only.
+
 ## Routine operations
 
 ### View logs

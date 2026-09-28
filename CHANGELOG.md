@@ -26,6 +26,22 @@ implementation lifecycle and is independent of the URL version segment.
 
 ## [Unreleased]
 
+### Added — importing Shlink's links (Phase 8.4)
+- **`python -m server.tools.shlink import <snapshot> <review.csv> --as <owner>`** imports every link the review
+  keeps, with its exact code (never lowercased), its domain and its creation date, owned by the organization.
+  `--dry-run` does it all and rolls back.
+- **Mapped:** the destination, title, tags (`archive` adds `legacy`), validity window, visit cap, `crawlable`,
+  query forwarding and redirect rules. A rule with a condition Shurly has no equivalent for (IP address,
+  geolocation) is left out whole. `language en-US` becomes `en`. The report lists all of it.
+- **It can run again.** An identical link is left alone. A link there with another destination, or one Shurly
+  can't take (a code over 20 characters, one of its own paths, a destination that isn't http(s)), stops the import
+  before anything is written, unless the review drops it.
+- **`--visits` imports Shlink's visits** (decision A, 2026-09-28):
+  - `ip` is "unknown", which tells them apart; unique-visitor counts cover the cutover onward only;
+  - bots and the `/track` pixel come as Shlink flagged them;
+  - a later snapshot adds only the newer visits.
+- `server/tools/shlink/README.md` documents it. How it runs against production is still to be decided.
+
 ### Added — "Created by" names on links (Phase 3.12)
 - **Link cards and the link page say who created it by name**, e.g. "Created by Ana García", with the email
   as a tooltip, as campaigns do. "You" stays "you", and someone without a name still shows their email.

@@ -185,7 +185,7 @@ System creates:
 ### 2.2 Enhanced Visitor Tracking ✅
 - [x] User agent parsing utilities (browser, OS, device type detection)
 - [x] Referer tracking (already in Visitor model)
-- [ ] IP geolocation service integration (deferred - optional feature)
+- [ ] IP geolocation service integration (deferred - optional feature) → wanted before the Shlink cutover: see 8.4
 - [ ] Background task for async logging (deferred - visitor logging is synchronous)
 
 ---
@@ -1410,16 +1410,20 @@ with one ALB change, and rolling back restores it. Shurly resolves links by (Hos
 - [x] Shared or personal links 🔎 R7: **the organization's by default, personal only on purpose** (decided
       2026-09-27) → 3.14
 - [x] Owner of the migrated links: the Griddo organization (3.14)
-- [ ] Visit history: import it as `Visitor` rows (no schema change, but Shlink exposes no IPs, so unique-visitor
-      counts won't cover it) or archive Shlink's export and start counting at the cutover
+- [x] Visit history: import it as `Visitor` rows (no schema change, but Shlink exposes no IPs, so unique-visitor
+      counts won't cover it) or archive Shlink's export and start counting at the cutover → **decided
+      2026-09-28: imported**, with the import's `--visits`: ip "unknown" (which tells imported visits apart), the
+      country, user agent and referer, bots and the `/track` pixel as Shlink flagged them. Unique-visitor counts
+      cover the cutover onward only
 
 ### 8.2 Case sensitivity 🔎 R6
 Shlink defaults to `SHORT_URL_MODE=strict`: case-sensitive lookups and mixed-case generated codes. Shurly's
 `loose` lowercases codes when they are created but matches the path exactly; Shlink's `loose` also matches
 case-insensitively.
 - [ ] Check which mode `go.griddo.io` runs
-- [ ] `strict` → import codes verbatim (skip `normalize_short_code`); Shurly's exact-match resolver already
-      behaves like Shlink's strict mode. Pin it with a test so lookups never get lowercased by accident
+- [x] `strict` → import codes verbatim (skip `normalize_short_code`); Shurly's exact-match resolver already
+      behaves like Shlink's strict mode. Pin it with a test so lookups never get lowercased by accident → the
+      import keeps codes verbatim; `test_answers_on_its_domain_with_its_exact_code` pins the redirect
 - [ ] `loose` → case-insensitive lookup on that domain before the cutover
 
 ### 8.3 Finish multi-domain (3.10.1 shipped the model only)
@@ -1455,13 +1459,19 @@ the import can be re-run.
 - [x] Default to `keep`: a kept link costs a row; a dropped one that turns out to be on a poster, a QR code or a
       PDF breaks for good. `archive` = migrate with a `legacy` tag the dashboard can hide; `drop` only for tests
       and duplicates → the sheet fills `keep`; the import applies the rest
-- [ ] Field mapping: long URL, title, tags, valid since/until, max visits, crawlable, `forwardQuery` →
+- [x] Field mapping: long URL, title, tags, valid since/until, max visits, crawlable, `forwardQuery` →
       `forward_parameters`, redirect rules. Conditions Shurly lacks (e.g. IP or geolocation) go in the report;
-      nothing is dropped silently
-- [ ] Import (idempotent, `--dry-run` first): exact code, original domain and creation date; fails on a
-      conflict instead of suffixing like the custom-code path does. It writes to the private RDS, so it runs
-      as an admin-only endpoint or through ECS Exec (documented in `DEPLOYMENT.md`; it needs an ECS task role
-      with SSM permissions, and `deploy_ecs.sh` sets none today)
+      nothing is dropped silently → a rule with one leaves whole, reported; `language en-US` becomes `en` and
+      `valueless-query-param` a presence match, reported as approximated
+- [x] Import (idempotent, `--dry-run` first): exact code, original domain and creation date; fails on a
+      conflict instead of suffixing like the custom-code path does → `python -m server.tools.shlink import`
+      (`server/tools/shlink/README.md`): owned by the organization, as an owner; a link Shurly can't take stops
+      it too, unless the review drops it; a later snapshot adds only newer visits (the cutover's delta)
+  - [ ] How it runs in production: it writes to the private RDS. Decision B, with the user: a one-off ECS task
+        (recommended) or ECS Exec (needs an ECS task role with SSM permissions; `deploy_ecs.sh` sets none)
+- [ ] Fill `Visitor.country` for Shurly's own visits (geolocation: 2.x's deferred "IP geolocation service
+      integration"). Nothing fills it today, so once Shlink's history is imported the geo view shows only that
+      history, and would mislead
 
 ### 8.5 Cutover
 - [ ] Freeze link creation in Shlink; final delta export + import

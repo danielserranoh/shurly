@@ -5,7 +5,7 @@ read: it stays intact as the rollback.
 
 1. **Export** Shlink's REST API into a raw JSON snapshot.
 2. **Review** the snapshot as a CSV, and decide `keep`, `archive` or `drop` for each link.
-3. **Import** the snapshot and the decisions into Shurly (next, not built yet).
+3. **Import** the snapshot and the decisions into Shurly.
 
 > **The snapshot can hold personal data.** With `--visits` it holds every visit's
 > user agent, referer and location. Even without, it holds every link the company has
@@ -89,3 +89,51 @@ The status is the final one after redirects:
 - `error: <type>` when the request failed.
 
 `OG_FETCH_ALLOW_PRIVATE=true` lets it check internal addresses too.
+
+## Import
+
+```bash
+uv run python -m server.tools.shlink import _exchange/shlink-go.griddo.io-….snapshot.json \
+    _exchange/shlink-go.griddo.io-….review.csv --as owner@griddo.io [--visits] [--dry-run]
+```
+
+It writes to the database the `DB_*` settings name. **Run it with `--dry-run` first:** it does everything,
+prints the report, and rolls back. How it runs against production's private RDS is still to be decided
+(ROADMAP 8.4, decision B). A rehearsal runs locally against a restored copy.
+
+**Each link the review keeps** (`keep`, `archive`, or left out of the review) arrives with:
+- its exact code, never lowercased, so `AbC` and `abc` stay two links, as in Shlink's default `strict` mode;
+- its domain: `shortUrl`'s host, with a Domain row made for it if there's none. Nothing is made the default;
+- its creation date;
+- the organization of `--as` as its owner, and `--as` as its creator. It must be an owner of the organization.
+
+**What maps:**
+- the destination, title, tags, validity window, visit cap, `crawlable`, and `forwardQuery` →
+  `forward_parameters`;
+- tags are matched by name, the predefined ones included, and made when missing. `archive` adds a
+  `legacy` tag;
+- redirect rules, condition by condition:
+  - a rule with a condition Shurly has no equivalent for (IP address, geolocation) is left out whole,
+    because dropping that condition alone would widen it;
+  - `language en-US` becomes `en`, since Shurly compares the primary subtag;
+  - `valueless-query-param` becomes a presence match, which also matches `?key=value`.
+
+The report lists every rule left out or approximated. Nothing is dropped silently.
+
+**Running it again** is safe:
+- a link already there with the same destination is left as it is, Shurly-side edits included;
+- a link there with another destination is a conflict. So is a link Shurly can't take: a code longer than 20
+  characters, one of Shurly's own paths (`docs`, `redoc`, `mcp`), or a destination that isn't http(s). Either
+  stops the import before anything is written, unless the review drops that link. The exit status is `1`.
+
+**Visits, with `--visits`** (decision A, 2026-09-28): each of Shlink's visits becomes a Visitor row.
+- **`ip` is `"unknown"`**: Shlink exposes no addresses. That's how imported visits are told apart: a visit
+  Shurly records always has an address. It's also why **unique-visitor counts only cover the cutover onward**.
+- The country comes from `visitLocation.countryName`, and the user agent, referer and date as they were.
+- A bot is what Shlink flagged as `potentialBot`. The `/track` pixel is a visit Shlink didn't redirect
+  (`redirectUrl` null), so the pixel's opens don't count as clicks.
+- A run imports only the visits newer than the link's last imported one. The cutover's final snapshot
+  therefore adds what happened since the first import. A second visit in the very same second as that last
+  one would be missed.
+- Shurly doesn't fill `Visitor.country` for its own visits yet (ROADMAP 8.4). Until it does, the geo view
+  shows the imported history only.
