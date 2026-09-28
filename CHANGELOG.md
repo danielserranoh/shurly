@@ -26,6 +26,14 @@ implementation lifecycle and is independent of the URL version segment.
 
 ## [Unreleased]
 
+### Security — the deploy masks the container's credentials again
+- **`deploy-backend.yml` reads the container from `service.activeConfigurations[0]`**: it read
+  `service.primaryContainer`, which is null for Express services, so the step that masks
+  credential-looking values (`DB_PASSWORD`, `*SECRET*`, `*KEY*`…) in the logs masked nothing. No value
+  was printed (the update's response goes to /dev/null), but the defence wasn't there. It takes the
+  newest active configuration (a rollout has two, in no promised order, and the old one would put
+  previous settings back), and stops if it finds no image and environment.
+
 ### Security — SQL built only from bound parameters, checked (Phase 6.3)
 - **Audited:** the API reaches the database through the ORM and SQLAlchemy Core, which bind every
   value. The raw SQL left is static (`SELECT 1`) or takes `:name` parameters (the migration lock).
