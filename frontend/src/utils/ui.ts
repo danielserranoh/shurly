@@ -1,14 +1,14 @@
 // Shared UI behaviours: toasts, copy feedback, dialogs, menus, relative time.
 // `installGlobalUI()` wires document-level delegation once per page, so markup
-// rendered later (innerHTML) gets the behaviours for free via data-attributes:
+// rendered later (setHTML) gets the behaviours for free via data-attributes:
 //   data-copy="text"            copy to clipboard with button feedback
 //   data-dialog-open="id"       open <dialog id="id">
 //   data-dialog-close           close the enclosing dialog
 //   <time data-relative datetime="…">   live "3h ago" label, absolute date in title
 
-import { escapeHtml } from './html';
+import { html, setHTML, type RawHTML } from './html';
 import { formatDateTime, formatRelative } from './format';
-import { iconSvg } from './icons';
+import { icon } from './icons';
 
 // ---------------------------------------------------------------------------
 // Toasts
@@ -35,10 +35,10 @@ function toastRegion(): HTMLElement {
   return region;
 }
 
-const TOAST_ICON: Record<ToastKind, string> = {
-  success: `<span class="mt-0.5 grid size-5 shrink-0 place-items-center rounded-full bg-brand-400 text-white animate-pop">${iconSvg('check', 'size-3.5', 3)}</span>`,
-  error: `<span class="mt-0.5 grid size-5 shrink-0 place-items-center rounded-full bg-red-500 text-white">${iconSvg('x', 'size-3.5', 3)}</span>`,
-  info: `<span class="mt-0.5 grid size-5 shrink-0 place-items-center rounded-full bg-ink-700 text-white">${iconSvg('info', 'size-3.5', 2.5)}</span>`,
+const TOAST_ICON: Record<ToastKind, RawHTML> = {
+  success: html`<span class="mt-0.5 grid size-5 shrink-0 place-items-center rounded-full bg-brand-400 text-white animate-pop">${icon('check', 'size-3.5', 3)}</span>`,
+  error: html`<span class="mt-0.5 grid size-5 shrink-0 place-items-center rounded-full bg-red-500 text-white">${icon('x', 'size-3.5', 3)}</span>`,
+  info: html`<span class="mt-0.5 grid size-5 shrink-0 place-items-center rounded-full bg-ink-700 text-white">${icon('info', 'size-3.5', 2.5)}</span>`,
 };
 
 export function toast(message: string, kind: ToastKind = 'success', opts: ToastOptions = {}): void {
@@ -46,13 +46,16 @@ export function toast(message: string, kind: ToastKind = 'success', opts: ToastO
   const el = document.createElement('div');
   el.className = 'toast';
   el.setAttribute('role', kind === 'error' ? 'alert' : 'status');
-  el.innerHTML = `${TOAST_ICON[kind]}
+  setHTML(
+    el,
+    html`${TOAST_ICON[kind]}
     <div class="min-w-0 flex-1">
-      <p class="font-semibold">${escapeHtml(message)}</p>
-      ${opts.description ? `<p class="mt-0.5 text-ink-300">${escapeHtml(opts.description)}</p>` : ''}
+      <p class="font-semibold">${message}</p>
+      ${opts.description ? html`<p class="mt-0.5 text-ink-300">${opts.description}</p>` : ''}
     </div>
-    ${opts.action ? `<button type="button" data-toast-action class="rounded-md px-2 py-1 text-sm font-semibold text-brand-300 hover:bg-white/10">${escapeHtml(opts.action.label)}</button>` : ''}
-    <button type="button" data-toast-close aria-label="Dismiss" class="-mr-1 rounded-md p-1 text-ink-400 hover:bg-white/10 hover:text-white">${iconSvg('x', 'size-4')}</button>`;
+    ${opts.action ? html`<button type="button" data-toast-action class="rounded-md px-2 py-1 text-sm font-semibold text-brand-300 hover:bg-white/10">${opts.action.label}</button>` : ''}
+    <button type="button" data-toast-close aria-label="Dismiss" class="-mr-1 rounded-md p-1 text-ink-400 hover:bg-white/10 hover:text-white">${icon('x', 'size-4')}</button>`,
+  );
   region.appendChild(el);
   requestAnimationFrame(() => requestAnimationFrame(() => (el.dataset.state = 'open')));
 
@@ -98,6 +101,9 @@ export async function writeClipboard(text: string): Promise<boolean> {
   }
 }
 
+/** What a copy button showed before "Copied!": kept once, so a second copy within 2s restores it too. */
+const copyOriginals = new WeakMap<HTMLElement, { icon: Node[] | null; label: string | null }>();
+
 /**
  * Copy with in-place feedback: the button turns brand blue, its icon becomes a check and
  * its label (if it has one in [data-copy-label]) reads "Copied!" for 2s.
@@ -111,17 +117,20 @@ export async function copyWithFeedback(text: string, button?: HTMLElement | null
   if (button) {
     const iconHost = button.querySelector('[data-copy-icon]');
     const label = button.querySelector('[data-copy-label]');
-    const prevIcon = iconHost?.innerHTML;
-    const prevLabel = label?.textContent;
+    if (!copyOriginals.has(button)) {
+      copyOriginals.set(button, { icon: iconHost ? [...iconHost.childNodes] : null, label: label?.textContent ?? null });
+    }
     button.dataset.copied = '';
-    if (iconHost) iconHost.innerHTML = iconSvg('check', 'size-4 animate-pop', 2.5);
+    if (iconHost) setHTML(iconHost, icon('check', 'size-4 animate-pop', 2.5));
     if (label) label.textContent = 'Copied!';
     window.clearTimeout(Number(button.dataset.copyTimer));
     button.dataset.copyTimer = String(
       window.setTimeout(() => {
         delete button.dataset.copied;
-        if (iconHost && prevIcon !== undefined) iconHost.innerHTML = prevIcon;
-        if (label && prevLabel !== undefined && prevLabel !== null) label.textContent = prevLabel;
+        const original = copyOriginals.get(button);
+        copyOriginals.delete(button);
+        if (iconHost && original?.icon) iconHost.replaceChildren(...original.icon);
+        if (label && original?.label != null) label.textContent = original.label;
       }, 2000),
     );
   }
@@ -133,21 +142,27 @@ export async function copyWithFeedback(text: string, button?: HTMLElement | null
 // Buttons
 // ---------------------------------------------------------------------------
 
+/** A loading button's own content, put back as it was (nodes, not re-parsed markup). */
+const loadingOriginals = new WeakMap<HTMLButtonElement, Node[]>();
+
 /** Swap a button into a loading state (keeps its width stable) and back. */
 export function setLoading(button: HTMLButtonElement | null, loading: boolean, label?: string): void {
   if (!button) return;
   if (loading) {
     if (button.dataset.loading !== undefined) return;
     button.dataset.loading = '';
-    button.dataset.originalHtml = button.innerHTML;
+    const text = label ?? button.textContent?.trim() ?? '';
+    loadingOriginals.set(button, [...button.childNodes]);
     button.style.minWidth = `${button.offsetWidth}px`;
     button.disabled = true;
     button.setAttribute('aria-busy', 'true');
-    button.innerHTML = `<span class="spinner"></span><span>${escapeHtml(label ?? button.textContent?.trim() ?? '')}</span>`;
+    setHTML(button, html`<span class="spinner"></span><span>${text}</span>`);
   } else {
     if (button.dataset.loading === undefined) return;
     delete button.dataset.loading;
-    button.innerHTML = button.dataset.originalHtml ?? button.innerHTML;
+    const original = loadingOriginals.get(button);
+    loadingOriginals.delete(button);
+    if (original) button.replaceChildren(...original);
     button.style.minWidth = '';
     button.disabled = false;
     button.removeAttribute('aria-busy');
@@ -204,23 +219,26 @@ export function confirmDialog(opts: ConfirmOptions): Promise<boolean> {
     // Self-managed: the global Escape/backdrop handlers must not close it behind our back.
     dialog.setAttribute('data-managed', '');
     dialog.setAttribute('data-static', '');
-    dialog.innerHTML = `
+    setHTML(
+      dialog,
+      html`
       <div class="modal-panel p-6" style="--modal-width: 28rem">
         <div class="flex gap-4">
           <div class="grid size-10 shrink-0 place-items-center rounded-full ${opts.danger ? 'bg-red-50 text-red-600' : 'bg-ink-100 text-ink-700'}">
-            ${iconSvg(opts.danger ? 'warning' : 'help', 'size-5')}
+            ${icon(opts.danger ? 'warning' : 'help', 'size-5')}
           </div>
           <div class="min-w-0">
-            <h2 id="confirm-title" class="text-base font-semibold text-ink-950">${escapeHtml(opts.title)}</h2>
-            ${opts.body ? `<p class="mt-1.5 text-sm leading-6 text-ink-600">${escapeHtml(opts.body)}</p>` : ''}
+            <h2 id="confirm-title" class="text-base font-semibold text-ink-950">${opts.title}</h2>
+            ${opts.body ? html`<p class="mt-1.5 text-sm leading-6 text-ink-600">${opts.body}</p>` : ''}
             <p data-confirm-error class="field-error mt-2" hidden></p>
           </div>
         </div>
         <div class="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-          <button type="button" class="btn btn-secondary" data-cancel>${escapeHtml(opts.cancelLabel ?? 'Cancel')}</button>
-          <button type="button" class="btn ${opts.danger ? 'btn-danger' : 'btn-primary'}" data-confirm data-autofocus>${escapeHtml(opts.confirmLabel ?? 'Confirm')}</button>
+          <button type="button" class="btn btn-secondary" data-cancel>${opts.cancelLabel ?? 'Cancel'}</button>
+          <button type="button" class="btn ${opts.danger ? 'btn-danger' : 'btn-primary'}" data-confirm data-autofocus>${opts.confirmLabel ?? 'Confirm'}</button>
         </div>
-      </div>`;
+      </div>`,
+    );
     document.body.appendChild(dialog);
     const confirmBtn = dialog.querySelector<HTMLButtonElement>('[data-confirm]')!;
     const errorEl = dialog.querySelector<HTMLElement>('[data-confirm-error]')!;
@@ -370,7 +388,7 @@ export function installGlobalUI(): void {
       if (!wrapper) return;
       const tpl = wrapper.nextElementSibling;
       if (tpl instanceof HTMLTemplateElement) wrapper.replaceWith(tpl.content.cloneNode(true));
-      else wrapper.innerHTML = `<span class="grid size-full place-items-center text-sm text-ink-400">${iconSvg('image-off', 'size-4')}</span>`;
+      else setHTML(wrapper, html`<span class="grid size-full place-items-center text-sm text-ink-400">${icon('image-off', 'size-4')}</span>`);
     },
     true,
   );

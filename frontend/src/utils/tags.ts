@@ -26,7 +26,8 @@ const COLOR_FAMILIES: Record<string, string> = {
 
 /** Returns attributes for a `.tag` element: a data-color family or an inline dot color. */
 export function tagColorAttrs(color: string): { family?: string; style?: string } {
-  if (color.startsWith('#')) return { style: `--tag-dot:${color}` };
+  // A hex colour only: it goes into a style attribute, where anything else could add CSS.
+  if (/^#(?:[0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(color)) return { style: `--tag-dot:${color}` };
   const family = COLOR_FAMILIES[color.split('-')[0]];
   return family ? { family } : {};
 }

@@ -2,8 +2,8 @@
 // Markup comes from components/ui/TagInput.astro (or is created by `mountTagInput`).
 
 import { errorMessage } from './api';
-import { escapeHtml } from './html';
-import { iconSvg } from './icons';
+import { html, setHTML, type RawHTML } from './html';
+import { icon } from './icons';
 import { CATEGORY_LABELS, createTag, loadTags, tagColorAttrs, tagPill } from './tags';
 import { toast } from './ui';
 import type { Tag } from './types';
@@ -20,14 +20,17 @@ let uid = 0;
 export function mountTagInput(root: HTMLElement): TagInputHandle {
   const id = `taginput-${++uid}`;
   root.classList.add('relative');
-  root.innerHTML = `
+  setHTML(
+    root,
+    html`
     <div class="flex min-h-10 flex-wrap items-center gap-1.5 rounded-[var(--radius-lg)] border border-ink-200 bg-white px-2 py-1.5 shadow-xs transition-[border-color,box-shadow] hover:border-ink-300 focus-within:border-ink-950 focus-within:shadow-[0_0_0_1px_var(--color-ink-950),0_0_0_5px_var(--color-brand-200)]" data-box>
       <span class="contents" data-selected></span>
       <input type="text" class="h-7 min-w-32 flex-1 bg-transparent px-1 text-sm text-ink-900 outline-none placeholder:text-ink-500"
         role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="${id}-list" autocomplete="off"
-        placeholder="${escapeHtml(root.dataset.placeholder ?? 'Add tags…')}" aria-label="${escapeHtml(root.dataset.label ?? 'Tags')}" />
+        placeholder="${root.dataset.placeholder ?? 'Add tags…'}" aria-label="${root.dataset.label ?? 'Tags'}" />
     </div>
-    <ul id="${id}-list" role="listbox" hidden class="absolute inset-x-0 top-full z-30 mt-1.5 max-h-64 overflow-y-auto rounded-xl border border-line bg-white p-1.5 shadow-lg"></ul>`;
+    <ul id="${id}-list" role="listbox" hidden class="absolute inset-x-0 top-full z-30 mt-1.5 max-h-64 overflow-y-auto rounded-xl border border-line bg-white p-1.5 shadow-lg"></ul>`,
+  );
 
   const box = root.querySelector<HTMLElement>('[data-box]')!;
   const selectedEl = root.querySelector<HTMLElement>('[data-selected]')!;
@@ -47,7 +50,7 @@ export function mountTagInput(root: HTMLElement): TagInputHandle {
   const emit = () => listeners.forEach((cb) => cb([...selected]));
 
   function renderSelected() {
-    selectedEl.innerHTML = selected.map((t) => tagPill(t, { removable: true }).value).join('');
+    setHTML(selectedEl, html`${selected.map((t) => tagPill(t, { removable: true }))}`);
   }
 
   function close() {
@@ -70,19 +73,23 @@ export function mountTagInput(root: HTMLElement): TagInputHandle {
     if (active >= options.length) active = options.length - 1;
 
     if (!options.length) {
-      list.innerHTML = `<li class="px-3 py-2 text-sm text-ink-500">${q ? 'No matching tags' : 'No more tags — type to create one'}</li>`;
+      setHTML(list, html`<li class="px-3 py-2 text-sm text-ink-500">${q ? 'No matching tags' : 'No more tags — type to create one'}</li>`);
     } else {
-      list.innerHTML = options
-        .map((opt, i) => {
-          const common = `id="${id}-opt-${i}" role="option" data-index="${i}" aria-selected="${i === active}" class="flex cursor-pointer items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm ${i === active ? 'bg-ink-100' : ''} hover:bg-ink-100"`;
+      setHTML(
+        list,
+        html`${options.map((opt, i) => {
+          let body: RawHTML;
           if (opt.kind === 'create') {
-            return `<li ${common}><span class="grid size-5 place-items-center rounded-md bg-ink-950 text-brand-300">${iconSvg('plus', 'size-3.5', 2.5)}</span><span>Create <b class="font-semibold">“${escapeHtml(opt.name)}”</b></span></li>`;
+            body = html`<span class="grid size-5 place-items-center rounded-md bg-ink-950 text-brand-300">${icon('plus', 'size-3.5', 2.5)}</span><span>Create <b class="font-semibold">“${opt.name}”</b></span>`;
+          } else {
+            const { family } = tagColorAttrs(opt.tag.color);
+            const category = opt.tag.is_predefined && family ? CATEGORY_LABELS[family] : 'Your tag';
+            body = html`${tagPill(opt.tag)}<span class="ml-auto text-xs text-ink-500">${category ?? ''}</span>`;
           }
-          const { family } = tagColorAttrs(opt.tag.color);
-          const category = opt.tag.is_predefined && family ? CATEGORY_LABELS[family] : 'Your tag';
-          return `<li ${common}>${tagPill(opt.tag).value}<span class="ml-auto text-xs text-ink-500">${escapeHtml(category ?? '')}</span></li>`;
-        })
-        .join('');
+          // String(): `html` renders a bare false as nothing, and aria-selected needs "false".
+          return html`<li id="${id}-opt-${i}" role="option" data-index="${i}" aria-selected="${String(i === active)}" class="flex cursor-pointer items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm ${i === active ? 'bg-ink-100' : ''} hover:bg-ink-100">${body}</li>`;
+        })}`,
+      );
     }
     list.hidden = false;
     input.setAttribute('aria-expanded', 'true');

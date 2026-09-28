@@ -182,8 +182,8 @@ import { site } from '@/config/site';
   import { errorMessage } from '@/utils/api';
   import { applyApiError, clearErrors, revealFirstError, setFieldError } from '@/utils/forms';
   import { fromLocalInput, hostname, isValidHttpUrl, normalizeUrlInput } from '@/utils/format';
-  import { escapeHtml, safeUrl } from '@/utils/html';
-  import { iconSvg } from '@/utils/icons';
+  import { html, safeUrl, setHTML } from '@/utils/html';
+  import { icon } from '@/utils/icons';
   import { createLink, fetchMetadata, linkHref, openQr, setLinkTags } from '@/utils/links';
   import { mountTagInput } from '@/utils/tag-input';
   import { copyWithFeedback, setLoading, toast, writeClipboard } from '@/utils/ui';
@@ -246,12 +246,12 @@ import { site } from '@/config/site';
     q('[data-og-description]').textContent = valid ? description || (fetched ? 'No description found — add one to make it clickable.' : '') : 'We’ll show how it unfurls on LinkedIn, WhatsApp and Slack.';
     const imgBox = q('[data-og-image]');
     if (valid && image && isValidHttpUrl(image)) {
-      imgBox.innerHTML = `<img src="${escapeHtml(safeUrl(image))}" alt="" referrerpolicy="no-referrer" class="size-full object-cover" />`;
+      setHTML(imgBox, html`<img src="${safeUrl(image)}" alt="" referrerpolicy="no-referrer" class="size-full object-cover" />`);
       imgBox.querySelector('img')!.addEventListener('error', () => {
-        imgBox.innerHTML = `<span class="flex items-center gap-2 text-sm">${iconSvg('image-off', 'size-4')}Image couldn’t be loaded</span>`;
+        setHTML(imgBox, html`<span class="flex items-center gap-2 text-sm">${icon('image-off', 'size-4')}Image couldn’t be loaded</span>`);
       });
     } else if (valid) {
-      imgBox.innerHTML = `<span class="flex items-center gap-2 text-sm">${iconSvg('image', 'size-4')}No preview image</span>`;
+      setHTML(imgBox, html`<span class="flex items-center gap-2 text-sm">${icon('image', 'size-4')}No preview image</span>`);
     }
     const titleInput = field('title');
     titleInput.placeholder = fetched?.og_title ? `e.g. ${fetched.og_title}` : 'e.g. Q4 proposal — Acme Corp';
@@ -260,12 +260,12 @@ import { site } from '@/config/site';
   function setOgStatus(kind: 'idle' | 'loading' | 'ok' | 'none' | 'error') {
     const map = {
       idle: '',
-      loading: '<span class="spinner"></span>Fetching preview…',
-      ok: `<span class="text-brand-700">${iconSvg('check', 'size-3.5', 2.5)}</span>From the page`,
+      loading: html`<span class="spinner"></span>Fetching preview…`,
+      ok: html`<span class="text-brand-700">${icon('check', 'size-3.5', 2.5)}</span>From the page`,
       none: 'No preview on this page',
       error: 'Couldn’t reach the page',
     } as const;
-    ogStatus.innerHTML = map[kind];
+    setHTML(ogStatus, map[kind]);
     q('[data-og-card]').classList.toggle('opacity-60', kind === 'loading');
   }
 
@@ -410,7 +410,7 @@ import { site } from '@/config/site';
     q('#success').hidden = false;
     const a = q<HTMLAnchorElement>('[data-success-link]');
     a.textContent = (link.short_url ?? link.short_code).replace(/^https?:\/\//, '');
-    a.href = link.short_url ?? '#';
+    a.href = safeUrl(link.short_url);
     q<HTMLAnchorElement>('[data-success-details]').href = linkHref(link.short_code);
     q('[data-success-sub]').textContent = copied ? 'It’s already on your clipboard. Every click will show up in Shurly.' : 'Share it anywhere — every click shows up in Shurly.';
     const warn = q('[data-success-warning]');

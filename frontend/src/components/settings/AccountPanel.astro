@@ -70,7 +70,8 @@ import SettingsSection from './SettingsSection.astro';
   import { applyApiError, clearErrors, setFieldError } from '@/utils/forms';
   import { formatDate } from '@/utils/format';
   import { startGoogleSignIn } from '@/utils/google-signin';
-  import { iconSvg } from '@/utils/icons';
+  import { html, setHTML } from '@/utils/html';
+  import { icon } from '@/utils/icons';
   import { confirmDialog, setLoading, toast } from '@/utils/ui';
   import { refreshMe } from '@/utils/viewer';
   import { currentUser } from './store';
@@ -144,9 +145,12 @@ import SettingsSection from './SettingsSection.astro';
   // Live length check: the hint earns a brand check once the rule is met.
   const renderHint = () => {
     const ok = next.value.length >= 8;
-    hint.innerHTML = ok
-      ? `<span class="grid size-4 place-items-center rounded-full bg-brand-400 text-white">${iconSvg('check', 'size-3', 3)}</span><span class="text-ink-700">At least 8 characters</span>`
-      : `<span class="size-4 rounded-full border-2 border-ink-300"></span><span>At least 8 characters</span>`;
+    setHTML(
+      hint,
+      ok
+        ? html`<span class="grid size-4 place-items-center rounded-full bg-brand-400 text-white">${icon('check', 'size-3', 3)}</span><span class="text-ink-700">At least 8 characters</span>`
+        : html`<span class="size-4 rounded-full border-2 border-ink-300"></span><span>At least 8 characters</span>`,
+    );
   };
   renderHint();
   next.addEventListener('input', renderHint);
