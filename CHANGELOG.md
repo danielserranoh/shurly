@@ -26,6 +26,34 @@ implementation lifecycle and is independent of the URL version segment.
 
 ## [Unreleased]
 
+### Security — after logging in, `?next=` can't send you to another site
+- **The login page's `next` is resolved the way the browser resolves it**, not judged by its
+  first characters. Browsers drop tabs and line breaks from URLs, so
+  `/login/?next=/%09/evil.com` passed the old check and sent someone to `evil.com` right after
+  logging in; dot segments (`/.//evil.com`) did the same. Control characters and backslashes are
+  refused outright, and the path that comes out must still start with a single `/` on this site.
+  The same check covers the path kept across the Google round trip. Covered by the frontend's
+  first unit tests (`cd frontend && npm test`, on Node's WHATWG URL parser), now a CI job.
+- **The login and password forms `POST` if they're submitted before their script loads**, so the
+  password can't end up in the address bar, the history or the host's logs.
+
+### Added — Google sign-in in the frontend (Phase 3.13.5)
+- **"Sign in with Google" on the login page.** It leaves for
+  `GET /api/v1/auth/google/start`; Google's answer comes back as `/login/#code=…`, which
+  the page trades by `POST /api/v1/auth/google/exchange` for the session, so the token
+  never travels in a URL, and the fragment is cleared right away. `#error=…` codes get
+  plain-language messages. Where you were going survives the round trip (kept in
+  `sessionStorage`, same-site paths only). Email and password login stays, and "Forgot
+  password?" now says to sign in with Google and set a new one.
+- **No sign-up page**: accounts are created by signing in with Google. `/register/`
+  redirects to the login page, and the landing page's "Get started" buttons lead there.
+- **Settings → Account → Password**: set, change or remove a password. Replacing one
+  takes the current password; with Google it's optional, and without it the change
+  needs a recent sign-in, the way back from a forgotten one. Without Google the password
+  is the only way in, so removing it is locked with the reason. When the session is too
+  old for the change, a button signs you in with Google again and brings you back to
+  Settings.
+
 ### Security — a refused login no longer tells whether the address has an account
 - **`POST /api/v1/auth/login` takes as long for an unknown address, or an account without a
   password, as for a wrong password.** It returned before checking any password, so the response

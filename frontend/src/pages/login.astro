@@ -1,6 +1,7 @@
 ---
 import AuthLayout from '@/layouts/AuthLayout.astro';
 import Icon from '@/components/ui/Icon.astro';
+import GoogleLogo from '@/components/ui/GoogleLogo.astro';
 import PasswordField from '@/components/ui/PasswordField.astro';
 ---
 
@@ -8,49 +9,98 @@ import PasswordField from '@/components/ui/PasswordField.astro';
   <h1 class="display text-[2rem] text-ink-950">Welcome back</h1>
   <p class="mt-2 text-[15px] text-ink-500">Log in to see who’s been clicking.</p>
 
-  <form id="login-form" class="mt-8 grid gap-5" novalidate>
+  <div id="login" class="mt-8 grid gap-5">
     <div data-form-alert hidden></div>
 
-    <div class="grid gap-1.5">
-      <label for="email" class="label">Work email</label>
-      <input id="email" name="email" type="email" class="input input-lg" autocomplete="email" inputmode="email" placeholder="you@company.com" required aria-describedby="email-error" autofocus />
-      <p id="email-error" class="field-error" data-error-for="email" hidden></p>
-    </div>
+    <button type="button" class="btn btn-secondary btn-lg w-full" data-google><GoogleLogo />Sign in with Google</button>
 
-    <PasswordField id="password" label="Password" autocomplete="current-password">
-      <button slot="label-end" type="button" class="text-sm font-medium text-ink-500 hover:text-ink-950" popovertarget="forgot-popover">Forgot password?</button>
-    </PasswordField>
+    <p class="flex items-center gap-3 text-xs text-ink-500"><span class="h-px flex-1 bg-line"></span>or with your password<span class="h-px flex-1 bg-line"></span></p>
 
-    <div id="forgot-popover" popover class="menu max-w-xs p-4 text-sm leading-6 text-ink-700" data-align="end">
-      <p class="font-semibold text-ink-950">Password reset is on its way</p>
-      <p class="mt-1">Email resets aren’t live yet. Ask your Shurly admin to set a temporary password, then change it in Settings.</p>
-    </div>
+    <!-- POST: submitted before the script loads, the password must not end up in the URL -->
+    <form id="login-form" class="grid gap-5" method="post" novalidate>
+      <div class="grid gap-1.5">
+        <label for="email" class="label">Work email</label>
+        <input id="email" name="email" type="email" class="input input-lg" autocomplete="email" inputmode="email" placeholder="you@company.com" required aria-describedby="email-error" />
+        <p id="email-error" class="field-error" data-error-for="email" hidden></p>
+      </div>
 
-    <button type="submit" class="btn btn-primary btn-lg mt-1 w-full">Log in<Icon name="arrow-right" /></button>
-  </form>
+      <PasswordField id="password" label="Password" autocomplete="current-password">
+        <button slot="label-end" type="button" class="text-sm font-medium text-ink-500 hover:text-ink-950" popovertarget="forgot-popover">Forgot password?</button>
+      </PasswordField>
 
-  <p class="mt-8 text-center text-sm text-ink-500">
-    New to Shurly? <a href="/register/" class="link">Create a free account</a>
-  </p>
+      <div id="forgot-popover" popover class="menu max-w-xs p-4 text-sm leading-6 text-ink-700" data-align="end">
+        <p class="font-semibold text-ink-950">Sign in with Google instead</p>
+        <p class="mt-1">There are no reset emails. Sign in with Google, then set a new password in Settings → Account.</p>
+      </div>
+
+      <button type="submit" class="btn btn-primary btn-lg mt-1 w-full">Log in<Icon name="arrow-right" /></button>
+    </form>
+  </div>
+
+  <p class="mt-8 text-center text-sm text-ink-500">New to Shurly? Sign in with your work Google account: that sets it up.</p>
 </AuthLayout>
 
 <script>
-  import { apiPost } from '@/utils/api';
-  import { safeNext, setToken } from '@/utils/auth';
+  import { ApiError, apiPost, errorMessage } from '@/utils/api';
+  import { safeNext, setToken, takeNext } from '@/utils/auth';
   import { applyApiError, clearErrors, isEmail, setFieldError, showAlert } from '@/utils/forms';
+  import { exchangeGoogleCode, googleErrorMessage, startGoogleSignIn } from '@/utils/google-signin';
   import { setLoading } from '@/utils/ui';
   import type { LoginResponse } from '@/utils/types';
 
+  const root = document.getElementById('login')!;
   const form = document.getElementById('login-form') as HTMLFormElement;
   const submit = form.querySelector<HTMLButtonElement>('button[type="submit"]')!;
+  const google = root.querySelector<HTMLButtonElement>('[data-google]')!;
   const params = new URLSearchParams(location.search);
+  let next = safeNext(params.get('next'));
 
   const reason = params.get('reason');
-  if (reason === 'expired') showAlert(form, 'Your session expired. Log in again to pick up where you left off.', 'info');
-  if (reason === 'signed-out') showAlert(form, 'You’re logged out. See you soon.', 'success');
+  if (reason === 'expired') showAlert(root, 'Your session expired. Log in again to pick up where you left off.', 'info');
+  if (reason === 'signed-out') showAlert(root, 'You’re logged out. See you soon.', 'success');
   const prefill = params.get('email');
   if (prefill) (form.elements.namedItem('email') as HTMLInputElement).value = prefill;
 
+  // ---------------------------------------------------------------- Google
+  google.addEventListener('click', () => {
+    setLoading(google, true, 'Opening Google…');
+    startGoogleSignIn(next);
+  });
+
+  // Google's answer comes back in the fragment (#code=… or #error=…), which never reaches a server.
+  function readAnswer() {
+    const answer = new URLSearchParams(location.hash.slice(1));
+    if (!answer.has('code') && !answer.has('error')) return;
+    // The code is single-use: keep it out of the address bar and the history.
+    history.replaceState(history.state, '', location.pathname + location.search);
+    // Where they were going before Google. If this sign-in fails, the next try, with Google
+    // or the password, still goes there (e.g. back to Settings after signing in again).
+    next = takeNext(next);
+    const code = answer.get('code');
+    if (code) void finishGoogleSignIn(code);
+    else showAlert(root, googleErrorMessage(answer.get('error')));
+  }
+  readAnswer();
+  window.addEventListener('hashchange', readAnswer);
+
+  async function finishGoogleSignIn(code: string) {
+    setLoading(google, true, 'Signing you in…');
+    try {
+      const { access_token } = await exchangeGoogleCode(code);
+      setToken(access_token);
+      window.location.replace(next);
+    } catch (err) {
+      setLoading(google, false);
+      // The API answers with a code when it has one; 503 means Google isn't set up.
+      const errorCode = err instanceof ApiError ? err.code || (err.status === 503 ? 'google_unavailable' : null) : null;
+      if (errorCode) showAlert(root, googleErrorMessage(errorCode));
+      // A code that's unknown, expired or used: the usual reason is a reload or a second tab.
+      else if (err instanceof ApiError && err.status >= 400 && err.status < 500) showAlert(root, 'That Google sign-in expired or was already used. Try again.');
+      else showAlert(root, errorMessage(err));
+    }
+  }
+
+  // ---------------------------------------------------------------- Password
   form.addEventListener('input', (e) => {
     const t = e.target as HTMLInputElement;
     if (t.getAttribute('aria-invalid')) setFieldError(form, t.name, null);
@@ -58,7 +108,7 @@ import PasswordField from '@/components/ui/PasswordField.astro';
 
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
-    clearErrors(form);
+    clearErrors(root);
     const email = (form.elements.namedItem('email') as HTMLInputElement).value.trim();
     const password = (form.elements.namedItem('password') as HTMLInputElement).value;
 
@@ -80,10 +130,10 @@ import PasswordField from '@/components/ui/PasswordField.astro';
     try {
       const { access_token } = await apiPost<LoginResponse>('/api/v1/auth/login', { email, password }, false);
       setToken(access_token);
-      window.location.replace(safeNext(params.get('next')));
+      window.location.replace(next);
     } catch (err) {
       setLoading(submit, false);
-      applyApiError(form, err);
+      applyApiError(root, err);
     }
   });
 </script>
