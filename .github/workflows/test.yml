@@ -74,14 +74,31 @@ jobs:
         file: ./coverage.xml
         fail_ci_if_error: false
 
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '22'
+
+    - name: Frontend unit tests
+      # node --test runs the TypeScript modules as they are (Node 22.18+), and the
+      # tests import nothing from node_modules, so there's no npm ci.
+      working-directory: frontend
+      run: npm test
+
   test-summary:
     runs-on: ubuntu-latest
-    needs: test
+    needs: [test, frontend]
     if: always()
     steps:
     - name: Test Summary
       run: |
-        if [ "${{ needs.test.result }}" == "success" ]; then
+        if [ "${{ needs.test.result }}" == "success" ] && [ "${{ needs.frontend.result }}" == "success" ]; then
           echo "✅ All tests passed!"
           exit 0
         else

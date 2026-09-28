@@ -16,7 +16,8 @@ import PasswordField from '@/components/ui/PasswordField.astro';
 
     <p class="flex items-center gap-3 text-xs text-ink-500"><span class="h-px flex-1 bg-line"></span>or with your password<span class="h-px flex-1 bg-line"></span></p>
 
-    <form id="login-form" class="grid gap-5" novalidate>
+    <!-- POST: submitted before the script loads, the password must not end up in the URL -->
+    <form id="login-form" class="grid gap-5" method="post" novalidate>
       <div class="grid gap-1.5">
         <label for="email" class="label">Work email</label>
         <input id="email" name="email" type="email" class="input input-lg" autocomplete="email" inputmode="email" placeholder="you@company.com" required aria-describedby="email-error" />

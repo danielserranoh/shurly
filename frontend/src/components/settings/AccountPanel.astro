@@ -25,7 +25,8 @@ import SettingsSection from './SettingsSection.astro';
   </SettingsSection>
 
   <SettingsSection id="password-title" title="Password" description="Optional when you sign in with Google. Pick something long that you don’t use anywhere else.">
-    <form class="card overflow-hidden" data-password-form novalidate aria-labelledby="password-title">
+    <!-- POST: submitted before the script loads, the passwords must not end up in the URL -->
+    <form class="card overflow-hidden" data-password-form method="post" novalidate aria-labelledby="password-title">
       <div class="grid gap-5 p-5 sm:p-6">
         <p class="text-sm leading-6 text-ink-600" data-password-status><span class="skeleton inline-block h-4 w-64 align-middle"></span></p>
         <div data-form-alert hidden></div>
@@ -37,7 +38,9 @@ import SettingsSection from './SettingsSection.astro';
         <input type="email" name="username" autocomplete="username" hidden data-username />
         <div class="grid items-start gap-5 sm:grid-cols-2">
           <div data-current-field hidden>
-            <PasswordField id="current-password" name="current_password" label="Current password" autocomplete="current-password" />
+            <PasswordField id="current-password" name="current_password" label="Current password" autocomplete="current-password">
+              <span slot="label-end" class="text-xs text-ink-500" data-current-optional hidden>Optional</span>
+            </PasswordField>
           </div>
           <PasswordField id="new-password" name="new_password" label="New password" autocomplete="new-password" minlength={8} hint="At least 8 characters" />
         </div>
@@ -89,15 +92,16 @@ import SettingsSection from './SettingsSection.astro';
   });
 
   // ---------------------------------------------------------------- Password (Phase 3.13.3)
-  // Set, change or remove a password, only while signed in. The current password is asked
-  // only when the account has one and no Google identity; without Google, the password is
-  // the only way in, so it can't be removed.
+  // Set, change or remove a password, only while signed in. Replacing one takes the current
+  // password, or with Google a recent sign-in instead (so the current one is optional there).
+  // Without Google, the password is the only way in, so it can't be removed.
   const form = document.querySelector<HTMLFormElement>('[data-password-form]')!;
   const current = form.elements.namedItem('current_password') as HTMLInputElement;
   const next = form.elements.namedItem('new_password') as HTMLInputElement;
   const submit = form.querySelector<HTMLButtonElement>('[data-password-submit]')!;
   const removeBtn = form.querySelector<HTMLButtonElement>('[data-remove-password]')!;
   const currentField = form.querySelector<HTMLElement>('[data-current-field]')!;
+  const currentOptional = form.querySelector<HTMLElement>('[data-current-optional]')!;
   const status = form.querySelector<HTMLElement>('[data-password-status]')!;
   const reauth = form.querySelector<HTMLElement>('[data-reauth]')!;
   const hint = form.querySelector<HTMLElement>('[data-password-hint]')!;
@@ -115,7 +119,9 @@ import SettingsSection from './SettingsSection.astro';
         ? 'You sign in with Google, or with your email and this password.'
         : 'You sign in with Google. Add a password to also log in with your email.'
       : 'You log in with your email and password.';
-    currentField.hidden = !needsCurrent();
+    currentField.hidden = !hasPassword;
+    current.required = needsCurrent();
+    currentOptional.hidden = needsCurrent();
     newLabel.textContent = hasPassword ? 'New password' : 'Password';
     submit.textContent = hasPassword ? 'Update password' : 'Set password';
     removeBtn.hidden = !hasPassword;
@@ -167,8 +173,11 @@ import SettingsSection from './SettingsSection.astro';
    * here. Our own words, as for the sign-in errors, since the API's say "set" whatever the change.
    */
   function showReauth(change: 'set' | 'change' | 'remove') {
-    const what = { set: 'Setting a password', change: 'Changing your password', remove: 'Removing your password' }[change];
-    form.querySelector<HTMLElement>('[data-reauth-message]')!.textContent = `${what} needs a recent sign-in with Google.`;
+    form.querySelector<HTMLElement>('[data-reauth-message]')!.textContent = {
+      set: 'Setting a password needs a recent sign-in with Google.',
+      change: 'Changing your password needs your current password or a recent sign-in with Google.',
+      remove: 'Removing your password needs a recent sign-in with Google.',
+    }[change];
     reauth.hidden = false;
     form.querySelector<HTMLButtonElement>('[data-reauth-google]')!.focus();
   }
@@ -204,7 +213,7 @@ import SettingsSection from './SettingsSection.astro';
     } else if (next.value.length < 8) {
       setFieldError(form, 'new_password', 'Use at least 8 characters.');
       ok = false;
-    } else if (needsCurrent() && next.value === current.value) {
+    } else if (current.value && next.value === current.value) {
       setFieldError(form, 'new_password', 'Choose a password that’s different from your current one.');
       ok = false;
     }
@@ -216,7 +225,9 @@ import SettingsSection from './SettingsSection.astro';
     const hadPassword = hasPassword;
     setLoading(submit, true, hadPassword ? 'Updating…' : 'Setting…');
     try {
-      await apiPut('/api/v1/auth/password', needsCurrent() ? { new_password: next.value, current_password: current.value } : { new_password: next.value });
+      // With the current password, the API doesn't need a recent sign-in.
+      const withCurrent = hasPassword && current.value !== '';
+      await apiPut('/api/v1/auth/password', withCurrent ? { new_password: next.value, current_password: current.value } : { new_password: next.value });
     } catch (err) {
       setLoading(submit, false);
       if (isReauth(err)) {

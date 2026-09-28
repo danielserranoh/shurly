@@ -234,6 +234,15 @@ uv run pytest -m integration
 
 ### Frontend Development
 
+#### Run Tests
+
+Unit tests for the parts that decide where the browser goes (Node 22.18+, no install needed):
+
+```bash
+cd frontend
+npm test
+```
+
 #### Build for Production
 
 ```bash

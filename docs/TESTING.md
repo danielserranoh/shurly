@@ -128,8 +128,11 @@ locally, from `POST /api/v1/auth/register` with `ALLOW_PASSWORD_SIGNUP=true` (se
 - [ ] Signed in with Google and no password: "Set password" works right after signing in, and the section then
       says you sign in with Google or with your email and this password
 - [ ] "Remove password" asks first, then leaves Google only
-- [ ] More than 10 minutes after signing in, changing or removing it offers "Sign in with Google again", which
-      comes back to Settings → Account
+- [ ] With Google and a password, the current password is optional: with it, a change works at any time
+- [ ] More than 10 minutes after signing in, changing it without the current password, or removing it, offers
+      "Sign in with Google again", which comes back to Settings → Account
+- [ ] `/login/?next=/%09/evil.com` (or `?next=//evil.com`) lands on the dashboard after logging in, never on
+      another site. The unit tests cover the rest: `cd frontend && npm test`
 - [ ] An account with a password and no Google identity: the current password is asked, and "Remove password"
       is locked, saying why
 
