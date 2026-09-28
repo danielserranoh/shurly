@@ -1331,8 +1331,11 @@ live in `mcp_server/README.md`, written for developers. There is no user manual 
       this site or by hash (the inline ones live in `frontend/src/inline-scripts.mjs`), no `'unsafe-inline'` or
       `'unsafe-eval'` for scripts; `'unsafe-inline'` only for style attributes. `npm run build` fails on a page it
       doesn't cover (`frontend/scripts/check-csp.mjs`); DEPLOYMENT.md § Frontend hosting
-- [ ] Trusted Types (`require-trusted-types-for 'script'`): every HTML sink through a policy. The next step up from the
-      CSP; `setHTML` and `toElement` would become that policy
+- [x] Trusted Types (`require-trusted-types-for 'script'`): every HTML sink through a policy. The next step up from the
+      CSP; `setHTML` and `toElement` would become that policy → done: `trusted-types shurly-html`, one policy in
+      `src/utils/html.ts` that passes through only markup from `html` or `escapeHtml` (anything else is escaped). A
+      sweep of the built bundles and every page found no other sink: Astro and the libraries ship none. The build
+      fails without the directives or with `default`/`*`/`'allow-duplicates'` (`scripts/csp-rules.mjs`)
 - [x] XSS prevention in frontend (dynamic HTML goes through the escaping `html` tag from `@/utils/html`; audit the remaining raw `innerHTML` uses) → audited: data goes through `html`/`setHTML`, URLs through `safeUrl`; two raw sinks left, documented; `frontend/tests/no-raw-html.test.mjs` fails on new ones
 - [x] CORS configuration review → no credentials, only the methods and headers the API uses, `Retry-After`
       and `X-Request-Id` exposed (`tests/test_cors.py`). Production needs no cross-origin entry once the

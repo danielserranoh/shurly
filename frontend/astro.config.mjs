@@ -32,6 +32,10 @@ export default defineConfig({
         "object-src 'none'",
         "base-uri 'self'",
         "form-action 'self'",
+        // Trusted Types: the DOM's HTML sinks take TrustedHTML only, made by the one policy in
+        // src/utils/html.ts (setHTML, toElement). Browsers without Trusted Types ignore these.
+        "require-trusted-types-for 'script'",
+        'trusted-types shurly-html',
       ],
       // The inline scripts (src/inline-scripts.mjs), which Astro doesn't hash itself (is:inline).
       scriptDirective: { hashes: INLINE_SCRIPTS.map(cspHash) },
