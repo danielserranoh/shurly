@@ -20,11 +20,8 @@ fastmcp = pytest.importorskip("fastmcp")
 
 EXPECTED_TOOLS: set[str] = {
     # Auth. No `register` since Phase 3.13.2: accounts come from signing in with Google.
-    "login",
+    # No API key management, `login` or `change_password` since Phase 6.3.
     "get_current_user_info",
-    "change_password",
-    "generate_api_key",
-    "revoke_api_key",
     # Organization (Phase 3.14.2): read-only, role changes stay out of the MCP
     "get_organization",
     "list_organization_members",
@@ -161,3 +158,27 @@ def test_organization_changes_stay_out_of_the_mcp():
     )
     leaked = {n for n in names if n.startswith(governance)}
     assert not leaked, f"Organization changes exposed as MCP tools: {sorted(leaked)}"
+
+
+def test_api_key_management_stays_out_of_the_mcp():
+    """Phase 6.3 — generating or revoking the API key is the person's to do, in
+    Settings or through the API.
+
+    An assistant reading untrusted text (a link title, a fetched page) could be
+    talked into "generate a new API key": the new key would land in its context,
+    which is why /auth/me no longer returns it, and the key the person uses would
+    stop working.
+    """
+    names = _list_tool_names()
+    leaked = {n for n in names if n.startswith(("generate_api_key", "revoke_api_key"))}
+    assert not leaked, f"API key management exposed as MCP tools: {sorted(leaked)}"
+
+
+def test_no_password_or_session_token_passes_through_the_mcp():
+    """Phase 6.3 — `login` would put a JWT in the assistant's context, and both it
+    and `change_password` take a password from it. The MCP is already signed in, so
+    neither does anything there that the person needs.
+    """
+    names = _list_tool_names()
+    leaked = {n for n in names if n.startswith(("login", "change_password"))}
+    assert not leaked, f"Password tools exposed as MCP tools: {sorted(leaked)}"
