@@ -203,17 +203,18 @@ Two filters live in `mcp_server/server.py`:
   `/{short_code}` redirect, `/{short_code}/track` pixel, `/robots.txt`),
   health probes (`/api/v1/health`, `/api/v1/health/db`), the legacy
   `/api/v1/stats/*` namespace superseded by `/api/v1/analytics/*`, and what
-  only the person should do: changing the organization, the password, the API key.
+  only the person should do: changing the organization, the password, the API key,
+  and signing in with a password.
 - **`MCP_TOOL_NAMES`** — maps FastAPI's verbose auto-generated operationIds
   (`create_short_url_api_v1_urls_post`) to clean MCP tool names
   (`create_short_url`).
 
-The surface is now **37 tools**: auth (3), organization (2), URL CRUD + tagging +
+The surface is now **35 tools**: auth (1), organization (2), URL CRUD + tagging +
 previews (11), redirect rules (4), campaigns (6), analytics (7), tags (4). Phase 3.11
 added `get_url` and `fetch_url_metadata` to the original 36; Phase 3.14.2 added
 `get_organization` and `list_organization_members`. `register` left in Phase 3.13.2
 (it's a tool only with `ALLOW_PASSWORD_SIGNUP` on, for local development), and
-`generate_api_key` and `revoke_api_key` in Phase 6.3.
+`generate_api_key`, `revoke_api_key`, `login` and `change_password` in Phase 6.3.
 
 Changing the organization (roles, removals, handing ownership over) stays out of
 the MCP on purpose: an assistant that reads untrusted text, such as link titles or
@@ -223,7 +224,10 @@ fetched pages, could be talked into "make X an owner". Those routes are excluded
 So does managing the API key (Phase 6.3). Talked into "generate a new API key", an
 assistant would get the new key in its context (the reason `/auth/me` no longer
 returns it), and the key the person uses would stop working. Generating and revoking
-it is done in Settings → API & MCP, or with the REST API.
+it is done in Settings → API & MCP, or with the REST API. Signing in with a password
+and changing it stay out too: `login` would put a JWT in the assistant's context, and
+both take a password from it. The MCP is already signed in, so neither does anything
+there that the person needs.
 
 `tests/test_phase52_mcp_tools.py` pins this list. When a route is added or
 renamed, the test fails until `MCP_TOOL_NAMES` (or `EXCLUDED_ROUTE_MAPS`) is
@@ -256,7 +260,7 @@ The pure logic lives in `mcp_server/curated.py` (takes `db: Session` and
 `mcp_server/server.py` open a `SessionLocal` per call and resolve the
 caller with `resolve_current_user(db)` (Phase 5.4).
 
-Total tool surface: **41 tools** (37 auto-generated + 4 curated). The 5.2 contract test (`tests/test_phase52_mcp_tools.py`) and
+Total tool surface: **39 tools** (35 auto-generated + 4 curated). The 5.2 contract test (`tests/test_phase52_mcp_tools.py`) and
 the 5.3 logic tests (`tests/test_phase53_curated_tools.py`) together pin
 the surface.
 

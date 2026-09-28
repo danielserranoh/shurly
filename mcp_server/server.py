@@ -10,7 +10,8 @@ Phase 5.2 layers two filters on top of the bare auto-generation:
     actively harmful) as MCP tools: the public redirect path, the tracking
     pixel, robots.txt, the bare landing, the readiness/liveness probes, the
     legacy `/api/v1/stats/*` surface that was superseded by `/analytics/*`, and
-    what only the person should do (organization changes, passwords, API keys).
+    what only the person should do (organization changes, passwords, API keys, signing
+    in with a password).
   * `MCP_TOOL_NAMES` — strips the verbose `_api_v1_<path>_<method>` suffix
     from FastAPI-generated operationIds so LLM-facing tool names read like
     `create_short_url` instead of `create_short_url_api_v1_urls_post`.
@@ -78,6 +79,14 @@ EXCLUDED_ROUTE_MAPS: list[RouteMap] = [
         methods=["POST"], pattern=r"^/api/v1/auth/api-key/generate$", mcp_type=MCPType.EXCLUDE
     ),
     RouteMap(methods=["DELETE"], pattern=r"^/api/v1/auth/api-key$", mcp_type=MCPType.EXCLUDE),
+    # Phase 6.3 — and signing in with a password, or changing it: `login` would put a
+    # JWT in the assistant's context, and both take a password from it. The MCP is
+    # already signed in, so neither does anything there that the person needs.
+    RouteMap(
+        methods=["POST"],
+        pattern=r"^/api/v1/auth/(login|change-password)$",
+        mcp_type=MCPType.EXCLUDE,
+    ),
 ]
 
 # Maps FastAPI's auto-generated operationIds to clean MCP tool names.
@@ -93,9 +102,7 @@ MCP_TOOL_NAMES: dict[str, str] = {
     # Auth. `register` is a tool only with ALLOW_PASSWORD_SIGNUP on at startup (local
     # development, Phase 3.13.2); otherwise its route is out of the schema.
     "register_api_v1_auth_register_post": "register",
-    "login_api_v1_auth_login_post": "login",
     "get_current_user_info_api_v1_auth_me_get": "get_current_user_info",
-    "change_password_api_v1_auth_change_password_post": "change_password",
     # Organization (Phase 3.14.2) — read-only; changes are excluded above
     "get_organization_api_v1_organization_get": "get_organization",
     "list_organization_members_api_v1_organization_members_get": "list_organization_members",
