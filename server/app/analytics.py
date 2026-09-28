@@ -50,6 +50,7 @@ from server.utils.local_days import (
     count_per_period,
     last_days,
 )
+from server.utils.network import UNKNOWN_IP
 from server.utils.profile import clean_timezone
 from server.utils.url import build_short_url, link_hostname
 from server.utils.visit_facets import country_label, families, kind_of, referrer_host
@@ -61,6 +62,15 @@ def _visible_url_or_404(db: Session, user: User, short_code: str, domain: str | 
     if not url:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="URL not found")
     return url
+
+
+def _distinct_visitors():
+    """
+    How many distinct addresses: unique visitors. An unknown address (`UNKNOWN_IP`: every
+    visit imported from Shlink, or one whose address couldn't be read) is no one in
+    particular, so it never counts: NULLIF makes it NULL, which COUNT(DISTINCT) skips.
+    """
+    return func.count(func.distinct(func.nullif(Visitor.ip, UNKNOWN_IP)))
 
 
 def _exclude_bots(query: SAQuery, include_bots: bool) -> SAQuery:
@@ -746,7 +756,7 @@ def get_campaign_summary(
     # Unique IPs
     unique_ips = (
         _exclude_bots(
-            db.query(func.count(func.distinct(Visitor.ip))).filter(Visitor.url_id.in_(url_ids)),
+            db.query(_distinct_visitors()).filter(Visitor.url_id.in_(url_ids)),
             include_bots,
         ).scalar()
         or 0
@@ -768,7 +778,7 @@ def get_campaign_summary(
             URL.short_code,
             URL.user_data,
             func.count(Visitor.id).label("click_count"),
-            func.count(func.distinct(Visitor.ip)).label("unique_ips"),
+            _distinct_visitors().label("unique_ips"),
             func.max(Visitor.visited_at).label("last_clicked"),
         )
         .join(Visitor, URL.id == Visitor.url_id)
@@ -879,7 +889,7 @@ def get_campaign_users(
         db.query(
             Visitor.url_id,
             func.count(Visitor.id).label("click_count"),
-            func.count(func.distinct(Visitor.ip)).label("unique_ips"),
+            _distinct_visitors().label("unique_ips"),
             func.max(Visitor.visited_at).label("last_clicked"),
         )
         .join(URL, URL.id == Visitor.url_id)
@@ -998,7 +1008,7 @@ def get_overview_stats(
     # Unique visitors (all time)
     total_unique_visitors = (
         _exclude_bots(
-            db.query(func.count(func.distinct(Visitor.ip))).filter(Visitor.url_id.in_(url_ids)),
+            db.query(_distinct_visitors()).filter(Visitor.url_id.in_(url_ids)),
             include_bots,
         ).scalar()
         or 0

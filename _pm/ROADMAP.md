@@ -746,6 +746,9 @@ for the day before. Now a day is local to the viewer (`server/utils/local_days.p
 - [ ] An index on `visits` for these queries: there are single-column ones (`url_id`, `short_code`,
       `visited_at`), no composite `(url_id, visited_at)` or `(short_code, visited_at)`. Measure on real
       volumes before adding one
+      - Measured 2026-09-29 (3.16) on PostgreSQL 14, with a link of 10k visits among 100k on 201 links: with
+        the single-column indexes, the per-link routes answer in 6 to 12 ms (a 90-day breakdown in 9). Not
+        needed at that size. Measure again on the real volumes after the Shlink import (8.4)
 
 
 ### 3.12.9 Names where people are listed
@@ -1680,9 +1683,10 @@ live in `mcp_server/README.md`, written for developers. There is no user manual 
         so dropping it while a task of that release serves fails every user query mid-rollout. A test drops it by
         hand and runs this release against it: signing in, an API key, `/me`, the MCP, revoking
         (`tests/test_phase63_api_keys.py`)
-  - [ ] Migration `0010` drops `users.api_key` and `ix_users_api_key`, and the drift test's `_PENDING_DROP` goes:
+  - [ ] Migration `0011` drops `users.api_key` and `ix_users_api_key`, and the drift test's `_PENDING_DROP` goes:
         **only after the release that stopped mapping it is in production**, since until then a running task still
-        names the column. It takes `0010`, after `0009` (the avatar, 3.12)
+        names the column. It takes `0011`, after `0010` (the `last_click_at` repair, 2026-09-29), which took the
+        number it had been given
   - [x] The MCP can't generate or revoke a key: talked into it by untrusted text, an assistant would get
         the new key in its context. Nor `login` or `change_password`: no password or JWT passes through an
         assistant (`EXCLUDED_ROUTE_MAPS`, pinned by `tests/test_phase52_mcp_tools.py`)

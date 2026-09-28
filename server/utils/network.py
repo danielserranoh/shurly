@@ -12,6 +12,10 @@ from server.core.config import settings
 
 # Phase 6.3 — the viewer's address, as CloudFront sends it to the origin.
 VIEWER_ADDRESS_HEADER = "cloudfront-viewer-address"
+# What a visit stores without an address: every visit imported from Shlink, which exposes
+# none, and one whose address couldn't be read. It's no one in particular, so it never counts
+# as a unique visitor (`_distinct_visitors`, server/app/analytics.py).
+UNKNOWN_IP = "unknown"
 
 
 def anonymize_ip(addr: str | None) -> str | None:
