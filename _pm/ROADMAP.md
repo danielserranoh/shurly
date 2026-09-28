@@ -1238,6 +1238,8 @@ live in `mcp_server/README.md`, written for developers. There is no user manual 
 ### 6.3 Security Hardening
 - [x] Rate limiting — no API Gateway on this stack, so it needs app-level limiting or AWS WAF on the shared ALB (first slice: invitations and resets in 3.15, since each one sends an email) → app-level, in the database so both tasks share the counts (`server/utils/rate_limit.py`, migration `0006`): the password login per IP and failed logins per address, the Google and MCP sign-in per IP. Invitations and resets (3.15) take a limit of their own when they arrive; WAF stays an AWS option
 - [ ] Input validation review
+  - [x] CSV formula injection: the exports quote cells that start like a formula, and the CSV import unquotes them
+        (`spreadsheet_safe`, `server/utils/csv_export.py`)
 - [ ] SQL injection prevention check
 - [x] XSS prevention in frontend (dynamic HTML goes through the escaping `html` tag from `@/utils/html`; audit the remaining raw `innerHTML` uses) → audited: data goes through `html`/`setHTML`, URLs through `safeUrl`; two raw sinks left, documented; `frontend/tests/no-raw-html.test.mjs` fails on new ones
 - [ ] CORS configuration review
