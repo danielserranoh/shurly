@@ -49,7 +49,7 @@ def test_looks_like_jwt_false_for_url_safe_secret():
 
 
 def test_get_user_by_api_key_returns_user(db_session, test_user):
-    test_user.api_key = "abc123"
+    test_user.set_api_key("abc123")
     test_user.api_key_scope = ApiKeyScope.FULL_ACCESS
     db_session.commit()
     found = get_user_by_api_key(db_session, "abc123")
@@ -62,7 +62,7 @@ def test_get_user_by_api_key_returns_none_for_unknown(db_session):
 
 
 def test_get_user_by_api_key_skips_inactive(db_session, test_user):
-    test_user.api_key = "inactive-key"
+    test_user.set_api_key("inactive-key")
     test_user.is_active = False
     db_session.commit()
     assert get_user_by_api_key(db_session, "inactive-key") is None
@@ -78,7 +78,7 @@ def test_get_user_by_api_key_empty_token_returns_none(db_session):
 
 
 def test_api_key_authenticates_me_endpoint(client: TestClient, db_session, test_user):
-    test_user.api_key = "valid-api-key-xyz"
+    test_user.set_api_key("valid-api-key-xyz")
     db_session.commit()
     resp = client.get("/api/v1/auth/me", headers={"Authorization": "Bearer valid-api-key-xyz"})
     assert resp.status_code == 200
@@ -91,7 +91,7 @@ def test_invalid_api_key_returns_401(client: TestClient):
 
 
 def test_inactive_user_api_key_rejected(client: TestClient, db_session, test_user):
-    test_user.api_key = "inactive-but-valid"
+    test_user.set_api_key("inactive-but-valid")
     test_user.is_active = False
     db_session.commit()
     resp = client.get("/api/v1/auth/me", headers={"Authorization": "Bearer inactive-but-valid"})
@@ -120,14 +120,14 @@ def verifier_factory(db_session):
     @contextmanager
     def _factory():
         # Yield the same fixture session so writes in the test (e.g.
-        # `test_user.api_key = ...`) are visible to the verifier query.
+        # `test_user.set_api_key(...)`) are visible to the verifier query.
         yield db_session
 
     return ShurlyTokenVerifier(session_factory=_factory)
 
 
 def test_token_verifier_accepts_valid_api_key(db_session, test_user, verifier_factory):
-    test_user.api_key = "mcp-key-1"
+    test_user.set_api_key("mcp-key-1")
     db_session.commit()
 
     token = asyncio.run(verifier_factory.verify_token("mcp-key-1"))
@@ -142,7 +142,7 @@ def test_token_verifier_rejects_unknown_key(verifier_factory):
 
 
 def test_token_verifier_rejects_inactive_user(db_session, test_user, verifier_factory):
-    test_user.api_key = "soon-disabled"
+    test_user.set_api_key("soon-disabled")
     test_user.is_active = False
     db_session.commit()
 
@@ -198,7 +198,7 @@ def mcp_on_test_db(db_session):
 
 
 def test_generated_tool_forwards_bearer_to_fastapi(db_session, test_user, mcp_on_test_db):
-    test_user.api_key = "forwarded-key"
+    test_user.set_api_key("forwarded-key")
     db_session.commit()
 
     with _bound_access_token("forwarded-key"):

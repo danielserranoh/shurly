@@ -1092,7 +1092,7 @@ for this.
 
 ### 5.4 Authentication & per-user scoping ✅
 - [x] FastAPI `get_current_user` accepts both JWTs and API keys (token-shape dispatch — JWTs have dots, API keys don't). Single dependency, single test surface.
-- [x] `ShurlyTokenVerifier` validates the inbound MCP bearer against `User.api_key`, populating `AccessToken.claims` with user id + email + scope.
+- [x] `ShurlyTokenVerifier` validates the inbound MCP bearer as an API key (by its hash since 6.3), populating `AccessToken.claims` with user id + email + scope.
 - [x] `forward_bearer_auth` hook re-attaches the inbound bearer to the outbound FastAPI call so auto-generated tools resolve the same user as the MCP layer.
 - [x] Curated-tool wrappers swap the Phase 5.3 `NotImplementedError` stub for `resolve_current_user(db)` reading from the AccessToken context.
 - [x] `MCP_DISABLE_AUTH=1` escape hatch for local stdio dev (never to be set in prod).
@@ -1261,6 +1261,10 @@ live in `mcp_server/README.md`, written for developers. There is no user manual 
 - [ ] Environment secrets audit (DB password and JWT secret are plain task env vars; Secrets Manager is the planned move)
 - [x] SSRF guard on the Open Graph fetcher (PR #21, see CHANGELOG § Security)
 - [x] Campaign-link takeover via custom codes (see CHANGELOG § Security)
+- [x] API keys stored as a hash → SHA-256 and the first 12 characters (migration `0007`), shown once when
+      generated; `/auth/me`, and so the MCP's `get_current_user_info`, no longer returns the key; new keys
+      start with `shurly_` (`tests/test_phase63_api_keys.py`)
+  - [ ] Drop the emptied `users.api_key` column, in the release after `0007`
 
 ### 6.4 Monitoring & Logging
 - [x] CloudWatch Logs setup → `/aws/ecs/default/shurly-api-5fdb`; `X-Request-Id` correlates requests

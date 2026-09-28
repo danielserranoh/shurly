@@ -268,11 +268,12 @@ class TestSetPassword:
     def test_an_api_key_cannot_set_a_password(self, client, db_session, current_password):
         """Not even with the current password: a leaked key must not become a password."""
         user = _person(db_session, password=True, google=True)
-        user.api_key = "k" * 43
+        key = "k" * 43
+        user.set_api_key(key)
         db_session.commit()
 
         response = _set(
-            client, user.api_key, new_password="new-password-1", current_password=current_password
+            client, key, new_password="new-password-1", current_password=current_password
         )
 
         assert response.status_code == 403
@@ -322,10 +323,11 @@ class TestRemovePassword:
 
     def test_an_api_key_cannot_remove_it(self, client, db_session):
         user = _person(db_session, password=True, google=True)
-        user.api_key = "k" * 43
+        key = "k" * 43
+        user.set_api_key(key)
         db_session.commit()
 
-        response = client.delete("/api/v1/auth/password", headers=_bearer(user.api_key))
+        response = client.delete("/api/v1/auth/password", headers=_bearer(key))
 
         assert response.status_code == 403
         assert "API key" in response.json()["detail"]

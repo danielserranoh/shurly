@@ -284,7 +284,7 @@ class TestRemovingMembers:
         return client.delete(f"/api/v1/organization/members/{target.id}", headers=_headers(actor))
 
     def test_admin_removes_a_member_and_closes_the_account(self, client, db_session, team, capsys):
-        team["member"].api_key = "key-to-revoke"
+        team["member"].set_api_key("key-to-revoke")
         db_session.commit()
         capsys.readouterr()
 
@@ -294,7 +294,7 @@ class TestRemovingMembers:
         db_session.expire_all()
         assert _role(db_session, team["member"]) is None
         assert team["member"].is_active is False
-        assert team["member"].api_key is None
+        assert (team["member"].api_key_hash, team["member"].api_key_prefix) == (None, None)
         [line] = _events(capsys.readouterr().err, "org.member_removed")
         assert line["user_id"] == str(team["member"].id)
 

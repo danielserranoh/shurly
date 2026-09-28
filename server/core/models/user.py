@@ -1,4 +1,5 @@
 import enum
+import hashlib
 import uuid
 from datetime import datetime
 
@@ -23,6 +24,16 @@ class ApiKeyScope(str, enum.Enum):
     DOMAIN_SPECIFIC = "domain_specific"
 
 
+# Phase 6.3 — how much of an API key is kept to tell it apart ("shurly_AbC12").
+API_KEY_PREFIX_LENGTH = 12
+
+
+def hash_api_key(key: str) -> str:
+    """What's stored of an API key. SHA-256 is enough: keys are 256 random bits,
+    so a slow hash buys nothing, and a fixed digest can be looked up by index."""
+    return hashlib.sha256(key.encode()).hexdigest()
+
+
 class User(Base):
     """User model for authentication."""
 
@@ -32,7 +43,13 @@ class User(Base):
     email = Column(String(255), unique=True, nullable=False, index=True)
     # Phase 3.13.3 — NULL: no password (an account made by signing in with Google).
     password_hash = Column(String(255), nullable=True)
-    api_key = Column(String(64), unique=True, nullable=True, index=True)
+    # Phase 6.3 — API keys are kept as a hash and a prefix, never as themselves: a key
+    # is shown once, when it's made (set_api_key). The plaintext column is empty since
+    # migration 0007 and goes in a later release; mapped under another name so that
+    # nothing reads or writes it by accident.
+    _legacy_api_key = Column("api_key", String(64), unique=True, nullable=True, index=True)
+    api_key_hash = Column(String(64), unique=True, nullable=True, index=True)
+    api_key_prefix = Column(String(API_KEY_PREFIX_LENGTH), nullable=True)
     api_key_scope = Column(Enum(ApiKeyScope), nullable=False, default=ApiKeyScope.FULL_ACCESS)
     api_key_constraints = Column(JSON, nullable=True)
     is_active = Column(Boolean, default=True, nullable=False)
@@ -48,6 +65,19 @@ class User(Base):
     @property
     def has_password(self) -> bool:
         return self.password_hash is not None
+
+    @property
+    def has_api_key(self) -> bool:
+        return self.api_key_hash is not None
+
+    def set_api_key(self, key: str) -> None:
+        """Keep `key` as its hash and prefix; the key itself is the caller's to show once."""
+        self.api_key_hash = hash_api_key(key)
+        self.api_key_prefix = key[:API_KEY_PREFIX_LENGTH]
+
+    def clear_api_key(self) -> None:
+        self.api_key_hash = None
+        self.api_key_prefix = None
 
     @property
     def has_google(self) -> bool:

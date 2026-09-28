@@ -1,7 +1,5 @@
 """Authentication endpoints."""
 
-import secrets
-
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
@@ -13,6 +11,7 @@ from server.core.auth import (
     get_current_user,
     get_signed_in_session,
     hash_password,
+    new_api_key,
     verify_password,
 )
 from server.core.config import settings
@@ -120,6 +119,8 @@ def login(user_data: UserLogin, db: Session = Depends(get_db)):
     # Phase 6.3 — failed attempts per account (the per-IP limit is the middleware's).
     # Only failures count, so the right password isn't counted with a guesser's; the
     # address needn't have an account, so a 429 tells nothing about who has one.
+    # check() then hit() isn't atomic: guesses sent at the same moment can all pass
+    # check() and overshoot the limit by a few. The per-IP limit bounds how many.
     account = user_data.email.strip().lower()
     locked = rate_limit.check(LOGIN_FAILURES_PER_ACCOUNT, account)
     if not locked.allowed:
@@ -350,16 +351,16 @@ def generate_api_key(
     - **200**: API key generated successfully - Returns the new API key
     - **401**: Authentication required or invalid token
 
-    **Note:** The API key is only shown once. Save it securely.
+    **Note:** The API key is shown only this once: Shurly keeps a hash of it, not
+    the key (Phase 6.3). Save it securely.
     """
-    # Generate a secure random API key
-    api_key = secrets.token_urlsafe(32)
+    api_key = new_api_key()
 
     # Phase 3.9.6 — set scope explicitly. Only FULL_ACCESS is enforced today; other
     # scope values are reserved so we can roll out roles without a destructive migration.
     from server.core.models import ApiKeyScope
 
-    current_user.api_key = api_key
+    current_user.set_api_key(api_key)
     current_user.api_key_scope = ApiKeyScope.FULL_ACCESS
     current_user.api_key_constraints = None
     db.commit()
@@ -391,7 +392,7 @@ def revoke_api_key(
     - **200**: API key revoked successfully
     - **401**: Authentication required or invalid token
     """
-    current_user.api_key = None
+    current_user.clear_api_key()
     db.commit()
 
     return {"message": "API key revoked successfully"}

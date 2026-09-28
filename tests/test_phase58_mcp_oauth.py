@@ -383,7 +383,9 @@ class TestTokens:
 
     def test_api_keys_keep_working_next_to_oauth(self, browser, db_session):
         """Claude Code with --header "Authorization: Bearer <api key>", unchanged."""
-        db_session.add(User(email="k@griddo.io", is_active=True, api_key="k" * 43))
+        user = User(email="k@griddo.io", is_active=True)
+        user.set_api_key("k" * 43)
+        db_session.add(user)
         db_session.commit()
 
         assert _mcp(browser, "k" * 43).status_code == 200
@@ -425,16 +427,16 @@ class TestAccounts:
         user = User(
             email="ana@griddo.io",
             password_hash=hash_password("pre-registered-1"),
-            api_key="k" * 43,
             is_active=True,
         )
+        user.set_api_key("k" * 43)
         db_session.add(user)
         db_session.commit()
 
         _tokens(browser)
 
         db_session.refresh(user)
-        assert (user.password_hash, user.api_key) == (None, None)
+        assert (user.password_hash, user.api_key_hash, user.api_key_prefix) == (None, None, None)
         assert user.sessions_valid_from is not None
 
     @pytest.mark.parametrize(

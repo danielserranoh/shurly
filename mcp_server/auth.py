@@ -3,14 +3,15 @@ Phase 5.4 — MCP authentication.
 
 The MCP server is a public-facing surface (Phase 5.5 will deploy it next to
 the API on `shurly.griddo.io/mcp`). Without auth, every tool is anonymous, which
-is wrong for any non-trivial use. We piggyback on the existing `User.api_key`
-column rather than introducing OAuth: API keys already exist, are revocable
+is wrong for any non-trivial use. We piggyback on the existing API keys
+rather than introducing OAuth: API keys already exist, are revocable
 via `DELETE /api/v1/auth/api-key`, and don't require an extra UI flow.
+(Phase 6.3: a key is kept as its hash, `User.api_key_hash`.)
 
 Two integration points:
 
 1. **`ShurlyTokenVerifier`** — fastmcp's `TokenVerifier` subclass. Validates
-   the inbound `Authorization: Bearer <token>` against `User.api_key`. Both
+   the inbound `Authorization: Bearer <token>` as an API key. Both
    JWT and API-key tokens are accepted (matches the FastAPI behavior). The
    resolved user id is stored in the AccessToken so curated tools can pick
    it up with `get_access_token()` without re-querying the DB.
@@ -46,7 +47,7 @@ if TYPE_CHECKING:
 
 class ShurlyTokenVerifier(TokenVerifier):
     """
-    Verifies a bearer token against `User.api_key` (or a JWT for completeness).
+    Verifies a bearer token as an API key (or a JWT for completeness).
 
     Returns an `AccessToken` whose `client_id` is the user's UUID and whose
     `claims` include the email + scope. Returning `None` produces a 401 at

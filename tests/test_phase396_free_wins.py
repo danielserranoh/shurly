@@ -208,7 +208,7 @@ class TestApiKeyScope:
         assert r.json()["scope"] == ApiKeyScope.FULL_ACCESS.value
 
         db_session.refresh(test_user)
-        assert test_user.api_key is not None
+        assert test_user.has_api_key
         assert test_user.api_key_scope == ApiKeyScope.FULL_ACCESS
 
     def test_scope_enum_exposes_reserved_values(self):

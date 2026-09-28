@@ -177,7 +177,7 @@ header: the client finds the metadata and opens the browser. With an API key:
 # 1. Mint an API key (one-time):
 curl -X POST https://shurly.griddo.io/api/v1/auth/api-key/generate \
     -H "Authorization: Bearer <jwt>"
-# → {"api_key": "<32-byte url-safe>", "scope": "full_access"}
+# → {"api_key": "shurly_<43 url-safe characters>", "scope": "full_access"}, shown this once
 
 # 2. Register the deployed MCP:
 claude mcp add --transport http shurly https://shurly.griddo.io/mcp/ \
@@ -255,7 +255,8 @@ the surface.
 ## Authentication (Phase 5.4)
 
 The MCP server validates the inbound `Authorization: Bearer <token>`
-against `User.api_key`. Both API keys and JWTs are accepted (token shape
+as an API key, looked up by its SHA-256 hash (`User.api_key_hash`, Phase 6.3).
+Both API keys and JWTs are accepted (token shape
 disambiguates — JWTs have two dots, API keys never do). The same code path
 backs the FastAPI `get_current_user` dependency, so a single key works in
 either surface.
@@ -263,7 +264,7 @@ either surface.
 Two integration points:
 
 1. **`ShurlyTokenVerifier`** (in `mcp_server/auth.py`) — fastmcp
-   `TokenVerifier` subclass. Looks up the bearer in `User.api_key`,
+   `TokenVerifier` subclass. Looks up the bearer's hash in `User.api_key_hash`,
    returns an `AccessToken` carrying the user id + email + scope.
    Returning `None` produces a 401 at the MCP layer.
 
@@ -289,7 +290,7 @@ Curated tools (Phase 5.3 wrappers) read the AccessToken via
 # 2. Mint an API key:
 curl -X POST https://shurly.griddo.io/api/v1/auth/api-key/generate \
   -H "Authorization: Bearer <jwt>"
-# → {"api_key": "<32-byte url-safe>", "scope": "full_access"}
+# → {"api_key": "shurly_<43 url-safe characters>", "scope": "full_access"}, shown this once
 # 3. Use it in the MCP client config:
 claude mcp add --transport http shurly https://shurly.griddo.io/mcp/ \
     --header "Authorization: Bearer <api_key>"
@@ -297,6 +298,11 @@ claude mcp add --transport http shurly https://shurly.griddo.io/mcp/ \
 
 Rotation: re-run `POST /auth/api-key/generate` to issue a new key (any
 existing one is replaced). Revocation: `DELETE /auth/api-key`.
+
+The key is shown only when it's generated (Phase 6.3): Shurly keeps its SHA-256
+hash and its first 12 characters, never the key. `/auth/me`, and so
+`get_current_user_info`, says only whether there's one and how it starts, so the
+key doesn't reach an assistant's context. Lost it? Generate a new one.
 
 ### Signing in with Google (Phase 5.8)
 

@@ -1,6 +1,7 @@
 """Authentication utilities for JWT and password handling."""
 
 import calendar
+import secrets
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
@@ -13,6 +14,7 @@ from sqlalchemy.orm import Session
 from server.core import get_db
 from server.core.config import settings
 from server.core.models import User
+from server.core.models.user import hash_api_key
 
 # Password hashing
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -69,24 +71,37 @@ def create_access_token(data: dict, expires_delta: timedelta | None = None) -> s
     return encoded_jwt
 
 
+# Phase 6.3 — what every new API key starts with, so it can be recognised (in a
+# leaked config, by a secret scanner). Keys made before have no prefix and still work.
+API_KEY_PREFIX = "shurly_"
+
+
+def new_api_key() -> str:
+    """A new API key: the prefix, then 256 random bits. Stored only as a hash."""
+    return API_KEY_PREFIX + secrets.token_urlsafe(32)
+
+
 def get_user_by_api_key(db: Session, api_key: str) -> User | None:
     """
     Phase 5.4 — look up a user by their API key.
 
     Returns None for unknown / inactive accounts. Centralized here so both the
     FastAPI bearer dependency and the MCP token verifier share one code path.
+
+    Phase 6.3 — by the key's hash, through its unique index: nothing compares the
+    key itself, so the time a lookup takes says nothing about the stored ones.
     """
     if not api_key:
         return None
-    user = db.query(User).filter(User.api_key == api_key).first()
+    user = db.query(User).filter(User.api_key_hash == hash_api_key(api_key)).first()
     if user is None or not user.is_active:
         return None
     return user
 
 
 def _looks_like_jwt(token: str) -> bool:
-    """JWTs are dot-separated 3-part base64. API keys produced by
-    `secrets.token_urlsafe(32)` never contain dots, so this is unambiguous."""
+    """JWTs are dot-separated 3-part base64. API keys are the `shurly_` prefix and
+    `secrets.token_urlsafe(32)`, neither of which has a dot, so this is unambiguous."""
     return token.count(".") == 2
 
 

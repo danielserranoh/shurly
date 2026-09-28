@@ -406,7 +406,9 @@ class TestAccounts:
     ):
         """Account pre-hijacking: someone registered ana@ with a password before Ana
         signed in with Google. Their password, API key and sessions stop working."""
-        user = _person(db_session, api_key="k" * 43)
+        user = _person(db_session)
+        user.set_api_key("k" * 43)
+        db_session.commit()
         # From an earlier second: tokens from the cutoff's own second are kept.
         issued = datetime.utcnow() - timedelta(hours=1)
         old_session = jwt.encode(
@@ -422,7 +424,7 @@ class TestAccounts:
         db_session.refresh(user)
         assert db_session.query(User).count() == 1
         assert db_session.query(UserIdentity).one().user_id == user.id
-        assert (user.password_hash, user.api_key) == (None, None)
+        assert (user.password_hash, user.api_key_hash, user.api_key_prefix) == (None, None, None)
         assert _me(browser, old_session).status_code == 401
         assert _me(browser, "k" * 43).status_code == 401
         assert _me(browser, token).status_code == 200

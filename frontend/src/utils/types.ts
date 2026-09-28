@@ -10,7 +10,9 @@ export interface User {
   email: string;
   is_active: boolean;
   created_at: string;
-  api_key?: string | null;
+  /** Phase 6.3: whether there's an API key and how it starts. The key itself is shown once, by generate. */
+  has_api_key?: boolean;
+  api_key_prefix?: string | null;
   /** Phase 3.13: how the account signs in. Absent from APIs older than Google sign-in. */
   has_password?: boolean;
   has_google?: boolean;

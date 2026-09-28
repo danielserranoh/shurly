@@ -451,6 +451,19 @@ methods (`GET`, `POST`, `PUT`, `PATCH`, `DELETE`) and request headers (`Authoriz
 - Locally the defaults cover the dev server (`http://localhost:4232`) on another port, so the middleware
   stays.
 
+## API keys (Phase 6.3)
+
+An API key is kept as its SHA-256 hash and its first 12 characters (`users.api_key_hash`,
+`users.api_key_prefix`), never as itself: it's shown once, when it's generated. New keys start with
+`shurly_`; keys made before keep working.
+
+- **API keys 401 during 0007's rollout.** Migration `0007` moves every key to its hash and empties
+  `users.api_key`, where the previous release looks keys up: while its task still serves, an API key
+  gets a 401 from it. The same key works again once the rollout ends. JWTs and signing in with Google
+  aren't affected.
+- `users.api_key`, empty from then on, is dropped in a later release, once no running task reads it.
+- A downgrade past `0007` can't give the keys back: everyone generates a new one.
+
 ## Sign in with Google (Phase 3.13)
 
 Accounts come from signing in with a Google Workspace account of `ORGANIZATION_DOMAIN` (`griddo.io`).

@@ -34,7 +34,11 @@ class UserResponse(BaseModel):
     email: str
     is_active: bool
     created_at: datetime
-    api_key: str | None = None
+    # Phase 6.3 — whether there's an API key and how it starts, never the key: it's
+    # shown once, by /api-key/generate. (This answer reaches an assistant through the
+    # MCP's get_current_user_info.)
+    has_api_key: bool = False
+    api_key_prefix: str | None = None
     # Phase 3.13.3 — how this account signs in, for Settings → Account.
     has_password: bool = False
     has_google: bool = False
@@ -74,7 +78,7 @@ class GoogleCodeExchange(BaseModel):
 
 
 class APIKeyResponse(BaseModel):
-    """Schema for API key response."""
+    """Schema for API key response: the only time the key itself is shown."""
 
     api_key: str
     scope: str = "full_access"  # Phase 3.9.6 — only enforced value at launch
