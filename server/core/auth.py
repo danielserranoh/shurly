@@ -228,11 +228,12 @@ def authenticate_user(db: Session, email: str, password: str) -> User | None:
         User object if authentication succeeds, None otherwise
     """
     user = db.query(User).filter(User.email == email).first()
-    if not user:
-        return None
 
-    # Phase 3.13.3 — an account made through Google has no password to check.
-    if user.password_hash is None:
+    # No account, or one made through Google with no password (3.13.3): nothing to
+    # check, but spend the time a check takes. Answering faster would tell anyone
+    # which addresses have an account.
+    if user is None or user.password_hash is None:
+        pwd_context.dummy_verify()
         return None
 
     if not verify_password(password, user.password_hash):

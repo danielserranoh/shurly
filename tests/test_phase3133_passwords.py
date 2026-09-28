@@ -16,7 +16,7 @@ from datetime import datetime, timedelta
 import pytest
 from jose import jwt
 
-from server.core.auth import create_access_token, hash_password
+from server.core.auth import create_access_token, hash_password, pwd_context
 from server.core.config import settings
 from server.core.models import User, UserIdentity
 
@@ -119,6 +119,40 @@ class TestSessions:
 
         assert _resolve_user_from_token(db_session, old) is None
         assert _resolve_user_from_token(db_session, _jwt(user)) is not None
+
+
+class TestLoginTiming:
+    """
+    A refused login mustn't reveal whether the address has an account: every one
+    runs a bcrypt check, a dummy one when there's no hash to check against. Tested
+    by the check running, not by timing it.
+    """
+
+    @pytest.fixture
+    def dummy_checks(self, monkeypatch) -> list[None]:
+        calls = []
+        real = pwd_context.dummy_verify
+        monkeypatch.setattr(pwd_context, "dummy_verify", lambda: calls.append(None) or real())
+        return calls
+
+    def test_an_unknown_address_runs_the_dummy_check(self, client, dummy_checks):
+        assert _login(client, "nobody@griddo.io", "whatever-1").status_code == 401
+
+        assert len(dummy_checks) == 1
+
+    def test_an_account_without_a_password_runs_it_too(self, client, db_session, dummy_checks):
+        _person(db_session, password=False, google=True)
+
+        assert _login(client, "ana@griddo.io", "whatever-1").status_code == 401
+
+        assert len(dummy_checks) == 1
+
+    def test_a_wrong_password_checks_the_real_hash_instead(self, client, db_session, dummy_checks):
+        _person(db_session)
+
+        assert _login(client, "ana@griddo.io", "wrong-password").status_code == 401
+
+        assert dummy_checks == []
 
 
 class TestLogin:
