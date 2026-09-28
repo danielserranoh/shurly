@@ -149,6 +149,9 @@ export interface Campaign {
   urls?: CampaignLink[] | null;
   visibility: Visibility;
   created_by_email: string | null;
+  /** Phase 3.12: the creator's name, from their profile; null without one, absent from older APIs. */
+  created_by_first_name?: string | null;
+  created_by_last_name?: string | null;
 }
 
 export interface CampaignListResponse {

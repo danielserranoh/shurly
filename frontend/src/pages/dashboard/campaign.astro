@@ -125,7 +125,7 @@ import QrModal from '@/components/app/QrModal.astro';
   import { linkHref, openQr } from '@/utils/links';
   import { tagPill } from '@/utils/tags';
   import { confirmDialog, copyWithFeedback, hydrateTimes, toast } from '@/utils/ui';
-  import { canChange, creatorName, getViewer, installLockedControls, lockControl, onForbidden, personalBadge, showDaysZoneHint, type Viewer } from '@/utils/viewer';
+  import { canChange, creatorEmailBehindName, creatorName, getViewer, installLockedControls, lockControl, onForbidden, personalBadge, showDaysZoneHint, type Viewer } from '@/utils/viewer';
   import type { Campaign, CampaignRecipientStat, CampaignSummary } from '@/utils/types';
 
   const PAGE = 50;
@@ -171,6 +171,7 @@ import QrModal from '@/components/app/QrModal.astro';
     dest.href = safeUrl(campaign.original_url);
     const creator = creatorName(campaign, viewer);
     $('[data-created]').textContent = `Created ${formatDate(campaign.created_at)}${creator ? ` by ${creator}` : ''}`;
+    $('[data-created]').title = creatorEmailBehindName(campaign, viewer) ?? '';
     setHTML($('[data-badges]'), html`${personalBadge(campaign)}`);
     // On phones the header's actions sit at the left edge, so the tooltip opens rightwards.
     if (!canChange(campaign, viewer)) lockControl($('[data-delete]'), 'campaign', 'start');

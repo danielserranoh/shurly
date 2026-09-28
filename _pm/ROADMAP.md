@@ -736,6 +736,8 @@ for the day before. Now a day is local to the viewer (`server/utils/local_days.p
       and so does the MCP's `list_organization_members`; the profiles load with the list, not one per person.
       Dialogs name the account too ("Their account is …"), as two people can share a name
 - [ ] "Created by" on links and campaigns by name: `created_by_email` across the URL and campaign responses
+      → campaigns done: `created_by_first_name` and `created_by_last_name` next to the email, the card and
+      the campaign page by name, the email as tooltip. Links next, once 8.3 reshapes the URL responses
 - [ ] Photos in the members list: needs an endpoint that serves another member's avatar
 
 ---

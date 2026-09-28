@@ -69,6 +69,9 @@ class CampaignResponse(BaseModel):
     # Phase 3.14.3 — whose it is
     visibility: Visibility = "organization"
     created_by_email: str | None = None
+    # Phase 3.12 — the creator's name, from their profile; null without one.
+    created_by_first_name: str | None = None
+    created_by_last_name: str | None = None
 
     model_config = {"from_attributes": True}
 
