@@ -26,6 +26,24 @@ implementation lifecycle and is independent of the URL version segment.
 
 ## [Unreleased]
 
+### Added — a link's analytics, as on Shlink's link page (Phase 3.16)
+- **The link page has an Analytics section for a period:** 7, 30 or 90 days, or a custom range. The period
+  stays in the address and the tab in its hash, so a reload or a shared link keeps both.
+  - **By time:** clicks or email opens by day, week or month, and by hour of the day and day of the week.
+  - **By context:** operating systems, browsers and devices as donuts, and referrers.
+  - **By location:** countries, with Unknown last.
+  - **Visits:** each visit, newest first: clicks, email opens, bots or all. A table on wide screens, stacked
+    rows on phones, 20 a page.
+  - **Export CSV:** every visit of the period (`/visits.csv`), spreadsheet-safe.
+- **The header's numbers are all-time** (`/totals`): clicks, email opens, countries and the last click. The
+  "Last 7 days" and "Last 8 weeks" cards gave way to the period.
+- A period with email opens and no clicks shows its opens first. Opens carry a note: Apple Mail loads an
+  email's images on its own.
+- A column chart's labels thin out when its columns get narrow, and the chart takes one tab stop: the arrow
+  keys move between its columns.
+- `npm run build` fails if development-only code reaches a build (`scripts/check-dev-only.mjs`): the
+  analytics' mock, which `&mock` loads under `astro dev` only.
+
 ### Added — a donut chart, and "Show all" for bar lists (styleguide)
 - **`donutChart()`** (`frontend/src/utils/charts.ts`, geometry in `donut.ts`), for the link's analytics by
   context: shares of one total in one hue, four blues and a grey tail ("Other" past five), the total in

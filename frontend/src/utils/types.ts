@@ -212,6 +212,81 @@ export interface GeoStatsResponse {
   period_days: number;
 }
 
+// ---------------------------------------------------------------------------
+// Phase 3.16 — a link's analytics (ROADMAP 3.16.1, the contract)
+// ---------------------------------------------------------------------------
+
+/** What every period-bound response starts with: the range counted, after `period` or clipping. */
+export interface AnalyticsRange {
+  short_code: string;
+  domain: string | null;
+  from: string;
+  to: string;
+  timezone: string;
+}
+
+/** A visit is one kind: a click, an email open (the pixel), or a bot's. */
+export type VisitKind = 'click' | 'open' | 'bot';
+/** The filter of /breakdown, /visits and /visits.csv. */
+export type VisitType = 'clicks' | 'opens' | 'bots' | 'all';
+
+/** GET …/totals: the all-time numbers. */
+export interface LinkTotals {
+  short_code: string;
+  domain: string | null;
+  timezone: string;
+  clicks: number;
+  opens: number;
+  countries: number;
+  last_click_at: string | null;
+}
+
+export interface LinkTimeseries extends AnalyticsRange {
+  group_by: 'day' | 'week' | 'month';
+  clicks: number;
+  opens: number;
+  stats: Array<{ start: string; end: string; clicks: number; opens: number }>;
+  hour_of_day: Array<{ hour: number; clicks: number; opens: number }>;
+  day_of_week: Array<{ day: number; clicks: number; opens: number }>;
+}
+
+export interface BreakdownEntry {
+  name: string;
+  count: number;
+  /** 0–1, four decimals. */
+  share: number;
+}
+
+export interface LinkBreakdown extends AnalyticsRange {
+  type: VisitType;
+  total: number;
+  os: BreakdownEntry[];
+  browsers: BreakdownEntry[];
+  devices: BreakdownEntry[];
+  referrers: BreakdownEntry[];
+  /** ISO codes, and "Unknown". */
+  countries: BreakdownEntry[];
+}
+
+export interface LinkVisit {
+  visited_at: string;
+  kind: VisitKind;
+  country: string;
+  browser: string;
+  os: string;
+  device: string;
+  referrer: string;
+}
+
+export interface LinkVisits extends AnalyticsRange {
+  type: VisitType;
+  total: number;
+  page: number;
+  page_size: number;
+  pages: number;
+  visits: LinkVisit[];
+}
+
 export interface CampaignRecipientStat {
   user_data: Record<string, string>;
   short_code: string;
