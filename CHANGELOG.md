@@ -26,6 +26,15 @@ implementation lifecycle and is independent of the URL version segment.
 
 ## [Unreleased]
 
+### Changed — Shurly's public host is `shurly.griddo.io`
+- **`shurly.griddo.io` serves the web, the app, the API and the MCP** (decided 2026-09-28):
+  `MCP_PUBLIC_URL=https://shurly.griddo.io/mcp`, the Google redirect URIs
+  `https://shurly.griddo.io/api/v1/auth/google/callback` and `…/mcp/auth/callback`, and
+  `FRONTEND_URL=https://shurly.griddo.io`. It's a second host on ALB rule 12, so the rule sync needs
+  no change. The deploy's smoke test checks it. `go.griddo.io` is for short links only (Phase 8);
+  `s.griddo.io` stays for tests until then and is deleted at the cutover.
+- `mcp_server/README.md`: `claude mcp add` takes the URL as a positional argument, not `--url`.
+
 ### Security — rate limits on the login and the sign-in endpoints (Phase 6.3)
 - **What anyone can call is limited per client IP**, counted in the database so both
   tasks share the counts (the new `rate_limits` table, migration `0006`): the password

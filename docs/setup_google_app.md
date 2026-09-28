@@ -19,11 +19,11 @@ vez**, y al terminar tendrás dos valores para Shurly: un **client ID** y un **c
 
   | Qué | Valor |
   |---|---|
-  | API (backend) | `https://s.griddo.io` |
-  | Callback de Google | `https://s.griddo.io/api/v1/auth/google/callback` |
+  | La app, la API y el MCP | `https://shurly.griddo.io` |
+  | Callback de Google | `https://shurly.griddo.io/api/v1/auth/google/callback` |
   | Callback para desarrollo local | `http://localhost:8000/api/v1/auth/google/callback` |
-  | Callback del MCP (paso 9) | `https://s.griddo.io/mcp/auth/callback` |
-  | Frontend (`FRONTEND_URL`) | **pendiente**: depende del alojamiento del frontend (4.10) |
+  | Callback del MCP (paso 9) | `https://shurly.griddo.io/mcp/auth/callback` |
+  | Frontend (`FRONTEND_URL`) | `https://shurly.griddo.io` (el mismo host; se aloja en la 4.10) |
 
   El frontend todavía no tiene dirección pública. No afecta a Google: a Google solo se le registra
   el callback de la API, y es la API la que después redirige al frontend.
@@ -80,9 +80,9 @@ No añadas ninguno más. Ninguno de estos es sensible, así que no hace falta re
 4. **Orígenes de JavaScript autorizados:** déjalo **vacío**. El flujo es de servidor (la API habla
    con Google), no desde el navegador.
 5. **URIs de redirección autorizadas**, exactamente estas:
-   - `https://s.griddo.io/api/v1/auth/google/callback`
+   - `https://shurly.griddo.io/api/v1/auth/google/callback`
    - `http://localhost:8000/api/v1/auth/google/callback` (desarrollo local; quítala si no se usa)
-   - `https://s.griddo.io/mcp/auth/callback` (el MCP; ver el paso 9)
+   - `https://shurly.griddo.io/mcp/auth/callback` (el MCP; ver el paso 9)
 6. **Crear**.
 
 ### ⚠️ El client secret solo se muestra una vez
@@ -117,8 +117,8 @@ Shurly lee esta configuración de variables de entorno (servicio `shurly-api`, E
 |---|---|
 | `GOOGLE_CLIENT_ID` | el client ID (`…apps.googleusercontent.com`) |
 | `GOOGLE_CLIENT_SECRET` | el client secret |
-| `GOOGLE_REDIRECT_URI` | `https://s.griddo.io/api/v1/auth/google/callback` |
-| `FRONTEND_URL` | la dirección del frontend, cuando exista (4.10) |
+| `GOOGLE_REDIRECT_URI` | `https://shurly.griddo.io/api/v1/auth/google/callback` |
+| `FRONTEND_URL` | `https://shurly.griddo.io` |
 | `ORGANIZATION_DOMAIN` | `griddo.io` (ya es el valor por defecto) |
 | `CORS_ORIGINS` | tiene que **incluir el origen del frontend**: la página canjea el código con un `POST` desde otro dominio, y sin esto el login falla en el último paso |
 
@@ -140,7 +140,7 @@ plazo el secret irá a Secrets Manager (6.3) en vez de a una variable de entorno
 
 Cuando el backend de la 3.13 esté desplegado y las variables configuradas:
 
-1. Abre `https://s.griddo.io/api/v1/auth/google/start` en el navegador.
+1. Abre `https://shurly.griddo.io/api/v1/auth/google/start` en el navegador.
 2. Google te pide elegir una cuenta. Con una `@griddo.io` → te devuelve a
    `FRONTEND_URL/login/#code=…` y entras en Shurly.
 3. Con una cuenta que no sea de Griddo, Google la rechaza ("app interna"). Es lo que tiene que pasar.
@@ -152,17 +152,16 @@ Si ves `#error=google_unavailable`, falta alguna variable del paso 7.
 El MCP (Claude conectado a Shurly) usa **este mismo proyecto y este mismo cliente**. Lo único que
 necesita en Google es una URI de redirección más en el cliente del paso 5:
 
-- `https://s.griddo.io/mcp/auth/callback`
+- `https://shurly.griddo.io/mcp/auth/callback`
 
-Es `{MCP_PUBLIC_URL}/auth/callback`. Si el MCP acaba en otro host (está pendiente decidir entre
-`s.griddo.io` y `go.griddo.io`), la URI cambia con él: la de Google y `MCP_PUBLIC_URL` tienen que
-coincidir.
+Es `{MCP_PUBLIC_URL}/auth/callback`: `shurly.griddo.io` sirve la web, la app, la API y el MCP
+(decidido el 28-09-2026). Los enlaces cortos irán en `go.griddo.io` (Phase 8).
 
 En Shurly hacen falta, además de las del paso 7:
 
 | Variable | Valor |
 |---|---|
-| `MCP_PUBLIC_URL` | `https://s.griddo.io/mcp` (sin barra final) |
+| `MCP_PUBLIC_URL` | `https://shurly.griddo.io/mcp` (sin barra final) |
 | `MCP_OAUTH_SIGNING_KEY` | una clave aleatoria larga, **propia**: no es el client secret de Google. La genero yo y va a ECS sin mostrarse, como el resto |
 
 No hay que tocar nada más en Google: ni permisos nuevos ni otra pantalla de consentimiento.
