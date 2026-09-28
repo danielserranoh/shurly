@@ -19,8 +19,9 @@ Accounts are recognised by Google's `sub`, which survives an email rename:
 
 A closed account (removed from the organization) is refused either way.
 
-Phase 3.12 — the names in the ID token fill a profile that has neither name yet;
-names the person set are never replaced. A name the profile would refuse is left out.
+Phase 3.12 — the names in the ID token start the profile of an account that has none.
+Once there's one, it's the person's: nothing from Google changes it, not even names they
+cleared (clearing is an edit). A name the profile would refuse is left out.
 
 Secrets are stored as SHA-256 digests (the PKCE verifier excepted), used once and
 short-lived; expired rows are purged when new ones are made. These functions
@@ -124,17 +125,13 @@ def sign_in_with_google(db: Session, account: GoogleAccount) -> User:
 
 
 def _fill_names(db: Session, user: User, account: GoogleAccount) -> None:
-    """Phase 3.12 — Google's names, for a profile without either."""
+    """Phase 3.12 — Google's names start a profile; an existing one is the person's."""
+    if user.profile is not None:
+        return
     first, last = _name(account.given_name), _name(account.family_name)
     if first is None and last is None:
         return
-    profile = user.profile
-    if profile is None:
-        profile = UserProfile(user=user)
-        db.add(profile)
-    elif profile.first_name or profile.last_name:
-        return
-    profile.first_name, profile.last_name = first, last
+    db.add(UserProfile(user=user, first_name=first, last_name=last))
     db.flush()
 
 

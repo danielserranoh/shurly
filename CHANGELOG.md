@@ -40,8 +40,9 @@ implementation lifecycle and is independent of the URL version segment.
   - `timezone` is an IANA name, never an offset. A legacy one is stored as the current one:
     `Asia/Calcutta`, which Chrome still reports in India, becomes `Asia/Kolkata`.
   - The MCP has it too, as `update_my_profile`.
-- **Signing in with Google fills in the names** of a profile that has none, from the ID token. The web
-  sign-in now asks Google for the `profile` scope; the MCP's sign-in doesn't.
+- **Signing in with Google starts the profile** with the names in the ID token, for an account that has
+  no profile yet. After that the profile is the person's: Google never changes it, not even names they
+  cleared. The web sign-in now asks Google for the `profile` scope; the MCP's sign-in doesn't.
 - **Time zones and countries are checked against the `tzdata` package, a new dependency**, not the
   server's own database. The production image's has 486 zones and none of the legacy names.
   - The picker's lists (`frontend/src/data/timezones.json`) come from the same package, through

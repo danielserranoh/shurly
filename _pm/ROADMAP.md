@@ -597,8 +597,9 @@ avatar isn't. The app header shows the first name's initial (the email's without
 storage (no S3, no `UploadFile` endpoints).
 **Note (2026-09-27):** with sign-in through Google (3.13), the ID token already carries the name and a photo URL.
 Pre-fill the profile from them; the upload and crop below remain for changing the photo. → names done: the web
-sign-in asks for the `profile` scope (the MCP's doesn't), and `given_name`/`family_name` fill a profile that has
-neither name (`server/utils/google_sign_in.py`); the photo waits for the avatar.
+sign-in asks for the `profile` scope (the MCP's doesn't), and `given_name`/`family_name` start the profile of an
+account without one; an existing profile is never touched, cleared names included
+(`server/utils/google_sign_in.py`). The photo is left out (decided 2026-09-28).
 
 ### 3.12.1 Data model — new `user_profiles` table ✅ decided
 Storage is the database, not S3 (the Phase 4.5/4.6 bucket + CloudFront doesn't exist yet). And it's a
