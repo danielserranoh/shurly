@@ -25,13 +25,19 @@ Two integration points:
 
 from __future__ import annotations
 
+from datetime import timedelta
 from typing import TYPE_CHECKING
 
 from fastmcp.server.auth import AccessToken, TokenVerifier
 from fastmcp.server.dependencies import get_access_token
 
 from server.core import SessionLocal as _DefaultSessionLocal
-from server.core.auth import _looks_like_jwt, get_user_by_api_key, get_user_by_jwt
+from server.core.auth import (
+    _looks_like_jwt,
+    create_access_token,
+    get_user_by_api_key,
+    get_user_by_jwt,
+)
 from server.core.models import User
 
 if TYPE_CHECKING:
@@ -125,5 +131,13 @@ def forward_bearer_auth(request: httpx2.Request) -> httpx2.Request:
     """
     access = get_access_token()
     if access is not None and access.token:
-        request.headers["Authorization"] = f"Bearer {access.token}"
+        token = access.token
+        # Phase 5.8 — a caller signed in with Google holds the OAuth proxy's token,
+        # which the API doesn't know. The API gets a JWT for the same account
+        # instead, valid for 5 minutes and never leaving this process.
+        if access.claims and access.claims.get("auth_method") == "google":
+            token = create_access_token(
+                data={"sub": access.claims["sub"]}, expires_delta=timedelta(minutes=5)
+            )
+        request.headers["Authorization"] = f"Bearer {token}"
     return request

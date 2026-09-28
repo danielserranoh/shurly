@@ -128,7 +128,36 @@ MCP_TOOL_NAMES: dict[str, str] = {
 }
 
 
-def _build_mcp_server(fastapi_app=None) -> FastMCP:
+def build_mcp_auth(session_factory=None, **provider_overrides):
+    """
+    API keys and JWTs (ShurlyTokenVerifier); and once configured (Phase 5.8,
+    `settings.mcp_oauth_configured`), Google too, through fastmcp's OAuth proxy.
+
+    `required_scopes=[]`: MultiAuth would otherwise take Google's scopes and ask
+    them of every token, and an API key would get 403 insufficient_scope. Google's
+    scopes are still checked on the OAuth tokens (GoogleTokenVerifier).
+
+    Tests pass their session factory, and a fake Google (see build_google_provider).
+    """
+    from mcp_server.auth import ShurlyTokenVerifier
+    from server.core.config import settings
+
+    if session_factory is None:
+        from server.core import SessionLocal as session_factory
+
+    verifier = ShurlyTokenVerifier(session_factory=session_factory)
+    if not settings.mcp_oauth_configured:
+        return verifier
+
+    from fastmcp.server.auth import MultiAuth
+
+    from mcp_server.google_oauth import build_google_provider
+
+    google = build_google_provider(session_factory=session_factory, **provider_overrides)
+    return MultiAuth(server=google, verifiers=[verifier], required_scopes=[])
+
+
+def _build_mcp_server(fastapi_app=None, auth=None) -> FastMCP:
     """
     Build the MCP server from a FastAPI app.
 
@@ -146,7 +175,7 @@ def _build_mcp_server(fastapi_app=None) -> FastMCP:
     escape hatch is for stdio dev only — production deploys must always run
     with auth on.
     """
-    from mcp_server.auth import ShurlyTokenVerifier, forward_bearer_auth
+    from mcp_server.auth import forward_bearer_auth
     from mcp_server.usage import (
         UsageLogMiddleware,
         forward_request_id,
@@ -171,7 +200,8 @@ def _build_mcp_server(fastapi_app=None) -> FastMCP:
         },
     }
     if not auth_disabled:
-        kwargs["auth"] = ShurlyTokenVerifier()
+        # Tests pass their own (a fake Google); otherwise from settings.
+        kwargs["auth"] = auth or build_mcp_auth()
 
     server = FastMCP.from_fastapi(**kwargs)
     _register_curated_tools(server)
@@ -183,9 +213,9 @@ def _build_mcp_server(fastapi_app=None) -> FastMCP:
     return server
 
 
-def build_mcp_for_app(fastapi_app):
+def build_mcp_for_app(fastapi_app, auth=None):
     """Public alias used by `main.create_app()` during the lifespan/mount setup."""
-    return _build_mcp_server(fastapi_app=fastapi_app)
+    return _build_mcp_server(fastapi_app=fastapi_app, auth=auth)
 
 
 def _register_curated_tools(server: FastMCP) -> None:
