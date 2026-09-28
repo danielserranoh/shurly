@@ -1692,11 +1692,44 @@ const colorCount = allColors.length;
           </div>
         </Specimen>
 
+        <Specimen title="Donut chart" description="Shares of one total: operating systems, browsers, devices. Hover a slice, or tab through the legend. Show numbers adds counts and percents; the table lists every item." code={['donutChart()', 'donutTable()', 'bindShowNumbers()']}>
+          <div class="grid gap-6 lg:grid-cols-2">
+            <section class="card p-5 sm:p-6" aria-labelledby="sg-os-title">
+              <div class="flex flex-wrap items-center justify-between gap-3">
+                <h4 id="sg-os-title" class="font-semibold text-ink-950">Operating systems</h4>
+                <div class="flex items-center gap-3">
+                  <label class="flex items-center gap-2 text-sm text-ink-600"><span class="switch"><input type="checkbox" role="switch" data-sg-os-numbers /><span></span></span>Show numbers</label>
+                  <button type="button" class="btn btn-ghost btn-sm" data-sg-os-toggle aria-pressed="false"><Icon name="list" /><span data-label>Table</span></button>
+                </div>
+              </div>
+              <div class="mt-5" data-sg-os></div>
+              <div class="mt-4 max-h-80 overflow-auto rounded-xl border border-line" data-sg-os-table hidden></div>
+            </section>
+            <section class="card p-5 sm:p-6" aria-labelledby="sg-browsers-title">
+              <div class="flex flex-wrap items-center justify-between gap-3">
+                <h4 id="sg-browsers-title" class="font-semibold text-ink-950">Browsers</h4>
+                <div class="flex items-center gap-3">
+                  <label class="flex items-center gap-2 text-sm text-ink-600"><span class="switch"><input type="checkbox" role="switch" data-sg-browsers-numbers /><span></span></span>Show numbers</label>
+                  <button type="button" class="btn btn-ghost btn-sm" data-sg-browsers-toggle aria-pressed="false"><Icon name="list" /><span data-label>Table</span></button>
+                </div>
+              </div>
+              <div class="mt-5" data-sg-browsers></div>
+              <div class="mt-4 max-h-80 overflow-auto rounded-xl border border-line" data-sg-browsers-table hidden></div>
+            </section>
+            <ul class="grid content-start gap-3.5 text-sm text-ink-700 lg:col-span-2 lg:grid-cols-2 lg:gap-x-8">
+              <li class="flex gap-3"><span class="mt-1 flex shrink-0 gap-0.5" aria-hidden="true"><span class="size-3.5 rounded-[3px] bg-brand-400"></span><span class="size-3.5 rounded-[3px] bg-brand-800"></span><span class="size-3.5 rounded-[3px] bg-brand-300"></span><span class="size-3.5 rounded-[3px] bg-brand-600"></span></span><span><b class="font-semibold text-ink-950">One hue.</b> Four blues, light and dark in turn, so neighbours never look alike.</span></li>
+              <li class="flex gap-3"><span class="mt-1 size-3.5 shrink-0 rounded-[3px] bg-ink-400" aria-hidden="true"></span><span><b class="font-semibold text-ink-950">A grey tail:</b> the fifth item, or <i>Other</i> for everything past the top four.</span></li>
+              <li class="flex gap-3"><Icon name="hash" class="mt-0.5 size-3.5 shrink-0 text-ink-500" /><span><b class="font-semibold text-ink-950">The total in the hole.</b> Hovering or focusing a slice puts its share there.</span></li>
+              <li class="flex gap-3"><Icon name="list" class="mt-0.5 size-3.5 shrink-0 text-ink-500" /><span><b class="font-semibold text-ink-950">The legend is the list</b> screen readers read, numbers included even when they're hidden. The table has every item, with shares that add up to 100%.</span></li>
+            </ul>
+          </div>
+        </Specimen>
+
         <Specimen title="Bar list, meter & sparkline" code={['barList()', 'meter()', 'sparkline()']}>
           <div class="grid gap-4 xl:grid-cols-[1.4fr_1fr]">
             <section class="card p-5 sm:p-6" aria-labelledby="sg-geo-title">
               <h4 id="sg-geo-title" class="font-semibold text-ink-950">Top countries</h4>
-              <p class="text-sm text-ink-500">Ranked bars, the value at the tip. Last 30 days.</p>
+              <p class="text-sm text-ink-500">Ranked bars, the value at the tip. Long lists show the top five, then Show all. Last 30 days.</p>
               <div class="mt-5" data-sg-barlist></div>
             </section>
             <div class="grid content-start gap-4">
@@ -1973,7 +2006,7 @@ const colorCount = allColors.length;
 </style>
 
 <script>
-  import { barList, bindChartTableToggle, columnChart, dataTable, meter, sparkline, type ColumnDatum } from '@/utils/charts';
+  import { barList, bindChartTableToggle, bindShowNumbers, columnChart, dataTable, donutChart, donutTable, meter, sparkline, type ColumnDatum } from '@/utils/charts';
   import { html, setHTML } from '@/utils/html';
   import { renderLinkCard, renderLinkSkeleton } from '@/utils/links';
   import { closeDialog, confirmDialog, hydrateTimes, setLoading, toast } from '@/utils/ui';
@@ -2308,15 +2341,61 @@ const colorCount = allColors.length;
   $$<HTMLInputElement>('input[name="sg-chart-period"]').forEach((radio) => radio.addEventListener('change', () => drawChart(radio.value as 'daily' | 'weekly')));
   if (chartToggle && chartEl && tableEl) bindChartTableToggle(chartToggle, chartEl, tableEl);
 
+  const donuts = [
+    {
+      key: 'os',
+      heading: 'Operating system',
+      items: [
+        { label: 'Windows', value: 14 },
+        { label: 'macOS', value: 9 },
+        { label: 'iOS', value: 6 },
+        { label: 'Android', value: 4 },
+        { label: 'Linux', value: 1 },
+      ],
+    },
+    {
+      key: 'browsers',
+      heading: 'Browser',
+      items: [
+        { label: 'Chrome', value: 21 },
+        { label: 'Safari', value: 8 },
+        { label: 'Edge', value: 4 },
+        { label: 'Firefox', value: 2 },
+        { label: 'Samsung Internet', value: 1 },
+        { label: 'Opera', value: 1 },
+        { label: 'DuckDuckGo', value: 1 },
+      ],
+    },
+  ];
+  for (const { key, heading, items } of donuts) {
+    const donutEl = $(`[data-sg-${key}]`);
+    const donutTableEl = $(`[data-sg-${key}-table]`);
+    const donutToggle = $<HTMLButtonElement>(`[data-sg-${key}-toggle]`);
+    const numbers = $<HTMLInputElement>(`[data-sg-${key}-numbers]`);
+    if (!donutEl || !donutTableEl || !donutToggle || !numbers) continue;
+    donutChart(donutEl, items);
+    setHTML(donutTableEl, donutTable(items, [heading, 'Clicks']));
+    bindChartTableToggle(donutToggle, donutEl, donutTableEl);
+    bindShowNumbers(numbers, donutEl);
+  }
+
   setHTML(
     $('[data-sg-barlist]'),
-    barList([
-      { label: 'Spain', value: 412 },
-      { label: 'United States', value: 268 },
-      { label: 'Mexico', value: 131 },
-      { label: 'Germany', value: 64 },
-      { label: 'France', value: 38 },
-    ]),
+    barList(
+      [
+        { label: 'Spain', value: 412 },
+        { label: 'United States', value: 268 },
+        { label: 'Mexico', value: 131 },
+        { label: 'Germany', value: 64 },
+        { label: 'France', value: 38 },
+        { label: 'United Kingdom', value: 21 },
+        { label: 'Portugal', value: 12 },
+        { label: 'Ireland', value: 5 },
+        { label: 'Philippines', value: 1 },
+      ],
+      ['click', 'clicks'],
+      { limit: 5 },
+    ),
   );
   setHTML($('[data-sg-meter]'), meter(34, 50, 'Click-through: 34 of 50 recipients'));
   setHTML($('[data-sg-spark]'), sparkline([6, 9, 7, 12, 10, 15, 13, 18], 120, 36));
