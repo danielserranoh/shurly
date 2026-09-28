@@ -79,6 +79,10 @@ RESPONSES = {
         "description": "Unprocessable Entity - Validation error",
         "model": ErrorResponse,
     },
+    429: {
+        "description": "Too Many Requests - Try again after the `Retry-After` header's seconds",
+        "model": ErrorResponse,
+    },
     500: {
         "description": "Internal Server Error - An unexpected error occurred",
         "model": ErrorResponse,

@@ -2,8 +2,9 @@
 Phase 6.3 — rate limits on what anyone can call.
 
 - The password login runs a bcrypt check per attempt (~165 ms of CPU) on the tasks
-  that also serve redirects: limited per client IP, and failed attempts per account
-  (in the login endpoint, which knows the outcome).
+  that also serve redirects: limited per client IP, and failed attempts per account.
+  Those are counted where a password is checked, which knows the outcome: the login,
+  and the current password given to change or set one (server/app/auth.py).
 - Google's and the MCP's sign-in endpoints write a row per request: per client IP.
   /mcp/register and /mcp/token have their own, generous count: claude.ai calls them
   from Anthropic's addresses, shared by everybody.

@@ -145,9 +145,9 @@ class Settings(BaseSettings):
     # the ALB and each per-IP limit becomes one limit for everybody.
     # POST /auth/login: every attempt runs a bcrypt check.
     rate_limit_login_per_ip: int = 20
-    # Failed password logins per address, per 15 minutes; the right password counts
-    # for nothing. Anyone can lock an address's password route for the window;
-    # signing in with Google stays open.
+    # Failed password checks per address, per 15 minutes: logins, and the current password
+    # given to change or set one. The right password counts for nothing. Anyone can lock
+    # an address's password login for the window; signing in with Google stays open.
     rate_limit_login_failures_per_account: int = 10
     # Google's and the MCP's sign-in pages and endpoints: each writes a row.
     rate_limit_sign_in_per_ip: int = 30
