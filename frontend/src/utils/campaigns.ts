@@ -6,7 +6,7 @@ import { html, safeUrl, type RawHTML } from './html';
 import { icon } from './icons';
 import { campaignHref } from './links';
 import { tagPill } from './tags';
-import { canChange, creatorName, lockedMenuAttrs, personalBadge, type Viewer } from './viewer';
+import { canChange, creatorEmailBehindName, creatorName, lockedMenuAttrs, personalBadge, type Viewer } from './viewer';
 import type { Campaign, CampaignListResponse, CampaignSummary, CampaignUsersResponse, CreateCampaignRequest, Tag } from './types';
 
 export const listCampaigns = () => apiGet<CampaignListResponse>('/api/v1/campaigns?limit=100');
@@ -38,6 +38,7 @@ export function columnChips(columns: string[], max = 4): RawHTML {
 export function renderCampaignCard(c: Campaign, viewer: Viewer | null = null): RawHTML {
   const menuId = `campaign-menu-${c.id}`;
   const creator = creatorName(c, viewer);
+  const creatorEmail = creatorEmailBehindName(c, viewer);
   const locked = canChange(c, viewer) ? '' : lockedMenuAttrs('campaign');
   return html`<li class="card card-interactive flex flex-col gap-4 p-5" data-campaign="${c.id}">
     <div class="flex items-start gap-3">
@@ -72,7 +73,7 @@ export function renderCampaignCard(c: Campaign, viewer: Viewer | null = null): R
     ${c.tags?.length ? html`<div class="flex flex-wrap gap-1.5">${c.tags.map((t) => tagPill(t))}</div>` : ''}
 
     <div class="mt-auto flex items-center justify-between gap-3 border-t border-line pt-3 text-xs text-ink-500">
-      <span class="min-w-0 truncate">Created ${formatDate(c.created_at)}${creator ? ` by ${creator}` : ''}</span>
+      <span class="min-w-0 truncate" ${creatorEmail ? html`title="${creatorEmail}"` : ''}>Created ${formatDate(c.created_at)}${creator ? ` by ${creator}` : ''}</span>
       <a class="inline-flex shrink-0 items-center gap-1 font-semibold text-ink-900 hover:text-ink-950" href="${campaignHref(c.id)}">View campaign ${icon('arrow-right', 'size-3.5')}</a>
     </div>
   </li>`;

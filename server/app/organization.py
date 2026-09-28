@@ -26,6 +26,7 @@ from server.schemas.organization import (
 )
 from server.schemas.responses import get_responses
 from server.utils import organization as org_service
+from server.utils.people import names
 
 organization_router = APIRouter()
 
@@ -46,11 +47,8 @@ def _http_error(exc: org_service.OrganizationError) -> HTTPException:
 
 def _names(user: User) -> dict:
     """Phase 3.12 — first and last name from the profile; None without one."""
-    profile = user.profile
-    return {
-        "first_name": profile.first_name if profile else None,
-        "last_name": profile.last_name if profile else None,
-    }
+    first, last = names(user)
+    return {"first_name": first, "last_name": last}
 
 
 def _member_response(membership: OrganizationMember) -> MemberResponse:
