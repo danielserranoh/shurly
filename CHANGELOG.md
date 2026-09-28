@@ -26,6 +26,13 @@ implementation lifecycle and is independent of the URL version segment.
 
 ## [Unreleased]
 
+### Removed — `CI_CD_SETUP.md`, the Lambda-era deploy guide
+- It described access keys, SAM and API Gateway. The deploys it covered are in DEPLOYMENT.md:
+  § CI/CD with OIDC (the backend, to ECS) and § Frontend hosting (the frontend, to S3 + CloudFront).
+  Nothing linked to it.
+- **DEPLOYMENT.md § Workflow trigger** said the backend deploy ran only by hand. It runs on every push
+  to `main`, and by hand for a rollback.
+
 ### Security — no API keys, passwords or session tokens through the MCP (Phase 6.3)
 - **The `generate_api_key` and `revoke_api_key` tools are gone.** An assistant reads
   untrusted text, such as link titles and fetched pages, which could talk it into "generate a
