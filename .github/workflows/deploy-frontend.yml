@@ -1,94 +1,120 @@
-name: Deploy Frontend to S3
+name: Deploy Frontend to S3 + CloudFront
 
-# Phase 4 prep: auto-deploy on push is OFF until the S3 bucket and
-# CloudFront distribution exist (Phase 4.5/4.6) and AWS secrets are wired up.
-# Once the first manual deploy succeeds, re-enable the `push` trigger scoped
-# to `frontend/**` so frontend-only changes ship without backend redeploys.
+# Phase 4.10 — the static build (frontend/dist/) goes to a private S3 bucket behind the
+# CloudFront distribution of shurly.griddo.io (DEPLOYMENT.md § Frontend hosting).
+# Runs on merges to main that touch the frontend, and by hand. Until the AWS side exists
+# (the FRONTEND_BUCKET variable is unset), it says it skipped and stops there.
 on:
+  push:
+    branches: [main]
+    paths:
+      - 'frontend/**'
+      - '.github/workflows/deploy-frontend.yml'
   workflow_dispatch:
-    inputs:
-      environment:
-        description: 'Environment to deploy to'
-        required: true
-        default: 'dev'
-        type: choice
-        options:
-          - dev
-          - staging
-          - prod
+
+# OIDC: the runner assumes AWS_FRONTEND_DEPLOY_ROLE_ARN (its own, least-privilege role).
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: deploy-frontend
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: eu-south-2
 
 jobs:
-  deploy:
+  gate:
     runs-on: ubuntu-latest
-    environment:
-      name: ${{ github.event.inputs.environment || 'dev' }}
-
+    outputs:
+      enabled: ${{ steps.check.outputs.enabled }}
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+      - name: Is the AWS side set up?
+        id: check
+        env:
+          FRONTEND_BUCKET: ${{ vars.FRONTEND_BUCKET }}
+        run: |
+          if [ -z "$FRONTEND_BUCKET" ]; then
+            echo "::notice title=Frontend deploy skipped::frontend deploy skipped: FRONTEND_BUCKET unset"
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          fi
 
-    - name: Set up Node.js
-      uses: actions/setup-node@v4
-      with:
-        # Astro 6 requires Node 20.19+ or 22.12+
-        node-version: '22'
-        cache: 'npm'
-        cache-dependency-path: frontend/package-lock.json
+  deploy:
+    needs: gate
+    if: needs.gate.outputs.enabled == 'true'
+    runs-on: ubuntu-latest
+    env:
+      BUCKET: ${{ vars.FRONTEND_BUCKET }}
+      DISTRIBUTION_ID: ${{ vars.CLOUDFRONT_DISTRIBUTION_ID }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-    - name: Install frontend dependencies
-      working-directory: frontend
-      run: npm ci
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
 
-    - name: Build frontend
-      working-directory: frontend
-      env:
-        PUBLIC_API_URL: ${{ secrets.API_ENDPOINT }}
-      run: npm run build
+      - name: Install
+        working-directory: frontend
+        run: npm ci
 
-    - name: Configure AWS credentials
-      # Phase 4: service account is `griddo-main`, region eu-south-2 (Madrid).
-      uses: aws-actions/configure-aws-credentials@v4
-      with:
-        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        aws-region: eu-south-2
+      - name: Test
+        working-directory: frontend
+        run: npm test
 
-    - name: Deploy to S3
-      env:
-        ENVIRONMENT: ${{ github.event.inputs.environment || 'dev' }}
-      run: |
-        BUCKET_NAME="shurly-frontend-$ENVIRONMENT"
+      - name: Type-check and build
+        working-directory: frontend
+        env:
+          # Phase 4.10's production values: the app and the API share shurly.griddo.io, and
+          # short links show on s.griddo.io until Phase 8 (go.griddo.io after). The MCP
+          # address in the manual and Settings derives as https://shurly.griddo.io/mcp/.
+          PUBLIC_API_URL: https://shurly.griddo.io
+          PUBLIC_SITE_URL: https://shurly.griddo.io
+          PUBLIC_SHORT_DOMAIN: s.griddo.io
+        run: npm run build
 
-        # Sync built files to S3
-        aws s3 sync frontend/dist/ s3://$BUCKET_NAME \
-          --delete \
-          --cache-control "public, max-age=31536000, immutable" \
-          --exclude "*.html"
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_FRONTEND_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
 
-        # Upload HTML files with different cache settings
-        aws s3 sync frontend/dist/ s3://$BUCKET_NAME \
-          --delete \
-          --cache-control "public, max-age=0, must-revalidate" \
-          --exclude "*" \
-          --include "*.html"
+      - name: Upload the hashed assets, cached for good
+        # Astro fingerprints everything under _astro/, so a file there never changes in
+        # place. First, so the new pages find them; without --delete, so pages still open
+        # in someone's browser keep finding the old ones.
+        run: |
+          aws s3 sync frontend/dist/_astro "s3://$BUCKET/_astro" \
+            --cache-control "public, max-age=31536000, immutable"
 
-        echo "✅ Frontend deployed to S3: s3://$BUCKET_NAME"
+      - name: Upload the pages and the rest, always revalidated
+        # HTML, favicons, og-image.png, site.webmanifest, brand/: names without a hash,
+        # so browsers check for a newer version every time (cheap: S3 answers with an ETag).
+        # --delete removes pages that are gone; _astro/ is excluded, so it's never pruned.
+        run: |
+          aws s3 sync frontend/dist "s3://$BUCKET" \
+            --exclude "_astro/*" \
+            --delete \
+            --cache-control "public, max-age=0, must-revalidate"
+          # Older AWS CLI builds don't know .webmanifest and store it as binary/octet-stream.
+          aws s3 cp frontend/dist/site.webmanifest "s3://$BUCKET/site.webmanifest" \
+            --content-type "application/manifest+json" \
+            --cache-control "public, max-age=0, must-revalidate"
 
-    - name: Invalidate CloudFront cache
-      if: vars.CLOUDFRONT_DISTRIBUTION_ID != ''
-      run: |
-        aws cloudfront create-invalidation \
-          --distribution-id ${{ vars.CLOUDFRONT_DISTRIBUTION_ID }} \
-          --paths "/*"
+      - name: Invalidate CloudFront
+        if: env.DISTRIBUTION_ID != ''
+        run: aws cloudfront create-invalidation --distribution-id "$DISTRIBUTION_ID" --paths "/*"
 
-        echo "✅ CloudFront cache invalidated"
+      - name: No distribution to invalidate
+        if: env.DISTRIBUTION_ID == ''
+        run: echo "::warning title=No invalidation::CLOUDFRONT_DISTRIBUTION_ID unset, so CloudFront may serve cached pages until they expire"
 
-    - name: Deployment summary
-      run: |
-        ENVIRONMENT=${{ github.event.inputs.environment || 'dev' }}
-        echo "🚀 Frontend deployed successfully!"
-        echo "Environment: $ENVIRONMENT"
-        echo "S3 Bucket: shurly-frontend-$ENVIRONMENT"
-        if [ -n "${{ vars.CLOUDFRONT_DISTRIBUTION_ID }}" ]; then
-          echo "CloudFront: Cache invalidated"
-        fi
+      - name: Summary
+        run: |
+          echo "Frontend deployed to s3://$BUCKET ($(git rev-parse --short HEAD))" >> "$GITHUB_STEP_SUMMARY"

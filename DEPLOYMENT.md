@@ -366,6 +366,217 @@ That's the only secret needed. No `AWS_ACCESS_KEY_ID`, no `AWS_SECRET_ACCESS_KEY
 
 ---
 
+## Frontend hosting (Phase 4.10)
+
+The static build (`frontend/dist/`) lives in a private S3 bucket behind **one CloudFront distribution for
+`shurly.griddo.io`**, which also carries the API and the MCP to the ALB. The app and the API then share one
+origin, so the browser makes no cross-origin calls. Prepared in the repo: the deploy workflow, the CloudFront
+Function and this section. The AWS resources below are still to be created (ROADMAP 4.10).
+
+### The distribution
+
+| Path pattern | Origin | Cache policy | Origin request policy | Function |
+|---|---|---|---|---|
+| `/api/*` | the ALB | CachingDisabled | AllViewer | — |
+| `/mcp*` | the ALB | CachingDisabled | AllViewer | — |
+| `/.well-known/*` | the ALB | CachingDisabled | AllViewer | — |
+| `/docs*`, `/redoc`, `/openapi.json` | the ALB | CachingDisabled | AllViewer | — |
+| Default (`*`) | the S3 bucket, with Origin Access Control | CachingOptimized | — | `static-paths`, viewer request |
+
+- **ALB behaviours:** all HTTP methods (the API takes `POST`, `PUT`, `PATCH`, `DELETE`). AllViewer forwards the `Host`
+  header (`shurly.griddo.io`), so the ALB's host rule (priority 12) and its certificate match as they do today.
+- **What each path is:** `/mcp*` covers the bare `/mcp` (the API's 308 to `/mcp/`), the MCP itself and its OAuth
+  endpoints (`/mcp/authorize`, `/mcp/token`, …). `/.well-known/*` carries the OAuth metadata (5.8).
+- **Short links:** they live on `s.griddo.io` and later `go.griddo.io`, which keep going straight to the ALB. On
+  `shurly.griddo.io`, a path that isn't listed above is a page, not a short code.
+
+### The function
+
+`infra/cloudfront/static-paths.js` (runtime `cloudfront-js-2.0`) goes on the default behaviour only, as a viewer
+request function. Astro writes each page as `<path>/index.html`, and a private bucket reached through the S3 REST
+endpoint doesn't resolve directory indexes. So the function applies three rules:
+
+- a path ending in `/` gets `index.html`;
+- **a dot in the last segment means a file** (`/_astro/…`, `/favicon.svg`), left as is;
+- anything else gets a `301` to the path with its slash, keeping the query.
+
+A page whose last segment has a dot (`/manual/v1.2/`) therefore has to be linked with its trailing slash. The tests
+are in `frontend/tests/cloudfront-static-paths.test.mjs`, including redirects that can't leave the site
+(`//host`, `/\host`).
+
+### Error pages: an open decision
+
+The build has `/404.html`, but CloudFront's custom error responses apply to the whole distribution. Mapping 403 or
+404 to `/404.html` would also replace the API's own 403 and 404 answers, which the app reads (`reauth_required`,
+role checks, unknown links, the MCP's errors). Behind OAC, S3 answers 403 for a missing object, unless the
+distribution may list the bucket, and then it's 404. The options:
+
+1. **No custom error responses.** An unknown page shows S3's XML error. It's simple, and rare, since the app only
+   links to pages that exist.
+2. **A Lambda@Edge origin-response function on the default behaviour only**, turning S3's 403 or 404 into
+   `/404.html` with status 404. It's per behaviour, so the API is untouched, but it adds a Lambda in us-east-1.
+
+### Response headers
+
+Add a response-headers policy on the default behaviour with:
+
+- `Strict-Transport-Security: max-age=31536000; includeSubDomains`
+- `X-Content-Type-Options: nosniff`
+- `Referrer-Policy: strict-origin-when-cross-origin`
+- `X-Frame-Options: DENY`
+
+The Content-Security-Policy is a separate item: the inline sign-in guards in `BaseLayout.astro` need hashes
+computed at build time.
+
+### Certificate
+
+CloudFront only takes ACM certificates from **us-east-1**. The certificate issued for `shurly.griddo.io` on
+2026-09-28 is in eu-south-2, for the ALB, and stays there. Request a new one in `griddo-main`, and validate it by
+DNS in the `griddo-production` zone as in § 2:
+
+```bash
+aws acm request-certificate --profile griddo-main --region us-east-1 \
+    --domain-name shurly.griddo.io --validation-method DNS
+```
+
+### The bucket
+
+The bucket is private: Block Public Access on, no static website hosting. The distribution reads it through
+Origin Access Control. The bucket policy (the console offers it when you pick OAC) lets only that distribution
+`s3:GetObject`, with `AWS:SourceArn` set to the distribution's ARN.
+
+### The deploy role
+
+`deploy-frontend.yml` assumes its own role with least privilege: it writes to that one bucket and invalidates
+that one distribution. The GitHub OIDC provider already exists (§ CI/CD with OIDC). The trust policy allows only
+`main`:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [{
+    "Effect": "Allow",
+    "Principal": {
+      "Federated": "arn:aws:iam::686255983646:oidc-provider/token.actions.githubusercontent.com"
+    },
+    "Action": "sts:AssumeRoleWithWebIdentity",
+    "Condition": {
+      "StringEquals": {
+        "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
+        "token.actions.githubusercontent.com:sub": "repo:danielserranoh/shurly:ref:refs/heads/main"
+      }
+    }
+  }]
+}
+```
+
+The permissions policy, with the bucket name and distribution id filled in:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ListTheSiteBucket",
+      "Effect": "Allow",
+      "Action": "s3:ListBucket",
+      "Resource": "arn:aws:s3:::<bucket>"
+    },
+    {
+      "Sid": "WriteTheSite",
+      "Effect": "Allow",
+      "Action": ["s3:PutObject", "s3:DeleteObject"],
+      "Resource": "arn:aws:s3:::<bucket>/*"
+    },
+    {
+      "Sid": "InvalidateTheSite",
+      "Effect": "Allow",
+      "Action": "cloudfront:CreateInvalidation",
+      "Resource": "arn:aws:cloudfront::686255983646:distribution/<distribution-id>"
+    }
+  ]
+}
+```
+
+```bash
+aws iam create-role --profile griddo-main \
+    --role-name github-actions-shurly-frontend-deploy \
+    --assume-role-policy-document file://frontend-trust-policy.json
+aws iam put-role-policy --profile griddo-main \
+    --role-name github-actions-shurly-frontend-deploy \
+    --policy-name shurly-frontend-deploy \
+    --policy-document file://frontend-deploy-policy.json
+```
+
+In the repo's **Settings → Secrets and variables → Actions**:
+
+| Kind | Name | Value |
+|---|---|---|
+| Secret | `AWS_FRONTEND_DEPLOY_ROLE_ARN` | `arn:aws:iam::686255983646:role/github-actions-shurly-frontend-deploy` |
+| Variable | `FRONTEND_BUCKET` | the bucket's name |
+| Variable | `CLOUDFRONT_DISTRIBUTION_ID` | the distribution's id |
+
+What the workflow does, on merges to `main` that touch `frontend/**` and by hand:
+
+- While `FRONTEND_BUCKET` is unset, it logs `frontend deploy skipped: FRONTEND_BUCKET unset` and stops.
+- Otherwise it runs `npm ci`, `npm test` and `npm run build` with the production values:
+  - `PUBLIC_API_URL=https://shurly.griddo.io`
+  - `PUBLIC_SITE_URL=https://shurly.griddo.io`
+  - `PUBLIC_SHORT_DOMAIN=s.griddo.io` (`go.griddo.io` from Phase 8)
+- It uploads `_astro/` first, with `max-age=31536000, immutable`: those names carry a hash, and old files are
+  kept for pages still open in someone's browser.
+- It uploads everything else with `max-age=0, must-revalidate`, and removes pages that are gone.
+- It sets the manifest's content type, and invalidates `/*`.
+
+### Cutover and rollback
+
+Today `shurly.griddo.io` is a Route 53 alias to the ALB, in the `griddo-production` zone. Going live changes that
+alias to the distribution, once the distribution is deployed with the certificate. Before switching, test through
+CloudFront with the real host name:
+
+```bash
+EDGE=$(dig +short d111111abcdef8.cloudfront.net | head -1)   # the distribution's domain name
+curl -s --resolve shurly.griddo.io:443:$EDGE https://shurly.griddo.io/api/v1/health
+curl -sI --resolve shurly.griddo.io:443:$EDGE https://shurly.griddo.io/dashboard/
+```
+
+After the switch, set `FRONTEND_URL=https://shurly.griddo.io` in the task, and set `CORS_ORIGINS='[]'`, since the
+app and the API are now the same origin (§ CORS).
+
+**Rollback:** point the alias back to the ALB. Its host rule and its certificate stay in place, so the API
+answers as before. The pages come back with the next attempt.
+
+### Client IPs behind CloudFront: an open decision
+
+Once `shurly.griddo.io` goes through CloudFront, two paths reach the ALB:
+
+- **direct**, for `s.griddo.io` and later `go.griddo.io`;
+- **through CloudFront**, for `shurly.griddo.io`: the API and the MCP.
+
+Through CloudFront, the ALB's peer is a CloudFront edge, and the last address in `X-Forwarded-For` is that edge's.
+The resolver (§ Trusted-Proxy Configuration) takes the rightmost address that isn't a trusted proxy. It would
+therefore record, and rate-limit, CloudFront's edges instead of people. The options are backend and AWS work,
+not done here:
+
+1. **Trust CloudFront's edge ranges** in `TRUSTED_PROXIES` (`ip-ranges.json`, `service=CLOUDFRONT`). It's a large
+   list, and it changes, so it needs refreshing.
+2. **Read `CloudFront-Viewer-Address`**, which CloudFront adds when the origin request policy includes it. It can
+   only be trusted on requests that provably came through CloudFront.
+3. **Prove that a request came through CloudFront.** Give the distribution a secret origin header that the API
+   (or the ALB rule for `shurly.griddo.io`) requires. Optionally, restrict that traffic to CloudFront's
+   origin-facing prefix list, `com.amazonaws.global.cloudfront.origin-facing`. With this in place, option 2 is
+   safe. The ALB is shared and still serves `s.griddo.io` and `go.griddo.io` directly, so the restriction has to
+   be per host, not a security group on the whole ALB.
+
+### Check after the first deploy
+
+- `/` and `/manual/install-mcp/` load.
+- `/dashboard/` sends you to the login page.
+- `/login` answers `301` to `/login/`.
+- `/api/v1/health` answers with JSON, through CloudFront.
+- `/mcp/` answers `401` with `WWW-Authenticate`.
+- An `_astro/` file's `Cache-Control` is `immutable`, and a page's is `max-age=0`.
+
 ## Cost estimation (eu-south-2, monthly)
 
 | Component | Cost |
@@ -416,7 +627,7 @@ TRUSTED_PROXIES='["172.31.0.0/16"]'
 
 The resolver (`server/utils/network.py::resolve_client_ip`) checks the request's source against every CIDR; only when it matches does it read `X-Forwarded-For`, and then from the right: each proxy appends the address it saw, so the first entry from the right that isn't a trusted proxy is the client. The left end is whatever the client sent, so it's never trusted (before Phase 6.3 it was, and a client could choose the address the visit was recorded under). Outside the allowlist the socket address wins.
 
-If you ever front the ALB with CloudFront, append the CloudFront edge CIDRs from <https://ip-ranges.amazonaws.com/ip-ranges.json> (filter `service=CLOUDFRONT`).
+Behind CloudFront (`shurly.griddo.io`, Phase 4.10) this needs a decision first: see § Frontend hosting, "Client IPs behind CloudFront".
 
 ## Rate limits (Phase 6.3)
 

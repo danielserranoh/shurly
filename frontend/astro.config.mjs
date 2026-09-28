@@ -6,8 +6,9 @@ import { mcpUrl } from './src/content/placeholders.mjs';
 const MCP_URL = mcpUrl(process.env);
 
 // Fully static build: `dist/` is synced as-is to S3 (see .github/workflows/deploy-frontend.yml).
-// Record pages read their id from the query string (e.g. /dashboard/link/?code=abc123),
-// so no server runtime or CDN rewrite rules are needed.
+// Record pages read their id from the query string (e.g. /dashboard/link/?code=abc123), so no
+// server runtime is needed. The one rewrite, directory indexes (/dashboard/ → /dashboard/index.html,
+// which a private bucket doesn't resolve), is a CloudFront Function: infra/cloudfront/static-paths.js.
 // https://astro.build/config
 export default defineConfig({
   output: 'static',
