@@ -26,6 +26,14 @@ implementation lifecycle and is independent of the URL version segment.
 
 ## [Unreleased]
 
+### Added — "Created by" names on links (Phase 3.12)
+- **Link cards and the link page say who created it by name**, e.g. "Created by Ana García", with the email
+  as a tooltip, as campaigns do. "You" stays "you", and someone without a name still shows their email.
+- **Link responses keep `created_by_email` and gain `created_by_first_name` and `created_by_last_name`**,
+  null without a profile. That covers creating a link (standard or custom), the list, the detail, an edit,
+  and the MCP's link tools. The list, the busiest endpoint, loads every creator's profile in one query,
+  whatever the page holds.
+
 ### Added — "Created by" names on campaigns (Phase 3.12)
 - **Campaign cards and the campaign page say who created it by name**, e.g. "Created … by Ana García", with
   the email as a tooltip. "You" stays "you", and someone without a name still shows their email. Links
