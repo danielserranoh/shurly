@@ -8,13 +8,15 @@
 #   AWS_PROFILE=griddo-main ./scripts/deploy_ecs.sh
 #
 # Required env (or .env file in cwd):
-#   DB_HOST, DB_PASSWORD, JWT_SECRET_KEY, CORS_ORIGINS
+#   DB_HOST, DB_PASSWORD, JWT_SECRET_KEY
 #
 # Optional env (sensible defaults below):
 #   IMAGE_TAG (default: short git sha)
 #   SERVICE_NAME (default: shurly-api)
 #   ECR_REPO (default: shurly-api)
 #   REGION (default: eu-south-2)
+#   CORS_ORIGINS (default: '[]', no cross-origin caller: the frontend is served from
+#     the API's own host, 4.10; DEPLOYMENT.md § CORS)
 
 set -euo pipefail
 
@@ -130,7 +132,7 @@ CONTAINER_JSON=$(jq -n \
     --arg jwt_expire     "${JWT_ACCESS_TOKEN_EXPIRE_MINUTES:-10080}" \
     --arg api_title      "Shurly API" \
     --arg api_version    "0.1.0" \
-    --arg cors_origins   "${CORS_ORIGINS:-[\"https://shurl.griddo.io\"]}" \
+    --arg cors_origins   "${CORS_ORIGINS:-[]}" \
     --arg anonymize      "${ANONYMIZE_REMOTE_ADDR:-true}" \
     --arg trusted_proxies "${TRUSTED_PROXIES:-[\"172.31.0.0/16\"]}" \
     --arg disable_track  "${DISABLE_TRACK_PARAM:-nostat}" \

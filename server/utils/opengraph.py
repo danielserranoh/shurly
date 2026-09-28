@@ -14,7 +14,7 @@ from server.utils.url import url_origin
 
 logger = logging.getLogger(__name__)
 
-_USER_AGENT = "Shurly/1.0 (+https://shurl.griddo.io; Link Preview Bot)"
+_USER_AGENT = "Shurly/1.0 (+https://shurly.griddo.io; Link Preview Bot)"
 
 # SSRF guard. Destination URLs are user-supplied, so the fetcher only requests http(s)
 # URLs whose host resolves exclusively to public addresses, connects to an address that

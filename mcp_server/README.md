@@ -50,7 +50,7 @@ mcp_server/
 ```
 
 The package is intentionally separate from `server/` so it can be packaged
-and deployed independently if we want a separate Lambda/Fargate task for
+and deployed independently if we ever want a separate ECS service for
 the MCP surface (Phase 5.5 will decide). It depends on `main.app` (the
 FastAPI application) for the routes, but doesn't otherwise touch the
 HTTP server's runtime.

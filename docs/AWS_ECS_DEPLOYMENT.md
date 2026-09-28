@@ -1,7 +1,8 @@
 # Shurly on AWS ECS Express — Operational Playbook
 
 > **Audience:** anyone deploying, operating, or debugging Shurly in production.
-> **Scope:** ECS Express on Fargate in `griddo-main` (eu-south-2), serving `s.griddo.io`.
+> **Scope:** ECS Express on Fargate in `griddo-main` (eu-south-2), serving `shurly.griddo.io` (the API and the
+> MCP; the frontend from 4.10) and `s.griddo.io` (test links until the Phase 8 cutover), both on ALB rule 12.
 >
 > This document is a complement to [`DEPLOYMENT.md`](../DEPLOYMENT.md), not a replacement:
 > - `DEPLOYMENT.md` is the **step-by-step walkthrough** for deploying from scratch.
@@ -15,7 +16,7 @@
 
 ```
 ┌────────────────────────────────────────────────────────────────────┐
-│  Production: s.griddo.io                                           │
+│  Production: shurly.griddo.io (API, MCP), s.griddo.io (links)      │
 │  Account:    griddo-main (686255983646)  /  Region: eu-south-2     │
 │                                                                    │
 │  ECS service:        shurly-api  (cluster: default)                │
@@ -24,7 +25,7 @@
 │  ALB:                ecs-express-gateway-alb-d37ca364              │
 │  Listener:           …8d6cb22fed5c0e8b/f182b836d7cff456            │
 │  Express priority:   4         (auto-managed by Express Mode)      │
-│  Custom rule:        priority 12  → s.griddo.io                    │
+│  Custom rule:        priority 12  → shurly.griddo.io, s.griddo.io  │
 │  Lambda rule-sync:   ecs-alb-rule-sync                             │
 │  CloudWatch logs:    /aws/ecs/default/shurly-api-5fdb              │
 │                                                                    │
@@ -40,7 +41,7 @@
 | View logs | `aws logs tail /aws/ecs/default/shurly-api-5fdb --follow --region eu-south-2 --profile griddo-main` |
 | Force redeploy | `aws ecs update-express-gateway-service --service-arn $(aws ecs list-services ... --query "serviceArns[?contains(@,'shurly-api')] \| [0]" -o text) --force-new-deployment` |
 | Trigger Lambda sync | `aws lambda invoke --function-name ecs-alb-rule-sync --payload '{}' /dev/stdout` |
-| Smoke health | `curl https://s.griddo.io/api/v1/health` |
+| Smoke health | `curl https://shurly.griddo.io/api/v1/health` (its `commit` is the image serving; the deploy's smoke test waits for it) |
 
 ---
 
@@ -49,11 +50,13 @@
 ```
             ┌──────────────────────────────────────────┐
             │                                          │
-   user ────►  https://s.griddo.io/<short_code>        │
+   user ────►  https://shurly.griddo.io/api/…, /mcp/   │
+            │  https://s.griddo.io/<short_code>        │
    (any HTTP client; browser, curl, MCP, ...)         │
             │                                          │
             │   DNS (Route 53 in griddo-production):   │
-            │     s.griddo.io  ALIAS A  →  shared ALB  │
+            │     shurly.griddo.io  ALIAS A → ALB      │
+            │     s.griddo.io       ALIAS A → ALB      │
             │                                          │
             └────────────────┬─────────────────────────┘
                              │
@@ -64,6 +67,7 @@
    │                                                             │
    │  HTTPS listener (port 443):                                 │
    │   • cert *.ecs.eu-south-2.on.aws  (auto from Express Mode)  │
+   │   • cert shurly.griddo.io          (manual, ACM)            │
    │   • cert s.griddo.io               (manual, ACM)            │
    │   • cert go.griddo.io              (Shlink — coexists)      │
    │   • cert links.griddo.io           (Shlink web client)      │
@@ -75,7 +79,7 @@
    │   priority 10  go.griddo.io    → shlink-api active TG    │  │
    │   priority 11  links.griddo.io → shlink-web active TG    │  │
    │   priority 12  s.griddo.io     → shurly-api active TG    │  │  follows priority 4
-   │                                                          │  │  via ecs-alb-rule-sync
+   │                shurly.griddo.io (same rule)              │  │  via ecs-alb-rule-sync
    │  Default rule: 404                                       │  │  Lambda
    └──────────────────────────────────────────────────────────┼──┘
                                                               │
@@ -84,8 +88,8 @@
                   FAILED; follows the rollout — see            │
                   infra/ecs-alb-rule-sync/README.md)            │
                   Reads weights of priority 4, replicates ──────┘
-                  to priority 12 so blue/green keeps
-                  s.griddo.io healthy through deploys.
+                  to priority 12 so blue/green keeps both
+                  hosts healthy through deploys.
                              │
                              ▼ (the active TG points to)
             ┌─────────────────────────────────────────────────┐
@@ -301,7 +305,7 @@ Expected output: `["Synced priority 12 with 4"]` or `["No changes needed"]`.
 **C. DNS hasn't propagated.** Less common but possible right after `setup_custom_domain.sh`.
 
 ```bash
-dig s.griddo.io +short  # should return the ALB's IPs
+dig shurly.griddo.io +short  # and s.griddo.io: both should return the ALB's IPs
 ```
 
 If empty, wait 60s and try again. Route 53 propagation is normally <30s but can spike.
