@@ -29,6 +29,18 @@ import SettingsSection from './SettingsSection.astro';
     </div>
   </SettingsSection>
 
+  <!-- Owners only, and only when someone was removed (3.14.3) -->
+  <div data-removed-section hidden>
+    <SettingsSection
+      id="org-removed-title"
+      title="Removed people"
+      description="Their links keep working. Move the personal ones to the organization so the team can see and change them."
+    >
+      <span slot="title-end" class="font-normal text-ink-500" data-removed-count></span>
+      <ul class="card divide-y divide-ink-100 overflow-hidden" data-removed></ul>
+    </SettingsSection>
+  </div>
+
   <SettingsSection id="org-roles-title" title="Roles" description="What each role can do. There’s always at least one owner.">
     <dl class="card divide-y divide-line">
       <div class="grid gap-2 px-5 py-4 sm:grid-cols-[7rem_minmax(0,1fr)] sm:gap-4 sm:px-6">
@@ -52,7 +64,7 @@ import SettingsSection from './SettingsSection.astro';
   hidden
   illustration="locked"
   title="You’re not part of an organization"
-  body="Your links and campaigns are personal: only you can see them. People who sign up with the organization’s email domain join it."
+  body="Your links and campaigns are personal: only you can see them. Accounts on the organization’s email domain join it when they sign in."
 />
 
 <EmptyState id="org-error" hidden illustration="error" title="We couldn’t load your organization" body="Check your connection and try again.">
@@ -60,13 +72,13 @@ import SettingsSection from './SettingsSection.astro';
 </EmptyState>
 
 <script>
-  import { apiDelete, apiGet, apiPatch, apiPost, errorMessage } from '@/utils/api';
+  import { ApiError, apiDelete, apiGet, apiPatch, apiPost, errorMessage } from '@/utils/api';
   import { formatDate, pluralize } from '@/utils/format';
   import { html, setHTML, type RawHTML } from '@/utils/html';
   import { icon, type IconName } from '@/utils/icons';
   import { confirmDialog, toast, type ConfirmOptions } from '@/utils/ui';
   import { forgetOrganization, getMe, getMyOrganization, installLockedControls } from '@/utils/viewer';
-  import type { AdoptedLinks, OrgMember, OrgRole, Organization, User } from '@/utils/types';
+  import type { AdoptedLinks, OrgMember, OrgRole, Organization, RemovedMember, User } from '@/utils/types';
 
   const ROLES: Record<OrgRole, { label: string; icon: IconName; badge: string; rank: number }> = {
     member: { label: 'Member', icon: 'user', badge: 'badge-neutral', rank: 0 },
@@ -81,10 +93,14 @@ import SettingsSection from './SettingsSection.astro';
   const noneState = $('#org-none');
   const errorState = $('#org-error');
   const host = $('[data-members]');
+  const removedSection = $('[data-removed-section]');
+  const removedHost = $('[data-removed]');
 
   let me: User;
   let org: Organization;
   let members: OrgMember[] = [];
+  /** Owners only; null when the viewer isn't one. */
+  let removed: RemovedMember[] | null = null;
   installLockedControls();
 
   // ---------------------------------------------------------------- What the viewer may do
@@ -171,7 +187,7 @@ import SettingsSection from './SettingsSection.astro';
   function render() {
     $('[data-org-name]').textContent = org.name;
     $('[data-org-summary]').textContent = org.google_domain
-      ? `You’re ${withArticle(org.role)}. People who sign up with an @${org.google_domain} email join as members.`
+      ? `You’re ${withArticle(org.role)}. Anyone who signs in with an @${org.google_domain} account joins as a member.`
       : `You’re ${withArticle(org.role)}.`;
     $('[data-member-count]').textContent = ` · ${members.length}`;
     // Fixed layout so the columns hold still between renders. On phones the Joined column
@@ -191,6 +207,33 @@ import SettingsSection from './SettingsSection.astro';
         <tbody>${members.map(row)}</tbody>
       </table>`,
     );
+    renderRemoved();
+  }
+
+  /** What someone still owns, as the move would report it. */
+  function owned(p: RemovedMember): string {
+    const parts = [p.links && pluralize(p.links, 'personal link'), p.campaigns && pluralize(p.campaigns, 'campaign')];
+    return parts.filter(Boolean).join(' · ') || 'Nothing left to move';
+  }
+
+  function removedRow(p: RemovedMember): RawHTML {
+    const any = p.links + p.campaigns > 0;
+    return html`<li class="flex items-center gap-3 px-4 py-3 text-sm sm:px-5">
+      <div class="min-w-0 flex-1">
+        <p class="truncate font-medium text-ink-900" title="${p.email}">${p.email}</p>
+        <p class="mt-0.5 text-xs text-ink-500">${owned(p)}</p>
+      </div>
+      ${any
+        ? html`<button type="button" class="btn btn-secondary btn-sm shrink-0" data-adopt="${p.user_id}" aria-label="Move ${p.email}’s personal links to ${org.name}">Move to ${org.name}</button>`
+        : ''}
+    </li>`;
+  }
+
+  function renderRemoved() {
+    removedSection.hidden = !removed?.length;
+    if (!removed?.length) return;
+    $('[data-removed-count]').textContent = ` · ${removed.length}`;
+    setHTML(removedHost, html`${removed.map(removedRow)}`);
   }
 
   // ---------------------------------------------------------------- Load
@@ -205,7 +248,10 @@ import SettingsSection from './SettingsSection.astro';
       }
       me = user;
       org = organization;
-      members = await apiGet<OrgMember[]>('/api/v1/organization/members');
+      [members, removed] = await Promise.all([
+        apiGet<OrgMember[]>('/api/v1/organization/members'),
+        org.role === 'owner' ? loadRemoved() : null,
+      ]);
     } catch (err) {
       content.hidden = true;
       noneState.hidden = true;
@@ -218,6 +264,17 @@ import SettingsSection from './SettingsSection.astro';
     errorState.hidden = true;
     render();
     return true;
+  }
+
+  /**
+   * The removed people, for owners. A 403 (the role changed meanwhile) or a 404 (an API
+   * older than the list) leaves the section out rather than failing the page.
+   */
+  function loadRemoved(): Promise<RemovedMember[] | null> {
+    return apiGet<RemovedMember[]>('/api/v1/organization/removed-members').catch((err) => {
+      if (err instanceof ApiError && (err.status === 403 || err.status === 404)) return null;
+      throw err;
+    });
   }
 
   /** Reload after a change; the viewer's own role may have changed too. */
@@ -321,35 +378,56 @@ import SettingsSection from './SettingsSection.astro';
     if (!ok) return;
     toast(`${m.email} removed`, 'success');
     await reload();
-    if (org.role === 'owner') await offerAdoption(m);
+    if (org.role === 'owner') await offerAdoption(m, 'right after removing');
   }
 
   /**
    * Owners only: move a removed person's personal links and campaigns to the organization.
-   * Offered right after the removal, the one moment the page knows who it was (no endpoint
-   * lists removed people yet). Skipping is safe: the links keep redirecting either way.
+   * Offered right after the removal, where skipping is fine (the links keep redirecting
+   * either way), and any time later from the Removed people list.
    */
-  async function offerAdoption(m: OrgMember) {
+  async function offerAdoption(person: { user_id: string; email: string }, when: 'right after removing' | 'later') {
+    const now = when === 'right after removing';
     let moved: AdoptedLinks | null = null;
     const ok = await confirmThen(
       {
-        title: `Move ${m.email}’s personal links to ${org.name}?`,
-        body: `Nobody else can see or change them now. Moved, everyone at ${org.name} sees them and admins manage them. Skipping is fine: they keep working either way.`,
+        title: `Move ${person.email}’s personal links to ${org.name}?`,
+        body: `Nobody else can see or change them now. Moved, everyone at ${org.name} sees them and admins manage them.${now ? ' Skipping is fine: they keep working either way.' : ''}`,
         confirmLabel: `Move to ${org.name}`,
-        cancelLabel: 'Skip',
+        cancelLabel: now ? 'Skip' : 'Cancel',
       },
       async () => {
-        moved = await apiPost<AdoptedLinks>('/api/v1/organization/adopt-personal-links', { user_id: m.user_id });
+        moved = await apiPost<AdoptedLinks>('/api/v1/organization/adopt-personal-links', { user_id: person.user_id });
       },
     );
     if (!ok || !moved) return;
     const { links, campaigns } = moved as AdoptedLinks;
-    if (!links && !campaigns) toast('Nothing to move', 'info', { description: `${m.email} had no personal links or campaigns.` });
+    if (!links && !campaigns) toast('Nothing to move', 'info', { description: `${person.email} had no personal links or campaigns.` });
     else {
       const what = [links && pluralize(links, 'link'), campaigns && pluralize(campaigns, 'campaign')].filter(Boolean).join(' and ');
       toast(`Moved to ${org.name}`, 'success', { description: `${what} now ${links + campaigns === 1 ? 'belongs' : 'belong'} to the organization.` });
     }
+    await refreshRemoved();
   }
+
+  /** Read the removed people again after a move; focus stays in the list. */
+  async function refreshRemoved() {
+    try {
+      removed = await loadRemoved();
+    } catch {
+      return; // the next page load catches up
+    }
+    renderRemoved();
+    const heading = $('#org-removed-title');
+    heading.tabIndex = -1;
+    (removedHost.querySelector<HTMLElement>('[data-adopt]') ?? heading).focus();
+  }
+
+  removedHost.addEventListener('click', (e) => {
+    const btn = (e.target as HTMLElement).closest<HTMLElement>('[data-adopt]');
+    const person = btn && removed?.find((p) => p.user_id === btn.dataset.adopt);
+    if (person) void offerAdoption(person, 'later');
+  });
 
   host.addEventListener('click', (e) => {
     const btn = (e.target as HTMLElement).closest<HTMLElement>('[data-member-action]');

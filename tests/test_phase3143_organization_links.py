@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session
 
 import server.app.urls as urls_module
 from server.core.auth import create_access_token, hash_password
+from server.core.config import settings
 from server.core.models import URL, Campaign, OrganizationMember, OrgRole, User
 from server.utils import organization as org_service
 from server.utils.opengraph import OpenGraphMetadata
@@ -343,6 +344,109 @@ class TestSomeoneLeaves:
         )
 
         assert response.status_code == 404
+
+
+class TestRemovedPeople:
+    """
+    The people an owner removed, with what they still own: so the move above can be done
+    later, not only right after removing someone.
+    """
+
+    @pytest.fixture(autouse=True)
+    def organization_domain(self, monkeypatch):
+        monkeypatch.setattr(settings, "organization_domain", "griddo.io")
+
+    def _removed(self, client, actor: User):
+        return client.get("/api/v1/organization/removed-members", headers=_headers(actor))
+
+    def _remove(self, client, actor: User, person: User):
+        response = client.delete(
+            f"/api/v1/organization/members/{person.id}", headers=_headers(actor)
+        )
+        assert response.status_code == 204, response.text
+
+    def _row(self, person: User, links: int, campaigns: int) -> dict:
+        return {
+            "user_id": str(person.id),
+            "email": person.email,
+            "links": links,
+            "campaigns": campaigns,
+        }
+
+    def test_lists_them_with_what_they_still_own(self, client, people):
+        _link(client, people["alice"], visibility="personal")
+        _campaign(client, people["alice"], visibility="personal")
+        _link(client, people["alice"])  # the organization's already: nothing to move
+        self._remove(client, people["owner"], people["alice"])
+
+        response = self._removed(client, people["owner"])
+
+        assert response.status_code == 200
+        # The same counts the move reports: the link, and the campaign with its two links.
+        assert response.json() == [self._row(people["alice"], links=3, campaigns=1)]
+
+    def test_most_to_move_first_then_by_email(self, client, people, db_session):
+        dave = _person(db_session, "dave@griddo.io", OrgRole.MEMBER)
+        carol = _person(db_session, "carol@griddo.io", OrgRole.MEMBER)
+        _link(client, people["bob"], visibility="personal")
+        _campaign(client, people["alice"], visibility="personal")
+        for person in (dave, people["bob"], carol, people["alice"]):
+            self._remove(client, people["owner"], person)
+
+        rows = self._removed(client, people["owner"]).json()
+
+        # alice 2 links + 1 campaign, bob 1 link; carol and dave tie at nothing, by email.
+        assert [row["email"] for row in rows] == [
+            "alice@griddo.io",
+            "bob@griddo.io",
+            "carol@griddo.io",
+            "dave@griddo.io",
+        ]
+
+    def test_only_closed_accounts_on_the_organization_domain(self, client, people, db_session):
+        # Closed some other way, off the domain: never in the organization, so its
+        # address isn't the owners' to see. Nor is an open account's, on or off it.
+        db_session.add_all(
+            [
+                User(email="stranger@elsewhere.com", password_hash=_PASSWORD_HASH, is_active=False),
+                User(email="visitor@elsewhere.com", password_hash=_PASSWORD_HASH, is_active=True),
+            ]
+        )
+        db_session.commit()
+        self._remove(client, people["owner"], people["alice"])
+
+        rows = self._removed(client, people["owner"]).json()
+
+        assert [row["email"] for row in rows] == ["alice@griddo.io"]
+
+    def test_what_was_moved_no_longer_counts(self, client, people):
+        _link(client, people["alice"], visibility="personal")
+        self._remove(client, people["owner"], people["alice"])
+        client.post(
+            "/api/v1/organization/adopt-personal-links",
+            json={"user_id": str(people["alice"].id)},
+            headers=_headers(people["owner"]),
+        )
+
+        rows = self._removed(client, people["owner"]).json()
+
+        assert rows == [self._row(people["alice"], links=0, campaigns=0)]
+
+    @pytest.mark.parametrize("viewer", ["admin", "bob"])
+    def test_owners_only(self, client, people, viewer):
+        self._remove(client, people["owner"], people["alice"])
+
+        assert self._removed(client, people[viewer]).status_code == 403
+
+    def test_not_for_an_account_outside_the_organization(self, client, db_session):
+        visitor = User(email="visitor@elsewhere.com", password_hash=_PASSWORD_HASH, is_active=True)
+        db_session.add(visitor)
+        db_session.commit()
+
+        assert self._removed(client, visitor).status_code == 403
+
+    def test_needs_a_session(self, client):
+        assert client.get("/api/v1/organization/removed-members").status_code == 401
 
 
 _LEGACY_ROWS = (

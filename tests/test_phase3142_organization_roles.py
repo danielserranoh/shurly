@@ -21,7 +21,7 @@ import pytest
 from sqlalchemy.orm import Session, sessionmaker
 
 from server.core.auth import create_access_token, hash_password
-from server.core.config import settings
+from server.core.config import Settings, settings
 from server.core.models import Organization, OrganizationMember, OrgRole, User
 from server.utils import organization as org_service
 
@@ -95,6 +95,20 @@ class TestDefaultOrganization:
         assert first.id == second.id
         assert (first.name, first.google_domain) == ("Griddo", "griddo.io")
         assert db_session.query(Organization).count() == 1
+
+    def test_at_launch_it_is_griddo_on_griddo_io(self, db_session, monkeypatch):
+        """
+        3.14.3: one organization at launch, "Griddo" on griddo.io, unless a deployment's
+        settings say otherwise. The code's defaults, not this machine's .env. Whoever signs in
+        with Google on that domain joins it as a member: tests/test_phase3132_google_sign_in.py,
+        test_the_first_sign_in_makes_the_account_and_joins_the_organization.
+        """
+        for name in ("organization_name", "organization_domain"):
+            monkeypatch.setattr(settings, name, Settings.model_fields[name].default)
+
+        organization = org_service.get_or_create_default_organization(db_session)
+
+        assert (organization.name, organization.google_domain) == ("Griddo", "griddo.io")
 
     @pytest.mark.usefixtures("allow_password_signup")
     def test_sign_up_joins_as_member(self, client, db_session):

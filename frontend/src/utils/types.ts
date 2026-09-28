@@ -303,3 +303,12 @@ export interface AdoptedLinks {
   links: number;
   campaigns: number;
 }
+
+/** Phase 3.14.3: someone removed from the organization, and what they still own that an owner can move. */
+export interface RemovedMember {
+  user_id: string;
+  email: string;
+  /** Personal links, a campaign's included: what adopt-personal-links would move. */
+  links: number;
+  campaigns: number;
+}

@@ -55,6 +55,12 @@ EXCLUDED_ROUTE_MAPS: list[RouteMap] = [
         pattern=r"^/api/v1/organization(/.*)?$",
         mcp_type=MCPType.EXCLUDE,
     ),
+    # Phase 3.14.3 — who was removed, the list the move of their links works from.
+    RouteMap(
+        methods=["GET"],
+        pattern=r"^/api/v1/organization/removed-members$",
+        mcp_type=MCPType.EXCLUDE,
+    ),
     # Phase 3.13 — signing in with Google is a browser flow (redirects and a cookie),
     # and only the signed-in person sets or removes a password: the same untrusted
     # text could talk an assistant into it.
