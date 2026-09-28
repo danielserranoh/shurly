@@ -171,13 +171,13 @@ Detalles en `DEPLOYMENT.md` (sección del MCP) y en `mcp_server/README.md`.
 
 ## Resumen
 
-- [ ] Proyecto `Shurly` dentro de la organización `griddo.io`
-- [ ] Branding: nombre, correo de asistencia, dominio autorizado `griddo.io`
-- [ ] Audience: **Interna**
-- [ ] Permisos: `openid` y `email` (más `profile`, opcional)
-- [ ] Cliente web con las tres URIs de redirección (web, local y MCP), y el JSON **descargado al crearlo**
+- [x] Proyecto `Shurly` dentro de la organización `griddo.io`
+- [x] Branding: nombre, correo de asistencia, dominio autorizado `griddo.io`
+- [x] Audience: **Interna**
+- [x] Permisos: `openid` y `email` (más `profile`, opcional)
+- [x] Cliente web con las tres URIs de redirección (web, local y MCP), y el JSON **descargado al crearlo**
 - [ ] Workspace: las apps internas tienen acceso (o `Shurly` marcada como de confianza)
-- [ ] Client ID y secret entregados (opción A u opción B del paso 7)
+- [x] Client ID y secret entregados (opción A u opción B del paso 7)
 
 Referencias: [Gestionar clientes OAuth](https://support.google.com/cloud/answer/15549257) ·
 [Controlar qué apps acceden a los datos de Workspace](https://knowledge.workspace.google.com/admin/apps/control-which-third-party-and-internal-apps-access-google-workspace-data)
