@@ -318,6 +318,9 @@ export interface Organization {
 export interface OrgMember {
   user_id: string;
   email: string;
+  /** Phase 3.12: from their profile; null without one, absent from older APIs. */
+  first_name?: string | null;
+  last_name?: string | null;
   role: OrgRole;
   joined_at: string;
 }
@@ -332,6 +335,9 @@ export interface AdoptedLinks {
 export interface RemovedMember {
   user_id: string;
   email: string;
+  /** Phase 3.12: from their profile; null without one, absent from older APIs. */
+  first_name?: string | null;
+  last_name?: string | null;
   /** Personal links, a campaign's included: what adopt-personal-links would move. */
   links: number;
   campaigns: number;
