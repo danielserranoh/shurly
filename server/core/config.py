@@ -103,7 +103,7 @@ class Settings(BaseSettings):
     # alongside API keys. Off until these two, the Google client above and
     # `organization_domain` are set; the MCP then takes API keys and JWTs only.
     # The MCP endpoint as clients reach it, without the trailing slash, e.g.
-    # https://s.griddo.io/mcp. People connect to it with the slash.
+    # https://shurly.griddo.io/mcp. People connect to it with the slash.
     mcp_public_url: str = ""
     # Signs the MCP's OAuth tokens and, derived, encrypts what it stores. The same
     # value on every task; changing it signs every MCP client out.

@@ -179,7 +179,7 @@ jobs:
           exit 1
 
       - name: Smoke test the public host
-        # s.griddo.io is served by a custom ALB rule (priority 12) that Express
+        # shurly.griddo.io is served by a custom ALB rule (priority 12) that Express
         # doesn't manage; the ecs-alb-rule-sync Lambda copies Express's weights
         # onto it (infra/ecs-alb-rule-sync). Until 27 Sep 2026 it did so only on
         # COMPLETED, ~1 min after ECS had stopped the old task, so the ALB
@@ -189,7 +189,7 @@ jobs:
         # A 200 alone proves nothing (the old image answers 200 too); wait for
         # /health to report the commit we just built.
         run: |
-          PUBLIC_HOST="s.griddo.io"
+          PUBLIC_HOST="shurly.griddo.io"
           echo "Waiting for https://${PUBLIC_HOST}/api/v1/health to report commit ${GITHUB_SHA::8}"
           for i in $(seq 1 30); do
             SERVING=$(curl -sS --max-time 10 "https://${PUBLIC_HOST}/api/v1/health" | jq -r '.commit // "none"' 2>/dev/null || echo "unreachable")
