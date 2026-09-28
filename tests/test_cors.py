@@ -7,7 +7,12 @@ headers, credentials aren't allowed, methods and request headers are the ones
 the API uses, and the frontend can read Retry-After and X-Request-Id.
 """
 
+from pathlib import Path
+
+from server.core.config import Settings
+
 FRONTEND = "http://localhost:4232"  # in the default CORS_ORIGINS
+PRODUCTION_TEMPLATE = Path(__file__).resolve().parents[1] / ".env.production.example"
 
 
 def _preflight(client, origin: str, method: str = "POST", headers: str = "content-type"):
@@ -60,3 +65,12 @@ def test_the_frontend_can_read_retry_after_and_the_request_id(client):
 
     exposed = response.headers["access-control-expose-headers"].lower()
     assert "retry-after" in exposed and "x-request-id" in exposed
+
+
+def test_production_lists_no_other_origin(monkeypatch):
+    """In production the frontend is served from the API's host (4.10), so the template lists
+    no origin (DEPLOYMENT.md § CORS). Loading it also checks the value is valid JSON: a mangled
+    one stops the task at startup (docs/AWS_ECS_DEPLOYMENT.md, lesson 8)."""
+    monkeypatch.delenv("CORS_ORIGINS", raising=False)
+
+    assert Settings(_env_file=PRODUCTION_TEMPLATE).cors_origins == []

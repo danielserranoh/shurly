@@ -20,7 +20,7 @@ shared ALB (eu-south-2) — created by ECS Express for Shlink, reused for Shurly
    ├─ priority 11 → shlink-web      → links.griddo.io
    └─ priority 12 → shurly-api      → shurly.griddo.io (the app, API, MCP), s.griddo.io (interim, until Phase 8)
         ↓
-        Fargate task (ARM64, 0.25 vCPU / 0.5 GB)
+        Fargate task (x86_64, 0.25 vCPU / 0.5 GB)
         FastAPI + uvicorn  ⇄  RDS PostgreSQL t4g.micro
                                  (private inside the default VPC)
 ```
@@ -133,10 +133,12 @@ cat > .env <<EOF
 DB_HOST=<from create_rds.sh output>
 DB_PASSWORD=<from create_rds.sh output>
 JWT_SECRET_KEY=<from step 3>
-CORS_ORIGINS=["https://shurly.griddo.io"]
 EOF
 chmod 600 .env  # avoid accidental git add
 ```
+
+`CORS_ORIGINS` is left out: the script defaults it to `'[]'`, as the frontend shares the API's host (§ CORS).
+To set one, single-quote the JSON (`CORS_ORIGINS='["http://localhost:4232"]'`), or `source` mangles it.
 
 Then deploy:
 
@@ -146,7 +148,8 @@ AWS_PROFILE=griddo-main ./scripts/deploy_ecs.sh
 
 The script:
 - Creates the ECR repository `shurly-api` if needed (with image scanning + immutable tags).
-- Builds the container for `linux/arm64` and pushes by SHA.
+- Builds the container for `linux/amd64` and `linux/arm64` (Fargate runs the first) and pushes it tagged
+  `<sha>-<timestamp>`.
 - Calls `aws ecs create-express-gateway-service` with all Phase 3.9/3.10 settings as env vars, `--cpu 256 --memory 512`, healthcheck `/api/v1/health`, scaling 1–2 tasks, and Shlink's existing IAM roles.
 - Tolerates the documented `--monitor-resources` timeout (Shlink lesson #2) and verifies via `describe-express-gateway-service`.
 - On subsequent runs, the script detects the service exists and calls `update-express-gateway-service` instead — Express Mode handles the blue/green target group rotation.

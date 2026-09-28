@@ -33,6 +33,17 @@ implementation lifecycle and is independent of the URL version segment.
   ever succeeded. `/api/v1/analytics/*` serves these numbers, for the links the caller can see.
 - The MCP's rule that kept them out of its tools is gone with them.
 
+### Fixed — the last `shurl.griddo.io` defaults, and the docs of rule 12
+- **The link previews' fetcher names a host that exists.** Its User-Agent pointed at `https://shurl.griddo.io`,
+  which never existed. It's `https://shurly.griddo.io` now (`server/utils/opengraph.py`).
+- **CORS lists no other origin by default**: `.env.production.example` and `deploy_ecs.sh` listed
+  `https://shurl.griddo.io`, and now say `'[]'`, since the frontend shares the API's host (DEPLOYMENT.md § CORS).
+  `deploy_ecs.sh` no longer calls `CORS_ORIGINS` required, as it has a default. Production keeps its own value:
+  the GitHub deploy changes only the image. A test loads the template and checks its value.
+- The playbook, the rule-sync README and DEPLOYMENT.md show both hosts on ALB rule 12 (`shurly.griddo.io` and
+  `s.griddo.io`) and the health check on `shurly.griddo.io`. DEPLOYMENT.md says the image is built for amd64 and
+  arm64 (Fargate runs amd64), not for arm64 alone.
+
 ### Fixed — a link's click limit counts clicks only
 - **The click limit (`max_visits`) counted every visit, email opens through the tracking pixel and bot hits
   included.** So a link could answer 410 Gone while its page still showed clicks left ("3 of 5 clicks used").
@@ -207,6 +218,8 @@ implementation lifecycle and is independent of the URL version segment.
 - **`… review <snapshot>`** writes a CSV to decide `keep`, `archive` or `drop` for each link, `keep` by default.
   It flags duplicates, codes that differ only in case, expired or capped links, and redirect-rule conditions
   Shurly has no equivalent for. Every cell is spreadsheet-safe.
+  - `capped` is Shlink's rule, every visit. `capped_in_shurly` is Shurly's, clicks only: whether the link
+    arrives capped from an import with `--visits`. A link with the first and not the second reopens.
 - **`--check-destinations`** fills in each destination's HTTP status. It goes through the link previews' SSRF
   guard, now also exposed as `guarded_request` (`HEAD` as well as `GET`): public http(s) addresses only, each
   redirect hop checked, 8 at a time.
