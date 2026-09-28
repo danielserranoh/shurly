@@ -8,6 +8,8 @@ import { todayIn } from './days';
 import type { LinkAddress } from './link-address';
 import type { BreakdownEntry, LinkBreakdown, LinkTimeseries, LinkTotals, LinkVisit, LinkVisits, VisitKind, VisitType } from './types';
 
+// scripts/dev-only-rules.mjs looks for this in production builds, where it must never be: keep it in use.
+const DEV_ONLY_MARKER = 'shurly-dev-only';
 const TZ = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
 const DAY = 86_400_000;
 const iso = (t: number) => new Date(t).toISOString().slice(0, 10);
@@ -144,6 +146,6 @@ export async function mockDownload(link: LinkAddress, period: Period, type: Visi
   const kind = KIND[type];
   const rows = allVisits(link, period).filter((v) => !kind || v.kind === kind);
   const header = 'visited_at,kind,country,browser,os,device,referrer,user_agent';
-  const lines = rows.map((v) => [v.visited_at, v.kind, v.country, v.browser, v.os, v.device, v.referrer, 'Mozilla/5.0 (mock)'].join(','));
+  const lines = rows.map((v) => [v.visited_at, v.kind, v.country, v.browser, v.os, v.device, v.referrer, `Mozilla/5.0 (${DEV_ONLY_MARKER})`].join(','));
   saveBlob(new Blob([[header, ...lines].join('\n')], { type: 'text/csv' }), filename);
 }

@@ -473,6 +473,8 @@ const donuts = [
   let period: Period = periodFromParams(params, todayIn(browserZone));
   let groupBy: GroupBy = defaultGroupBy(period);
   let series: Series = 'clicks';
+  /** Set once the viewer picks clicks or opens; until then a period with only opens shows opens. */
+  let seriesChosen = false;
   let visitType: VisitType = 'clicks';
   let visitPage = 1;
   let timeseries: Promise<LinkTimeseries> | null = null;
@@ -553,6 +555,10 @@ const donuts = [
       if (request !== timeseries) return;
       panelState('time');
       renderRange(ts);
+      if (!seriesChosen) {
+        series = ts.clicks === 0 && ts.opens > 0 ? 'opens' : 'clicks';
+        document.querySelectorAll<HTMLInputElement>('input[name="series"]').forEach((r) => (r.checked = r.value === series));
+      }
       renderTime(ts);
     } catch (err) {
       if (request !== timeseries) return;
@@ -797,6 +803,7 @@ const donuts = [
   document.querySelectorAll<HTMLInputElement>('input[name="series"]').forEach((r) =>
     r.addEventListener('change', () => {
       series = r.value as Series;
+      seriesChosen = true;
       timeseries?.then(renderTime).catch(() => {});
     }),
   );
