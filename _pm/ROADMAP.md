@@ -1281,6 +1281,9 @@ live in `mcp_server/README.md`, written for developers. There is no user manual 
       generated; `/auth/me`, and so the MCP's `get_current_user_info`, no longer returns the key; new keys
       start with `shurly_` (`tests/test_phase63_api_keys.py`)
   - [ ] Drop the emptied `users.api_key` column, in the release after `0007`
+  - [x] The MCP can't generate or revoke a key: talked into it by untrusted text, an assistant would get
+        the new key in its context. Nor `login` or `change_password`: no password or JWT passes through an
+        assistant (`EXCLUDED_ROUTE_MAPS`, pinned by `tests/test_phase52_mcp_tools.py`)
 
 ### 6.4 Monitoring & Logging
 - [x] CloudWatch Logs setup → `/aws/ecs/default/shurly-api-5fdb`; `X-Request-Id` correlates requests
