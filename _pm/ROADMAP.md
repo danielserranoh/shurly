@@ -963,6 +963,152 @@ without Workspace behind them a forgotten password can only be recovered by emai
 
 ---
 
+## Phase 3.16: Per-link analytics, as on Shlink's link page
+
+**Goal:** a link's page answers what Shlink's did, for any period:
+- when: a chart grouped by hour, day, week or month;
+- from what: OS, browser, device, referrer;
+- from where: countries;
+- which visits: a searchable list and its CSV.
+
+The page today has 7 days, 8 weeks and top countries. Shlink's screens are `design/shlink-*.png` (local only,
+not in git: they show a real link's visits).
+
+**Split (2026-09-29):** the API is Agent 1's, the page Agent 2's, built in parallel against the contract below.
+Cities wait for the user's decision and aren't designed here.
+
+### 3.16.1 The contract
+
+Every route below:
+- is under `/api/v1/analytics/urls/{short_code}/`, takes `?domain=` like the others (8.3), and a JWT or an API key;
+- answers only for a link the caller can see (`find_url`, `viewer`), and 404 otherwise;
+- counts clicks as everything else does (`_exclude_bots`): never pixel opens, and bots only with `include_bots=true`;
+- takes one period:
+
+| Param | Meaning |
+|---|---|
+| `period` | `<N>d`: the last N local days, today included (N from 1 to 3660, e.g. 7d, 30d, 90d). Or `all`: from the day the link was created. Default `30d` |
+| `from`, `to` | A custom range: local dates, `YYYY-MM-DD`, both inclusive. Give both or neither, and not with `period`. A `to` after today counts up to today |
+| `tz` | As now: an IANA zone, else the profile's, else UTC. Its rules set the hours, days, weeks and months |
+| `include_bots` | As now: `false` by default |
+
+Each of these answers 422:
+- a `period` that isn't `<N>d` or `all`;
+- `from` after `to`;
+- a range that starts after today;
+- `period` together with `from`/`to`;
+- `from` or `to` alone;
+- an unknown `tz`.
+
+There's no maximum range: the series' cap on buckets bounds the work, and an aggregate costs at most the link's
+visits.
+
+Every response starts with the same fields. `from` and `to` are the range counted, after `period` or clipping,
+for the page to show:
+
+```json
+{"short_code": "ia-bcn-griddo", "domain": "go.griddo.io", "from": "2026-07-01", "to": "2026-09-28",
+ "timezone": "Europe/Madrid", "include_bots": false}
+```
+
+**`GET …/timeseries?group_by=hour|day|week|month`** (default `day`)
+- Clicks per local hour, day, week (ISO, from Monday) or month, oldest first, with zeros.
+- The first and last buckets are clipped to the range.
+- At most 2,500 buckets. Hours reach 104 days, so a 90-day period works. More is a 422 that says to group by a
+  longer unit.
+- `format=csv` gives `start,end,clicks`.
+
+```json
+{...the common fields..., "group_by": "day", "total_clicks": 34,
+ "stats": [{"start": "2026-09-20T00:00:00+02:00", "end": "2026-09-21T00:00:00+02:00", "clicks": 0}, …]}
+```
+
+- `start` and `end` are ISO 8601 with the zone's offset, and `end` is exclusive.
+- DST: the day it starts has 23 hourly buckets and the day it ends 25, the repeated hour twice with two offsets.
+  A day bucket lasts 23 or 25 hours. So never derive hours or days from the count of buckets.
+- The page picks the default grouping (a rule for the page, not the API's): hour up to 2 days, day up to 180,
+  week up to 2 years, month beyond.
+
+**`GET …/context?limit=10`**
+
+```json
+{...the common fields..., "total_clicks": 34,
+ "os":        {"items": [{"name": "Windows", "clicks": 14}, {"name": "iOS", "clicks": 8}], "other": 0},
+ "browsers":  {"items": [{"name": "Chrome", "clicks": 20}, {"name": "Safari", "clicks": 9}], "other": 0},
+ "devices":   {"items": [{"name": "desktop", "clicks": 25}, {"name": "mobile", "clicks": 9}], "other": 0},
+ "referrers": {"items": [{"name": "www.linkedin.com", "clicks": 18}, {"name": null, "clicks": 15}], "other": 1}}
+```
+
+- Each dimension lists its top `limit` (1 to 50, default 10), by clicks and then name. `other` sums the rest.
+- `"name": null` means no value: the OS, browser or device isn't known, or there's no referrer (the page says
+  "Direct").
+- OS and browser are families, parsed from the user agent at query time (`server/utils/user_agent.py`):
+  - OS: Windows, macOS, iOS, Android, Linux, Chrome OS;
+  - browser: Chrome, Safari, Firefox, Edge, Opera, Internet Explorer, and Bot (with `include_bots`);
+  - device: desktop, mobile, tablet, bot.
+
+  New names can appear, so the page shows any string it gets.
+- A referrer is its host, lowercased, e.g. `www.linkedin.com`, or `com.linkedin.android` for the app
+  (`android-app://…`). Never its path or query.
+
+**`GET …/visits?page=1&page_size=20&q=`**
+
+```json
+{...the common fields..., "total": 34, "page": 1, "page_size": 20, "pages": 2,
+ "visits": [{"visited_at": "2026-09-27T23:54:12+02:00", "country": "ES", "browser": "Chrome", "os": "Windows",
+             "device": "desktop", "referrer": "www.linkedin.com", "is_bot": false}, …]}
+```
+
+- Newest first. `page_size` is 1 to 100, default 20. A page past the last is an empty list, not an error.
+- `q` (1 to 100 characters, any case) keeps the visits whose browser, OS, device or referrer contains it, or whose
+  country does: its code, or its English name ("spa" finds ES). "direct" finds the visits without a referrer.
+  `total` and `pages` count the visits that match.
+- **No IP, anonymized or not, no user agent and no full referrer.** Fields are `null` when unknown, like
+  `/context`'s names. The country is a code, as elsewhere; the page shows its name.
+
+**`GET …/visits.csv`**, with the list's params except `page` and `page_size`
+- Every visit that matches, streamed: `visited_at,country,browser,os,device,referrer,is_bot`, each cell
+  spreadsheet-safe (`stream_csv`).
+- A route of its own, not `?format=csv`, so the MCP can list visits a page at a time but can't pull the whole file
+  into an assistant's context.
+
+**`GET …/geo`** gains the period params
+- `days=N` stays for existing clients and the MCP, and now means `period=Nd`: N local days, where it was
+  N × 24 hours. That's a behaviour change, like `recent_clicks_7d`'s in 3.12.8.
+- New fields: `from`, `to`, `timezone`, and `unknown_clicks`, the clicks without a country (visits from before
+  8.4 have none).
+- `stats` and `total_clicks` still count only the clicks with a country, so `total_clicks + unknown_clicks` is
+  the period's clicks.
+
+**Unchanged:** `/daily` and `/weekly`, for existing clients and the MCP (`get_url_daily_stats`,
+`get_url_weekly_stats`, and the curated `get_url_analytics_summary`). The page moves to `/timeseries`.
+
+**MCP:** the new routes become tools (`get_url_timeseries`, `get_url_context`, `list_url_visits`). `/visits.csv`
+is excluded.
+
+### 3.16.2 API (Agent 1)
+- [ ] The period params, one dependency for every route: `period`, `from`/`to`, clipping, the 422s, `tz`
+- [ ] `/timeseries`
+  - [ ] Buckets from the zone's rules (DST, half-hour zones such as Asia/Kolkata), clipped and capped
+  - [ ] Counted over the range's `visited_at` in one query and bucketed in Python. Not one `SUM(CASE)` per
+        bucket, which would be up to 2,500 cases per row
+- [ ] `/context`: grouped by user agent and by referrer in SQL, each distinct value parsed once
+- [ ] `/visits` and `/visits.csv`
+  - [ ] Without `q`, SQL pages the list
+  - [ ] With `q`, the match runs in Python over the range's visits, since browser and OS aren't stored. That's
+        fine for thousands of visits per link
+  - [ ] English country names for `q`, from a small static table
+- [ ] `/geo`: the period params and `unknown_clicks`
+- [ ] MCP: the tool names, `/visits.csv` excluded, `EXPECTED_TOOLS`
+- [ ] README endpoints, CHANGELOG
+- [ ] Only if a link's volume makes parsing at query time slow: store the parsed fields on `visits` (browser,
+      OS, device, referrer host), with a migration and a backfill. The contract stays the same
+
+### 3.16.3 Page (Agent 2)
+- [ ] Period selector, tabs By time / By context / By location / List, and the CSV export: Agent 2 breaks it down
+
+---
+
 ## Phase 4: AWS Deployment (ECS Express on griddo-main) — backend ✅ · frontend pending (4.10)
 
 **Status:** live at `https://s.griddo.io` since **2026-04-27** (first deploy, PRs #7–#11). `main` is
