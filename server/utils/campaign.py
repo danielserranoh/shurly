@@ -5,6 +5,7 @@ import io
 from uuid import UUID
 
 from server.core.models import URL, URLType
+from server.utils.csv_export import unquote_spreadsheet_text
 from server.utils.url import generate_short_code
 
 
@@ -28,7 +29,17 @@ def parse_csv(csv_data: str) -> list[dict]:
     try:
         # Use StringIO to read CSV from string
         reader = csv.DictReader(io.StringIO(csv_data))
-        rows = list(reader)
+        # Phase 6.3 — our exports quote cells that start like a formula; an export
+        # uploaded back drops that quote instead of keeping it in the data.
+        rows = [
+            {
+                unquote_spreadsheet_text(key) if key else key: (
+                    unquote_spreadsheet_text(value) if isinstance(value, str) else value
+                )
+                for key, value in row.items()
+            }
+            for row in reader
+        ]
 
         # Ensure we have a header
         if not reader.fieldnames:
