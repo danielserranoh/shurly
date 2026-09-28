@@ -57,15 +57,45 @@ export function safeUrl(url: string | null | undefined): string {
   }
 }
 
+// Trusted Types (Phase 6.3). Every built page's CSP requires TrustedHTML at the DOM's HTML
+// sinks (`require-trusted-types-for 'script'`) and allows one policy, this one. Its createHTML
+// returns its input unchanged, and that's safe only because of this module's invariant:
+// nothing reaches it but markup `html` built (every interpolation escaped; `raw()` only on
+// our own markup, as tests/no-raw-html.test.mjs checks) or `escapeHtml` output. setHTML and
+// toElement are its only callers, and they escape anything that isn't RawHTML. The policy
+// stays in this module: not exported, not on window. Without Trusted Types (older browsers,
+// Node), markup stays a plain string.
+interface HtmlPolicy {
+  createHTML(markup: string): unknown;
+}
+interface TrustedTypesFactory {
+  createPolicy(name: string, rules: { createHTML(markup: string): string }): HtmlPolicy;
+}
+const htmlPolicy: HtmlPolicy | null =
+  (globalThis as { trustedTypes?: TrustedTypesFactory }).trustedTypes?.createPolicy('shurly-html', {
+    createHTML: (markup) => markup,
+  }) ?? null;
+
+/** Markup for an HTML sink: TrustedHTML where the browser enforces Trusted Types. */
+function trusted(markup: string): string {
+  // TrustedHTML is what the sink wants; TypeScript's DOM types only know strings.
+  return (htmlPolicy ? htmlPolicy.createHTML(markup) : markup) as string;
+}
+
+/** RawHTML's markup as it is; anything else, a string included, escaped. */
+function markupOf(markup: RawHTML | string): string {
+  return isRaw(markup) ? markup.value : escapeHtml(markup);
+}
+
 /** Replace an element's children with rendered markup. */
 export function setHTML(el: Element | null, markup: RawHTML | string): void {
   if (!el) return;
-  el.innerHTML = typeof markup === 'string' ? escapeHtml(markup) : markup.value;
+  el.innerHTML = trusted(markupOf(markup));
 }
 
 /** Parse rendered markup into a single element (the first element child). */
 export function toElement<T extends Element = HTMLElement>(markup: RawHTML): T {
   const template = document.createElement('template');
-  template.innerHTML = markup.value.trim();
+  template.innerHTML = trusted(markupOf(markup).trim());
   return template.content.firstElementChild as T;
 }

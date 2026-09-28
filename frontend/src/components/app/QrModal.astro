@@ -24,6 +24,7 @@ import ProBadge from '@/components/ui/ProBadge.astro';
 </Modal>
 
 <script>
+  import { raw, setHTML } from '@/utils/html';
   import { downloadQrPng, downloadQrSvg, qrSvg } from '@/utils/qr';
   import { errorMessage } from '@/utils/api';
   import { toast } from '@/utils/ui';
@@ -39,8 +40,8 @@ import ProBadge from '@/components/ui/ProBadge.astro';
     const detail = (e as CustomEvent<{ url: string; code: string }>).detail;
     url = detail.url;
     name = `shurly-${detail.code}`;
-    // static: qrSvg emits only module coordinates and fixed colours; no text from the URL reaches the markup.
-    preview.innerHTML = qrSvg(url);
+    // qrSvg emits only module coordinates, a path and fixed colours: no text from the link.
+    setHTML(preview, raw(qrSvg(url)));
     preview.querySelector('svg')?.setAttribute('class', 'size-full');
     label.textContent = url.replace(/^https?:\/\//, '');
   });

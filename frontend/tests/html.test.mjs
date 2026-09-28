@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict';
 import { before, describe, test } from 'node:test';
 
-import { escapeHtml, html, raw, safeUrl } from '../src/utils/html.ts';
+import { escapeHtml, html, raw, safeUrl, setHTML } from '../src/utils/html.ts';
 
 before(() => {
   globalThis.window = { location: { origin: 'https://s.griddo.io' } };
@@ -55,5 +55,45 @@ describe('safeUrl', () => {
 
   test('a path is resolved on this site', () => {
     assert.equal(safeUrl('/dashboard/'), 'https://s.griddo.io/dashboard/');
+  });
+});
+
+describe('setHTML', () => {
+  test('puts markup from html in as markup', () => {
+    const el = { innerHTML: '' };
+    setHTML(el, html`<b>${'<i>'}</b>`);
+    assert.equal(el.innerHTML, '<b>&lt;i&gt;</b>');
+  });
+
+  test('escapes a string, and anything that only looks like markup from html', () => {
+    const el = { innerHTML: '' };
+    setHTML(el, '<img src=x onerror=alert(1)>');
+    assert.equal(el.innerHTML, '&lt;img src=x onerror=alert(1)&gt;');
+    setHTML(el, { value: '<img src=x onerror=alert(1)>' }); // a look-alike, not RawHTML
+    assert.equal(el.innerHTML, '[object Object]');
+  });
+});
+
+describe('Trusted Types', () => {
+  test('the markup goes through the one policy, shurly-html, made once', async () => {
+    const made = [];
+    globalThis.trustedTypes = {
+      createPolicy(name, rules) {
+        made.push(name);
+        return { createHTML: (markup) => ({ trusted: rules.createHTML(markup) }) };
+      },
+    };
+    try {
+      // A fresh copy of the module, made while the browser "has" Trusted Types.
+      const fresh = await import('../src/utils/html.ts?trusted-types');
+      const el = { innerHTML: '' };
+      fresh.setHTML(el, fresh.html`<b>${'<i>'}</b>`);
+      fresh.setHTML(el, fresh.html`<p>again</p>`);
+      assert.deepEqual(el.innerHTML, { trusted: '<p>again</p>' });
+      assert.deepEqual(made, ['shurly-html']);
+      assert.equal(Object.keys(fresh).some((name) => /polic/i.test(name)), false, 'the policy stays in the module');
+    } finally {
+      delete globalThis.trustedTypes;
+    }
   });
 });
