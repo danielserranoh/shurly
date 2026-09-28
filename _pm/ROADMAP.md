@@ -98,7 +98,7 @@ System creates:
 - [x] Create User model (authentication)
   - [x] id, email, password_hash, api_key, created_at, is_active
 - [x] Update URL model
-  - [x] Add: short_code (indexed), url_type (enum), campaign_id, user_data (JSONB), created_by
+  - [x] Add: short_code (indexed), url_type (enum), campaign_id, user_data (JSON — planned as JSONB; PostgreSQL can't GROUP BY `json`, see the 2026-09-28 campaign-summary fix), created_by
   - [x] Remove: old short_url field if needed
 - [x] Create Campaign model
   - [x] id, name, original_url, csv_columns, created_by, created_at
@@ -523,7 +523,7 @@ System creates:
 - [x] Tests verifying same code can exist on different domains (`tests/test_phase310_multidomain.py`)
 
 ### 3.10.2 Dynamic Redirect Rules ✅
-- [x] Create RedirectRule model (id, url_id, priority, conditions JSONB, target_url, created_at)
+- [x] Create RedirectRule model (id, url_id, priority, conditions JSON, target_url, created_at)
 - [x] Condition types: `device` (ios/android/desktop/linux/windows/macos), `language`, `query_param`, `before_date`, `after_date`, `browser`
 - [x] Ordered evaluation by priority (first match wins)
 - [x] Endpoints: GET/POST/PATCH/DELETE `/api/v1/urls/{code}/rules`
@@ -1354,7 +1354,7 @@ To maximize velocity, we'll use specialized agents:
 ## Notes & Decisions
 
 ### Database Choice: PostgreSQL ✅
-- JSONB for flexible campaign user data
+- JSON for flexible campaign user data (planned as JSONB; the columns are `json`)
 - Better AWS integration
 - Native UUID support
 - Superior analytics query performance
@@ -1370,7 +1370,7 @@ To maximize velocity, we'll use specialized agents:
   pay cold starts, and the RDS pool stays warm. See Phase 4 and the decision log in `docs/AWS_ECS_DEPLOYMENT.md`.
 
 ### Campaign URL Approach: Lookup Token ✅
-- Short code maps to JSONB user_data
+- Short code maps to JSON user_data
 - Privacy-friendly (no PII in URLs)
 - Flexible (any CSV columns)
 - Server-side parameter injection on redirect

@@ -52,6 +52,22 @@ implementation lifecycle and is independent of the URL version segment.
   page describes the team's links, and a link or campaign that isn't found may be
   someone else's personal one.
 
+### Fixed — campaign summary returned 500 on PostgreSQL
+- **`GET /api/v1/analytics/campaigns/{id}/summary` failed for every campaign on PostgreSQL**
+  ("could not identify an equality operator for type json"). Its top-performers query
+  grouped by `urls.user_data`, a `json` column PostgreSQL can't GROUP BY; the SQLite test
+  suite allows it, so it never showed. It now groups by `urls.id`, on which the other
+  selected columns depend. Regression test against PostgreSQL:
+  `tests/test_analytics_postgres.py`. Found in the 3.14 frontend's manual pass.
+
+### Fixed — random test failure on UUIDs that look like numbers
+- **The test suite no longer fails at random with `'float' object has no attribute
+  'replace'`.** Its in-memory SQLite created the models' UUID columns as `UUID`, a
+  type SQLite gives numeric affinity, so an id whose 32 hex digits read as a number
+  (all digits, or digits around one `e`: about one uuid4 in 700,000) was stored as a
+  float and failed to load. `tests/conftest.py` now creates them as `CHAR(32)` on
+  SQLite. Test-only: PostgreSQL has a native UUID type, and the models are unchanged.
+
 ### Security — only accounts on the organization's email domain join it
 - **A new account joins the organization only if its email is on `ORGANIZATION_DOMAIN`**
   (default `griddo.io`; exact, case-insensitive; empty lets anyone join). Sign-up is

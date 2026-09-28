@@ -395,7 +395,11 @@ def get_campaign_summary(
     )
     top_performers_data = (
         _exclude_bots(top_q, include_bots)
-        .group_by(URL.id, URL.short_code, URL.user_data)
+        # Group by the primary key only. `user_data` is JSON, which PostgreSQL can't
+        # GROUP BY (no equality operator for `json`): listing it here made every
+        # campaign summary a 500 on PostgreSQL while SQLite's tests passed. The other
+        # selected URL columns depend on `urls.id`, so PostgreSQL accepts them as they are.
+        .group_by(URL.id)
         .order_by(func.count(Visitor.id).desc())
         .limit(5)
         .all()
