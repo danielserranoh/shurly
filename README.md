@@ -166,9 +166,15 @@ The frontend will be available at `http://localhost:4232`
 
 **First run:** there is no default account. Accounts come from signing in with Google (Phase 3.13,
 set up in [DEPLOYMENT.md](DEPLOYMENT.md#sign-in-with-google-phase-313)), so sign-up with a password is
-off. Locally, set `ALLOW_PASSWORD_SIGNUP=true` in the backend's `.env` (never in production), then open
-`http://localhost:4232/register/` and sign up with any email and a password of 8+ characters; you're
-signed in straight away. Accounts live in your local database, so each environment needs its own.
+off and the frontend has no sign-up page. Locally, set `ALLOW_PASSWORD_SIGNUP=true` in the backend's
+`.env` (never in production), make an account through the API with an address on the organization's
+domain and a password of 8+ characters, then log in at `http://localhost:4232/login/`:
+
+```bash
+curl -X POST http://localhost:8000/api/v1/auth/register -H 'Content-Type: application/json' -d '{"email": "you@griddo.io", "password": "choose-a-long-one"}'
+```
+
+Accounts live in your local database, so each environment needs its own.
 
 #### Configuration (optional, build-time)
 
@@ -295,7 +301,7 @@ shurly/
 │       ├── utils/                 # api, auth, html (escaping), links, campaigns, charts, tags, …
 │       └── pages/
 │           ├── index.astro        # Landing + pricing
-│           ├── login.astro · register.astro · 404.astro · styleguide.astro
+│           ├── login.astro · 404.astro · styleguide.astro
 │           └── dashboard/
 │               ├── index.astro            # Links (quick create, filters, bulk actions)
 │               ├── create.astro           # Full link editor with live preview

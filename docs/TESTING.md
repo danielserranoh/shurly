@@ -116,12 +116,22 @@ npm run dev
 
 ### 1. Authentication Flow
 
-**Registration** (needs `ALLOW_PASSWORD_SIGNUP=true` since Phase 3.13):
-- [x] Navigate to http://localhost:4232/register
-- [x] Try registering with invalid email → Should show error
-- [x] Try password < 8 characters → Should show error
-- [ ] Register with valid credentials (e.g., test@example.com / password123)
-- [ ] Verify successful registration redirects to login
+**Accounts** (Phase 3.13): there's no sign-up page. An account comes from signing in with Google, or,
+locally, from `POST /api/v1/auth/register` with `ALLOW_PASSWORD_SIGNUP=true` (see API Testing below).
+- [ ] http://localhost:4232/register/ → lands on the login page
+- [ ] Without the Google settings, "Sign in with Google" comes back to the login page with "Google sign-in
+      isn't available right now…"
+- [ ] With them (DEPLOYMENT.md § Sign in with Google), signing in lands on the dashboard, or on the page
+      that sent you to the login page
+
+**Password** (Settings → Account, Phase 3.13.3):
+- [ ] Signed in with Google and no password: "Set password" works right after signing in, and the section then
+      says you sign in with Google or with your email and this password
+- [ ] "Remove password" asks first, then leaves Google only
+- [ ] More than 10 minutes after signing in, changing or removing it offers "Sign in with Google again", which
+      comes back to Settings → Account
+- [ ] An account with a password and no Google identity: the current password is asked, and "Remove password"
+      is locked, saying why
 
 **Login:**
 - [ ] Navigate to http://localhost:4321/login
@@ -299,10 +309,10 @@ npm run dev
 **Goal:** Test the complete flow from registration to creating first URL
 
 1. Open http://localhost:4321 in incognito/private window
-2. Click "Sign Up" button
-3. Register new account (e.g., newuser@test.com / testpass123)
-4. Note: Should redirect to login automatically
-5. Login with new credentials
+2. Click "Get started"
+3. Sign in with Google, or make a local account through the API (API Testing below)
+4. Note: the login page opens
+5. Sign in with Google, or log in with the local account's email and password
 6. Note: Should redirect to empty dashboard
 7. Click "Create New URL" button
 8. Create a standard short URL for https://example.com

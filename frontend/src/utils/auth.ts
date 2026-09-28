@@ -25,6 +25,23 @@ export function safeNext(next: string | null | undefined, fallback = '/dashboard
   return next;
 }
 
+const NEXT_KEY = 'shurly_next';
+
+/**
+ * Remember where to land after signing in. The round trip through Google can't carry it:
+ * /auth/google/start takes no `next`, on purpose (that's how open redirects happen).
+ */
+export function rememberNext(path: string | null | undefined): void {
+  sessionStorage.setItem(NEXT_KEY, safeNext(path));
+}
+
+/** The remembered landing page, used once, and only if it's a same-site relative path. */
+export function takeNext(fallback = '/dashboard/'): string {
+  const stored = sessionStorage.getItem(NEXT_KEY);
+  sessionStorage.removeItem(NEXT_KEY);
+  return safeNext(stored, fallback);
+}
+
 /** Send the user to /login, remembering where they were. */
 export function redirectToLogin(reason?: 'expired'): void {
   const here = window.location.pathname + window.location.search;

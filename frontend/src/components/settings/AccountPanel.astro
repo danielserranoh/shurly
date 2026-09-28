@@ -1,5 +1,6 @@
 ---
 import Icon from '@/components/ui/Icon.astro';
+import GoogleLogo from '@/components/ui/GoogleLogo.astro';
 import PasswordField from '@/components/ui/PasswordField.astro';
 import SettingsSection from './SettingsSection.astro';
 ---
@@ -23,19 +24,27 @@ import SettingsSection from './SettingsSection.astro';
     </div>
   </SettingsSection>
 
-  <SettingsSection id="password-title" title="Password" description="Pick something long that you don’t use anywhere else.">
+  <SettingsSection id="password-title" title="Password" description="Optional when you sign in with Google. Pick something long that you don’t use anywhere else.">
     <form class="card overflow-hidden" data-password-form novalidate aria-labelledby="password-title">
       <div class="grid gap-5 p-5 sm:p-6">
+        <p class="text-sm leading-6 text-ink-600" data-password-status><span class="skeleton inline-block h-4 w-64 align-middle"></span></p>
         <div data-form-alert hidden></div>
+        <div class="flex flex-col gap-3 rounded-xl border border-ink-200 bg-ink-50 px-3.5 py-3 text-sm text-ink-800 sm:flex-row sm:items-center" data-reauth hidden role="status">
+          <p class="flex-1" data-reauth-message></p>
+          <button type="button" class="btn btn-secondary btn-sm self-start sm:self-auto" data-reauth-google><GoogleLogo class="size-4" />Sign in with Google again</button>
+        </div>
         <!-- Lets password managers know which account this password belongs to -->
         <input type="email" name="username" autocomplete="username" hidden data-username />
         <div class="grid items-start gap-5 sm:grid-cols-2">
-          <PasswordField id="current-password" name="current_password" label="Current password" autocomplete="current-password" />
+          <div data-current-field hidden>
+            <PasswordField id="current-password" name="current_password" label="Current password" autocomplete="current-password" />
+          </div>
           <PasswordField id="new-password" name="new_password" label="New password" autocomplete="new-password" minlength={8} hint="At least 8 characters" />
         </div>
       </div>
-      <div class="flex justify-end border-t border-line bg-ink-50/60 px-5 py-3 sm:px-6">
-        <button type="submit" class="btn btn-primary">Update password</button>
+      <div class="flex flex-wrap items-center justify-end gap-2 border-t border-line bg-ink-50/60 px-5 py-3 sm:px-6">
+        <button type="button" class="btn btn-danger-ghost mr-auto" data-remove-password data-tooltip-align="start" hidden>Remove password</button>
+        <button type="submit" class="btn btn-primary" data-password-submit>Update password</button>
       </div>
     </form>
   </SettingsSection>
@@ -54,13 +63,15 @@ import SettingsSection from './SettingsSection.astro';
 </div>
 
 <script>
-  import { ApiError, apiPost } from '@/utils/api';
+  import { ApiError, apiDelete, apiPut } from '@/utils/api';
   import { applyApiError, clearErrors, setFieldError } from '@/utils/forms';
   import { formatDate } from '@/utils/format';
+  import { startGoogleSignIn } from '@/utils/google-signin';
   import { iconSvg } from '@/utils/icons';
-  import { setLoading, toast } from '@/utils/ui';
+  import { confirmDialog, setLoading, toast } from '@/utils/ui';
+  import { refreshMe } from '@/utils/viewer';
   import { currentUser } from './store';
-  import type { MessageResponse } from '@/utils/types';
+  import type { User } from '@/utils/types';
 
   // ---------------------------------------------------------------- Profile
   const emailInput = document.querySelector<HTMLInputElement>('[data-profile-email]')!;
@@ -77,14 +88,54 @@ import SettingsSection from './SettingsSection.astro';
       `Member since ${formatDate(user.created_at, { month: 'long', day: 'numeric', year: 'numeric' })}`;
   });
 
-  // ---------------------------------------------------------------- Password
+  // ---------------------------------------------------------------- Password (Phase 3.13.3)
+  // Set, change or remove a password, only while signed in. The current password is asked
+  // only when the account has one and no Google identity; without Google, the password is
+  // the only way in, so it can't be removed.
   const form = document.querySelector<HTMLFormElement>('[data-password-form]')!;
   const current = form.elements.namedItem('current_password') as HTMLInputElement;
   const next = form.elements.namedItem('new_password') as HTMLInputElement;
-  const submit = form.querySelector<HTMLButtonElement>('button[type="submit"]')!;
+  const submit = form.querySelector<HTMLButtonElement>('[data-password-submit]')!;
+  const removeBtn = form.querySelector<HTMLButtonElement>('[data-remove-password]')!;
+  const currentField = form.querySelector<HTMLElement>('[data-current-field]')!;
+  const status = form.querySelector<HTMLElement>('[data-password-status]')!;
+  const reauth = form.querySelector<HTMLElement>('[data-reauth]')!;
   const hint = form.querySelector<HTMLElement>('[data-password-hint]')!;
+  const newLabel = form.querySelector<HTMLLabelElement>('label[for="new-password"]')!;
+  const ONLY_WAY_IN = 'Your password is how you sign in, so it can’t be removed.';
 
-  // Live length check: the hint earns a brand check once the rule is met (as on sign-up).
+  // APIs older than Google sign-in don't say: every account there has a password and no Google.
+  let hasPassword = true;
+  let hasGoogle = false;
+  const needsCurrent = () => hasPassword && !hasGoogle;
+
+  function renderPasswordState() {
+    status.textContent = hasGoogle
+      ? hasPassword
+        ? 'You sign in with Google, or with your email and this password.'
+        : 'You sign in with Google. Add a password to also log in with your email.'
+      : 'You log in with your email and password.';
+    currentField.hidden = !needsCurrent();
+    newLabel.textContent = hasPassword ? 'New password' : 'Password';
+    submit.textContent = hasPassword ? 'Update password' : 'Set password';
+    removeBtn.hidden = !hasPassword;
+    // Removing the only way in is refused (409): say so before anyone tries.
+    if (hasGoogle) {
+      removeBtn.removeAttribute('aria-disabled');
+      delete removeBtn.dataset.tooltip;
+    } else {
+      removeBtn.setAttribute('aria-disabled', 'true');
+      removeBtn.dataset.tooltip = ONLY_WAY_IN;
+    }
+  }
+
+  currentUser.subscribe((user: User) => {
+    hasPassword = user.has_password ?? true;
+    hasGoogle = user.has_google ?? false;
+    renderPasswordState();
+  });
+
+  // Live length check: the hint earns a brand check once the rule is met.
   const renderHint = () => {
     const ok = next.value.length >= 8;
     hint.innerHTML = ok
@@ -111,22 +162,49 @@ import SettingsSection from './SettingsSection.astro';
     });
   }
 
+  /**
+   * The API wants a fresh Google sign-in first (403 `reauth_required`): offer it, and come back
+   * here. Our own words, as for the sign-in errors, since the API's say "set" whatever the change.
+   */
+  function showReauth(change: 'set' | 'change' | 'remove') {
+    const what = { set: 'Setting a password', change: 'Changing your password', remove: 'Removing your password' }[change];
+    form.querySelector<HTMLElement>('[data-reauth-message]')!.textContent = `${what} needs a recent sign-in with Google.`;
+    reauth.hidden = false;
+    form.querySelector<HTMLButtonElement>('[data-reauth-google]')!.focus();
+  }
+  form.querySelector<HTMLButtonElement>('[data-reauth-google]')!.addEventListener('click', (e) => {
+    setLoading(e.currentTarget as HTMLButtonElement, true, 'Opening Google…');
+    startGoogleSignIn('/dashboard/settings/#account');
+  });
+
+  const isReauth = (err: unknown): boolean => err instanceof ApiError && err.code === 'reauth_required';
+
+  /** Read the account again, so the section shows what changed. */
+  async function refresh() {
+    try {
+      currentUser.set(await refreshMe());
+    } catch {
+      /* the next page load catches up */
+    }
+  }
+
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
     clearErrors(form);
+    reauth.hidden = true;
 
     let ok = true;
-    if (!current.value) {
+    if (needsCurrent() && !current.value) {
       setFieldError(form, 'current_password', 'Enter your current password.');
       ok = false;
     }
     if (!next.value) {
-      setFieldError(form, 'new_password', 'Choose a new password.');
+      setFieldError(form, 'new_password', 'Choose a password.');
       ok = false;
     } else if (next.value.length < 8) {
       setFieldError(form, 'new_password', 'Use at least 8 characters.');
       ok = false;
-    } else if (next.value === current.value) {
+    } else if (needsCurrent() && next.value === current.value) {
       setFieldError(form, 'new_password', 'Choose a password that’s different from your current one.');
       ok = false;
     }
@@ -135,23 +213,66 @@ import SettingsSection from './SettingsSection.astro';
       return;
     }
 
-    setLoading(submit, true, 'Updating…');
+    const hadPassword = hasPassword;
+    setLoading(submit, true, hadPassword ? 'Updating…' : 'Setting…');
     try {
-      await apiPost<MessageResponse>('/api/v1/auth/change-password', { current_password: current.value, new_password: next.value });
-      form.reset();
-      hidePasswords();
-      renderHint();
-      toast('Password updated', 'success', { description: 'Use the new one next time you log in.' });
+      await apiPut('/api/v1/auth/password', needsCurrent() ? { new_password: next.value, current_password: current.value } : { new_password: next.value });
     } catch (err) {
-      if (err instanceof ApiError && err.status === 400 && /current password/i.test(err.message)) {
-        setFieldError(form, 'current_password', 'That doesn’t match your current password.');
+      setLoading(submit, false);
+      if (isReauth(err)) {
+        showReauth(hadPassword ? 'change' : 'set');
+      } else if (err instanceof ApiError && err.status === 400 && /current password/i.test(err.message)) {
+        // "Current password is incorrect", or "Give your current password to replace it.", which
+        // means the page was out of date: read the account again, and the field shows up.
+        if (currentField.hidden) await refresh();
+        setFieldError(form, 'current_password', /incorrect/i.test(err.message) ? 'That doesn’t match your current password.' : 'Enter your current password.');
         current.focus();
         current.select();
       } else {
         applyApiError(form, err);
       }
-    } finally {
-      setLoading(submit, false);
+      return;
     }
+    // Before refresh(), which relabels the button ("Set password" becomes "Update password").
+    setLoading(submit, false);
+    form.reset();
+    hidePasswords();
+    renderHint();
+    toast(hadPassword ? 'Password updated' : 'Password set', 'success', { description: 'Use it next time you log in with your email.' });
+    await refresh();
+  });
+
+  removeBtn.addEventListener('click', async () => {
+    clearErrors(form);
+    reauth.hidden = true;
+    if (!hasGoogle) {
+      toast(ONLY_WAY_IN, 'info');
+      return;
+    }
+    let refused = null as ApiError | null;
+    const ok = await confirmDialog({
+      title: 'Remove your password?',
+      body: 'You’ll sign in with Google only. You can set a new password any time.',
+      confirmLabel: 'Remove password',
+      danger: true,
+      onConfirm: async () => {
+        try {
+          await apiDelete('/api/v1/auth/password');
+        } catch (err) {
+          // Not errors for the dialog: a fresh Google sign-in fixes the first, and a 409 means
+          // the page was out of date (the account has no Google identity after all).
+          if (!(err instanceof ApiError) || !(isReauth(err) || err.status === 409)) throw err;
+          refused = err;
+        }
+      },
+    });
+    if (!ok) return;
+    if (refused && isReauth(refused)) {
+      showReauth('remove');
+      return;
+    }
+    if (refused) toast(ONLY_WAY_IN, 'info');
+    else toast('Password removed', 'success', { description: 'You sign in with Google now.' });
+    await refresh();
   });
 </script>
