@@ -7,6 +7,7 @@ from typing import Annotated, Literal
 from uuid import UUID as UUIDType
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi.responses import StreamingResponse
 from pydantic import BeforeValidator
 from sqlalchemy import func
 from sqlalchemy.orm import Query as SAQuery
@@ -31,6 +32,8 @@ from server.schemas.analytics import (
     OverviewStats,
     TimeseriesBucket,
     TimeseriesResponse,
+    VisitRow,
+    VisitsResponse,
     WeekdayCounts,
     WeeklyStats,
     WeeklyStatsResponse,
@@ -128,6 +131,41 @@ def _period(
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(error)
         ) from None
+
+
+def _in_period(db: Session, url: URL, period: Period, visit_type: str) -> SAQuery:
+    """The link's visits of a kind (`_of_type`) in the period."""
+    start, end = period.bounds()
+    visits = db.query(Visitor).filter(
+        Visitor.url_id == url.id, Visitor.visited_at >= start, Visitor.visited_at < end
+    )
+    return _of_type(visits, visit_type)
+
+
+# What a visit shows, and newest first: the id breaks ties, so pages keep one order.
+_SHOWN = (
+    Visitor.visited_at,
+    Visitor.is_pixel,
+    Visitor.is_bot,
+    Visitor.country,
+    Visitor.user_agent,
+    Visitor.referer,
+)
+_NEWEST_FIRST = (Visitor.visited_at.desc(), Visitor.id.desc())
+
+
+def _shown(row, days: LocalDays) -> VisitRow:
+    """A visit as the list and the CSV show it: labels, never an IP."""
+    found = families(row.user_agent)
+    return VisitRow(
+        visited_at=days.local(row.visited_at).replace(microsecond=0),
+        kind=kind_of(row.is_pixel, row.is_bot),
+        country=country_label(row.country),
+        browser=found.browser,
+        os=found.os,
+        device=found.device,
+        referrer=referrer_host(row.referer),
+    )
 
 
 def _period_fields(url: URL, period: Period) -> dict:
@@ -514,13 +552,7 @@ def get_url_breakdown(
     every image, when a message arrives, read or not.
     """
     url = _visible_url_or_404(db, current_user, short_code, domain)
-    start, end = period.bounds()
-    visits = _of_type(
-        db.query(Visitor).filter(
-            Visitor.url_id == url.id, Visitor.visited_at >= start, Visitor.visited_at < end
-        ),
-        visit_type,
-    )
+    visits = _in_period(db, url, period, visit_type)
 
     def grouped(column):
         # The period's rows, grouped in SQL: each distinct value is worked out once.
@@ -547,6 +579,102 @@ def get_url_breakdown(
         devices=_breakdown(devices, total),
         referrers=_breakdown(referrers, total),
         countries=_breakdown(countries, total),
+    )
+
+
+@analytics_router.get(
+    "/urls/{short_code}/visits",
+    response_model=VisitsResponse,
+    responses={
+        200: {"description": "The period's visits, a page at a time"},
+        **get_responses(401, 404, 422),
+    },
+)
+def list_url_visits(
+    short_code: str,
+    domain: LinkDomain = None,
+    visit_type: VisitType = Query(
+        "clicks",
+        alias="type",
+        description="clicks; opens (email pixel hits, not a bot's); bots; or all",
+    ),
+    page: int = Query(1, ge=1, description="From 1; a page past the last is empty"),
+    page_size: int = Query(20, ge=1, le=100),
+    period: Period = Depends(_period),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    A link's visits of a kind over a period, newest first, a page at a time (Phase 3.16).
+
+    Each visit shows its local time, its kind (click, open or bot), country, browser, OS,
+    device and referrer host: never an IP, a user agent or a full referrer. Missing values
+    are "Unknown"; a referrer is "Direct" without one.
+
+    The period is `period` (the last N local days, today included, default 30) or `from` and
+    `to`, at most 731 days. Opens overcount: Apple Mail Privacy Protection loads the pixel,
+    like every image, when a message arrives, read or not.
+    """
+    url = _visible_url_or_404(db, current_user, short_code, domain)
+    visits = _in_period(db, url, period, visit_type)
+    total = visits.with_entities(func.count(Visitor.id)).scalar()
+    rows = (
+        visits.with_entities(*_SHOWN)
+        .order_by(*_NEWEST_FIRST)
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+        .all()
+    )
+    return VisitsResponse(
+        **_period_fields(url, period),
+        type=visit_type,
+        total=total,
+        page=page,
+        page_size=page_size,
+        pages=-(-total // page_size),
+        visits=[_shown(row, period.days) for row in rows],
+    )
+
+
+@analytics_router.get(
+    "/urls/{short_code}/visits.csv",
+    response_class=StreamingResponse,
+    responses={
+        200: {"description": "Every visit of the period", "content": {"text/csv": {}}},
+        **get_responses(401, 404, 422),
+    },
+)
+def export_url_visits(
+    short_code: str,
+    domain: LinkDomain = None,
+    visit_type: VisitType = Query(
+        "all",
+        alias="type",
+        description="all by default; clicks, opens or bots export only those",
+    ),
+    period: Period = Depends(_period),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Every visit of a link over a period, as a CSV, newest first (Phase 3.16).
+
+    The list's columns plus the raw user agent: never an IP. Every cell is spreadsheet-safe.
+    Not an MCP tool: an assistant pages through `list_url_visits` instead.
+    """
+    url = _visible_url_or_404(db, current_user, short_code, domain)
+    # Read before the response streams: the session is the request's.
+    rows = _in_period(db, url, period, visit_type).with_entities(*_SHOWN)
+    rows = rows.order_by(*_NEWEST_FIRST).all()
+    # Each row as the list shows it (same columns, same dates), plus the raw user agent.
+    lines = (
+        (*_shown(row, period.days).model_dump(mode="json").values(), row.user_agent or "")
+        for row in rows
+    )
+    return stream_csv(
+        headers=[*VisitRow.model_fields, "user_agent"],
+        rows=lines,
+        filename=f"{url.short_code}-visits-{period.first}-{period.last}.csv",
     )
 
 

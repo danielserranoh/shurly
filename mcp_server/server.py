@@ -44,6 +44,12 @@ EXCLUDED_ROUTE_MAPS: list[RouteMap] = [
     RouteMap(pattern=r"^/\{short_code\}/track$", mcp_type=MCPType.EXCLUDE),
     # Health probes — orchestrator-only, not LLM-facing.
     RouteMap(pattern=r"^/api/v1/health(/.*)?$", mcp_type=MCPType.EXCLUDE),
+    # Phase 3.16 — every visit of a period as a file: an assistant pages through
+    # `list_url_visits` instead of pulling the whole CSV into its context.
+    RouteMap(
+        pattern=r"^/api/v1/analytics/urls/\{short_code\}/visits\.csv$",
+        mcp_type=MCPType.EXCLUDE,
+    ),
     # Phase 3.14.2 — role changes, removals and ownership handovers stay out of the
     # MCP: an assistant that reads untrusted text (link titles, fetched pages) could
     # be talked into "make X an owner". Reading the organization is fine.
@@ -139,6 +145,7 @@ MCP_TOOL_NAMES: dict[str, str] = {
     "get_url_totals_api_v1_analytics_urls__short_code__totals_get": "get_url_totals",
     "get_url_timeseries_api_v1_analytics_urls__short_code__timeseries_get": "get_url_timeseries",
     "get_url_breakdown_api_v1_analytics_urls__short_code__breakdown_get": "get_url_breakdown",
+    "list_url_visits_api_v1_analytics_urls__short_code__visits_get": "list_url_visits",
     "get_campaign_summary_api_v1_analytics_campaigns__campaign_id__summary_get": "get_campaign_summary",
     "get_campaign_users_api_v1_analytics_campaigns__campaign_id__users_get": "get_campaign_users",
     "get_orphan_visits_api_v1_analytics_orphan_visits_get": "get_orphan_visits",

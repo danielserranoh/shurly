@@ -12,6 +12,7 @@ from fastapi.responses import StreamingResponse
 # "CSV Injection"). Campaign recipients come from uploaded CSVs, so a recipient
 # named `=HYPERLINK(…)` would be a live formula for whoever opens an export.
 _FORMULA_START = ("=", "+", "-", "@", "\t", "\r")
+_CHUNK = 64 * 1024  # characters per chunk streamed
 
 
 def spreadsheet_safe(value: object) -> object:
@@ -63,24 +64,28 @@ def stream_csv(
     """
     Yield a CSV response without buffering the whole file in memory.
 
-    Using `csv.writer` over a per-row StringIO keeps quoting/escaping correct
-    while still letting Starlette stream chunks to the client. Filename ends
-    up as a `Content-Disposition: attachment` so curl + browsers both DTRT.
-    Every cell, header included, goes through `spreadsheet_safe`.
+    Using `csv.writer` over a StringIO keeps quoting/escaping correct while
+    still letting Starlette stream chunks to the client. Filename ends up as a
+    `Content-Disposition: attachment` so curl + browsers both DTRT. Every
+    cell, header included, goes through `spreadsheet_safe`.
+
+    Phase 3.16 — chunks of about `_CHUNK` characters, not a row each: Starlette
+    iterates a sync generator in its threadpool, a thread hop per chunk, which
+    made 10,000 rows take most of a second.
     """
 
     def _generate() -> Iterator[str]:
         buf = io.StringIO()
         writer = csv.writer(buf)
         writer.writerow([spreadsheet_safe(header) for header in headers])
-        yield buf.getvalue()
-        buf.seek(0)
-        buf.truncate()
         for row in rows:
             writer.writerow([spreadsheet_safe(cell) for cell in row])
+            if buf.tell() >= _CHUNK:
+                yield buf.getvalue()
+                buf.seek(0)
+                buf.truncate()
+        if buf.tell():
             yield buf.getvalue()
-            buf.seek(0)
-            buf.truncate()
 
     return StreamingResponse(
         _generate(),
