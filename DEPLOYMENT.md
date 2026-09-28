@@ -18,7 +18,7 @@ shared ALB (eu-south-2) — created by ECS Express for Shlink, reused for Shurly
    ↓
    ├─ priority 10 → shlink-api      → go.griddo.io
    ├─ priority 11 → shlink-web      → links.griddo.io
-   └─ priority 12 → shurly-api      → s.griddo.io
+   └─ priority 12 → shurly-api      → shurly.griddo.io (the app, API, MCP), s.griddo.io (interim, until Phase 8)
         ↓
         Fargate task (ARM64, 0.25 vCPU / 0.5 GB)
         FastAPI + uvicorn  ⇄  RDS PostgreSQL t4g.micro
@@ -36,8 +36,11 @@ Hostnames:
 
 | Host | Service | Phase |
 |---|---|---|
-| `s.griddo.io` | Shurly API + redirect path | 4 (this guide) |
-| `shurl.griddo.io` (or `shurly.griddo.io`) | Future frontend | 7 |
+| `shurly.griddo.io` | The web, the app (`/dashboard/`), the API (`/api/v1/*`) and the MCP (`/mcp/`) | 4; the frontend at 4.10 |
+| `go.griddo.io` | Short links only | Shlink until Phase 8, then Shurly |
+| `s.griddo.io` | Interim: the API and test links until Phase 8, then deleted entirely | 4 |
+
+Decided 2026-09-28. Nothing was published on `s.griddo.io`, so it goes at the Phase 8 cutover with no redirects kept.
 
 ## Prerequisites
 
@@ -130,7 +133,7 @@ cat > .env <<EOF
 DB_HOST=<from create_rds.sh output>
 DB_PASSWORD=<from create_rds.sh output>
 JWT_SECRET_KEY=<from step 3>
-CORS_ORIGINS=["https://shurl.griddo.io"]
+CORS_ORIGINS=["https://shurly.griddo.io"]
 EOF
 chmod 600 .env  # avoid accidental git add
 ```
@@ -215,29 +218,28 @@ aws ecs update-express-gateway-service --region eu-south-2 --profile griddo-main
     --service-arn "$SERVICE_ARN" --force-new-deployment
 
 # Wait ~2 min, then:
-curl https://s.griddo.io/api/v1/health
+curl https://shurly.griddo.io/api/v1/health
 ```
 
 ### 7. Smoke checklist
 
 ```bash
 # Liveness
-curl https://s.griddo.io/api/v1/health
+curl https://shurly.griddo.io/api/v1/health
 # Readiness (DB connectivity)
-curl https://s.griddo.io/api/v1/health/db
+curl https://shurly.griddo.io/api/v1/health/db
 
-# Register a test user
-curl -X POST https://s.griddo.io/api/v1/auth/register \
-    -H "Content-Type: application/json" \
-    -d '{"email":"smoke@griddo.io","password":"smoke-test-1234"}'
+# Sign in with Google, once configured: /start redirects to accounts.google.com
+curl -s -o /dev/null -w '%{http_code} %{redirect_url}\n' https://shurly.griddo.io/api/v1/auth/google/start
 
-# Login → JWT
-TOKEN=$(curl -s -X POST https://s.griddo.io/api/v1/auth/login \
+# Login → JWT. There's no sign-up with a password in production since 3.13: the smoke
+# account predates it, and keeps its password until someone signs in with Google as it.
+TOKEN=$(curl -s -X POST https://shurly.griddo.io/api/v1/auth/login \
     -H "Content-Type: application/json" \
     -d '{"email":"smoke@griddo.io","password":"smoke-test-1234"}' | jq -r .access_token)
 
 # Create a short URL
-curl -X POST https://s.griddo.io/api/v1/urls \
+curl -X POST https://shurly.griddo.io/api/v1/urls \
     -H "Authorization: Bearer $TOKEN" \
     -H "Content-Type: application/json" \
     -d '{"url":"https://griddo.io"}'
@@ -254,7 +256,7 @@ curl https://s.griddo.io/robots.txt
 # Orphan visit logging
 curl https://s.griddo.io/typoXYZ
 curl -H "Authorization: Bearer $TOKEN" \
-    https://s.griddo.io/api/v1/analytics/orphan-visits
+    https://shurly.griddo.io/api/v1/analytics/orphan-visits
 ```
 
 ---
@@ -364,6 +366,217 @@ That's the only secret needed. No `AWS_ACCESS_KEY_ID`, no `AWS_SECRET_ACCESS_KEY
 
 ---
 
+## Frontend hosting (Phase 4.10)
+
+The static build (`frontend/dist/`) lives in a private S3 bucket behind **one CloudFront distribution for
+`shurly.griddo.io`**, which also carries the API and the MCP to the ALB. The app and the API then share one
+origin, so the browser makes no cross-origin calls. Prepared in the repo: the deploy workflow, the CloudFront
+Function and this section. The AWS resources below are still to be created (ROADMAP 4.10).
+
+### The distribution
+
+| Path pattern | Origin | Cache policy | Origin request policy | Function |
+|---|---|---|---|---|
+| `/api/*` | the ALB | CachingDisabled | AllViewer | — |
+| `/mcp*` | the ALB | CachingDisabled | AllViewer | — |
+| `/.well-known/*` | the ALB | CachingDisabled | AllViewer | — |
+| `/docs*`, `/redoc`, `/openapi.json` | the ALB | CachingDisabled | AllViewer | — |
+| Default (`*`) | the S3 bucket, with Origin Access Control | CachingOptimized | — | `static-paths`, viewer request |
+
+- **ALB behaviours:** all HTTP methods (the API takes `POST`, `PUT`, `PATCH`, `DELETE`). AllViewer forwards the `Host`
+  header (`shurly.griddo.io`), so the ALB's host rule (priority 12) and its certificate match as they do today.
+- **What each path is:** `/mcp*` covers the bare `/mcp` (the API's 308 to `/mcp/`), the MCP itself and its OAuth
+  endpoints (`/mcp/authorize`, `/mcp/token`, …). `/.well-known/*` carries the OAuth metadata (5.8).
+- **Short links:** they live on `s.griddo.io` and later `go.griddo.io`, which keep going straight to the ALB. On
+  `shurly.griddo.io`, a path that isn't listed above is a page, not a short code.
+
+### The function
+
+`infra/cloudfront/static-paths.js` (runtime `cloudfront-js-2.0`) goes on the default behaviour only, as a viewer
+request function. Astro writes each page as `<path>/index.html`, and a private bucket reached through the S3 REST
+endpoint doesn't resolve directory indexes. So the function applies three rules:
+
+- a path ending in `/` gets `index.html`;
+- **a dot in the last segment means a file** (`/_astro/…`, `/favicon.svg`), left as is;
+- anything else gets a `301` to the path with its slash, keeping the query.
+
+A page whose last segment has a dot (`/manual/v1.2/`) therefore has to be linked with its trailing slash. The tests
+are in `frontend/tests/cloudfront-static-paths.test.mjs`, including redirects that can't leave the site
+(`//host`, `/\host`).
+
+### Error pages: an open decision
+
+The build has `/404.html`, but CloudFront's custom error responses apply to the whole distribution. Mapping 403 or
+404 to `/404.html` would also replace the API's own 403 and 404 answers, which the app reads (`reauth_required`,
+role checks, unknown links, the MCP's errors). Behind OAC, S3 answers 403 for a missing object, unless the
+distribution may list the bucket, and then it's 404. The options:
+
+1. **No custom error responses.** An unknown page shows S3's XML error. It's simple, and rare, since the app only
+   links to pages that exist.
+2. **A Lambda@Edge origin-response function on the default behaviour only**, turning S3's 403 or 404 into
+   `/404.html` with status 404. It's per behaviour, so the API is untouched, but it adds a Lambda in us-east-1.
+
+### Response headers
+
+Add a response-headers policy on the default behaviour with:
+
+- `Strict-Transport-Security: max-age=31536000; includeSubDomains`
+- `X-Content-Type-Options: nosniff`
+- `Referrer-Policy: strict-origin-when-cross-origin`
+- `X-Frame-Options: DENY`
+
+The Content-Security-Policy is a separate item: the inline sign-in guards in `BaseLayout.astro` need hashes
+computed at build time.
+
+### Certificate
+
+CloudFront only takes ACM certificates from **us-east-1**. The certificate issued for `shurly.griddo.io` on
+2026-09-28 is in eu-south-2, for the ALB, and stays there. Request a new one in `griddo-main`, and validate it by
+DNS in the `griddo-production` zone as in § 2:
+
+```bash
+aws acm request-certificate --profile griddo-main --region us-east-1 \
+    --domain-name shurly.griddo.io --validation-method DNS
+```
+
+### The bucket
+
+The bucket is private: Block Public Access on, no static website hosting. The distribution reads it through
+Origin Access Control. The bucket policy (the console offers it when you pick OAC) lets only that distribution
+`s3:GetObject`, with `AWS:SourceArn` set to the distribution's ARN.
+
+### The deploy role
+
+`deploy-frontend.yml` assumes its own role with least privilege: it writes to that one bucket and invalidates
+that one distribution. The GitHub OIDC provider already exists (§ CI/CD with OIDC). The trust policy allows only
+`main`:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [{
+    "Effect": "Allow",
+    "Principal": {
+      "Federated": "arn:aws:iam::686255983646:oidc-provider/token.actions.githubusercontent.com"
+    },
+    "Action": "sts:AssumeRoleWithWebIdentity",
+    "Condition": {
+      "StringEquals": {
+        "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
+        "token.actions.githubusercontent.com:sub": "repo:danielserranoh/shurly:ref:refs/heads/main"
+      }
+    }
+  }]
+}
+```
+
+The permissions policy, with the bucket name and distribution id filled in:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ListTheSiteBucket",
+      "Effect": "Allow",
+      "Action": "s3:ListBucket",
+      "Resource": "arn:aws:s3:::<bucket>"
+    },
+    {
+      "Sid": "WriteTheSite",
+      "Effect": "Allow",
+      "Action": ["s3:PutObject", "s3:DeleteObject"],
+      "Resource": "arn:aws:s3:::<bucket>/*"
+    },
+    {
+      "Sid": "InvalidateTheSite",
+      "Effect": "Allow",
+      "Action": "cloudfront:CreateInvalidation",
+      "Resource": "arn:aws:cloudfront::686255983646:distribution/<distribution-id>"
+    }
+  ]
+}
+```
+
+```bash
+aws iam create-role --profile griddo-main \
+    --role-name github-actions-shurly-frontend-deploy \
+    --assume-role-policy-document file://frontend-trust-policy.json
+aws iam put-role-policy --profile griddo-main \
+    --role-name github-actions-shurly-frontend-deploy \
+    --policy-name shurly-frontend-deploy \
+    --policy-document file://frontend-deploy-policy.json
+```
+
+In the repo's **Settings → Secrets and variables → Actions**:
+
+| Kind | Name | Value |
+|---|---|---|
+| Secret | `AWS_FRONTEND_DEPLOY_ROLE_ARN` | `arn:aws:iam::686255983646:role/github-actions-shurly-frontend-deploy` |
+| Variable | `FRONTEND_BUCKET` | the bucket's name |
+| Variable | `CLOUDFRONT_DISTRIBUTION_ID` | the distribution's id |
+
+What the workflow does, on merges to `main` that touch `frontend/**` and by hand:
+
+- While `FRONTEND_BUCKET` is unset, it logs `frontend deploy skipped: FRONTEND_BUCKET unset` and stops.
+- Otherwise it runs `npm ci`, `npm test` and `npm run build` with the production values:
+  - `PUBLIC_API_URL=https://shurly.griddo.io`
+  - `PUBLIC_SITE_URL=https://shurly.griddo.io`
+  - `PUBLIC_SHORT_DOMAIN=s.griddo.io` (`go.griddo.io` from Phase 8)
+- It uploads `_astro/` first, with `max-age=31536000, immutable`: those names carry a hash, and old files are
+  kept for pages still open in someone's browser.
+- It uploads everything else with `max-age=0, must-revalidate`, and removes pages that are gone.
+- It sets the manifest's content type, and invalidates `/*`.
+
+### Cutover and rollback
+
+Today `shurly.griddo.io` is a Route 53 alias to the ALB, in the `griddo-production` zone. Going live changes that
+alias to the distribution, once the distribution is deployed with the certificate. Before switching, test through
+CloudFront with the real host name:
+
+```bash
+EDGE=$(dig +short d111111abcdef8.cloudfront.net | head -1)   # the distribution's domain name
+curl -s --resolve shurly.griddo.io:443:$EDGE https://shurly.griddo.io/api/v1/health
+curl -sI --resolve shurly.griddo.io:443:$EDGE https://shurly.griddo.io/dashboard/
+```
+
+After the switch, set `FRONTEND_URL=https://shurly.griddo.io` in the task, and set `CORS_ORIGINS='[]'`, since the
+app and the API are now the same origin (§ CORS).
+
+**Rollback:** point the alias back to the ALB. Its host rule and its certificate stay in place, so the API
+answers as before. The pages come back with the next attempt.
+
+### Client IPs behind CloudFront: an open decision
+
+Once `shurly.griddo.io` goes through CloudFront, two paths reach the ALB:
+
+- **direct**, for `s.griddo.io` and later `go.griddo.io`;
+- **through CloudFront**, for `shurly.griddo.io`: the API and the MCP.
+
+Through CloudFront, the ALB's peer is a CloudFront edge, and the last address in `X-Forwarded-For` is that edge's.
+The resolver (§ Trusted-Proxy Configuration) takes the rightmost address that isn't a trusted proxy. It would
+therefore record, and rate-limit, CloudFront's edges instead of people. The options are backend and AWS work,
+not done here:
+
+1. **Trust CloudFront's edge ranges** in `TRUSTED_PROXIES` (`ip-ranges.json`, `service=CLOUDFRONT`). It's a large
+   list, and it changes, so it needs refreshing.
+2. **Read `CloudFront-Viewer-Address`**, which CloudFront adds when the origin request policy includes it. It can
+   only be trusted on requests that provably came through CloudFront.
+3. **Prove that a request came through CloudFront.** Give the distribution a secret origin header that the API
+   (or the ALB rule for `shurly.griddo.io`) requires. Optionally, restrict that traffic to CloudFront's
+   origin-facing prefix list, `com.amazonaws.global.cloudfront.origin-facing`. With this in place, option 2 is
+   safe. The ALB is shared and still serves `s.griddo.io` and `go.griddo.io` directly, so the restriction has to
+   be per host, not a security group on the whole ALB.
+
+### Check after the first deploy
+
+- `/` and `/manual/install-mcp/` load.
+- `/dashboard/` sends you to the login page.
+- `/login` answers `301` to `/login/`.
+- `/api/v1/health` answers with JSON, through CloudFront.
+- `/mcp/` answers `401` with `WWW-Authenticate`.
+- An `_astro/` file's `Cache-Control` is `immutable`, and a page's is `max-age=0`.
+
 ## Cost estimation (eu-south-2, monthly)
 
 | Component | Cost |
@@ -412,9 +625,143 @@ For the shared ALB inside the default VPC, the right value is the VPC's CIDR:
 TRUSTED_PROXIES='["172.31.0.0/16"]'
 ```
 
-The resolver (`server/utils/network.py::resolve_client_ip`) checks the request's source against every CIDR; only when it matches does it honor the leftmost `X-Forwarded-For` entry. Outside the allowlist the socket address wins.
+The resolver (`server/utils/network.py::resolve_client_ip`) checks the request's source against every CIDR; only when it matches does it read `X-Forwarded-For`, and then from the right: each proxy appends the address it saw, so the first entry from the right that isn't a trusted proxy is the client. The left end is whatever the client sent, so it's never trusted (before Phase 6.3 it was, and a client could choose the address the visit was recorded under). Outside the allowlist the socket address wins.
 
-If you ever front the ALB with CloudFront, append the CloudFront edge CIDRs from <https://ip-ranges.amazonaws.com/ip-ranges.json> (filter `service=CLOUDFRONT`).
+Behind CloudFront (`shurly.griddo.io`, Phase 4.10) this needs a decision first: see § Frontend hosting, "Client IPs behind CloudFront".
+
+## Rate limits (Phase 6.3)
+
+What anyone can call is limited per client IP, counted in the database (`rate_limits`) so both tasks share the counts: the password login (every attempt runs a bcrypt check, on the tasks that also serve redirects) and the Google and MCP sign-in endpoints (each request writes a row). Redirects, anything signed in and CORS preflights are never limited.
+
+- **`TRUSTED_PROXIES` must name the ALB** (`["172.31.0.0/16"]` in production): the limits key on the client IP it resolves. Unset, every request seems to come from the ALB, and each per-IP limit becomes one limit for everybody.
+- Settings, per minute unless said otherwise; `0` turns one off:
+
+  | Variable | Default | Limits |
+  |---|---|---|
+  | `RATE_LIMIT_LOGIN_PER_IP` | `20` | `POST /api/v1/auth/login` |
+  | `RATE_LIMIT_LOGIN_FAILURES_PER_ACCOUNT` | `10` | Failed password logins per address, per 15 minutes |
+  | `RATE_LIMIT_SIGN_IN_PER_IP` | `30` | Google's sign-in (`/api/v1/auth/google/*`), the MCP's sign-in pages (`/mcp/authorize`, `/mcp/consent`, `/mcp/auth/callback`) and `POST /auth/register` |
+  | `RATE_LIMIT_MCP_CLIENTS_PER_IP` | `60` | `/mcp/register` and `/mcp/token`, which claude.ai calls from Anthropic's addresses, shared by everybody |
+
+- **Per account, only failed attempts count**, so the right password isn't counted with a guesser's. That also means anyone can lock an address's password login for 15 minutes by failing on purpose; signing in with Google stays open, so that's accepted. The address needn't have an account, so a 429 tells nothing about who has one.
+- Over a limit: `429` with `Retry-After`; Google's sign-in, a browser navigation, goes back to `{FRONTEND_URL}/login/#error=rate_limited` instead. The event log records `http.rate_limited {path, limit}`, never the IP or the address.
+- If the database can't count, requests go through and `rate_limit.store_failed` is logged: the limits protect, they mustn't become an outage.
+- AWS WAF on the shared ALB would add limiting before the app; that's an AWS decision, not in this code.
+
+## CORS (Phase 6.3)
+
+The frontend calls the API with a bearer token, never cookies, so CORS allows no credentials, only the
+methods (`GET`, `POST`, `PUT`, `PATCH`, `DELETE`) and request headers (`Authorization`, `Content-Type`,
+`X-Request-Id`) the API uses, and exposes `Retry-After` and `X-Request-Id` to the frontend.
+
+- **Production needs no cross-origin entry** once the frontend is hosted (4.10): it and the API share one
+  host (the Hostnames table under Architecture), so the browser makes no cross-origin calls. Set
+  `CORS_ORIGINS='[]'` then, unless the frontend is served from another origin.
+- **Today's production value lists `https://shurl.griddo.io`, a host that doesn't exist.** It's harmless
+  (no browser comes from there) but wrong; it gets corrected at the release.
+- Locally the defaults cover the dev server (`http://localhost:4232`) on another port, so the middleware
+  stays.
+
+## API keys (Phase 6.3)
+
+An API key is kept as its SHA-256 hash and its first 12 characters (`users.api_key_hash`,
+`users.api_key_prefix`), never as itself: it's shown once, when it's generated. New keys start with
+`shurly_`; keys made before keep working.
+
+- **API keys 401 during 0007's rollout.** Migration `0007` moves every key to its hash and empties
+  `users.api_key`, where the previous release looks keys up: while its task still serves, an API key
+  gets a 401 from it. The same key works again once the rollout ends. JWTs and signing in with Google
+  aren't affected.
+- `users.api_key`, empty from then on, is dropped in a later release, once no running task reads it.
+- A downgrade past `0007` can't give the keys back: everyone generates a new one.
+
+## Sign in with Google (Phase 3.13)
+
+Accounts come from signing in with a Google Workspace account of `ORGANIZATION_DOMAIN` (`griddo.io`).
+A password is optional: its owner sets it once signed in. Either way the API issues its own JWT, as
+before, so API keys and the MCP don't change.
+
+### Prerequisite: the Google Cloud project
+
+Done once, by whoever administers Google Workspace (ROADMAP 3.13.2). Step by step:
+[docs/setup_google_app.md](docs/setup_google_app.md).
+
+1. A Google Cloud project inside the griddo.io organization.
+2. OAuth consent screen **Internal**, so only Griddo accounts can sign in. Scopes: `openid`, `email`.
+3. An OAuth client of type **Web application**, with the authorized redirect URI
+   `https://shurly.griddo.io/api/v1/auth/google/callback` (the MCP proxy's joins it in 5.8).
+4. The client secret goes to Secrets Manager (6.3), never into the repo or a task definition in clear.
+
+### Settings
+
+| Variable | Example | Notes |
+|---|---|---|
+| `GOOGLE_CLIENT_ID` | `1234-abc.apps.googleusercontent.com` | The OAuth client's id |
+| `GOOGLE_CLIENT_SECRET` | from Secrets Manager | Never logged |
+| `GOOGLE_REDIRECT_URI` | `https://shurly.griddo.io/api/v1/auth/google/callback` | Exactly as registered with the client |
+| `FRONTEND_URL` | the frontend's origin | After Google, the browser goes to `{FRONTEND_URL}/login/` |
+| `ORGANIZATION_DOMAIN` | `griddo.io` (default) | Only ID tokens whose `hd` claim is this domain get in |
+| `ALLOW_PASSWORD_SIGNUP` | `false` (default) | `POST /auth/register`, for local development and tests. **Never** `true` in production; the app logs `auth.password_signup_enabled` at startup when it is |
+
+- Until the first four and `ORGANIZATION_DOMAIN` are set, sign in with Google is off:
+  `/api/v1/auth/google/start` and `/callback` send the browser to
+  `{FRONTEND_URL}/login/#error=google_unavailable`, or answer `503` when `FRONTEND_URL` isn't set
+  either. The rest of the app works as before, password logins included. An empty
+  `ORGANIZATION_DOMAIN` keeps it off: it would let any Google account in, Gmail included.
+- `CORS_ORIGINS` must include the frontend's origin: the page `POST`s the one-time code to
+  `/api/v1/auth/google/exchange`.
+- **Where they go:** the GitHub deploy keeps the live service's environment and swaps only the image,
+  so add these variables to the live ECS config ([docs/setup_google_app.md](docs/setup_google_app.md),
+  step 7). `scripts/deploy_ecs.sh` only builds the environment when the service is first created.
+- To rotate the client secret: add a new secret to the OAuth client, update Secrets Manager, redeploy,
+  then delete the old secret in Google Cloud.
+
+### The flow, and the frontend's contract
+
+`GET /api/v1/auth/google/start` → Google → `GET /api/v1/auth/google/callback` →
+`{FRONTEND_URL}/login/#code=…` → `POST /api/v1/auth/google/exchange` → the JWT. The code works once,
+within 60 seconds, and the JWT never travels in a URL. The state cookie, the fragment's error codes and
+the password endpoints' `reauth_required` answer are specified in the docstring of
+`server/app/google_auth.py`, the one reference for the backend and the frontend.
+
+### What the event log records
+
+- `auth.login` `{method: google | password, user_id}` on every sign-in. Before turning password logins
+  off for the domain (3.13.4), this shows who still uses one:
+  `filter event = "auth.login" | stats count() by method`
+- `auth.google_refused` `{reason}`: a refused Google sign-in (another domain, cancelled, …).
+- `auth.identity_linked`: a Google sign-in took over an account made by the open sign-up before 3.13.
+  Nobody verified that account's address, so its password, API key and sessions were revoked.
+- `auth.password_set`, `auth.password_removed`.
+
+None of them carries an email address, a token or a code.
+
+### The MCP (Phase 5.8)
+
+MCP clients (claude.ai custom connectors, Claude Code) can sign in with Google too, through fastmcp's
+OAuth proxy, alongside API keys, which keep working unchanged. It's on once these are set, besides the
+Google client and `ORGANIZATION_DOMAIN` above:
+
+| Variable | Example | Notes |
+|---|---|---|
+| `MCP_PUBLIC_URL` | `https://shurly.griddo.io/mcp` | The MCP endpoint as clients reach it, without the slash. People connect to `{MCP_PUBLIC_URL}/`, with it: the metadata's `resource` has to match what they enter |
+| `MCP_OAUTH_SIGNING_KEY` | `openssl rand -hex 32` | Signs the MCP's tokens and, derived, encrypts what the proxy stores. High entropy (it goes through HKDF, not a password hash), the same on every task, never the Google secret. Changing it signs every MCP client out. Masked in the deploy logs like any `*KEY*` |
+| `MCP_OAUTH_ALLOWED_REDIRECT_URIS` | the default | Who may register as an MCP client. Default: `https://claude.ai/api/mcp/auth_callback`, `https://claude.com/api/mcp/auth_callback` (where Anthropic says it may move) and loopback on any port (`http://localhost:*`, `http://127.0.0.1:*`, Claude Code). A JSON array to change it; any other client is refused |
+
+- **Google:** add `{MCP_PUBLIC_URL}/auth/callback` (`https://shurly.griddo.io/mcp/auth/callback`) as a
+  second authorized redirect URI of the same OAuth client ([docs/setup_google_app.md](docs/setup_google_app.md),
+  step 9).
+- **State:** client registrations, sign-ins in progress, codes and Google's tokens (refresh tokens
+  included) live in the `mcp_oauth_store` table (migration `0005`), encrypted, so both tasks and every
+  deploy share them.
+- **Offboarding:** closing an account in Shurly refuses its MCP sign-ins at once, on the next request
+  and on any refresh. A suspension at Google takes up to 60 seconds to bite, because a successful check
+  with Google is kept that long. The Google tokens stored for a closed account stay, encrypted, until
+  they expire, and can't be used.
+- **Discovery:** `/.well-known/oauth-protected-resource/mcp/` and
+  `/.well-known/oauth-authorization-server/mcp` at the root, and a 401 pointing at the former; the
+  OAuth endpoints are under `/mcp/`. The event log's `auth.login` and `auth.google_refused` carry
+  `surface: "mcp"` for these sign-ins.
 
 ---
 

@@ -21,7 +21,7 @@ import pytest
 from sqlalchemy.orm import Session, sessionmaker
 
 from server.core.auth import create_access_token, hash_password
-from server.core.config import settings
+from server.core.config import Settings, settings
 from server.core.models import Organization, OrganizationMember, OrgRole, User
 from server.utils import organization as org_service
 
@@ -96,6 +96,21 @@ class TestDefaultOrganization:
         assert (first.name, first.google_domain) == ("Griddo", "griddo.io")
         assert db_session.query(Organization).count() == 1
 
+    def test_at_launch_it_is_griddo_on_griddo_io(self, db_session, monkeypatch):
+        """
+        3.14.3: one organization at launch, "Griddo" on griddo.io, unless a deployment's
+        settings say otherwise. The code's defaults, not this machine's .env. Whoever signs in
+        with Google on that domain joins it as a member: tests/test_phase3132_google_sign_in.py,
+        test_the_first_sign_in_makes_the_account_and_joins_the_organization.
+        """
+        for name in ("organization_name", "organization_domain"):
+            monkeypatch.setattr(settings, name, Settings.model_fields[name].default)
+
+        organization = org_service.get_or_create_default_organization(db_session)
+
+        assert (organization.name, organization.google_domain) == ("Griddo", "griddo.io")
+
+    @pytest.mark.usefixtures("allow_password_signup")
     def test_sign_up_joins_as_member(self, client, db_session):
         response = client.post(
             "/api/v1/auth/register", json={"email": "new@griddo.io", "password": "secret123"}
@@ -105,6 +120,7 @@ class TestDefaultOrganization:
         user = db_session.query(User).filter_by(email="new@griddo.io").one()
         assert _role(db_session, user) == OrgRole.MEMBER
 
+    @pytest.mark.usefixtures("allow_password_signup")
     def test_configured_email_becomes_the_first_owner(self, client, db_session, monkeypatch):
         monkeypatch.setattr(settings, "bootstrap_owner_email", "boss@griddo.io")
 
@@ -268,7 +284,7 @@ class TestRemovingMembers:
         return client.delete(f"/api/v1/organization/members/{target.id}", headers=_headers(actor))
 
     def test_admin_removes_a_member_and_closes_the_account(self, client, db_session, team, capsys):
-        team["member"].api_key = "key-to-revoke"
+        team["member"].set_api_key("key-to-revoke")
         db_session.commit()
         capsys.readouterr()
 
@@ -278,7 +294,7 @@ class TestRemovingMembers:
         db_session.expire_all()
         assert _role(db_session, team["member"]) is None
         assert team["member"].is_active is False
-        assert team["member"].api_key is None
+        assert (team["member"].api_key_hash, team["member"].api_key_prefix) == (None, None)
         [line] = _events(capsys.readouterr().err, "org.member_removed")
         assert line["user_id"] == str(team["member"].id)
 

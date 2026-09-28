@@ -19,8 +19,7 @@ fastmcp = pytest.importorskip("fastmcp")
 
 
 EXPECTED_TOOLS: set[str] = {
-    # Auth
-    "register",
+    # Auth. No `register` since Phase 3.13.2: accounts come from signing in with Google.
     "login",
     "get_current_user_info",
     "change_password",
@@ -134,9 +133,20 @@ def test_health_probes_excluded():
     assert not leaked, f"Health probes leaked: {sorted(leaked)}"
 
 
+def test_sign_in_and_passwords_stay_out_of_the_mcp():
+    """Phase 3.13 — signing in with Google is a browser flow (redirects and a
+    cookie), and only the signed-in person sets or removes a password: an assistant
+    reading untrusted text could be talked into it. Sign-up with a password is off.
+    """
+    names = _list_tool_names()
+    sign_in = ("register", "google_", "set_password", "remove_password")
+    leaked = {n for n in names if n.startswith(sign_in)}
+    assert not leaked, f"Sign-in or password tools exposed: {sorted(leaked)}"
+
+
 def test_organization_changes_stay_out_of_the_mcp():
-    """Phase 3.14.2 — role changes, removals, ownership handovers and adopting
-    someone's links are web/API only.
+    """Phase 3.14.2 — role changes, removals, ownership handovers, adopting
+    someone's links and the list of removed people it works from are web/API only.
 
     An assistant reading untrusted text (link titles, fetched pages) could be
     talked into "make X an owner".
@@ -147,6 +157,7 @@ def test_organization_changes_stay_out_of_the_mcp():
         "remove_organization_member",
         "transfer_ownership",
         "adopt_personal_links",
+        "list_removed_members",
     )
     leaked = {n for n in names if n.startswith(governance)}
     assert not leaked, f"Organization changes exposed as MCP tools: {sorted(leaked)}"

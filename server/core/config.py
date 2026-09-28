@@ -1,7 +1,7 @@
 import json
 from typing import Any
 
-from pydantic import field_validator
+from pydantic import SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -37,15 +37,21 @@ class Settings(BaseSettings):
     api_version: str = "0.1.0"
     api_description: str = "A modern URL shortener API"
 
-    # CORS settings (4232 = frontend dev server, see docker-compose.yml)
+    # CORS settings (4232 = frontend dev server, see docker-compose.yml). Phase 6.3:
+    # in production the frontend and the API share an origin (shurly.griddo.io, once
+    # the frontend is hosted, 4.10), so CORS_ORIGINS needs no entry there; this is for
+    # the dev server on another port. The frontend sends a bearer token, never cookies,
+    # so no credentials, and only the methods and request headers the API uses.
     cors_origins: list[str] = [
         "http://localhost:4321",
         "http://localhost:4232",
         "http://localhost:3000",
     ]
-    cors_allow_credentials: bool = True
-    cors_allow_methods: list[str] = ["*"]
-    cors_allow_headers: list[str] = ["*"]
+    cors_allow_credentials: bool = False
+    cors_allow_methods: list[str] = ["GET", "POST", "PUT", "PATCH", "DELETE"]
+    cors_allow_headers: list[str] = ["Authorization", "Content-Type", "X-Request-Id"]
+    # Readable by the frontend: when to retry after a 429, and the id to report.
+    cors_expose_headers: list[str] = ["Retry-After", "X-Request-Id"]
 
     # Phase 3.9.5 — GDPR. Truncate visitor IPs at insert time:
     # IPv4 → /24 (zero last octet), IPv6 → /64. Default ON; disable explicitly via env
@@ -85,6 +91,80 @@ class Settings(BaseSettings):
     # Empty = no bootstrap owner.
     bootstrap_owner_email: str = ""
 
+    # Phase 3.13.2 — sign in with Google (OpenID Connect). Until these four and
+    # `organization_domain` are set, the Google endpoints answer 503 and the rest
+    # of the app works as before. An empty domain would let any Google account in.
+    google_client_id: str = ""
+    google_client_secret: SecretStr = SecretStr("")
+    # This API's /api/v1/auth/google/callback, as registered with the Google client.
+    google_redirect_uri: str = ""
+    # The static frontend. After Google, the browser goes to {frontend_url}/login/
+    # with a one-time code in the fragment (server/app/google_auth.py).
+    frontend_url: str = ""
+    # POST /auth/register. Accounts come from Google, so it's off; turn it on only
+    # for local development and tests, never in production.
+    allow_password_signup: bool = False
+
+    # Phase 5.8 — MCP clients sign in with Google through fastmcp's OAuth proxy,
+    # alongside API keys. Off until these two, the Google client above and
+    # `organization_domain` are set; the MCP then takes API keys and JWTs only.
+    # The MCP endpoint as clients reach it, without the trailing slash, e.g.
+    # https://shurly.griddo.io/mcp. People connect to it with the slash.
+    mcp_public_url: str = ""
+    # Signs the MCP's OAuth tokens and, derived, encrypts what it stores. The same
+    # value on every task; changing it signs every MCP client out.
+    mcp_oauth_signing_key: SecretStr = SecretStr("")
+    # The redirect URIs an MCP client may register (DCR or a Client ID Metadata
+    # Document): claude.ai's callback (and claude.com's, where Anthropic says it may
+    # move) and Claude Code's loopback on any port. Anything else can't register, so
+    # a stranger's app can't ask a Griddo person to consent (consent phishing).
+    mcp_oauth_allowed_redirect_uris: list[str] = [
+        "https://claude.ai/api/mcp/auth_callback",
+        "https://claude.com/api/mcp/auth_callback",
+        "http://localhost:*",
+        "http://127.0.0.1:*",
+    ]
+
+    # Phase 6.3 — rate limits on what anyone can call (server/utils/rate_limit.py),
+    # per minute unless said otherwise; 0 turns one off. Per client IP, so behind the
+    # ALB TRUSTED_PROXIES must name it: otherwise every request seems to come from
+    # the ALB and each per-IP limit becomes one limit for everybody.
+    # POST /auth/login: every attempt runs a bcrypt check.
+    rate_limit_login_per_ip: int = 20
+    # Failed password logins per address, per 15 minutes; the right password counts
+    # for nothing. Anyone can lock an address's password route for the window;
+    # signing in with Google stays open.
+    rate_limit_login_failures_per_account: int = 10
+    # Google's and the MCP's sign-in pages and endpoints: each writes a row.
+    rate_limit_sign_in_per_ip: int = 30
+    # /mcp/register and /mcp/token: claude.ai calls them from Anthropic's addresses,
+    # shared by everybody, so this one is generous.
+    rate_limit_mcp_clients_per_ip: int = 60
+
+    @property
+    def mcp_oauth_configured(self) -> bool:
+        return all(
+            (
+                self.google_client_id,
+                self.google_client_secret.get_secret_value(),
+                self.organization_domain.strip(),
+                self.mcp_public_url,
+                self.mcp_oauth_signing_key.get_secret_value(),
+            )
+        )
+
+    @property
+    def google_sign_in_configured(self) -> bool:
+        return all(
+            (
+                self.google_client_id,
+                self.google_client_secret.get_secret_value(),
+                self.google_redirect_uri,
+                self.frontend_url,
+                self.organization_domain.strip(),
+            )
+        )
+
     # Phase 3.10.6 — Configurable redirect behavior.
     # `redirect_status_code`: 302 (default) keeps every hit hitting the backend so
     # analytics stay accurate. 301 is SEO-friendly but cached aggressively by
@@ -116,7 +196,9 @@ class Settings(BaseSettings):
     db_pool_recycle: int = 3600  # Recycle connections after 1 hour
     db_ssl_mode: str = "prefer"  # Use "require" for RDS SSL
 
-    @field_validator("cors_origins", "trusted_proxies", mode="before")
+    @field_validator(
+        "cors_origins", "trusted_proxies", "mcp_oauth_allowed_redirect_uris", mode="before"
+    )
     @classmethod
     def parse_string_list(cls, v: Any) -> list[str]:
         """Parse a list-typed setting from a JSON string, comma-separated string, or list."""

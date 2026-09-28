@@ -89,7 +89,7 @@ def _signed_in_as(user):
     from mcp.server.auth.middleware.bearer_auth import AuthenticatedUser
 
     access = AccessToken(
-        token=user.api_key,
+        token=_KEY,
         client_id=str(user.id),
         scopes=[],
         claims={"sub": user.email, "user_id": str(user.id)},
@@ -116,9 +116,12 @@ def mcp_on_test_db(db_session):
         app.dependency_overrides.pop(get_db, None)
 
 
+_KEY = "usage-log-key"
+
+
 @pytest.fixture
 def signed_in_user(db_session, test_user):
-    test_user.api_key = "usage-log-key"
+    test_user.set_api_key(_KEY)
     db_session.commit()
     return test_user
 

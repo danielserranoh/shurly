@@ -41,6 +41,7 @@ from server.schemas.url import (
     URLUpdate,
 )
 from server.utils.access import viewer
+from server.utils.columns import fit
 from server.utils.domain import get_or_create_default_domain, resolve_domain_for_host
 from server.utils.network import anonymize_ip, resolve_client_ip
 from server.utils.opengraph import fetch_opengraph_metadata, is_social_media_crawler
@@ -174,7 +175,7 @@ async def create_short_url(
         # Fetch metadata from destination URL
         metadata = await fetch_opengraph_metadata(url_data.url)
         if metadata.has_metadata():
-            og_title = metadata.title
+            og_title = fit(metadata.title, URL.og_title)
             og_description = metadata.description
             og_image_url = metadata.image_url
             og_fetched_at = datetime.now(timezone.utc)
@@ -306,7 +307,7 @@ async def create_custom_url(
         # Fetch metadata from destination URL
         metadata = await fetch_opengraph_metadata(url_data.url)
         if metadata.has_metadata():
-            og_title = metadata.title
+            og_title = fit(metadata.title, URL.og_title)
             og_description = metadata.description
             og_image_url = metadata.image_url
             og_fetched_at = datetime.now(timezone.utc)
@@ -381,7 +382,7 @@ async def fetch_url_metadata(
         return URLMetadataResponse()
 
     return URLMetadataResponse(
-        og_title=metadata.title,
+        og_title=fit(metadata.title, URL.og_title),
         og_description=metadata.description,
         og_image_url=metadata.image_url,
     )
@@ -869,7 +870,7 @@ async def refresh_url_preview(
     # Update URL with fetched metadata (don't override custom values)
     if metadata.has_metadata():
         if not url.og_title:  # Only update if not custom
-            url.og_title = metadata.title
+            url.og_title = fit(metadata.title, URL.og_title)
         if not url.og_description:
             url.og_description = metadata.description
         if not url.og_image_url:
@@ -1047,7 +1048,7 @@ def base_url_landing(request: Request, db: Session = Depends(get_db)):
         OrphanVisit(
             type=OrphanVisitType.BASE_URL,
             attempted_path="/",
-            ip=request.client.host if request.client else None,
+            ip=fit(request.client.host if request.client else None, OrphanVisit.ip),
             user_agent=request.headers.get("user-agent"),
             referer=request.headers.get("referer"),
         )
@@ -1097,7 +1098,7 @@ def tracking_pixel(short_code: str, request: Request, db: Session = Depends(get_
         Visitor(
             url_id=url.id,
             short_code=short_code,
-            ip=stored_ip or "unknown",
+            ip=fit(stored_ip or "unknown", Visitor.ip),
             user_agent=visit_user_agent,
             referer=request.headers.get("referer"),
             is_bot=ua_is_bot(visit_user_agent),
@@ -1195,7 +1196,7 @@ def redirect_short_url(short_code: str, request: Request, db: Session = Depends(
             OrphanVisit(
                 type=OrphanVisitType.INVALID_SHORT_URL,
                 attempted_path=str(request.url.path)[:2048],
-                ip=orphan_ip,
+                ip=fit(orphan_ip, OrphanVisit.ip),
                 user_agent=request.headers.get("user-agent"),
                 referer=request.headers.get("referer"),
             )
@@ -1309,7 +1310,7 @@ def redirect_short_url(short_code: str, request: Request, db: Session = Depends(
     visit = Visitor(
         url_id=url.id,
         short_code=short_code,
-        ip=stored_ip or "unknown",
+        ip=fit(stored_ip or "unknown", Visitor.ip),
         user_agent=visit_user_agent,
         referer=request.headers.get("referer"),
         is_bot=ua_is_bot(visit_user_agent),

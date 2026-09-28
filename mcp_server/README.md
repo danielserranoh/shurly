@@ -128,7 +128,7 @@ The MCP server is mounted on the main FastAPI app at `/mcp` and ships in
 the same Docker image / ECS task as the regular API. Production endpoint:
 
 ```
-https://s.griddo.io/mcp/
+https://shurly.griddo.io/mcp/
 ```
 
 Both `/mcp` and `/mcp/` work. The bare path is served by an explicit **308
@@ -168,15 +168,19 @@ async with Client("http://localhost:9000/mcp") as client:
 
 #### Registering the deployed endpoint with Claude Desktop / Claude Code
 
+Two ways in: sign in with Google (Phase 5.8, below), or an API key. With Google,
+add `https://shurly.griddo.io/mcp/` (the slash matters) as a claude.ai custom connector,
+or run `claude mcp add --transport http shurly https://shurly.griddo.io/mcp/` without a
+header: the client finds the metadata and opens the browser. With an API key:
+
 ```bash
 # 1. Mint an API key (one-time):
-curl -X POST https://s.griddo.io/api/v1/auth/api-key/generate \
+curl -X POST https://shurly.griddo.io/api/v1/auth/api-key/generate \
     -H "Authorization: Bearer <jwt>"
-# → {"api_key": "<32-byte url-safe>", "scope": "full_access"}
+# → {"api_key": "shurly_<43 url-safe characters>", "scope": "full_access"}, shown this once
 
 # 2. Register the deployed MCP:
-claude mcp add shurly --transport http \
-    --url https://s.griddo.io/mcp/ \
+claude mcp add --transport http shurly https://shurly.griddo.io/mcp/ \
     --header "Authorization: Bearer <api_key>"
 ```
 
@@ -251,7 +255,8 @@ the surface.
 ## Authentication (Phase 5.4)
 
 The MCP server validates the inbound `Authorization: Bearer <token>`
-against `User.api_key`. Both API keys and JWTs are accepted (token shape
+as an API key, looked up by its SHA-256 hash (`User.api_key_hash`, Phase 6.3).
+Both API keys and JWTs are accepted (token shape
 disambiguates — JWTs have two dots, API keys never do). The same code path
 backs the FastAPI `get_current_user` dependency, so a single key works in
 either surface.
@@ -259,7 +264,7 @@ either surface.
 Two integration points:
 
 1. **`ShurlyTokenVerifier`** (in `mcp_server/auth.py`) — fastmcp
-   `TokenVerifier` subclass. Looks up the bearer in `User.api_key`,
+   `TokenVerifier` subclass. Looks up the bearer's hash in `User.api_key_hash`,
    returns an `AccessToken` carrying the user id + email + scope.
    Returning `None` produces a 401 at the MCP layer.
 
@@ -281,19 +286,72 @@ Curated tools (Phase 5.3 wrappers) read the AccessToken via
 ### Generating an API key
 
 ```bash
-# 1. Get a JWT via /auth/login (or use the existing dashboard).
+# 1. Get a JWT: sign in to the dashboard (with Google), or /auth/login with a password.
 # 2. Mint an API key:
-curl -X POST https://s.griddo.io/api/v1/auth/api-key/generate \
+curl -X POST https://shurly.griddo.io/api/v1/auth/api-key/generate \
   -H "Authorization: Bearer <jwt>"
-# → {"api_key": "<32-byte url-safe>", "scope": "full_access"}
+# → {"api_key": "shurly_<43 url-safe characters>", "scope": "full_access"}, shown this once
 # 3. Use it in the MCP client config:
-claude mcp add shurly --transport http \
-    --url https://s.griddo.io/mcp/ \
+claude mcp add --transport http shurly https://shurly.griddo.io/mcp/ \
     --header "Authorization: Bearer <api_key>"
 ```
 
 Rotation: re-run `POST /auth/api-key/generate` to issue a new key (any
 existing one is replaced). Revocation: `DELETE /auth/api-key`.
+
+The key is shown only when it's generated (Phase 6.3): Shurly keeps its SHA-256
+hash and its first 12 characters, never the key. `/auth/me`, and so
+`get_current_user_info`, says only whether there's one and how it starts, so the
+key doesn't reach an assistant's context. Lost it? Generate a new one.
+
+### Signing in with Google (Phase 5.8)
+
+claude.ai's custom connectors only authenticate with OAuth, so the MCP also lets
+clients sign in with Google Workspace, alongside API keys and JWTs, which work as
+before. It's on once `MCP_PUBLIC_URL`, `MCP_OAUTH_SIGNING_KEY`, the Google client
+(`GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`) and `ORGANIZATION_DOMAIN` are set
+(DEPLOYMENT.md § Sign in with Google); until then nothing changes.
+
+**For people:** add `{MCP_PUBLIC_URL}/`, e.g. `https://shurly.griddo.io/mcp/` with the
+slash, as a custom connector in claude.ai, or with `claude mcp add` and no header.
+The client registers itself, the browser shows Shurly's consent page (it names the
+client and where it sends you back), then Google. Only accounts of the
+organization's Workspace get in, and they land on the same Shurly account as on
+the web.
+
+**How it works** (`mcp_server/google_oauth.py`, `build_mcp_auth` in `server.py`):
+
+- `MultiAuth(server=ShurlyGoogleProvider, verifiers=[ShurlyTokenVerifier])`: a
+  bearer is tried as the OAuth proxy's token first (a local signature check), then
+  as an API key or JWT. `required_scopes=[]` on the MultiAuth, or API keys would
+  get 403 for lacking Google's scopes.
+- `ShurlyGoogleProvider` is fastmcp's `GoogleProvider` (client registration, the
+  consent page, Google, the code exchange) plus Shurly's rules. When the client
+  redeems its code, Google's ID token is checked by `verify_id_token` and the
+  account comes from `sign_in_with_google`, the web's own rules
+  (`server/utils/google_sign_in.py`). On a refresh and on every request, the
+  account is found by Google's `sub`, and a closed account is refused.
+- On every request fastmcp checks the Google token with Google (tokeninfo and
+  userinfo). A success is kept 60 seconds, by a hash of the token: a suspension at
+  Google takes up to a minute to bite, while closing the account in Shurly bites
+  at once.
+- The auto-generated tools call the API with a 5-minute JWT for the account,
+  minted by `forward_bearer_auth`: the proxy's token means nothing to the API.
+- What the proxy keeps (client registrations, sign-ins in progress, codes,
+  Google's tokens) lives in the `mcp_oauth_store` table, encrypted
+  (`mcp_server/oauth_store.py`), so both tasks and every deploy share it. Its
+  tokens are signed with a key derived from `MCP_OAUTH_SIGNING_KEY`, never from
+  the Google client secret.
+- Only redirect URIs in `MCP_OAUTH_ALLOWED_REDIRECT_URIS` may register: claude.ai's
+  and claude.com's callbacks, and loopback on any port for Claude Code. Any other
+  app is refused, so it can't ask a Griddo person to consent (consent phishing).
+- Discovery: `/.well-known/oauth-protected-resource/mcp/` (RFC 9728) and
+  `/.well-known/oauth-authorization-server/mcp` (RFC 8414) at the root, and a 401
+  pointing at the former. The OAuth endpoints are under `/mcp/`
+  (`authorize`, `token`, `register`, `consent`, `auth/callback`).
+
+`tests/test_phase58_mcp_oauth.py` runs the whole flow against a fake Google,
+including across two app instances sharing only the database.
 
 ### Scope (`ApiKeyScope`)
 

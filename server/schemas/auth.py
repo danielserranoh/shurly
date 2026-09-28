@@ -34,7 +34,14 @@ class UserResponse(BaseModel):
     email: str
     is_active: bool
     created_at: datetime
-    api_key: str | None = None
+    # Phase 6.3 — whether there's an API key and how it starts, never the key: it's
+    # shown once, by /api-key/generate. (This answer reaches an assistant through the
+    # MCP's get_current_user_info.)
+    has_api_key: bool = False
+    api_key_prefix: str | None = None
+    # Phase 3.13.3 — how this account signs in, for Settings → Account.
+    has_password: bool = False
+    has_google: bool = False
 
     class Config:
         from_attributes = True  # Pydantic v2 (was orm_mode in v1)
@@ -49,8 +56,29 @@ class ChangePasswordRequest(BaseModel):
     )
 
 
+class SetPasswordRequest(BaseModel):
+    """Phase 3.13.3 — set or replace the password (PUT /auth/password)."""
+
+    new_password: str = Field(
+        ..., min_length=8, description="Password must be at least 8 characters"
+    )
+    current_password: str | None = Field(
+        None,
+        description=(
+            "The password to replace. Required when the account has no Google sign-in; "
+            "without it, the session must be at most 10 minutes old."
+        ),
+    )
+
+
+class GoogleCodeExchange(BaseModel):
+    """Phase 3.13.2 — the one-time code the Google callback put in the frontend's URL."""
+
+    code: str = Field(..., min_length=1, max_length=128)
+
+
 class APIKeyResponse(BaseModel):
-    """Schema for API key response."""
+    """Schema for API key response: the only time the key itself is shown."""
 
     api_key: str
     scope: str = "full_access"  # Phase 3.9.6 — only enforced value at launch

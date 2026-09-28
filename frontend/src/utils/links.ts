@@ -157,7 +157,7 @@ export function renderLinkCard(link: ShortLink, opts: CardOptions = {}): RawHTML
         <a href="${safeUrl(link.original_url)}" target="_blank" rel="noopener noreferrer" class="truncate hover:text-ink-800" title="${link.original_url}">${prettyUrl(link.original_url)}</a>
       </p>
       ${creator ? html`<p class="mt-1 flex min-w-0 items-center gap-1.5 text-[13px] text-ink-500">${icon('user', 'size-3.5 shrink-0')}<span class="truncate">Created by ${creator}</span></p>` : ''}
-      ${link.tags.length ? html`<div class="mt-2.5 flex flex-wrap gap-1.5">${link.tags.map((t) => tagPill(t, { href: `/dashboard/?tags=${t.id}` }))}</div>` : ''}
+      ${link.tags.length ? html`<div class="mt-2.5 flex flex-wrap gap-1.5">${link.tags.map((t) => tagPill(t, { href: `/dashboard/?tags=${encodeURIComponent(t.id)}` }))}</div>` : ''}
       <p class="mt-3 flex items-center gap-3 text-[13px] text-ink-500 sm:hidden">
         <span><b class="font-semibold text-ink-900">${formatNumber(link.click_count)}</b> ${link.click_count === 1 ? 'click' : 'clicks'}</span>
         <span aria-hidden="true">·</span>

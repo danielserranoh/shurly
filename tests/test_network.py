@@ -41,15 +41,27 @@ class TestResolveClientIP:
         # Source not in CIDR allowlist → don't trust the header.
         assert resolve_client_ip("198.51.100.7", "203.0.113.99", ["10.0.0.0/8"]) == "198.51.100.7"
 
-    def test_xff_uses_leftmost_entry(self):
+    def test_a_client_cannot_choose_its_ip(self):
+        """Phase 6.3 — the ALB appends the address it saw to whatever X-Forwarded-For
+        the client sent, so the left end is the client's say. Rate limits key on this."""
+        assert (
+            resolve_client_ip("172.31.0.10", "6.6.6.6, 203.0.113.99", ["172.31.0.0/16"])
+            == "203.0.113.99"
+        )
+
+    def test_trusted_hops_are_skipped_from_the_right(self):
+        """CloudFront → ALB: each proxy in TRUSTED_PROXIES is skipped."""
         assert (
             resolve_client_ip(
                 "10.0.0.5",
-                "203.0.113.42, 10.0.0.99, 192.168.1.1",
+                "6.6.6.6, 203.0.113.42, 10.0.0.99",
                 ["10.0.0.0/8"],
             )
             == "203.0.113.42"
         )
+
+    def test_a_chain_of_trusted_hops_only_gives_the_first(self):
+        assert resolve_client_ip("10.0.0.5", "10.0.0.7, 10.0.0.8", ["10.0.0.0/8"]) == "10.0.0.7"
 
     def test_unknown_socket_handled(self):
         assert resolve_client_ip(None, None, []) == "unknown"

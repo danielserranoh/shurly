@@ -9,19 +9,22 @@ Modern URL shortener for B2B campaigns with analytics, built for AWS serverless 
 
 ---
 
-## Next up (updated 2026-09-27)
+## Next up (updated 2026-09-28)
 
 Order agreed in the 2026-09-27 review; confirm each item before starting it.
 
 1. **MCP usage log** (5.6.0): without it the dogfood produces no numbers. Code done; retention and saved queries
    are an AWS step.
-2. **Organization and roles** (3.14): links belong to the organization by default; owner, admin and member.
-   Done before anyone creates links, so nothing has to be migrated. Brings in Alembic. API and MCP done; the
-   frontend (Settings → Organization, the personal toggle, who created each link) is left.
+2. ✅ **Organization and roles** (3.14): links belong to the organization by default; owner, admin and member.
+   Done: API, MCP and frontend (Settings → Organization, the personal toggle, who created each link, removed
+   people). Left: two owners from day one, once people have signed up.
 3. **Frontend hosting** (4.10): S3 + CloudFront; AWS steps run with SSO.
 4. **Identity**: sign in with Google Workspace, for the web (3.13) and the MCP (5.8). One Google project covers
-   both.
-5. **MCP install guide**, in the app and in the user manual (5.9): after 5.8, since OAuth changes the steps.
+   both. The code of both is done (3.13's backend and frontend, 5.8); left: the Google project, hosting the
+   frontend (4.10) and wiring `shurly.griddo.io` (chosen 2026-09-28 for the app, API and MCP).
+5. ✅ **MCP install guide**, in the app and in the user manual (5.9): `/manual/install-mcp/` and Settings → API &
+   MCP. Its address comes from the build: `https://shurly.griddo.io/mcp/` once 4.10's production build sets
+   `PUBLIC_API_URL`.
 6. **Internal dogfood** with the frontend and the MCP (5.6).
 7. **Replace Shlink on `go.griddo.io`** (Phase 8): after the dogfood and error alerting (6.4).
 
@@ -706,27 +709,39 @@ Until then `POST /auth/register` stays reachable through the public API and its 
 - [ ] Google Cloud project inside the griddo.io organization, OAuth consent screen **Internal** (only Griddo
       accounts can sign in), a web OAuth client with the redirect URIs of the web sign-in and of the MCP proxy
       (5.8). Client secret in Secrets Manager (6.3). Done by whoever administers Workspace
-- [ ] `GET /api/v1/auth/google/start` → Google (OpenID Connect, `state` + PKCE, `hd=griddo.io` as a hint) →
-      `GET /api/v1/auth/google/callback`
-- [ ] Verify the ID token server-side: signature, `aud`, `iss`, `exp`, `email_verified`, and `hd` equal to the
-      organization's domain (the `hd` parameter sent to Google is only a hint)
-- [ ] New table `user_identities` (user_id, provider, subject, email, created_at; unique provider + subject): an
-      account is recognised by Google's `sub`, which survives an email rename
-- [ ] The first sign-in creates the user and adds them to the organization as a member (3.14); later ones match
-      by `sub`
-- [ ] Hand the session to the static frontend with a one-time code that the page exchanges by `POST` for the JWT,
-      so the JWT never travels in a URL
-- [ ] `auth.login` line in the event log with the method (`google` | `password`), needed before enforcing SSO
-- [ ] With Google as the only way in, `POST /auth/register` goes, and with it the MCP `register` tool
-      (`tests/test_phase52_mcp_tools.py` pins the surface). `POST /auth/login` stays, for passwords
+- [x] `GET /api/v1/auth/google/start` → Google (OpenID Connect, `state` + PKCE, `hd=griddo.io` as a hint) →
+      `GET /api/v1/auth/google/callback` → `server/app/google_auth.py`, whose docstring is the frontend's
+      contract. The state is hashed, single use and 10 minutes, and bound to the browser by a cookie
+- [x] Verify the ID token server-side: signature, `aud`, `iss`, `exp`, `email_verified`, and `hd` equal to the
+      organization's domain (the `hd` parameter sent to Google is only a hint) → google-auth for the first
+      four, `server/utils/google_oidc.py` for the last two
+- [x] New table `user_identities` (user_id, provider, subject, email, created_at; unique provider + subject): an
+      account is recognised by Google's `sub`, which survives an email rename → migration `0004`
+- [x] The first sign-in creates the user and adds them to the organization as a member (3.14); later ones match
+      by `sub` → `server/utils/google_sign_in.py`. An address whose account is linked to another `sub` is
+      refused (`account_conflict`), never linked
+- [x] Hand the session to the static frontend with a one-time code that the page exchanges by `POST` for the JWT,
+      so the JWT never travels in a URL → `{FRONTEND_URL}/login/#code=…`, then
+      `POST /api/v1/auth/google/exchange`; the code is hashed, single use and 60 seconds
+- [x] `auth.login` line in the event log with the method (`google` | `password`), needed before enforcing SSO
+- [x] With Google as the only way in, `POST /auth/register` goes, and with it the MCP `register` tool
+      (`tests/test_phase52_mcp_tools.py` pins the surface). `POST /auth/login` stays, for passwords → 404
+      unless `ALLOW_PASSWORD_SIGNUP` (local development and tests only)
 
 ### 3.13.3 Optional password, set by the account's owner
-- [ ] Settings → Account: set, change or remove a password, only while signed in, so it's always set by someone
-      who already proved they own the account
-- [ ] Never link a Google identity to a password nobody verified. That's account pre-hijacking: someone
+- [x] Settings → Account: set, change or remove a password, only while signed in, so it's always set by someone
+      who already proved they own the account → API done: `PUT`/`DELETE /api/v1/auth/password`, JWT sessions
+      only, and without the current password a sign-in at most 10 minutes old (`reauth_required`);
+      `/auth/me` says `has_password` and `has_google`. The page is 3.13.5: a `reauth_required` offers "Sign in
+      with Google again" and comes back to Settings
+- [x] Never link a Google identity to a password nobody verified. That's account pre-hijacking: someone
       registers `ana@griddo.io` with a password before Ana, Ana later signs in with Google, and the attacker keeps
-      a way in. With accounts created only through Google, the path doesn't exist
-- [ ] Forgot the password → sign in with Google and set a new one; no reset email 🔎 R2
+      a way in. With accounts created only through Google, the path doesn't exist → for accounts from before
+      3.13, the first Google sign-in links them but clears the password, revokes the API key and ends every
+      session (`users.sessions_valid_from`), and logs `auth.identity_linked`
+- [x] Forgot the password → sign in with Google and set a new one; no reset email 🔎 R2 → API done (the
+      `PUT /api/v1/auth/password` above, right after signing in with Google); the page is 3.13.5, and the login
+      page's "Forgot password?" says so
 
 ### 3.13.4 Changing methods without disruption
 - [ ] Setting to turn password login off for the organization's domain (SSO enforced), keeping one break-glass
@@ -734,17 +749,20 @@ Until then `POST /auth/register` stays reachable through the public API and its 
       still uses a password
 - [ ] Leaving Google some day: everyone sets a password while Google still works, then Google sign-in goes off
 - [ ] Offboarding checklist: suspending someone in Google blocks their Google sign-in, but a Shurly password and
-      their API key keep working until the account is deactivated in Shurly
+      their API key keep working until the account is deactivated in Shurly. MCP sign-ins with Google (5.8):
+      deactivating refuses them at once (requests and refreshes); a Google suspension bites within 60 s (the
+      cached check); their Google tokens stay in `mcp_oauth_store`, encrypted and unusable, until they expire
 
 ### 3.13.5 Frontend
-- [ ] "Sign in with Google" on the login page; the register page goes
-- [ ] Settings → Account: the password section of 3.13.3
+- [x] "Sign in with Google" on the login page; the register page goes
+- [x] Settings → Account: the password section of 3.13.3
 - [ ] Needs the frontend hosted (4.10)
 
 ### 3.13.6 Verification
-- [ ] Tests (TDD) against a faked Google: `hd` and `email_verified` enforced, `state` checked, first sign-in
+- [x] Tests (TDD) against a faked Google: `hd` and `email_verified` enforced, `state` checked, first sign-in
       creates the user and the membership, matching by `sub` after an email change, one-time code single use and
-      short-lived, passwords set only while signed in, register gone
+      short-lived, passwords set only while signed in, register gone → `tests/test_phase3132_google_sign_in.py`
+      and `tests/test_phase3133_passwords.py`, on `tests/fake_google.py` (real RS256 tokens, no network)
 - [ ] End to end against the real Google project with a Griddo account
 
 ---
@@ -806,8 +824,10 @@ own links. Tags are already global.
       account with personal links only, and each refused join logs `org.join_refused` (user id, no email) 🔎 R13
 
 ### 3.14.3 Behaviour
-- [ ] One organization at launch, "Griddo", with `google_domain = griddo.io`: whoever signs in with a Griddo
-      Google account joins as a member (3.13)
+- [x] One organization at launch, "Griddo", with `google_domain = griddo.io`: whoever signs in with a Griddo
+      Google account joins as a member (3.13) → the settings' defaults, seeded at startup
+      (`test_at_launch_it_is_griddo_on_griddo_io`), and the first Google sign-in joins it as a member
+      (`test_the_first_sign_in_makes_the_account_and_joins_the_organization`)
 - [x] New links and campaigns belong to the organization unless the request asks for `visibility: "personal"`:
       API field, MCP tool argument, and a UI toggle that starts off: the "Personal" switch on quick create, the
       full editor and the campaign wizard (`components/app/VisibilityToggle.astro`). An account outside any
@@ -826,8 +846,9 @@ own links. Tags are already global.
       there's a single organization; scope them per organization before a second one
 - [x] Settings → Organization: members, roles, remove, hand the role over. Each row offers only what the
       viewer's role allows; the API's 403/409 message is shown as is (`components/settings/OrganizationPanel.astro`)
-- [ ] Removed people list in Settings → Organization, so an owner who skipped the move at removal time can still
-      move someone's personal links later (needs `GET /api/v1/organization/removed-members`)
+- [x] Removed people list in Settings → Organization, so an owner who skipped the move at removal time can still
+      move someone's personal links later → `GET /api/v1/organization/removed-members` (owners only; closed
+      accounts on the organization's domain, with what they still own; not an MCP tool)
 
 ### 3.14.4 Verification
 - [x] Tests (TDD): visibility matrix (A sees B's organization links, not B's personal ones), organization by
@@ -891,7 +912,9 @@ written, with notes where reality differed.
 
 **Hostnames**:
 - `s.griddo.io` — Shurly API + redirect path (short, optimized for printing/QR — short URLs benefit from short hosts).
-- `shurl.griddo.io` (or `shurly.griddo.io`) — reserved for the frontend (4.10).
+- `shurly.griddo.io` — the web, the app, the API and the MCP (decided 2026-09-28): served whole by the API
+  through rule 12 until the frontend is hosted (4.10), then split by path (`/api/*`, `/mcp*`,
+  `/.well-known/oauth-*` to the API, the rest to the frontend), so the frontend calls its own origin.
 
 **Existing reusable infrastructure** (created during the Shlink deploy):
 - VPC `vpc-01b31e19aa032bcff` (default)
@@ -983,8 +1006,8 @@ End-to-end run with the user driving SSO locally:
 - [x] `./scripts/setup_custom_domain.sh` (cert, rule, DNS)
 - [x] Update Lambda `RULE_SYNC_MAP`
 - [ ] Smoke checklist — only `/api/v1/health` (checked by CI on every deploy) and the forced redeploy are on record; re-run the rest against production and tick them here:
-  - `register` → `login` → returns JWT (once 3.13 lands, register goes: sign in with Google, or with a password
-    set afterwards)
+  - `login` → returns JWT (register is gone since 3.13.2: sign in with Google, or with a password set
+    afterwards)
   - `POST /api/v1/urls` creates a short URL bound to `s.griddo.io`
   - `GET /<code>` returns 302 to destination
   - `GET /<code>/track` returns 43-byte GIF
@@ -1011,22 +1034,32 @@ for this.
 - *Safest.* No server to patch; the bucket stays private behind Origin Access Control (OAC); HSTS and CSP
   headers come from a CloudFront response-headers policy. CSP matters here: the JWT lives in `localStorage` (3.1).
 
-- [ ] Choose the hostname. Proposed: `links.griddo.io` for good, the address the team already uses to shorten
-      links (it frees up when Shlink's web client retires, Phase 8); until then a working host for the dogfood
-      (e.g. `shurly.griddo.io`) that later redirects there
+- [x] Choose the hostname → **`shurly.griddo.io`** (decided 2026-09-28), for the web, the app, the API and the
+      MCP, split by path; `go.griddo.io` is for short links only. `links.griddo.io` retires with Shlink (Phase 8)
 - [ ] S3 bucket (Block Public Access on) + CloudFront distribution with OAC
 - [ ] ACM certificate in **us-east-1**: CloudFront only takes certificates from N. Virginia (the ALB's is in
       eu-south-2). DNS validation in `griddo-production`
-- [ ] CloudFront Function rewriting `/dashboard/` → `/dashboard/index.html`: a private bucket is reached through
+- [x] CloudFront Function rewriting `/dashboard/` → `/dashboard/index.html`: a private bucket is reached through
       the S3 REST endpoint, which doesn't resolve directory indexes. The comment in `astro.config.mjs` saying no
-      CDN rewrites are needed only holds for the public website endpoint
-- [ ] Error response: 404 → `/404.html`
+      CDN rewrites are needed only holds for the public website endpoint → `infra/cloudfront/static-paths.js`, with tests;
+      attach it to the default behaviour when the distribution is created
+- [ ] Error response: 404 → `/404.html` → an open decision now that the API shares the distribution: custom error
+      responses apply to the whole distribution and would replace the API's own 403/404 (DEPLOYMENT.md § Frontend
+      hosting, "Error pages")
 - [ ] Route 53 alias record, from `griddo-production`
-- [ ] Rewrite `deploy-frontend.yml`: OIDC role as in 4.8 (it still uses access keys), the real bucket,
-      `PUBLIC_API_URL=https://s.griddo.io`, `PUBLIC_SITE_URL`; re-enable `push` on `frontend/**`. Its header
-      still points at the Lambda-era "Phase 4.5/4.6"
+- [x] Rewrite `deploy-frontend.yml`: OIDC role as in 4.8 (it still uses access keys), the real bucket, the
+      production build values below, `PUBLIC_SITE_URL`; re-enable `push` on `frontend/**`. Its header still
+      points at the Lambda-era "Phase 4.5/4.6"
+- [x] Production build values: `PUBLIC_API_URL=https://shurly.griddo.io` and `PUBLIC_SHORT_DOMAIN=s.griddo.io`
+      (`go.griddo.io` from Phase 8). Without `PUBLIC_SHORT_DOMAIN` the app shows short links on the API's host
+      (`shurly.griddo.io/abc`). The MCP address in the manual and Settings then derives as
+      `https://shurly.griddo.io/mcp/` (`PUBLIC_MCP_URL` only to override it)
 - [ ] `CORS_ORIGINS` in the task matches the chosen hostname (`deploy_ecs.sh` defaults to `https://shurl.griddo.io`)
-- [ ] Update the hostnames table in `DEPLOYMENT.md` (it still says "Future frontend | 7")
+- [x] Update the hostnames table in `DEPLOYMENT.md` (it still says "Future frontend | 7") → done in #74
+- [x] CI builds the frontend (`npm ci`, `npm test`, `npm run build` in the Tests workflow), so a PR can't break the
+      deploy unseen
+- [ ] Client IPs through CloudFront: decide how the API gets the viewer's address once `shurly.griddo.io` goes
+      through the distribution (DEPLOYMENT.md § Frontend hosting, open decision; backend and AWS work)
 
 ---
 
@@ -1065,7 +1098,7 @@ for this.
 
 ### 5.4 Authentication & per-user scoping ✅
 - [x] FastAPI `get_current_user` accepts both JWTs and API keys (token-shape dispatch — JWTs have dots, API keys don't). Single dependency, single test surface.
-- [x] `ShurlyTokenVerifier` validates the inbound MCP bearer against `User.api_key`, populating `AccessToken.claims` with user id + email + scope.
+- [x] `ShurlyTokenVerifier` validates the inbound MCP bearer as an API key (by its hash since 6.3), populating `AccessToken.claims` with user id + email + scope.
 - [x] `forward_bearer_auth` hook re-attaches the inbound bearer to the outbound FastAPI call so auto-generated tools resolve the same user as the MCP layer.
 - [x] Curated-tool wrappers swap the Phase 5.3 `NotImplementedError` stub for `resolve_current_user(db)` reading from the AccessToken context.
 - [x] `MCP_DISABLE_AUTH=1` escape hatch for local stdio dev (never to be set in prod).
@@ -1142,19 +1175,33 @@ added there; Claude Code gets by with `--header`.
 - [x] **Authorization server: Google Workspace** (decided 2026-09-27), through fastmcp's OAuth proxy
       (`GoogleProvider`, in fastmcp 4.0.10), which also handles client registration (Dynamic Client Registration,
       Client ID Metadata Documents). Same Google project as the web sign-in (3.13.2)
-- [ ] Add the MCP proxy's redirect URI to the Google OAuth client of 3.13.2
-- [ ] Protected-resource metadata (RFC 9728), and 401s carrying `WWW-Authenticate: Bearer resource_metadata="…"`
-      (answers the open question at the end of this phase)
-- [ ] Map the Google identity to the Shurly user through `user_identities` (3.13.2): organization domain only,
-      member of the organization (3.14)
-- [ ] API keys keep working: the verifier accepts either an API key or an OAuth access token. Check this first:
+- [ ] Add the MCP proxy's redirect URI to the Google OAuth client of 3.13.2 → `{MCP_PUBLIC_URL}/auth/callback`,
+      → `https://shurly.griddo.io/mcp/auth/callback` (docs/setup_google_app.md, step 9)
+- [x] Protected-resource metadata (RFC 9728), and 401s carrying `WWW-Authenticate: Bearer resource_metadata="…"`
+      (answers the open question at the end of this phase) → at `/.well-known/oauth-protected-resource/mcp/`,
+      with the authorization server's metadata at `/.well-known/oauth-authorization-server/mcp`
+- [x] Map the Google identity to the Shurly user through `user_identities` (3.13.2): organization domain only,
+      member of the organization (3.14) → the web's rules (`verify_id_token`, `sign_in_with_google`) when the
+      client redeems its code; the account by `sub`, and closed ones refused, on every request and refresh
+      (`mcp_server/google_oauth.py`)
+- [x] API keys keep working: the verifier accepts either an API key or an OAuth access token. Check this first:
       fastmcp takes a single auth provider, so it likely needs a small one wrapping `GoogleProvider` and
-      `ShurlyTokenVerifier`
-- [ ] No collisions with short codes: auth routes served at the root (`/authorize`, `/token`, `/register`,
-      `/.well-known/…`) get reserved like `mcp`, `docs` and `redoc` (PR #35), or live under `/mcp/`
-- [ ] Pick the canonical MCP host (`s.griddo.io` or `go.griddo.io`) before people install it: OAuth ties the
-      client's configuration to the resource URL
-- [ ] Tests: metadata documents, the 401 header, both token types, user mapping, non-griddo identities refused
+      `ShurlyTokenVerifier` → fastmcp's `MultiAuth`, with `required_scopes=[]` (otherwise API keys get 403
+      for Google's scopes)
+- [x] No collisions with short codes: auth routes served at the root (`/authorize`, `/token`, `/register`,
+      `/.well-known/…`) get reserved like `mcp`, `docs` and `redoc` (PR #35), or live under `/mcp/` → the
+      OAuth endpoints are under `/mcp/`; at the root only the multi-segment `/.well-known/…/mcp` paths
+- [x] State that survives two tasks and every deploy: the proxy's registrations, sign-ins in progress, codes
+      and Google's tokens in `mcp_oauth_store` (migration `0005`), encrypted; its tokens signed with
+      `MCP_OAUTH_SIGNING_KEY`, never the Google secret
+- [x] Only the clients we target can register (consent phishing): `MCP_OAUTH_ALLOWED_REDIRECT_URIS`, by
+      default claude.ai's and claude.com's callbacks and loopback on any port (Claude Code)
+- [x] Pick the canonical MCP host (`s.griddo.io` or `go.griddo.io`) before people install it: OAuth ties the
+      client's configuration to the resource URL → **`shurly.griddo.io`** (decided 2026-09-28), with the web,
+      the app and the API; `go.griddo.io` is for short links only. `MCP_PUBLIC_URL=https://shurly.griddo.io/mcp`
+- [x] Tests: metadata documents, the 401 header, both token types, user mapping, non-griddo identities refused
+      → `tests/test_phase58_mcp_oauth.py`, against a fake Google, including two app instances completing one
+      sign-in
 - [ ] Check it end to end: Claude Code (`claude mcp add --transport http …`, sign-in in the browser) and a
       claude.ai custom connector
 
@@ -1162,20 +1209,21 @@ added there; Claude Code gets by with `--header`.
 **Decided (2026-09-27):** the app explains how to install the MCP, and the user manual carries the same instructions.
 **Today:** Settings → API & MCP shows the API key and a `curl` example, nothing about installing the MCP. The steps
 live in `mcp_server/README.md`, written for developers. There is no user manual (7.1).
-- [ ] One source for both: the manual as Markdown inside the frontend (e.g. an Astro content collection under
+- [x] One source for both: the manual as Markdown inside the frontend (e.g. an Astro content collection under
       `frontend/src/content/manual/`, published at `/manual/`), and Settings → API & MCP renders the same MCP page,
-      so the two can't drift
-- [ ] Steps per client: Claude Code and claude.ai / Claude Desktop (custom connector), plus any other client the
+      so the two can't drift → `frontend/src/content/manual/install-mcp.md`, rendered by `ManualArticle.astro` in both
+- [x] Steps per client: Claude Code and claude.ai / Claude Desktop (custom connector), plus any other client the
       team uses. OAuth sign-in (5.8) first, the API key as the alternative
-- [ ] In the app, the user's own values filled in (endpoint URL, and their key if they take that route)
-- [ ] Voice and patterns from `design/DESIGN_SYSTEM.md`
-- [ ] Written once 5.8 lands, since OAuth changes the steps
+- [x] In the app, the user's own values filled in (endpoint URL, and their key if they take that route) → the
+      address from `PUBLIC_MCP_URL` at build time; "Copy with my key" builds the command when clicked, never in the page
+- [x] Voice and patterns from `design/DESIGN_SYSTEM.md`
+- [x] Written once 5.8 lands, since OAuth changes the steps
 
 ### Open questions (resolve during 5.1)
 - Does `fastmcp.from_fastapi()` produce useful tool descriptions, or do we need to enrich them via Pydantic `Field(..., description=...)` everywhere first? (Likely yes — most of our schemas already have descriptions; sweep the gaps.) → still open: nobody has done the sweep
 - ~~Should pixel/redirect endpoints be exposed as tools at all?~~ **Resolved:** no — excluded in `EXCLUDED_ROUTE_MAPS` (5.2).
-- ~~Per-user MCP config in Claude Code: how does the team add their personal API key without committing it?~~ **Resolved:** `claude mcp add shurly --transport http --url https://s.griddo.io/mcp/ --header "Authorization: Bearer <api_key>"`, documented in `mcp_server/README.md`.
-- Authorization discovery: we publish no RFC 9728 protected-resource metadata. All four `.well-known` paths 404, and the 401 carries a bare `WWW-Authenticate: Bearer` with no `resource_metadata=` pointer, so MCP clients cannot auto-discover how to authenticate and must be handed an API key. Not a flag we can flip — it needs our own authorization server or delegation to an IdP (fastmcp ships providers for Auth0, Azure, Clerk, Google, Keycloak, WorkOS, …). A product decision, not a technical one. **Decided 2026-09-27:** yes, OAuth 2.1 alongside API keys → 5.8.
+- ~~Per-user MCP config in Claude Code: how does the team add their personal API key without committing it?~~ **Resolved:** `claude mcp add --transport http shurly https://shurly.griddo.io/mcp/ --header "Authorization: Bearer <api_key>"`, documented in `mcp_server/README.md`.
+- Authorization discovery: we publish no RFC 9728 protected-resource metadata. All four `.well-known` paths 404, and the 401 carries a bare `WWW-Authenticate: Bearer` with no `resource_metadata=` pointer, so MCP clients cannot auto-discover how to authenticate and must be handed an API key. Not a flag we can flip — it needs our own authorization server or delegation to an IdP (fastmcp ships providers for Auth0, Azure, Clerk, Google, Keycloak, WorkOS, …). A product decision, not a technical one. **Decided 2026-09-27:** yes, OAuth 2.1 alongside API keys → 5.8. **Built (2026-09-28):** the metadata at `/.well-known/oauth-protected-resource/mcp/` and a 401 pointing at it, once the 5.8 settings are set.
 
 ---
 
@@ -1203,14 +1251,26 @@ live in `mcp_server/README.md`, written for developers. There is no user manual 
 - [ ] ~~Lambda cold start optimization~~ — not applicable on ECS; containers have no cold start
 
 ### 6.3 Security Hardening
-- [ ] Rate limiting — no API Gateway on this stack, so it needs app-level limiting or AWS WAF on the shared ALB (first slice: invitations and resets in 3.15, since each one sends an email)
-- [ ] Input validation review
+- [x] Rate limiting — no API Gateway on this stack, so it needs app-level limiting or AWS WAF on the shared ALB (first slice: invitations and resets in 3.15, since each one sends an email) → app-level, in the database so both tasks share the counts (`server/utils/rate_limit.py`, migration `0006`): the password login per IP and failed logins per address, the Google and MCP sign-in per IP. Invitations and resets (3.15) take a limit of their own when they arrive; WAF stays an AWS option
+- [x] Input validation review → request fields stored in a bounded column carry a `max_length` within it
+      (pinned by `tests/test_input_lengths.py`); values from outside a schema (a fetched page's title,
+      an address from `X-Forwarded-For`) are cut to their column instead of failing with a PostgreSQL 500;
+      the MCP's `create_campaign_from_rows` checks its name like the API
+  - [x] CSV formula injection: the exports quote cells that start like a formula, and the CSV import unquotes them
+        (`spreadsheet_safe`, `server/utils/csv_export.py`)
 - [ ] SQL injection prevention check
-- [ ] XSS prevention in frontend (dynamic HTML goes through the escaping `html` tag from `@/utils/html`; audit the remaining raw `innerHTML` uses)
-- [ ] CORS configuration review
+- [x] XSS prevention in frontend (dynamic HTML goes through the escaping `html` tag from `@/utils/html`; audit the remaining raw `innerHTML` uses) → audited: data goes through `html`/`setHTML`, URLs through `safeUrl`; two raw sinks left, documented; `frontend/tests/no-raw-html.test.mjs` fails on new ones
+- [x] CORS configuration review → no credentials, only the methods and headers the API uses, `Retry-After`
+      and `X-Request-Id` exposed (`tests/test_cors.py`). Production needs no cross-origin entry once the
+      frontend shares the API's origin (4.10); its `CORS_ORIGINS` still lists `https://shurl.griddo.io`, a
+      host that doesn't exist, to be corrected at the release
 - [ ] Environment secrets audit (DB password and JWT secret are plain task env vars; Secrets Manager is the planned move)
 - [x] SSRF guard on the Open Graph fetcher (PR #21, see CHANGELOG § Security)
 - [x] Campaign-link takeover via custom codes (see CHANGELOG § Security)
+- [x] API keys stored as a hash → SHA-256 and the first 12 characters (migration `0007`), shown once when
+      generated; `/auth/me`, and so the MCP's `get_current_user_info`, no longer returns the key; new keys
+      start with `shurly_` (`tests/test_phase63_api_keys.py`)
+  - [ ] Drop the emptied `users.api_key` column, in the release after `0007`
 
 ### 6.4 Monitoring & Logging
 - [x] CloudWatch Logs setup → `/aws/ecs/default/shurly-api-5fdb`; `X-Request-Id` correlates requests
@@ -1228,13 +1288,14 @@ live in `mcp_server/README.md`, written for developers. There is no user manual 
 ### 7.1 Documentation
 - [x] API documentation (OpenAPI/Swagger) - auto-generated by FastAPI (`/docs`, `/redoc`)
 - [x] Deployment guide → `DEPLOYMENT.md` (walkthrough) + `docs/AWS_ECS_DEPLOYMENT.md` (playbook)
-- [ ] User manual for dashboard: starts with the MCP install page (5.9), which lives in the frontend
+- [x] User manual for dashboard: starts with the MCP install page (5.9), which lives in the frontend → `/manual/`, Markdown in `frontend/src/content/manual/`
 - [ ] Architecture diagram
 - [ ] Database schema diagram
 - [ ] Environment variables reference
 
 ### 7.2 Operational Runbook
-- [ ] How to add new users → self-service sign-up for `@griddo.io` once 3.13 ships
+- [ ] How to add new users → self-service sign-up for `@griddo.io`: signing in with Google makes the account
+      (3.13.2); left: the Google project, and writing it down here
 - [x] How to investigate issues → troubleshooting catalog in `docs/AWS_ECS_DEPLOYMENT.md`
 - [x] How to scale if needed → "Scale up/down" in the same runbook
 - [ ] Backup and recovery procedures
@@ -1256,8 +1317,10 @@ with one ALB change, and rolling back restores it. Shurly resolves links by (Hos
 
 ### 8.1 Decisions first
 - [x] Hostname for new links after the cutover: **`go.griddo.io`** (decided 2026-09-27). A new address for links
-      would confuse people; `s.griddo.io` keeps working in parallel. Until the cutover `go.griddo.io` still points
-      at Shlink, so links made in Shurly before then live on `s.griddo.io` (and keep working)
+      would confuse people. Until the cutover `go.griddo.io` still points at Shlink, so test links made in Shurly
+      live on `s.griddo.io`
+- [x] `s.griddo.io` is deleted entirely at the cutover, with no redirects kept (decided 2026-09-28): nothing was
+      ever published on it. The app, API and MCP are on `shurly.griddo.io` before then
 - [x] Shared or personal links 🔎 R7: **the organization's by default, personal only on purpose** (decided
       2026-09-27) → 3.14
 - [x] Owner of the migrated links: the Griddo organization (3.14)
@@ -1307,6 +1370,9 @@ the import can be re-run.
       recreate rule 10. Update `RULE_SYNC_MAP` in `infra/ecs-alb-rule-sync/`. The `go.griddo.io` certificate is
       already on the listener
 - [ ] Switch the default domain to `go.griddo.io` (8.3) in the same window
+- [ ] Delete `s.griddo.io` entirely: out of rule 12's host condition, its certificate off the listener and deleted,
+      its Route 53 record (griddo-production), its `Domain` row and test links; the docs and scripts that still
+      name it
 - [ ] Smoke on `go.griddo.io` with a sample of migrated codes, mixed case included
 - [ ] Watch orphan visits on `go.griddo.io` for 2–4 weeks: hits on dropped codes show what was still in use →
       re-import them from the raw export
@@ -1399,6 +1465,8 @@ check earlier in the next project.
 - **Later the same day:** 3.14.2 + 3.14.3 made the open sign-up worse — any new account joined the organization
   and could read and export every campaign, recipients' names and emails included → closed by the domain gate
   in 3.14.2 (R13). Sign-up itself stays open until 3.13
+- **Closed (2026-09-28):** 3.13.2 turns `POST /auth/register` off (404 unless `ALLOW_PASSWORD_SIGNUP`, local
+  development only). Accounts come from signing in with Google
 
 ### R2 — No password reset · missed · found 2026-09-27
 - **What:** a user who forgets the password has no way back → 3.13.3 (sign in with Google and set a new one;

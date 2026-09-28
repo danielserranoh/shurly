@@ -153,7 +153,7 @@ const steps = ['Details', 'Recipients', 'Review', 'Create'];
   import { applyApiError, clearErrors, setFieldError } from '@/utils/forms';
   import { formatNumber, isValidHttpUrl, normalizeUrlInput, pluralize } from '@/utils/format';
   import { html, setHTML } from '@/utils/html';
-  import { iconSvg } from '@/utils/icons';
+  import { icon } from '@/utils/icons';
   import { campaignHref } from '@/utils/links';
   import { mountTagInput } from '@/utils/tag-input';
   import { getMyOrganization, visibilityOf } from '@/utils/viewer';
@@ -184,7 +184,7 @@ const steps = ['Details', 'Recipients', 'Review', 'Create'];
       dot.className = `grid size-7 shrink-0 place-items-center rounded-full text-xs font-semibold transition-colors ${
         i < n ? 'bg-brand-400 text-white' : i === n ? 'bg-ink-950 text-white' : 'bg-ink-100 text-ink-500'
       }`;
-      dot.innerHTML = i < n ? iconSvg('check', 'size-3.5', 3) : String(i);
+      setHTML(dot, i < n ? icon('check', 'size-3.5', 3) : String(i));
       if (label) label.className = `hidden text-sm font-medium sm:inline ${i <= n ? 'text-ink-950' : 'text-ink-500'}`;
     });
     const first = form.querySelector<HTMLElement>(`[data-step="${n}"] input:not([type=file]), [data-step="${n}"] button[data-next]`);

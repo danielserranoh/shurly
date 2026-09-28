@@ -19,6 +19,7 @@ from sqlalchemy.pool import StaticPool  # noqa: E402
 from main import app  # noqa: E402
 from server.core import Base, get_db  # noqa: E402
 from server.core.auth import create_access_token  # noqa: E402
+from server.core.config import settings  # noqa: E402
 from server.core.models import (  # noqa: E402, F401 - Import all models for SQLAlchemy
     URL,
     Campaign,
@@ -26,6 +27,7 @@ from server.core.models import (  # noqa: E402, F401 - Import all models for SQL
     User,
     Visitor,
 )
+from server.utils import rate_limit  # noqa: E402
 
 # Use in-memory SQLite for testing with proper configuration
 SQLALCHEMY_DATABASE_URL = "sqlite:///:memory:"
@@ -58,6 +60,9 @@ TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engin
 
 # Create tables once when the module loads
 Base.metadata.create_all(bind=engine)
+
+# Phase 6.3 — the rate limits count in the test database too.
+rate_limit.session_factory = TestingSessionLocal
 
 
 def pytest_addoption(parser):
@@ -148,6 +153,12 @@ def auth_headers(test_user: User):
     """Create authentication headers for test user."""
     access_token = create_access_token(data={"sub": test_user.email})
     return {"Authorization": f"Bearer {access_token}"}
+
+
+@pytest.fixture
+def allow_password_signup(monkeypatch):
+    """Turn POST /auth/register back on: off by default since 3.13 (accounts come from Google)."""
+    monkeypatch.setattr(settings, "allow_password_signup", True)
 
 
 @pytest.fixture(scope="function")

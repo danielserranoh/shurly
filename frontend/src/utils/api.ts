@@ -8,12 +8,15 @@ export class ApiError extends Error {
   status: number;
   /** Field-level validation messages from FastAPI 422 responses, keyed by field name. */
   fields: Record<string, string>;
+  /** Machine-readable reason, when the API sends one (e.g. `reauth_required`). */
+  code?: string;
 
-  constructor(message: string, status: number, fields: Record<string, string> = {}) {
+  constructor(message: string, status: number, fields: Record<string, string> = {}, code?: string) {
     super(message);
     this.name = 'ApiError';
     this.status = status;
     this.fields = fields;
+    this.code = code;
   }
 }
 
@@ -35,6 +38,11 @@ async function toApiError(response: Response): Promise<ApiError> {
     detail = undefined;
   }
   if (typeof detail === 'string') return new ApiError(detail, response.status);
+  // A few errors carry a code the page acts on: {"detail": {"code": "reauth_required", "message": "…"}}.
+  if (detail && typeof detail === 'object' && !Array.isArray(detail)) {
+    const { code, message } = detail as { code?: unknown; message?: unknown };
+    if (typeof message === 'string') return new ApiError(message, response.status, {}, typeof code === 'string' ? code : undefined);
+  }
   if (Array.isArray(detail)) {
     const fields: Record<string, string> = {};
     for (const issue of detail as ValidationIssue[]) {
@@ -98,6 +106,10 @@ export function apiGet<T>(endpoint: string, requiresAuth = true): Promise<T> {
 
 export function apiPost<T>(endpoint: string, data?: unknown, requiresAuth = true): Promise<T> {
   return apiFetch<T>(endpoint, { method: 'POST', body: JSON.stringify(data ?? {}), requiresAuth });
+}
+
+export function apiPut<T>(endpoint: string, data: unknown, requiresAuth = true): Promise<T> {
+  return apiFetch<T>(endpoint, { method: 'PUT', body: JSON.stringify(data), requiresAuth });
 }
 
 export function apiPatch<T>(endpoint: string, data: unknown, requiresAuth = true): Promise<T> {

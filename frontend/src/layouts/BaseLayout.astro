@@ -64,7 +64,9 @@ const ogImage = new URL('/og-image.png', Astro.site ?? Astro.url).href;
     {
       guestOnly && (
         <script is:inline>
-          if (localStorage.getItem('shurly_auth_token')) location.replace('/dashboard/');
+          // Google's answer (#code=… or #error=…) is for the page even with a session: that new
+          // sign-in replaces it, as when someone signs in again to set a password.
+          if (localStorage.getItem('shurly_auth_token') && !/^#(code|error)=/.test(location.hash)) location.replace('/dashboard/');
         </script>
       )
     }

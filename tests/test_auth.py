@@ -1,11 +1,14 @@
 """Tests for authentication endpoints."""
 
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 from server.core.models import User
+from server.core.models.user import hash_api_key
 
 
+@pytest.mark.usefixtures("allow_password_signup")
 class TestUserRegistration:
     """Test user registration endpoint."""
 
@@ -230,9 +233,9 @@ class TestAPIKeyManagement:
         assert "api_key" in data
         assert len(data["api_key"]) > 20  # Should be reasonably long
 
-        # Verify API key is stored in database
+        # Phase 6.3 — the database keeps the key's hash, not the key
         db_session.refresh(test_user)
-        assert test_user.api_key == data["api_key"]
+        assert test_user.api_key_hash == hash_api_key(data["api_key"])
 
     def test_generate_api_key_replaces_existing(
         self, client: TestClient, auth_headers: dict, db_session: Session, test_user: User
@@ -251,9 +254,9 @@ class TestAPIKeyManagement:
         # Keys should be different
         assert first_key != second_key
 
-        # Database should have second key
+        # Database should have the second key's hash
         db_session.refresh(test_user)
-        assert test_user.api_key == second_key
+        assert test_user.api_key_hash == hash_api_key(second_key)
 
     def test_generate_api_key_unauthorized(self, client: TestClient):
         """Test API key generation without authentication."""
@@ -268,7 +271,7 @@ class TestAPIKeyManagement:
         generate_response = client.post("/api/v1/auth/api-key/generate", headers=auth_headers)
         assert generate_response.status_code == 200
         db_session.refresh(test_user)
-        assert test_user.api_key is not None
+        assert test_user.has_api_key
 
         # Now revoke it
         revoke_response = client.delete("/api/v1/auth/api-key", headers=auth_headers)
@@ -277,14 +280,14 @@ class TestAPIKeyManagement:
 
         # Verify API key is removed from database
         db_session.refresh(test_user)
-        assert test_user.api_key is None
+        assert not test_user.has_api_key
 
     def test_revoke_api_key_when_none_exists(
         self, client: TestClient, auth_headers: dict, db_session: Session, test_user: User
     ):
         """Test revoking API key when user has no API key."""
         # Ensure no API key exists
-        assert test_user.api_key is None
+        assert not test_user.has_api_key
 
         # Should still succeed
         response = client.delete("/api/v1/auth/api-key", headers=auth_headers)
@@ -296,6 +299,7 @@ class TestAPIKeyManagement:
         assert response.status_code == 401  # HTTPBearer returns 401 when no credentials
 
 
+@pytest.mark.usefixtures("allow_password_signup")
 class TestAuthenticationEdgeCases:
     """Test edge cases and error scenarios."""
 

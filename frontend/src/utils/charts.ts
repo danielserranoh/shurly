@@ -3,7 +3,7 @@
 // bars ≤ 24px with 4px rounded data-ends and square baselines, hairline solid grid,
 // one selective direct label (the max), hover/focus tooltip per column, table-view twin.
 
-import { escapeHtml, html, setHTML, type RawHTML } from './html';
+import { html, setHTML, type RawHTML } from './html';
 import { formatCompact, formatNumber } from './format';
 
 export interface ColumnDatum {
@@ -74,46 +74,45 @@ function drawColumns(container: HTMLElement, data: ColumnDatum[], opts: ColumnCh
   const maxIndex = max > 0 ? data.findIndex((d) => d.value === max) : -1;
   const y = (v: number) => pad.top + plotH - (v / top) * plotH;
 
-  const grid = ticks
-    .map(
-      (t) => `<line x1="${pad.left}" x2="${width - pad.right}" y1="${y(t)}" y2="${y(t)}" stroke="${t === 0 ? BASELINE : GRID}" stroke-width="1" shape-rendering="crispEdges"/>
-      <text x="${pad.left - 8}" y="${y(t) + 4}" text-anchor="end" class="fill-ink-500 num" font-size="11">${escapeHtml(formatCompact(t))}</text>`,
-    )
-    .join('');
+  const grid = ticks.map(
+    (t) => html`<line x1="${pad.left}" x2="${width - pad.right}" y1="${y(t)}" y2="${y(t)}" stroke="${t === 0 ? BASELINE : GRID}" stroke-width="1" shape-rendering="crispEdges"/>
+      <text x="${pad.left - 8}" y="${y(t) + 4}" text-anchor="end" class="fill-ink-500 num" font-size="11">${formatCompact(t)}</text>`,
+  );
 
-  const cols = data
-    .map((d, i) => {
+  const cols = data.map((d, i) => {
       const cx = pad.left + slot * i + slot / 2;
       const h = (d.value / top) * plotH;
       const x = cx - barW / 2;
       const label = `${d.title}: ${formatNumber(d.value)} ${d.value === 1 ? one : many}`;
       const tip =
         i === maxIndex
-          ? `<text x="${cx}" y="${y(d.value) - 7}" text-anchor="middle" class="fill-ink-700 num" font-size="11" font-weight="600">${escapeHtml(formatNumber(d.value))}</text>`
+          ? html`<text x="${cx}" y="${y(d.value) - 7}" text-anchor="middle" class="fill-ink-700 num" font-size="11" font-weight="600">${formatNumber(d.value)}</text>`
           : '';
-      return `<g class="chart-col outline-none" tabindex="0" role="listitem" aria-label="${escapeHtml(label)}" data-i="${i}">
+      return html`<g class="chart-col outline-none" tabindex="0" role="listitem" aria-label="${label}" data-i="${i}">
         <rect x="${pad.left + slot * i}" y="${pad.top}" width="${slot}" height="${plotH}" fill="transparent"/>
         <path class="chart-bar" d="${columnPath(x, y(d.value), barW, h, 4)}" fill="${SERIES}"/>
-        ${d.value === 0 ? `<rect x="${x}" y="${y(0) - 2}" width="${barW}" height="2" rx="1" fill="${BASELINE}"/>` : ''}
+        ${d.value === 0 ? html`<rect x="${x}" y="${y(0) - 2}" width="${barW}" height="2" rx="1" fill="${BASELINE}"/>` : ''}
         ${tip}
-        <text x="${cx}" y="${height - 8}" text-anchor="middle" class="fill-ink-500" font-size="11">${escapeHtml(d.label)}</text>
+        <text x="${cx}" y="${height - 8}" text-anchor="middle" class="fill-ink-500" font-size="11">${d.label}</text>
       </g>`;
-    })
-    .join('');
+  });
 
   container.style.position = 'relative';
-  container.innerHTML = `
-    <svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHtml(opts.ariaLabel)}" class="block overflow-visible">
+  setHTML(
+    container,
+    html`
+    <svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" role="img" aria-label="${opts.ariaLabel}" class="block overflow-visible">
       ${grid}
       <g role="list">${cols}</g>
     </svg>
     <div data-chart-tip hidden class="pointer-events-none absolute z-10 -translate-x-1/2 -translate-y-full rounded-lg bg-ink-950 px-2.5 py-1.5 text-center shadow-lg"></div>
-    ${max === 0 ? `<p class="absolute inset-x-0 top-1/2 -translate-y-1/2 text-center text-sm font-medium text-ink-500">${escapeHtml(opts.emptyMessage ?? 'No clicks in this period yet')}</p>` : ''}`;
+    ${max === 0 ? html`<p class="absolute inset-x-0 top-1/2 -translate-y-1/2 text-center text-sm font-medium text-ink-500">${opts.emptyMessage ?? 'No clicks in this period yet'}</p>` : ''}`,
+  );
 
   const tipEl = container.querySelector<HTMLElement>('[data-chart-tip]')!;
   const show = (g: SVGGElement) => {
     const d = data[Number(g.dataset.i)];
-    tipEl.innerHTML = `<p class="text-sm font-semibold text-white num">${escapeHtml(formatNumber(d.value))} <span class="font-normal text-ink-300">${escapeHtml(d.value === 1 ? one : many)}</span></p><p class="text-xs text-ink-400">${escapeHtml(d.title)}</p>`;
+    setHTML(tipEl, html`<p class="text-sm font-semibold text-white num">${formatNumber(d.value)} <span class="font-normal text-ink-300">${d.value === 1 ? one : many}</span></p><p class="text-xs text-ink-400">${d.title}</p>`);
     const i = Number(g.dataset.i);
     const cx = pad.left + slot * i + slot / 2;
     tipEl.style.left = `${Math.min(Math.max(cx, 60), width - 60)}px`;

@@ -71,12 +71,20 @@ RESPONSES = {
         "description": "Not Found - The requested resource does not exist",
         "model": ErrorResponse,
     },
+    409: {
+        "description": "Conflict - The request conflicts with the resource's current state",
+        "model": ErrorResponse,
+    },
     422: {
         "description": "Unprocessable Entity - Validation error",
         "model": ErrorResponse,
     },
     500: {
         "description": "Internal Server Error - An unexpected error occurred",
+        "model": ErrorResponse,
+    },
+    503: {
+        "description": "Service Unavailable - The feature isn't configured on this server",
         "model": ErrorResponse,
     },
 }

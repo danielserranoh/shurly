@@ -21,6 +21,7 @@ from server.schemas.organization import (
     MemberResponse,
     OrganizationResponse,
     OwnershipTransfer,
+    RemovedMember,
     RoleUpdate,
 )
 from server.schemas.responses import get_responses
@@ -154,6 +155,27 @@ def transfer_ownership(
         raise _http_error(exc) from exc
     db.commit()
     return _member_response(membership)
+
+
+@organization_router.get(
+    "/removed-members", response_model=list[RemovedMember], responses=get_responses(401, 403)
+)
+def list_removed_members(
+    db: Session = Depends(get_db), current_user: User = Depends(get_current_user)
+):
+    """
+    The people removed from the organization, with how many personal links (a campaign's
+    included) and campaigns each still owns: what adopt-personal-links would move. Most
+    first, then by email. Owners only.
+    """
+    try:
+        rows = org_service.removed_members(db, current_user)
+    except org_service.OrganizationError as exc:
+        raise _http_error(exc) from exc
+    return [
+        RemovedMember(user_id=user.id, email=user.email, links=links, campaigns=campaigns)
+        for user, links, campaigns in rows
+    ]
 
 
 @organization_router.post(

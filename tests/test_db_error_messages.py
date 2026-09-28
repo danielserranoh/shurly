@@ -41,7 +41,9 @@ def test_app_engine_hides_sql_parameters():
     assert engine.hide_parameters
 
 
-def test_failed_insert_leaves_the_values_out_of_the_traceback(client, users_insert_fails):
+def test_failed_insert_leaves_the_values_out_of_the_traceback(
+    client, users_insert_fails, allow_password_signup
+):
     with pytest.raises(IntegrityError) as raised:
         client.post("/api/v1/auth/register", json={"email": EMAIL, "password": "horse-battery-9"})
 

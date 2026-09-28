@@ -77,6 +77,9 @@ def create_campaign_from_rows(
     """
     if not name or not name.strip():
         raise ValueError("name must be non-empty")
+    # Phase 6.3 — it goes to the database as is: longer than the column was a 500.
+    if len(name) > Campaign.name.type.length:
+        raise ValueError(f"name must be at most {Campaign.name.type.length} characters")
     if not is_valid_url(original_url):
         raise ValueError("original_url must be a valid http/https URL")
     if not rows:

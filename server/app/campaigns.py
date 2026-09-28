@@ -1,11 +1,8 @@
 """Campaign management endpoints."""
 
-import csv
-import io
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from fastapi.responses import StreamingResponse
 from sqlalchemy import func
 from sqlalchemy.orm import Session, selectinload
 
@@ -22,6 +19,7 @@ from server.schemas.responses import get_responses
 from server.schemas.tag import TagResponse
 from server.utils.access import viewer
 from server.utils.campaign import generate_campaign_urls, parse_csv, validate_csv
+from server.utils.csv_export import stream_csv
 from server.utils.domain import get_or_create_default_domain
 
 # Phase 3.11 — campaign short URLs (detail + CSV export) use the shared resolver
@@ -359,35 +357,22 @@ def export_campaign(
             detail="No URLs found for this campaign",
         )
 
-    # Build CSV
-    output = io.StringIO()
-
-    # Determine all columns: short_code, short_url, original_url, + user_data keys
+    # Columns: short_code, short_url, original_url, then the recipients' own. Phase 6.3:
+    # through stream_csv, so recipient data can't reach a spreadsheet as a formula.
     user_data_columns = campaign.csv_columns
-    fieldnames = ["short_code", "short_url", "original_url"] + user_data_columns
-
-    writer = csv.DictWriter(output, fieldnames=fieldnames)
-    writer.writeheader()
-
-    for url in urls:
-        row = {
-            "short_code": url.short_code,
-            "short_url": build_short_url(url.short_code),
-            "original_url": url.original_url,
-        }
-        # Add user_data fields
-        if url.user_data:
-            for key in user_data_columns:
-                row[key] = url.user_data.get(key, "")
-
-        writer.writerow(row)
-
-    # Return CSV as downloadable file
-    output.seek(0)
-    return StreamingResponse(
-        iter([output.getvalue()]),
-        media_type="text/csv",
-        headers={"Content-Disposition": f"attachment; filename=campaign_{campaign.name}.csv"},
+    rows = (
+        [
+            url.short_code,
+            build_short_url(url.short_code),
+            url.original_url,
+            *((url.user_data or {}).get(key, "") for key in user_data_columns),
+        ]
+        for url in urls
+    )
+    return stream_csv(
+        ["short_code", "short_url", "original_url", *user_data_columns],
+        rows,
+        filename=f"campaign_{campaign.name}.csv",
     )
 
 

@@ -2,15 +2,16 @@
 Phase 5.4 — MCP authentication.
 
 The MCP server is a public-facing surface (Phase 5.5 will deploy it next to
-the API on `s.griddo.io/mcp`). Without auth, every tool is anonymous, which
-is wrong for any non-trivial use. We piggyback on the existing `User.api_key`
-column rather than introducing OAuth: API keys already exist, are revocable
+the API on `shurly.griddo.io/mcp`). Without auth, every tool is anonymous, which
+is wrong for any non-trivial use. We piggyback on the existing API keys
+rather than introducing OAuth: API keys already exist, are revocable
 via `DELETE /api/v1/auth/api-key`, and don't require an extra UI flow.
+(Phase 6.3: a key is kept as its hash, `User.api_key_hash`.)
 
 Two integration points:
 
 1. **`ShurlyTokenVerifier`** — fastmcp's `TokenVerifier` subclass. Validates
-   the inbound `Authorization: Bearer <token>` against `User.api_key`. Both
+   the inbound `Authorization: Bearer <token>` as an API key. Both
    JWT and API-key tokens are accepted (matches the FastAPI behavior). The
    resolved user id is stored in the AccessToken so curated tools can pick
    it up with `get_access_token()` without re-querying the DB.
@@ -25,13 +26,19 @@ Two integration points:
 
 from __future__ import annotations
 
+from datetime import timedelta
 from typing import TYPE_CHECKING
 
 from fastmcp.server.auth import AccessToken, TokenVerifier
 from fastmcp.server.dependencies import get_access_token
 
 from server.core import SessionLocal as _DefaultSessionLocal
-from server.core.auth import _looks_like_jwt, decode_access_token, get_user_by_api_key
+from server.core.auth import (
+    _looks_like_jwt,
+    create_access_token,
+    get_user_by_api_key,
+    get_user_by_jwt,
+)
 from server.core.models import User
 
 if TYPE_CHECKING:
@@ -40,7 +47,7 @@ if TYPE_CHECKING:
 
 class ShurlyTokenVerifier(TokenVerifier):
     """
-    Verifies a bearer token against `User.api_key` (or a JWT for completeness).
+    Verifies a bearer token as an API key (or a JWT for completeness).
 
     Returns an `AccessToken` whose `client_id` is the user's UUID and whose
     `claims` include the email + scope. Returning `None` produces a 401 at
@@ -77,14 +84,8 @@ def _resolve_user_from_token(db, token: str) -> User | None:
     if not token:
         return None
     if _looks_like_jwt(token):
-        try:
-            payload = decode_access_token(token)
-        except Exception:  # HTTPException from decode → invalid JWT
-            return None
-        email = payload.get("sub")
-        if not email:
-            return None
-        user = db.query(User).filter(User.email == email).first()
+        # Phase 3.13.3 — the API's helper, so `sessions_valid_from` holds here too.
+        user = get_user_by_jwt(db, token)
         if user is None or not user.is_active:
             return None
         return user
@@ -131,5 +132,13 @@ def forward_bearer_auth(request: httpx2.Request) -> httpx2.Request:
     """
     access = get_access_token()
     if access is not None and access.token:
-        request.headers["Authorization"] = f"Bearer {access.token}"
+        token = access.token
+        # Phase 5.8 — a caller signed in with Google holds the OAuth proxy's token,
+        # which the API doesn't know. The API gets a JWT for the same account
+        # instead, valid for 5 minutes and never leaving this process.
+        if access.claims and access.claims.get("auth_method") == "google":
+            token = create_access_token(
+                data={"sub": access.claims["sub"]}, expires_delta=timedelta(minutes=5)
+            )
+        request.headers["Authorization"] = f"Bearer {token}"
     return request
