@@ -30,6 +30,7 @@ from server.core.models import (
     OrgRole,
     User,
     UserIdentity,
+    UserProfile,
 )
 from server.utils.google_oidc import GoogleHttp
 from tests.fake_google import CLIENT_ID, CLIENT_SECRET, FakeGoogle
@@ -162,7 +163,8 @@ class TestStart:
         assert query["response_type"] == "code"
         assert query["client_id"] == CLIENT_ID
         assert query["redirect_uri"] == REDIRECT_URI
-        assert set(query["scope"].split()) == {"openid", "email"}
+        # Phase 3.12: `profile` puts the names in the ID token, for the profile.
+        assert set(query["scope"].split()) == {"openid", "email", "profile"}
         assert query["code_challenge_method"] == "S256"
         assert query["code_challenge"]
         assert query["hd"] == "griddo.io"
@@ -461,6 +463,67 @@ class TestAccounts:
 
         assert _sign_in(browser)["error"] == "inactive"
         assert db_session.query(UserIdentity).count() == 0
+
+
+class TestProfileFromGoogle:
+    """Phase 3.12 — the names in Google's ID token fill a profile that has none."""
+
+    @staticmethod
+    def _names(browser) -> tuple[str | None, str | None]:
+        profile = _me(browser, _token(browser)).json()["profile"]
+        return profile["first_name"], profile["last_name"]
+
+    def test_fill_an_empty_profile(self, browser, google):
+        google.claims.update(given_name="Ana", family_name="García")
+
+        assert self._names(browser) == ("Ana", "García")
+
+    def test_nothing_without_the_claims(self, browser, db_session):
+        assert self._names(browser) == (None, None)
+        assert db_session.query(UserProfile).count() == 0
+
+    def test_one_name_is_enough(self, browser, google):
+        google.claims["given_name"] = "Ana"
+
+        assert self._names(browser) == ("Ana", None)
+
+    def test_later_sign_ins_fill_an_account_made_before(self, browser, google, db_session):
+        _person(db_session)
+        google.claims.update(given_name="Ana", family_name="García")
+
+        assert self._names(browser) == ("Ana", "García")
+
+    def test_never_over_names_the_person_set(self, browser, google, db_session):
+        _token(browser)
+        user = db_session.query(User).one()
+        db_session.add(UserProfile(user_id=user.id, first_name="Anita"))
+        db_session.commit()
+        google.claims.update(given_name="Ana", family_name="García")
+
+        assert self._names(browser) == ("Anita", None)
+
+    def test_keep_the_rest_of_the_profile(self, browser, google, db_session):
+        _token(browser)
+        user = db_session.query(User).one()
+        db_session.add(UserProfile(user_id=user.id, country="ES", timezone="Atlantic/Canary"))
+        db_session.commit()
+        google.claims.update(given_name="Ana", family_name="García")
+        _token(browser)
+
+        profile = db_session.query(UserProfile).one()
+        db_session.refresh(profile)
+        assert (profile.first_name, profile.last_name, profile.country, profile.timezone) == (
+            "Ana",
+            "García",
+            "ES",
+            "Atlantic/Canary",
+        )
+
+    @pytest.mark.parametrize("claim", ["a" * 101, "Ana\nMaría", 42, "   "])
+    def test_a_name_the_profile_would_refuse_is_left_out(self, browser, google, claim):
+        google.claims.update(given_name=claim, family_name="García")
+
+        assert self._names(browser) == (None, "García")
 
 
 class TestLoginCode:

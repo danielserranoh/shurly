@@ -16,6 +16,18 @@ export interface User {
   /** Phase 3.13: how the account signs in. Absent from APIs older than Google sign-in. */
   has_password?: boolean;
   has_google?: boolean;
+  /** Phase 3.12. Absent from APIs older than the profile. */
+  profile?: Profile;
+}
+
+/** Phase 3.12: each field is null until the person sets it. */
+export interface Profile {
+  first_name: string | null;
+  last_name: string | null;
+  /** ISO 3166-1 alpha-2, e.g. "ES". */
+  country: string | null;
+  /** IANA name, e.g. "Atlantic/Canary". */
+  timezone: string | null;
 }
 
 export interface LoginResponse {

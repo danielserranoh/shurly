@@ -26,6 +26,29 @@ implementation lifecycle and is independent of the URL version segment.
 
 ## [Unreleased]
 
+### Added — a profile: name, country and time zone (Phase 3.12)
+- **Settings → Account → Profile** has first name, last name, country and time zone, saved together.
+  - The time zone list follows the country, and a country with one zone picks it.
+  - Without a saved time zone, this browser's is picked, for the person to save.
+  - Labels show the current offset, e.g. "Atlantic/Canary (GMT+1)".
+- **The header's initial comes from the first name**, and from the email without one.
+- **`GET /api/v1/auth/me` returns `profile`**: `first_name`, `last_name`, `country` and `timezone`,
+  each null until set. Nothing else in the response changed.
+- **`PATCH /api/v1/auth/me/profile`** changes the fields it's sent; null, or a blank name, clears one.
+  - Names are trimmed, 100 characters at most, one line.
+  - `country` is an ISO 3166-1 alpha-2 code.
+  - `timezone` is an IANA name, never an offset. A legacy one is stored as the current one:
+    `Asia/Calcutta`, which Chrome still reports in India, becomes `Asia/Kolkata`.
+  - The MCP has it too, as `update_my_profile`.
+- **Signing in with Google fills in the names** of a profile that has none, from the ID token. The web
+  sign-in now asks Google for the `profile` scope; the MCP's sign-in doesn't.
+- **Time zones and countries are checked against the `tzdata` package, a new dependency**, not the
+  server's own database. The production image's has 486 zones and none of the legacy names.
+  - The picker's lists (`frontend/src/data/timezones.json`) come from the same package, through
+    `scripts/generate_timezones.py`.
+  - A test fails when they drift apart.
+- **Migration 0008** adds the `user_profiles` table. A row is made on the first save.
+
 ### Removed — `CI_CD_SETUP.md`, the Lambda-era deploy guide
 - It described access keys, SAM and API Gateway. The deploys it covered are in DEPLOYMENT.md:
   § CI/CD with OIDC (the backend, to ECS) and § Frontend hosting (the frontend, to S3 + CloudFront).

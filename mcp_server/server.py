@@ -103,6 +103,7 @@ MCP_TOOL_NAMES: dict[str, str] = {
     # development, Phase 3.13.2); otherwise its route is out of the schema.
     "register_api_v1_auth_register_post": "register",
     "get_current_user_info_api_v1_auth_me_get": "get_current_user_info",
+    "update_my_profile_api_v1_auth_me_profile_patch": "update_my_profile",
     # Organization (Phase 3.14.2) — read-only; changes are excluded above
     "get_organization_api_v1_organization_get": "get_organization",
     "list_organization_members_api_v1_organization_members_get": "list_organization_members",

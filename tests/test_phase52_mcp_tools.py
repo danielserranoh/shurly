@@ -22,6 +22,8 @@ EXPECTED_TOOLS: set[str] = {
     # Auth. No `register` since Phase 3.13.2: accounts come from signing in with Google.
     # No API key management, `login` or `change_password` since Phase 6.3.
     "get_current_user_info",
+    # Phase 3.12: names, country and time zone. Low impact and easy to undo.
+    "update_my_profile",
     # Organization (Phase 3.14.2): read-only, role changes stay out of the MCP
     "get_organization",
     "list_organization_members",

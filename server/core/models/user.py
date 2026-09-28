@@ -61,6 +61,14 @@ class User(Base):
     urls = relationship("URL", back_populates="creator", cascade="all, delete-orphan")
     campaigns = relationship("Campaign", back_populates="creator", cascade="all, delete-orphan")
     identities = relationship("UserIdentity", back_populates="user")
+    # Phase 3.12 — loaded when read, never with the user: auth loads users on every request.
+    profile = relationship(
+        "UserProfile",
+        back_populates="user",
+        uselist=False,
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
 
     @property
     def has_password(self) -> bool:

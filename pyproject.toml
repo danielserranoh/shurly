@@ -26,6 +26,10 @@ dependencies = [
     # Phase 3.13.2 — verifies Google's ID token (signature, aud, iss, exp) for
     # sign in with Google (server/utils/google_oidc.py). Capped like alembic.
     "google-auth>=2.40,<3",
+    # Phase 3.12 — the time zones and countries a profile may name
+    # (server/utils/timezones.py): one list everywhere, where the system's varies
+    # (Debian's lacks the legacy names browsers still report). A floor, not a pin.
+    "tzdata>=2025.2",
 ]
 
 [project.optional-dependencies]
