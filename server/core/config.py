@@ -99,6 +99,38 @@ class Settings(BaseSettings):
     # for local development and tests, never in production.
     allow_password_signup: bool = False
 
+    # Phase 5.8 — MCP clients sign in with Google through fastmcp's OAuth proxy,
+    # alongside API keys. Off until these two, the Google client above and
+    # `organization_domain` are set; the MCP then takes API keys and JWTs only.
+    # The MCP endpoint as clients reach it, without the trailing slash, e.g.
+    # https://s.griddo.io/mcp. People connect to it with the slash.
+    mcp_public_url: str = ""
+    # Signs the MCP's OAuth tokens and, derived, encrypts what it stores. The same
+    # value on every task; changing it signs every MCP client out.
+    mcp_oauth_signing_key: SecretStr = SecretStr("")
+    # The redirect URIs an MCP client may register (DCR or a Client ID Metadata
+    # Document): claude.ai's callback (and claude.com's, where Anthropic says it may
+    # move) and Claude Code's loopback on any port. Anything else can't register, so
+    # a stranger's app can't ask a Griddo person to consent (consent phishing).
+    mcp_oauth_allowed_redirect_uris: list[str] = [
+        "https://claude.ai/api/mcp/auth_callback",
+        "https://claude.com/api/mcp/auth_callback",
+        "http://localhost:*",
+        "http://127.0.0.1:*",
+    ]
+
+    @property
+    def mcp_oauth_configured(self) -> bool:
+        return all(
+            (
+                self.google_client_id,
+                self.google_client_secret.get_secret_value(),
+                self.organization_domain.strip(),
+                self.mcp_public_url,
+                self.mcp_oauth_signing_key.get_secret_value(),
+            )
+        )
+
     @property
     def google_sign_in_configured(self) -> bool:
         return all(
@@ -142,7 +174,9 @@ class Settings(BaseSettings):
     db_pool_recycle: int = 3600  # Recycle connections after 1 hour
     db_ssl_mode: str = "prefer"  # Use "require" for RDS SSL
 
-    @field_validator("cors_origins", "trusted_proxies", mode="before")
+    @field_validator(
+        "cors_origins", "trusted_proxies", "mcp_oauth_allowed_redirect_uris", mode="before"
+    )
     @classmethod
     def parse_string_list(cls, v: Any) -> list[str]:
         """Parse a list-typed setting from a JSON string, comma-separated string, or list."""

@@ -46,8 +46,11 @@ dev = [
 # fastmcp 4 moved its HTTP stack to httpx2 (see mcp_server/auth.py). Capped
 # below 5 because uv.lock is not committed: every CI run and deploy resolves
 # the newest release, so an unbounded spec lets a new major land unreviewed.
+# At least 4.0.6 (Phase 5.8): from there fastmcp's GoogleTokenVerifier sends
+# Google's token to tokeninfo in the Authorization header, not the URL
+# (PrefectHQ/fastmcp#5185), which is the version 5.8 was built and tested on.
 mcp = [
-    "fastmcp>=4,<5",
+    "fastmcp>=4.0.6,<5",
 ]
 
 [build-system]

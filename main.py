@@ -50,7 +50,7 @@ class RequestIdMiddleware(BaseHTTPMiddleware):
         return response
 
 
-def _try_build_mcp_app(fastapi_app):
+def _try_build_mcp_app(fastapi_app, auth=None):
     """
     Phase 5.5 — Build the MCP Streamable HTTP app for mounting under `/mcp`.
 
@@ -69,7 +69,13 @@ def _try_build_mcp_app(fastapi_app):
         from mcp_server.server import build_mcp_for_app
     except ImportError:
         return None
-    server = build_mcp_for_app(fastapi_app)
+    server = build_mcp_for_app(fastapi_app, auth=auth)
+    # Phase 5.8 — OAuth discovery lives at the root: RFC 8414 and RFC 9728 put the
+    # MCP's path after `/.well-known/`. Multi-segment paths, so no short code is
+    # shadowed; the OAuth endpoints themselves are under /mcp/. None without OAuth.
+    # `mcp_path="/"`, the http_app's own path below: with "/mcp" fastmcp builds /mcp/mcp.
+    if server.auth is not None:
+        fastapi_app.router.routes.extend(server.auth.get_well_known_routes(mcp_path="/"))
     # `path="/"` because we mount the result under `/mcp` — fastmcp would
     # otherwise produce double-prefixed URLs.
     #
@@ -127,8 +133,11 @@ def _seed_database():
         db.close()
 
 
-def create_app() -> FastAPI:
-    """Create and configure the FastAPI application."""
+def create_app(mcp_auth=None) -> FastAPI:
+    """Create and configure the FastAPI application.
+
+    `mcp_auth` replaces the MCP's auth provider from settings (tests: a fake Google).
+    """
 
     # Phase 3.13.2 — accounts come from Google; POST /auth/register is for local
     # development and tests only.
@@ -191,7 +200,7 @@ def create_app() -> FastAPI:
     # billion six-character combinations, and closes the trap where anyone
     # could claim the very URL people mistype when configuring a client.
     # Only the literal path is claimed: `/mcpx`, `/notmcp` etc. still resolve.
-    mcp_app = _try_build_mcp_app(app)
+    mcp_app = _try_build_mcp_app(app, auth=mcp_auth)
     if mcp_app is not None:
         # A Starlette `Mount("/mcp")` compiles to `^/mcp(?P<path>/.*)$` — it
         # structurally does not match its own bare path, whatever the ordering.
