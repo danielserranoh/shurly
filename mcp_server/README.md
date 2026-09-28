@@ -209,7 +209,7 @@ Two filters live in `mcp_server/server.py`:
   (`create_short_url_api_v1_urls_post`) to clean MCP tool names
   (`create_short_url`).
 
-The surface is now **35 tools**: auth (1), organization (2), URL CRUD + tagging +
+The surface is now **36 tools**: auth (2), organization (2), URL CRUD + tagging +
 previews (11), redirect rules (4), campaigns (6), analytics (7), tags (4). Phase 3.11
 added `get_url` and `fetch_url_metadata` to the original 36; Phase 3.14.2 added
 `get_organization` and `list_organization_members`. `register` left in Phase 3.13.2
@@ -260,7 +260,7 @@ The pure logic lives in `mcp_server/curated.py` (takes `db: Session` and
 `mcp_server/server.py` open a `SessionLocal` per call and resolve the
 caller with `resolve_current_user(db)` (Phase 5.4).
 
-Total tool surface: **39 tools** (35 auto-generated + 4 curated). The 5.2 contract test (`tests/test_phase52_mcp_tools.py`) and
+Total tool surface: **40 tools** (36 auto-generated + 4 curated). The 5.2 contract test (`tests/test_phase52_mcp_tools.py`) and
 the 5.3 logic tests (`tests/test_phase53_curated_tools.py`) together pin
 the surface.
 
