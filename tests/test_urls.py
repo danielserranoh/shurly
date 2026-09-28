@@ -1123,8 +1123,8 @@ class TestPhase392ExpirationAndQuota:
     - Return 410 Gone if `valid_until` has passed (the link existed and is now retired).
     - Return 410 Gone if `max_visits` has been reached (quota consumed).
     - Behave normally when these fields are NULL (default — no constraints).
-    - Count only real human visits against `max_visits`. Crawler preview hits don't consume quota
-      because they don't insert into the Visitor table.
+    - Count only clicks against `max_visits`, the link's `click_count`: bot hits and email opens are
+      logged but don't use it up, and crawler previews aren't logged at all.
     """
 
     def test_redirect_within_validity_window_succeeds(
@@ -1231,6 +1231,31 @@ class TestPhase392ExpirationAndQuota:
         # Fourth hit hits the cap
         response = client.get("/quota2", follow_redirects=False)
         assert response.status_code == 410
+
+    def test_redirect_max_visits_counts_clicks_only(
+        self, client: TestClient, db_session: Session, test_user, auth_headers: dict
+    ):
+        """Bot hits and email opens don't use up the cap: it's reached when `click_count` is."""
+        from server.utils.domain import get_or_create_default_domain
+
+        url = URL(
+            short_code="quota3",
+            original_url="https://example.com",
+            url_type=URLType.STANDARD,
+            created_by=test_user.id,
+            domain_id=get_or_create_default_domain(db_session).id,  # the pixel needs it
+            max_visits=1,
+        )
+        db_session.add(url)
+        db_session.commit()
+        bot = {"user-agent": "curl/8.7.1"}
+
+        assert client.get("/quota3/track").status_code == 200  # an email open
+        assert client.get("/quota3", headers=bot, follow_redirects=False).status_code == 302
+        assert client.get("/quota3", follow_redirects=False).status_code == 302  # the click
+
+        assert client.get("/quota3", follow_redirects=False).status_code == 410
+        assert client.get("/api/v1/urls/quota3", headers=auth_headers).json()["click_count"] == 1
 
     def test_redirect_no_constraints_works_normally(
         self, client: TestClient, db_session: Session, test_user

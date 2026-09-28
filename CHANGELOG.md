@@ -26,6 +26,13 @@ implementation lifecycle and is independent of the URL version segment.
 
 ## [Unreleased]
 
+### Fixed — a link's click limit counts clicks only
+- **The click limit (`max_visits`) counted every visit, email opens through the tracking pixel and bot hits
+  included.** So a link could answer 410 Gone while its page still showed clicks left ("3 of 5 clicks used").
+  It counts the link's `click_count` now: one definition for the limit, the link page and the stats.
+- **Shlink's imported visits count the same way** (`--visits`): the clicks do, the bots and pixel opens don't.
+  Shlink counted every visit, so a link it had capped can have clicks left in Shurly.
+
 ### Added — a visit's country (Phase 8.4)
 - **Visits record their country**, as an ISO 3166-1 alpha-2 code, from DB-IP's IP to Country Lite database
   (CC BY 4.0, no account). It had been null for every visit Shurly recorded.

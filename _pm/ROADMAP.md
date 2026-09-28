@@ -449,7 +449,8 @@ System creates:
 - [x] Enforce in redirect handler: 410 Gone if expired, 410 Gone if max_visits reached, 404 if not yet valid
 - [x] Expose fields in URLCreate / URLCustomCreate / URLUpdate / URLResponse schemas
 - [x] Tests for expiry edge cases (9 new tests covering boundary, nullable, validity window, quota consumption)
-- [x] Crawler preview hits do NOT consume quota (Visitor row only inserted on real human visits)
+- [x] Only clicks use up the cap, as `click_count` counts them: crawler previews aren't logged, and bot hits
+  and pixel opens are logged but don't count (2026-09-28: the cap had counted every Visitor row)
 - [ ] Future CLI / scheduled Lambda for `delete-expired` (deferred to Phase 6 — bundled with the post-launch optimization sweep)
 
 ### 3.9.3 Bot Detection in Analytics ✅

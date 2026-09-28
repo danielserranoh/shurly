@@ -37,7 +37,7 @@ class URLCreate(BaseModel):
         None, description="URL stops being active at this UTC timestamp"
     )
     max_visits: int | None = Field(
-        None, ge=1, description="Hard cap on real visits before returning 410 Gone"
+        None, ge=1, description="Hard cap on clicks (click_count) before returning 410 Gone"
     )
 
     # Phase 3.9.4 — default-deny crawlability
@@ -85,7 +85,7 @@ class URLCustomCreate(BaseModel):
         None, description="URL stops being active at this UTC timestamp"
     )
     max_visits: int | None = Field(
-        None, ge=1, description="Hard cap on real visits before returning 410 Gone"
+        None, ge=1, description="Hard cap on clicks (click_count) before returning 410 Gone"
     )
 
     # Phase 3.9.4 — default-deny crawlability

@@ -1184,7 +1184,8 @@ def redirect_short_url(short_code: str, request: Request, db: Session = Depends(
     - Campaign user data is ALWAYS appended as query parameters (for personalization)
     - Regular query params are only forwarded if `forward_parameters=true` (for attribution tracking)
     - Social media crawlers (Twitter, Facebook, LinkedIn, WhatsApp, etc.) see rich preview cards
-    - Crawler preview hits do NOT consume `max_visits` quota (no Visitor row inserted)
+    - Only clicks use up `max_visits`, as they count in `click_count`: bot hits and tracking-pixel
+      opens are logged but don't, and crawler previews aren't logged at all
     """
     # Phase 3.10.1 — resolve the URL by (Host header → domain) + short_code so
     # the same code can live on multiple hostnames. Unknown hosts fall back to
@@ -1234,9 +1235,10 @@ def redirect_short_url(short_code: str, request: Request, db: Session = Depends(
             detail="This short URL has expired",
         )
 
+    # The cap counts clicks, the `click_count` the API reports: bot hits and email opens don't
+    # use it up. One definition, so the link page's "N of max" can't disagree with the 410.
     if url.max_visits is not None:
-        visit_count = db.query(Visitor).filter(Visitor.url_id == url.id).count()
-        if visit_count >= url.max_visits:
+        if _click_count(db, url) >= url.max_visits:
             raise HTTPException(
                 status_code=status.HTTP_410_GONE,
                 detail="This short URL has reached its visit limit",

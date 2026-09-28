@@ -21,7 +21,7 @@ class Visitor(Base):
 
     # Visit metadata
     ip = Column(String(50), nullable=False)
-    country = Column(String(100), nullable=True)  # e.g., "United States"
+    country = Column(String(100), nullable=True)  # ISO 3166-1 alpha-2 (Phase 8.4), e.g. "US"
     user_agent = Column(Text, nullable=True)
     referer = Column(Text, nullable=True)
 
