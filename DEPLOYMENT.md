@@ -469,6 +469,9 @@ CloudFront setting that would need updating on every deploy. The policy:
   - has an inline event handler or a `javascript:` URL;
   - lacks `require-trusted-types-for 'script'` or `trusted-types shurly-html`, or allows `default`, `*` or
     `'allow-duplicates'`.
+
+  It also fails unless exactly one built script chunk defines the policy. Two chunks would mean `html.ts` was
+  bundled twice, and a page loading both would throw at the second `createPolicy`.
 - **Local testing:** `astro dev` has no CSP (an Astro limitation). To see it, run `npm run build` and then
   `npx astro preview`, with `PUBLIC_API_URL` pointing at a running API.
 

@@ -6,6 +6,9 @@ import { createHash } from 'node:crypto';
 
 const CSP_META = /<meta\s+http-equiv="content-security-policy"\s+content="([^"]*)"\s*\/?>/gi;
 const INLINE_SCRIPT = /<script(?![^>]*\bsrc\s*=)([^>]*)>([\s\S]*?)<\/script>/gi;
+/** The one Trusted Types policy (src/utils/html.ts). */
+export const POLICY_NAME = 'shurly-html';
+
 const REQUIRED = {
   'default-src': ["'self'"],
   'object-src': ["'none'"],
@@ -16,7 +19,7 @@ const REQUIRED = {
   'connect-src': ["'self'"],
   // Trusted Types: TrustedHTML at every HTML sink, from the one policy (src/utils/html.ts).
   'require-trusted-types-for': ["'script'"],
-  'trusted-types': ['shurly-html'],
+  'trusted-types': [POLICY_NAME],
 };
 const FORBIDDEN_IN_SCRIPT_SRC = ["'unsafe-inline'", "'unsafe-eval'"];
 // A default policy would catch every sink; more policies, or duplicates, more ways to mint TrustedHTML.
@@ -94,4 +97,18 @@ export function checkPage(html) {
   if (jsUrl) problems.push(`javascript: URL: ${jsUrl[0]}`);
 
   return { skipped: false, problems, inlineScripts };
+}
+
+/**
+ * Trusted Types: exactly one built script may define the policy. None means it was lost
+ * (tree-shaken, renamed); two mean src/utils/html.ts was duplicated, and a page loading both
+ * would throw ("already exists") at the second createPolicy. Matched by the name rather than
+ * the call, so a minifier that hoists the name into a variable can't hide a copy.
+ * @param {{ name: string, source: string }[]} files built files, by path under dist/
+ * @returns {string[]} problems
+ */
+export function checkPolicyChunks(files) {
+  const defining = files.filter((file) => file.name.endsWith('.js') && file.source.includes(POLICY_NAME)).map((file) => file.name);
+  if (defining.length === 1) return [];
+  return [`the Trusted Types policy (${POLICY_NAME}) is in ${defining.length} built chunks (${defining.join(', ') || 'none'}): expected exactly one`];
 }
