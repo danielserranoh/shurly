@@ -591,10 +591,9 @@ System creates:
 timezone, and an avatar uploaded with a crop step. Name and timezone also lay the groundwork for anything
 scheduled later (sends, reports, digests) — which needs to know the user's local time.
 **Priority:** 🟢 LOW - UX polish; no dependency on Phase 4/5
-**Today:** the profile's fields are in (3.12.1–3.12.2: names, country, time zone, in `user_profiles`); the
-avatar isn't. The app header shows the first name's initial (the email's without one) in a `size-9` circle
-(`AppLayout.astro`, `data-user-initial`); `AccountPanel.astro` has no avatar; the backend has no file
-storage (no S3, no `UploadFile` endpoints).
+**Today:** built. Names, country and time zone (3.12.1–3.12.2), and the avatar (3.12.3–3.12.6), all in
+`user_profiles`. The app header and Settings → Account show the photo, or the first name's initial (the
+email's without one). Left: trying touch pan and pinch on a real phone (3.12.7).
 **Note (2026-09-27):** with sign-in through Google (3.13), the ID token already carries the name and a photo URL.
 Pre-fill the profile from them; the upload and crop below remain for changing the photo. → names done: the web
 sign-in asks for the `profile` scope (the MCP's doesn't), and `given_name`/`family_name` start the profile of an
@@ -623,8 +622,8 @@ user_profiles
 ```
 - [x] Model `server/core/models/user_profile.py`, registered in `__init__.py`; `User.profile` relationship
       (`uselist=False`, `back_populates`) — lazy, never joined into the auth query
-- [ ] `avatar` column mapped with `deferred()`, so reading names/country/timezone never loads the image bytes
-      → with the avatar (3.12.5); 0008 has the profile's fields only
+- [x] `avatar` column mapped with `deferred()`, so reading names/country/timezone never loads the image bytes
+      → migration 0009; tested for reading and saving the profile, and for a 304
 - [x] Row created lazily on first save; existing users simply have no row and read as an empty profile
 - [x] All fields nullable — nothing is required to keep using the product
 
@@ -651,47 +650,62 @@ Australia have several. So store `country` *and* `timezone`:
 - [x] Header initial comes from `first_name` when set, falling back to the email as today
 
 ### 3.12.3 Avatar picker (frontend)
-- [ ] Avatar block at the top of `AccountPanel.astro`: current avatar (or initial placeholder) + change / remove
-- [ ] Two ways in: **drag & drop** an image onto the avatar area, or **select a file** from the computer
-- [ ] Accept JPEG, PNG, WebP; reject anything else and oversized files with an inline error (limit TBD, e.g. 5 MB)
+- [x] Avatar block at the top of `AccountPanel.astro`: current avatar (or initial placeholder) + change / remove
+- [x] Two ways in: **drag & drop** an image onto the avatar area, or **select a file** from the computer
+- [x] Accept JPEG, PNG, WebP; reject anything else and oversized files with an inline error (limit TBD, e.g. 5 MB)
+      → 10 MB before the crop (`avatarFileProblem`, `src/utils/avatar.ts`); an image that won't open says so too
 
 ### 3.12.4 Avatar crop: zoom + pan before saving
-- [ ] Preview the image inside the same circle the avatar is shown in
-- [ ] **Zoom** (slider + wheel/pinch) and **pan** (drag) the image under the circle
-- [ ] **Hard constraint — the circle is always fully covered.** No part of the circle may ever show the
+- [x] Preview the image inside the same circle the avatar is shown in
+- [x] **Zoom** (slider + wheel/pinch) and **pan** (drag) the image under the circle
+- [x] **Hard constraint — the circle is always fully covered.** No part of the circle may ever show the
       placeholder behind it:
   - minimum zoom = the scale at which the image's **shorter side** equals the circle's diameter ("cover");
     zooming out stops there
   - pan is clamped so no image edge can cross into the circle, at every zoom level (re-clamp on zoom)
   - initial state: minimum zoom, centred
-- [ ] Keyboard access: arrow keys pan, +/- zoom; Save / Cancel; Esc cancels
-- [ ] Follow `design/DESIGN_SYSTEM.md` (tokens, `Modal`, copy voice) and add the component to `/styleguide/`
+  → `src/utils/avatar-crop.ts`: the frame is the circle's bounding square, and covering it covers the circle
+    and the saved square alike
+- [x] Keyboard access: arrow keys pan, +/- zoom; Save / Cancel; Esc cancels
+- [x] Follow `design/DESIGN_SYSTEM.md` (tokens, `Modal`, copy voice) and add the component to `/styleguide/`
+      → `ui/AvatarCropper` (markup) and `src/utils/avatar-cropper.ts` (`cropAvatar(file, onSave)`); Forms → Photo
 
 ### 3.12.5 Avatar save (backend)
-- [ ] Crop **client-side** and upload the final square only (e.g. 512×512 WebP, ~30–80 KB), so the server
-      never handles originals or crop maths
-- [ ] `PUT /api/v1/auth/me/avatar` (upload), `DELETE /api/v1/auth/me/avatar` (back to the initial),
+- [x] Crop **client-side** and upload the final square only (e.g. 512×512 WebP, ~30–80 KB), so the server
+      never handles originals or crop maths → a 512 px WebP (PNG where the browser can't make WebP); the
+      server still re-encodes whatever it gets (below)
+- [x] `PUT /api/v1/auth/me/avatar` (upload), `DELETE /api/v1/auth/me/avatar` (back to the initial),
       `GET /api/v1/auth/me/avatar` (serves the bytes with `Cache-Control` + an ETag from `avatar_updated_at`)
-- [ ] Server-side validation regardless of the client: real image type (magic bytes, not just
-      `Content-Type`), dimensions, size cap
-- [ ] **Watch out:** the API authenticates with a bearer header, which a plain `<img src>` cannot send.
+      → the PUT's body is the image (2 MB, refused as it streams in). GET: 404 without one; immutable only
+      for the `?v=` URL of the current version, `private, no-cache` otherwise; 304 on If-None-Match;
+      nosniff. None of it is an MCP tool (`server/app/avatar.py`)
+- [x] Server-side validation regardless of the client: real image type (magic bytes, not just
+      `Content-Type`), dimensions, size cap → and re-encoded for GDPR: decoded with only the decoder the magic
+      bytes name, 4096 px a side at most (checked before the pixels load, and Pillow's `MAX_IMAGE_PIXELS`
+      set to match), turned by its EXIF orientation, stored as a 512 px WebP without EXIF (GPS), XMP or
+      ICC (`server/utils/avatar.py`). Pillow parses untrusted input here: keep it up to date
+- [x] **Watch out:** the API authenticates with a bearer header, which a plain `<img src>` cannot send.
       The frontend must fetch the avatar through the authenticated client and display it via an object URL
-      (keyed on the avatar version, so it's only re-fetched when it changes)
+      (keyed on the avatar version, so it's only re-fetched when it changes) → `avatarUrl(version)`,
+      `src/utils/avatar.ts`; after the first load, the browser's cache answers
 
 ### 3.12.6 Show it everywhere
-- [ ] Replace the initial with the avatar in the app header (`AppLayout.astro`) and in Account
-- [ ] Fall back to the initial when there is no avatar or the image fails to load
+- [x] Replace the initial with the avatar in the app header (`AppLayout.astro`) and in Account
+- [x] Fall back to the initial when there is no avatar or the image fails to load
 
 ### 3.12.7 Verification
 - [x] Backend tests (TDD): profile round-trip through `db_session`; `PATCH` partial updates; country and
       timezone validation (reject unknown ISO codes and non-IANA zones, accept `Atlantic/Canary`);
       user without a profile row reads as empty; deleting a user cascades to the profile
       → `tests/test_phase312_profile.py`; the pre-fill from Google in `tests/test_phase3132_google_sign_in.py`
-- [ ] Avatar tests: upload, replace, delete, type/size rejection, auth required, ETag/cache headers, and
-      that loading the profile does **not** load the avatar bytes (deferred)
-- [ ] Crop-logic unit tests for the cover constraint: min zoom, pan clamping at every zoom, re-clamp on
-      zoom-out, portrait / landscape / square / very small images
+- [x] Avatar tests: upload, replace, delete, type/size rejection, auth required, ETag/cache headers, and
+      that loading the profile does **not** load the avatar bytes (deferred) → `tests/test_phase312_avatar.py`,
+      with the metadata strip (a photo with GPS), EXIF orientation, 4096 px and decompression bombs
+- [x] Crop-logic unit tests for the cover constraint: min zoom, pan clamping at every zoom, re-clamp on
+      zoom-out, portrait / landscape / square / very small images → `frontend/tests/avatar-crop.test.mjs`
 - [ ] Manual check on desktop (drop + picker) and mobile (picker + touch pan/pinch), 1440 px and 390 px
+      → done at 1440 (picker, drop, drag, wheel, keys, a refused upload, cancel, remove) and the layout at
+      390; left: touch pan and pinch on a real phone
 
 ---
 

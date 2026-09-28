@@ -28,6 +28,8 @@ export interface Profile {
   country: string | null;
   /** IANA name, e.g. "Atlantic/Canary". */
   timezone: string | null;
+  /** Changes with each upload; null without an avatar. Absent from APIs older than the avatar. */
+  avatar_version?: string | null;
 }
 
 export interface LoginResponse {

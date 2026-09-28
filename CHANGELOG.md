@@ -26,6 +26,31 @@ implementation lifecycle and is independent of the URL version segment.
 
 ## [Unreleased]
 
+### Added — a photo for your account (Phase 3.12)
+- **Settings → Account → Profile has a photo.** Pick a file or drop one on it: JPEG, PNG or WebP, up to 10 MB.
+  - Then place it in a crop dialog: drag or arrow keys to move it; wheel, pinch, slider or + and − to zoom.
+  - The circle is always covered: zooming out stops when the photo's short side fills it, and it can't be
+    dragged off.
+  - "Remove" goes back to the initial. The header shows the photo too.
+- **`PUT /api/v1/auth/me/avatar`** takes the image as the request body: a JPEG, PNG or WebP by its magic
+  bytes, whatever the Content-Type says.
+  - It's refused past 2 MB as it streams in (413), and past 4096 pixels a side before its pixels are
+    loaded (413). Anything else is a 415.
+  - It's stored re-encoded as a 512×512 WebP, turned by its EXIF orientation and cropped to its centre.
+  - **No metadata is kept:** no EXIF (so no GPS or camera), XMP or ICC profile.
+  - `profile.avatar_version` (on `/auth/me` and the profile endpoints) changes with each upload.
+- **`GET /api/v1/auth/me/avatar`** answers the WebP, and 404 without one.
+  - The `?v=<avatar_version>` URL of the current version is immutable in the browser's cache. Any other,
+    the bare one included, is `private, no-cache` and revalidated against the ETag (304).
+  - With `X-Content-Type-Options: nosniff`.
+- **`DELETE /api/v1/auth/me/avatar`** removes it.
+- None of these is an MCP tool.
+- **Pillow is a new dependency** (a floor at 11.3). It parses untrusted input here, so it's held to the
+  decoder the magic bytes name, `MAX_IMAGE_PIXELS` is set explicitly, and a decompression bomb is refused
+  with a 413. Keep it up to date.
+- **Migration 0009** adds the avatar's columns to `user_profiles`: new nullable columns only. The image
+  column is deferred, so reading or saving the profile never loads it.
+
 ### Added — a profile: name, country and time zone (Phase 3.12)
 - **Settings → Account → Profile** has first name, last name, country and time zone, saved together.
   - The time zone list follows the country, and a country with one zone picks it.

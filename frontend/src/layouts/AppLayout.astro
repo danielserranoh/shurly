@@ -112,6 +112,7 @@ const maxWidth = { default: 'max-w-6xl', narrow: 'max-w-3xl', wide: 'max-w-7xl' 
 
 <script>
   import { logout } from '@/utils/auth';
+  import { avatarUrl } from '@/utils/avatar';
   import { getMe, initialOf } from '@/utils/viewer';
   import type { User } from '@/utils/types';
 
@@ -121,13 +122,28 @@ const maxWidth = { default: 'max-w-6xl', narrow: 'max-w-3xl', wide: 'max-w-7xl' 
   interface Shown {
     email: string;
     first_name?: string | null;
+    avatar_version?: string | null;
   }
 
+  let painting = 0;
   function paint(user: Shown) {
+    const run = ++painting;
     document.querySelectorAll('[data-user-email]').forEach((el) => (el.textContent = user.email));
     document.querySelectorAll<HTMLElement>('[data-user-initial]').forEach((el) => {
       el.textContent = initialOf(user.email, user.first_name);
       el.title = user.email;
+    });
+    // Phase 3.12 — the photo replaces the initial once it's loaded (from the browser's cache
+    // after the first time: its URL has the version). No photo, or one that fails: the initial.
+    void avatarUrl(user.avatar_version).then((url) => {
+      if (!url || run !== painting) return;
+      document.querySelectorAll<HTMLElement>('[data-user-initial]').forEach((el) => {
+        const photo = document.createElement('img');
+        photo.src = url;
+        photo.alt = '';
+        photo.className = 'size-full rounded-full object-cover';
+        el.replaceChildren(photo);
+      });
     });
   }
 
@@ -140,7 +156,11 @@ const maxWidth = { default: 'max-w-6xl', narrow: 'max-w-3xl', wide: 'max-w-7xl' 
     }
   }
   function remember(user: User) {
-    const shown: Shown = { email: user.email, first_name: user.profile?.first_name ?? null };
+    const shown: Shown = {
+      email: user.email,
+      first_name: user.profile?.first_name ?? null,
+      avatar_version: user.profile?.avatar_version ?? null,
+    };
     sessionStorage.setItem(CACHE_KEY, JSON.stringify(shown));
     paint(shown);
   }

@@ -58,10 +58,12 @@ async function toApiError(response: Response): Promise<ApiError> {
 
 export interface FetchOptions extends RequestInit {
   requiresAuth?: boolean;
+  /** Phase 3.12: 'blob' for an image (the avatar), JSON otherwise. */
+  responseType?: 'json' | 'blob';
 }
 
 export async function apiFetch<T>(endpoint: string, options: FetchOptions = {}): Promise<T> {
-  const { requiresAuth = false, headers = {}, ...rest } = options;
+  const { requiresAuth = false, responseType = 'json', headers = {}, ...rest } = options;
   const url = endpoint.startsWith('http') ? endpoint : `${API_BASE_URL}${endpoint}`;
   const requestHeaders: Record<string, string> = {
     Accept: 'application/json',
@@ -97,6 +99,7 @@ export async function apiFetch<T>(endpoint: string, options: FetchOptions = {}):
     throw await toApiError(response);
   }
   if (response.status === 204) return undefined as T;
+  if (responseType === 'blob') return (await response.blob()) as T;
   return (await response.json()) as T;
 }
 
