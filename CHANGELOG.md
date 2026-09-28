@@ -26,6 +26,13 @@ implementation lifecycle and is independent of the URL version segment.
 
 ## [Unreleased]
 
+### Removed — `CI_CD_SETUP.md`, the Lambda-era deploy guide
+- It described access keys, SAM and API Gateway. The deploys it covered are in DEPLOYMENT.md:
+  § CI/CD with OIDC (the backend, to ECS) and § Frontend hosting (the frontend, to S3 + CloudFront).
+  Nothing linked to it.
+- **DEPLOYMENT.md § Workflow trigger** said the backend deploy ran only by hand. It runs on every push
+  to `main`, and by hand for a rollback.
+
 ### Security — SQL built only from bound parameters, checked (Phase 6.3)
 - **Audited:** the API reaches the database through the ORM and SQLAlchemy Core, which bind every
   value. The raw SQL left is static (`SELECT 1`) or takes `:name` parameters (the migration lock).
