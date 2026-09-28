@@ -1,6 +1,8 @@
 #!/bin/bash
-# Build the Shurly container image, push it to ECR, and create or update the
-# ECS Express service in eu-south-2.
+# Build the Shurly container image, push it to ECR, and create the ECS Express
+# service in eu-south-2. First deploy only: once the service exists, the script
+# stops before building anything (see Pre-flight). Later images go out with the
+# deploy workflow (a push to main), which changes only the image.
 #
 # Mirrors Shlink's deploy guide Phase 5 with Shurly-specific values.
 #
@@ -57,6 +59,23 @@ echo -e "${GREEN}✓ AWS account: $AWS_ACCOUNT_ID${NC}"
 echo -e "${GREEN}✓ Region:      $REGION${NC}"
 echo -e "${GREEN}✓ Image tag:   $IMAGE_TAG${NC}"
 
+# Create only, never update: an update sends --primary-container built from the
+# variables below, which replaces the live service's whole environment and drops
+# every setting added there since (sign in with Google, the MCP's OAuth, …).
+# A failed lookup stops the script too (set -e): it can't tell the service is missing.
+SERVICE_ARN=$(aws ecs list-services --region "$REGION" --cluster "$CLUSTER" \
+    --query "serviceArns[?contains(@, '${SERVICE_NAME}')] | [0]" \
+    --output text)
+if [ -n "$SERVICE_ARN" ] && [ "$SERVICE_ARN" != "None" ]; then
+    echo -e "${RED}Service $SERVICE_NAME already exists: $SERVICE_ARN${NC}"
+    echo "This script only creates it. Run against it, it would replace the live environment"
+    echo "with the few variables it knows, and drop every setting added on the service since."
+    echo "  • A new image: merge to main. The Deploy Backend workflow changes only the image."
+    echo "  • A setting: change it on the live service (DEPLOYMENT.md § Settings)."
+    exit 1
+fi
+echo -e "${GREEN}✓ Service:     $SERVICE_NAME doesn't exist yet, creating it${NC}"
+
 # ─── 1. ECR repository ──────────────────────────────────────────────────────
 echo ""
 echo -e "${YELLOW}1. ECR repository${NC}"
@@ -99,7 +118,7 @@ docker buildx build \
 
 echo -e "${GREEN}✓ Pushed $IMAGE_URI${NC}"
 
-# ─── 3. Service create or update ────────────────────────────────────────────
+# ─── 3. Service create ──────────────────────────────────────────────────────
 echo ""
 echo -e "${YELLOW}3. ECS Express service${NC}"
 
@@ -171,47 +190,29 @@ CONTAINER_JSON=$(jq -n \
 # Optional debug: uncomment to inspect the generated JSON before sending.
 # echo "$CONTAINER_JSON" | jq .
 
-# Check whether the service already exists. ECS Express's "describe" command is
-# different from regular ECS — we look up the ARN by listing services first.
+# Create. --monitor-resources can time out (Shlink lesson #2); that's fine, the
+# describe below checks the service.
+echo -e "${YELLOW}Creating new service $SERVICE_NAME${NC}"
+aws ecs create-express-gateway-service --region "$REGION" \
+    --service-name "$SERVICE_NAME" \
+    --execution-role-arn "$EXEC_ROLE_ARN" \
+    --infrastructure-role-arn "$INFRA_ROLE_ARN" \
+    --primary-container "$CONTAINER_JSON" \
+    --cpu 256 \
+    --memory 512 \
+    --health-check-path "/api/v1/health" \
+    --scaling-target '{"minTaskCount": 1, "maxTaskCount": 2}' \
+    --tags "key=Project,value=Shurly" "key=ManagedBy,value=deploy_ecs.sh" \
+    || echo -e "${YELLOW}!  create returned non-zero (expected: --monitor-resources may timeout)${NC}"
+
+echo -e "${YELLOW}Verifying with describe-express-gateway-service...${NC}"
 SERVICE_ARN=$(aws ecs list-services --region "$REGION" --cluster "$CLUSTER" \
     --query "serviceArns[?contains(@, '${SERVICE_NAME}')] | [0]" \
-    --output text 2>/dev/null || echo "")
-
-if [ -n "$SERVICE_ARN" ] && [ "$SERVICE_ARN" != "None" ]; then
-    # Update path: rolling deploy with the new image. Express Mode handles the
-    # blue/green between target groups automatically; the ALB rule sync Lambda
-    # follows the active TG (Phase 4.7).
-    echo -e "${YELLOW}Service exists — updating to $IMAGE_TAG${NC}"
-    aws ecs update-express-gateway-service --region "$REGION" \
-        --service-arn "$SERVICE_ARN" \
-        --primary-container "$CONTAINER_JSON" >/dev/null
-    echo -e "${GREEN}✓ Update started${NC}"
-else
-    # Create path: first deploy. --monitor-resources can timeout per Shlink
-    # lesson #2 — that's fine, we verify with describe-express-gateway-service
-    # afterwards.
-    echo -e "${YELLOW}Creating new service $SERVICE_NAME${NC}"
-    aws ecs create-express-gateway-service --region "$REGION" \
-        --service-name "$SERVICE_NAME" \
-        --execution-role-arn "$EXEC_ROLE_ARN" \
-        --infrastructure-role-arn "$INFRA_ROLE_ARN" \
-        --primary-container "$CONTAINER_JSON" \
-        --cpu 256 \
-        --memory 512 \
-        --health-check-path "/api/v1/health" \
-        --scaling-target '{"minTaskCount": 1, "maxTaskCount": 2}' \
-        --tags "key=Project,value=Shurly" "key=ManagedBy,value=deploy_ecs.sh" \
-        || echo -e "${YELLOW}!  create returned non-zero (expected: --monitor-resources may timeout)${NC}"
-
-    echo -e "${YELLOW}Verifying with describe-express-gateway-service...${NC}"
-    SERVICE_ARN=$(aws ecs list-services --region "$REGION" --cluster "$CLUSTER" \
-        --query "serviceArns[?contains(@, '${SERVICE_NAME}')] | [0]" \
-        --output text)
-    aws ecs describe-express-gateway-service --region "$REGION" \
-        --service-arn "$SERVICE_ARN" \
-        --query "service.{status:status,desiredCount:desiredCount,runningCount:runningCount}" \
-        --output table
-fi
+    --output text)
+aws ecs describe-express-gateway-service --region "$REGION" \
+    --service-arn "$SERVICE_ARN" \
+    --query "service.{status:status,desiredCount:desiredCount,runningCount:runningCount}" \
+    --output table
 
 echo ""
 echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
