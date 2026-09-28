@@ -15,9 +15,10 @@ no IP or email is stored or logged. If the database can't count, the request goe
 through and `rate_limit.store_failed` is logged: a limit protects, it mustn't
 become an outage.
 
-The client IP is `resolve_client_ip`'s: with TRUSTED_PROXIES naming the ALB, the
-address the ALB saw. Unset, every request seems to come from the ALB, and a per-IP
-limit becomes one limit for everybody.
+The client IP is `client_ip`'s (server/utils/network.py): with TRUSTED_PROXIES naming
+the ALB, the address the ALB saw, and behind CloudFront the viewer's, when the request
+proves it came through the distribution. Unset, every request seems to come from the
+ALB, and a per-IP limit becomes one limit for everybody.
 """
 
 import hashlib
@@ -35,7 +36,7 @@ from server.core import SessionLocal
 from server.core.config import settings
 from server.core.models import RateLimit
 from server.utils.event_log import log_event
-from server.utils.network import resolve_client_ip
+from server.utils.network import client_ip
 
 # Tests point this at their database.
 session_factory = SessionLocal
@@ -140,14 +141,6 @@ def _increment(key: str, window_start: int) -> int:
         count = db.execute(statement).scalar_one()
         db.commit()
         return count
-
-
-def client_ip(request: Request) -> str:
-    return resolve_client_ip(
-        request.client.host if request.client else None,
-        request.headers.get("x-forwarded-for"),
-        settings.trusted_proxies,
-    )
 
 
 # How a refusal is shown: JSON for API calls; for Google's sign-in, which the browser

@@ -11,6 +11,7 @@ import time
 
 import pytest
 from fastapi.testclient import TestClient
+from pydantic import SecretStr
 from sqlalchemy.exc import OperationalError
 
 from main import app, create_app
@@ -254,6 +255,49 @@ class TestSharedAndSafe:
 
         failures = _events(capsys, "rate_limit.store_failed")
         assert failures and {e["error"] for e in failures} == {"OperationalError"}
+
+
+class TestBehindCloudFront:
+    """Through CloudFront every request reaches the ALB from an edge: the viewer's
+    address counts, and only on a request that proves it came through CloudFront."""
+
+    SECRET = "cf-origin-0123456789abcdef0123456789abcdef"
+
+    @pytest.fixture(autouse=True)
+    def cloudfront(self, monkeypatch):
+        monkeypatch.setattr(settings, "trusted_proxies", ["172.31.0.0/16"])
+        monkeypatch.setattr(settings, "cloudfront_origin_secrets", [SecretStr(self.SECRET)])
+
+    def _via_edge(self, ip: str, port: int = 4000, secret: str | None = None) -> dict[str, str]:
+        """X-Forwarded-For: the address CloudFront appended, then the edge the ALB did."""
+        headers = {
+            "x-forwarded-for": f"{ip}, 130.176.0.1",
+            "cloudfront-viewer-address": f"{ip}:{port}",
+        }
+        if secret:
+            headers["x-origin-verify"] = secret
+        return headers
+
+    def test_people_behind_the_same_edge_have_their_own_count(self, client, limits):
+        alb = _from("172.31.0.10")
+        for i in range(3):
+            headers = self._via_edge("203.0.113.7", secret=self.SECRET)
+            assert _login(alb, email=f"n{i}@griddo.io", headers=headers).status_code == 401
+
+        over = self._via_edge("203.0.113.7", port=4001, secret=self.SECRET)
+        assert _login(alb, email="z@griddo.io", headers=over).status_code == 429
+        colleague = self._via_edge("203.0.113.8", secret=self.SECRET)
+        assert _login(alb, email="y@griddo.io", headers=colleague).status_code == 401
+
+    def test_a_forged_viewer_address_does_not_start_a_new_count(self, client, limits):
+        """Straight to the shared ALB, without the secret: the edge's address counts."""
+        alb = _from("172.31.0.10")
+        for i in range(3):
+            forged = self._via_edge(f"6.6.6.{i}")
+            assert _login(alb, email=f"n{i}@griddo.io", headers=forged).status_code == 401
+
+        forged = self._via_edge("6.6.6.200")
+        assert _login(alb, email="z@griddo.io", headers=forged).status_code == 429
 
 
 def test_the_count_upserts_on_postgresql(pg_engine, monkeypatch, clock):

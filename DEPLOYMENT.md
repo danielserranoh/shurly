@@ -377,14 +377,21 @@ Function and this section. The AWS resources below are still to be created (ROAD
 
 | Path pattern | Origin | Cache policy | Origin request policy | Function |
 |---|---|---|---|---|
-| `/api/*` | the ALB | CachingDisabled | AllViewer | — |
-| `/mcp*` | the ALB | CachingDisabled | AllViewer | — |
-| `/.well-known/*` | the ALB | CachingDisabled | AllViewer | — |
-| `/docs*`, `/redoc`, `/openapi.json` | the ALB | CachingDisabled | AllViewer | — |
+| `/api/*` | the ALB | CachingDisabled | AllViewerAndCloudFrontHeaders-2022-06 | — |
+| `/mcp*` | the ALB | CachingDisabled | AllViewerAndCloudFrontHeaders-2022-06 | — |
+| `/.well-known/*` | the ALB | CachingDisabled | AllViewerAndCloudFrontHeaders-2022-06 | — |
+| `/docs*`, `/redoc`, `/openapi.json` | the ALB | CachingDisabled | AllViewerAndCloudFrontHeaders-2022-06 | — |
 | Default (`*`) | the S3 bucket, with Origin Access Control | CachingOptimized | — | `static-paths`, viewer request |
 
-- **ALB behaviours:** all HTTP methods (the API takes `POST`, `PUT`, `PATCH`, `DELETE`). AllViewer forwards the `Host`
-  header (`shurly.griddo.io`), so the ALB's host rule (priority 12) and its certificate match as they do today.
+The client IP assumes the ALB's X-Forwarded-For processing mode is **append**, its default
+(`routing.http.xff_header_processing.mode`): the edge's address goes after the one CloudFront appended (§ Client IPs
+behind CloudFront).
+
+- **ALB behaviours:** all HTTP methods (the API takes `POST`, `PUT`, `PATCH`, `DELETE`). The origin request policy
+  forwards the `Host` header (`shurly.griddo.io`), so the ALB's host rule (priority 12) and its certificate match as
+  they do today, and it adds `CloudFront-Viewer-Address`, the client IP (§ Client IPs behind CloudFront). Not plain
+  AllViewer: under it, any `CloudFront-*` header that reaches the app is the viewer's own.
+- **The ALB origin:** HTTPS only, with the custom origin header `X-Origin-Verify` (§ Client IPs behind CloudFront).
 - **What each path is:** `/mcp*` covers the bare `/mcp` (the API's 308 to `/mcp/`), the MCP itself and its OAuth
   endpoints (`/mcp/authorize`, `/mcp/token`, …). `/.well-known/*` carries the OAuth metadata (5.8).
 - **Short links:** they live on `s.griddo.io` and later `go.griddo.io`, which keep going straight to the ALB. On
@@ -573,27 +580,58 @@ app and the API are now the same origin (§ CORS).
 **Rollback:** point the alias back to the ALB. Its host rule and its certificate stay in place, so the API
 answers as before. The pages come back with the next attempt.
 
-### Client IPs behind CloudFront: an open decision
+### Client IPs behind CloudFront (Phase 6.3)
 
-Once `shurly.griddo.io` goes through CloudFront, two paths reach the ALB:
+Two paths reach the ALB: **directly**, for `s.griddo.io` and later `go.griddo.io`, and **through CloudFront**, for
+`shurly.griddo.io` (the API and the MCP). Through CloudFront, the ALB's peer is an edge, and the last address in
+`X-Forwarded-For` is the edge's: the rate limits would count edges instead of people.
 
-- **direct**, for `s.griddo.io` and later `go.griddo.io`;
-- **through CloudFront**, for `shurly.griddo.io`: the API and the MCP.
+So the app takes the client IP from `CloudFront-Viewer-Address`, but only on a request that proves it came through
+the distribution by carrying a secret that the distribution adds as a custom origin header (`client_ip`,
+`server/utils/network.py`). The ALB is shared and reachable directly: anyone can send `CloudFront-Viewer-Address`, but
+not the secret. Without the secret, and when the header is missing or doesn't parse, the client IP comes from
+`X-Forwarded-For` as before (§ Trusted-Proxy Configuration). The rate limits and the visit log both use it.
 
-Through CloudFront, the ALB's peer is a CloudFront edge, and the last address in `X-Forwarded-For` is that edge's.
-The resolver (§ Trusted-Proxy Configuration) takes the rightmost address that isn't a trusted proxy. It would
-therefore record, and rate-limit, CloudFront's edges instead of people. The options are backend and AWS work,
-not done here:
+The app also checks the address against the one CloudFront appended to `X-Forwarded-For`: second from the right,
+before the edge the ALB appends (its "append" mode, above). CloudFront writes both from the same connection, so they
+differ only when one isn't CloudFront's: an origin request policy that doesn't add CloudFront's headers, or an ALB
+that no longer appends. Then `X-Forwarded-For` decides, as without the secret. It would take both of those going
+wrong at once to believe a forged address.
 
-1. **Trust CloudFront's edge ranges** in `TRUSTED_PROXIES` (`ip-ranges.json`, `service=CLOUDFRONT`). It's a large
-   list, and it changes, so it needs refreshing.
-2. **Read `CloudFront-Viewer-Address`**, which CloudFront adds when the origin request policy includes it. It can
-   only be trusted on requests that provably came through CloudFront.
-3. **Prove that a request came through CloudFront.** Give the distribution a secret origin header that the API
-   (or the ALB rule for `shurly.griddo.io`) requires. Optionally, restrict that traffic to CloudFront's
-   origin-facing prefix list, `com.amazonaws.global.cloudfront.origin-facing`. With this in place, option 2 is
-   safe. The ALB is shared and still serves `s.griddo.io` and `go.griddo.io` directly, so the restriction has to
-   be per host, not a security group on the whole ALB.
+**The distribution:**
+
+- On the ALB origin, the custom origin header `X-Origin-Verify` with a random value of at least 32 characters
+  (`openssl rand -hex 32`). CloudFront overwrites a header of that name sent by a viewer.
+- Origin protocol **HTTPS only**, so the secret never crosses to the ALB in clear.
+- The origin request policy **AllViewerAndCloudFrontHeaders-2022-06** on every ALB behaviour (the table above), so
+  that CloudFront adds `CloudFront-Viewer-Address`. Under plain AllViewer, a `CloudFront-Viewer-Address` that reaches
+  the app is whatever the viewer sent, next to a genuine secret.
+
+**The task:**
+
+- `CLOUDFRONT_ORIGIN_SECRETS='["<value>"]'`, a JSON array. Until the secrets move to Secrets Manager (ROADMAP 6.3)
+  it's an ECS environment variable like the others. Its name contains `SECRET`, so the deploy log masks it. The app
+  never logs it, and printed settings show `**********`.
+- Each value needs at least 32 characters, or the app doesn't start.
+- `CLOUDFRONT_ORIGIN_HEADER` names the header: `X-Origin-Verify` by default.
+
+**Rotating the secret:**
+
+1. Give the task both values, `CLOUDFRONT_ORIGIN_SECRETS='["<new>","<old>"]'`, and deploy.
+2. Set the distribution's custom header to the new value, and wait for the distribution to deploy.
+3. Take the old value out of the task, and deploy.
+
+**Defence in depth, at the ALB (optional):** the ALB can refuse requests for `shurly.griddo.io` that skip
+CloudFront, so they never reach the app. The app doesn't depend on it. It has to be per host: the ALB is shared,
+priority 12 also serves `s.griddo.io`, and `s.griddo.io` and `go.griddo.io` are reached directly. So neither a
+condition on priority 12 nor a security group limited to CloudFront's origin-facing prefix list
+(`com.amazonaws.global.cloudfront.origin-facing`) will do. Instead:
+
+- A rule for `shurly.griddo.io` ahead of priority 12, with an `http-header` condition on `X-Origin-Verify` (both
+  values during a rotation), forwarding to Shurly. It must follow the active target group, so it goes in the rule-sync
+  Lambda's `RULE_SYNC_MAP` too (§ 6). The Lambda only changes a rule's actions, so the condition stays.
+- After it, a rule for `shurly.griddo.io` answering a fixed `403`.
+- Priority 12 then serves only `s.griddo.io`.
 
 ### Check after the first deploy
 
@@ -602,6 +640,10 @@ not done here:
 - `/login` answers `301` to `/login/`.
 - `/api/v1/health` answers with JSON, through CloudFront.
 - `/mcp/` answers `401` with `WWW-Authenticate`.
+- The client IP is yours, not the edge's, and a forged one is ignored: 21 failed `POST /api/v1/auth/login`
+  through CloudFront, each with another email and another `CloudFront-Viewer-Address: 6.6.6.N:1`, and the 21st
+  answers `429` (`RATE_LIMIT_LOGIN_PER_IP` is 20). A request straight to the ALB for `shurly.griddo.io` without the
+  secret gets `403` if the ALB rule is in place.
 - An `_astro/` file's `Cache-Control` is `immutable`, and a page's is `max-age=0`.
 
 ## Cost estimation (eu-south-2, monthly)
@@ -631,7 +673,7 @@ Mitigations if cost ever pinches:
 
 Visitor logging is privacy-first by default, configured via env vars:
 
-- **`ANONYMIZE_REMOTE_ADDR=true`** (default): IPv4 truncated to `/24`, IPv6 to `/64` at insert time. Truncation happens in `server/utils/network.py::anonymize_ip` before the `Visitor` row is committed — full addresses never reach Postgres.
+- **`ANONYMIZE_REMOTE_ADDR=true`** (default): IPv4 truncated to `/24`, IPv6 to `/64` at insert time. Truncation happens in `server/utils/network.py::anonymize_ip` before the `Visitor` row is committed — full addresses never reach Postgres. The client IP is resolved first and truncated after (`visit_ip`), for orphan visits too.
 - Bots and email tracking pixels share the `visits` table but carry `is_bot` / `is_pixel` flags so click analytics exclude them by default.
 - Tracking pixel responses set `Cache-Control: no-store` so HTML email clients re-fetch on every open.
 - The `User.api_key_scope` enum is in place so post-launch role rollouts (`READ_ONLY`, `CREATE_ONLY`, `DOMAIN_SPECIFIC`) ship without a destructive migration; only `FULL_ACCESS` is enforced today.
@@ -654,13 +696,13 @@ TRUSTED_PROXIES='["172.31.0.0/16"]'
 
 The resolver (`server/utils/network.py::resolve_client_ip`) checks the request's source against every CIDR; only when it matches does it read `X-Forwarded-For`, and then from the right: each proxy appends the address it saw, so the first entry from the right that isn't a trusted proxy is the client. The left end is whatever the client sent, so it's never trusted (before Phase 6.3 it was, and a client could choose the address the visit was recorded under). Outside the allowlist the socket address wins.
 
-Behind CloudFront (`shurly.griddo.io`, Phase 4.10) this needs a decision first: see § Frontend hosting, "Client IPs behind CloudFront".
+Behind CloudFront (`shurly.griddo.io`, Phase 4.10) the client IP comes from `CloudFront-Viewer-Address` instead, on requests that prove they came through the distribution: § Frontend hosting, "Client IPs behind CloudFront". Don't add CloudFront's ranges here.
 
 ## Rate limits (Phase 6.3)
 
 What anyone can call is limited per client IP, counted in the database (`rate_limits`) so both tasks share the counts: the password login (every attempt runs a bcrypt check, on the tasks that also serve redirects) and the Google and MCP sign-in endpoints (each request writes a row). Redirects, anything signed in and CORS preflights are never limited.
 
-- **`TRUSTED_PROXIES` must name the ALB** (`["172.31.0.0/16"]` in production): the limits key on the client IP it resolves. Unset, every request seems to come from the ALB, and each per-IP limit becomes one limit for everybody.
+- **`TRUSTED_PROXIES` must name the ALB** (`["172.31.0.0/16"]` in production): the limits key on the client IP it resolves. Unset, every request seems to come from the ALB, and each per-IP limit becomes one limit for everybody. Behind CloudFront, `CLOUDFRONT_ORIGIN_SECRETS` too (§ Frontend hosting), or everyone behind the same edge shares one count.
 - Settings, per minute unless said otherwise; `0` turns one off:
 
   | Variable | Default | Limits |

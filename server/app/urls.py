@@ -43,7 +43,7 @@ from server.schemas.url import (
 from server.utils.access import viewer
 from server.utils.columns import fit
 from server.utils.domain import get_or_create_default_domain, resolve_domain_for_host
-from server.utils.network import anonymize_ip, resolve_client_ip
+from server.utils.network import visit_ip
 from server.utils.opengraph import fetch_opengraph_metadata, is_social_media_crawler
 from server.utils.redirect_rules import pick_target
 from server.utils.url import (
@@ -1048,7 +1048,7 @@ def base_url_landing(request: Request, db: Session = Depends(get_db)):
         OrphanVisit(
             type=OrphanVisitType.BASE_URL,
             attempted_path="/",
-            ip=fit(request.client.host if request.client else None, OrphanVisit.ip),
+            ip=fit(visit_ip(request), OrphanVisit.ip),
             user_agent=request.headers.get("user-agent"),
             referer=request.headers.get("referer"),
         )
@@ -1088,12 +1088,7 @@ def tracking_pixel(short_code: str, request: Request, db: Session = Depends(get_
     # Pixel hits never consume max_visits quota and are always logged (even
     # under DISABLE_TRACK_PARAM, since the whole point of the endpoint is to log).
     visit_user_agent = request.headers.get("user-agent")
-    raw_ip = resolve_client_ip(
-        request.client.host if request.client else None,
-        request.headers.get("x-forwarded-for"),
-        settings.trusted_proxies,
-    )
-    stored_ip = anonymize_ip(raw_ip) if settings.anonymize_remote_addr else raw_ip
+    stored_ip = visit_ip(request)
     db.add(
         Visitor(
             url_id=url.id,
@@ -1179,19 +1174,9 @@ def redirect_short_url(short_code: str, request: Request, db: Session = Depends(
 
     if not url:
         # Phase 3.10.4 — log the orphan before returning 404. Useful for catching
-        # typo'd codes leaked into print/QR campaigns. Anonymize IP same as for
-        # regular visits so GDPR posture is consistent.
-        orphan_ip = (
-            anonymize_ip(
-                resolve_client_ip(
-                    request.client.host if request.client else None,
-                    request.headers.get("x-forwarded-for"),
-                    settings.trusted_proxies,
-                )
-            )
-            if settings.anonymize_remote_addr
-            else (request.client.host if request.client else None)
-        )
+        # typo'd codes leaked into print/QR campaigns. Its IP is a visit's (`visit_ip`),
+        # so the GDPR posture is the same.
+        orphan_ip = visit_ip(request)
         db.add(
             OrphanVisit(
                 type=OrphanVisitType.INVALID_SHORT_URL,
@@ -1301,12 +1286,7 @@ def redirect_short_url(short_code: str, request: Request, db: Session = Depends(
     # Phase 3.9.5: anonymize the IP before persisting (GDPR pseudonymization).
     # Phase 3.9.6: only honor X-Forwarded-For from trusted proxies (CIDR allowlist).
     visit_user_agent = request.headers.get("user-agent")
-    raw_ip = resolve_client_ip(
-        request.client.host if request.client else None,
-        request.headers.get("x-forwarded-for"),
-        settings.trusted_proxies,
-    )
-    stored_ip = anonymize_ip(raw_ip) if settings.anonymize_remote_addr else raw_ip
+    stored_ip = visit_ip(request)
     visit = Visitor(
         url_id=url.id,
         short_code=short_code,
