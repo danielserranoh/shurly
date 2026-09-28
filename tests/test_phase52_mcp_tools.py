@@ -26,6 +26,9 @@ EXPECTED_TOOLS: set[str] = {
     "change_password",
     "generate_api_key",
     "revoke_api_key",
+    # Organization (Phase 3.14.2): read-only, role changes stay out of the MCP
+    "get_organization",
+    "list_organization_members",
     # URLs
     "create_short_url",
     "create_custom_url",
@@ -113,7 +116,13 @@ def test_public_routes_are_excluded():
 def test_legacy_stats_excluded():
     """Legacy /api/v1/stats/* routes must never be MCP tools."""
     names = _list_tool_names()
-    legacy_prefixes = ("day_statistics", "week_statistics", "world_statistics", "main_statistics", "next_statistics")
+    legacy_prefixes = (
+        "day_statistics",
+        "week_statistics",
+        "world_statistics",
+        "main_statistics",
+        "next_statistics",
+    )
     leaked = {n for n in names if n.startswith(legacy_prefixes)}
     assert not leaked, f"Legacy stats routes leaked: {sorted(leaked)}"
 
@@ -123,3 +132,21 @@ def test_health_probes_excluded():
     names = _list_tool_names()
     leaked = {n for n in names if n in {"liveness", "readiness"}}
     assert not leaked, f"Health probes leaked: {sorted(leaked)}"
+
+
+def test_organization_changes_stay_out_of_the_mcp():
+    """Phase 3.14.2 — role changes, removals, ownership handovers and adopting
+    someone's links are web/API only.
+
+    An assistant reading untrusted text (link titles, fetched pages) could be
+    talked into "make X an owner".
+    """
+    names = _list_tool_names()
+    governance = (
+        "update_member_role",
+        "remove_organization_member",
+        "transfer_ownership",
+        "adopt_personal_links",
+    )
+    leaked = {n for n in names if n.startswith(governance)}
+    assert not leaked, f"Organization changes exposed as MCP tools: {sorted(leaked)}"

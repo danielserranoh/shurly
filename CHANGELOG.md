@@ -26,6 +26,188 @@ implementation lifecycle and is independent of the URL version segment.
 
 ## [Unreleased]
 
+### Added — move a removed person's personal links from Settings (Phase 3.14)
+- **When an owner removes someone** in Settings → Organization, a follow-up asks whether
+  to move that person's personal links and campaigns to the organization, so the team
+  can manage them. Skipping is fine: the links keep redirecting either way. A toast says
+  what moved, and a 403, 404 or 409 shows the API's message in the dialog. Admins, who
+  can remove members but not move their links, aren't asked.
+
+### Added — the organization in the frontend (Phase 3.14)
+- **Settings → Organization**: the members, with their role and the date they joined.
+  Each row offers only what your role allows (the table in 3.14.2): owners change
+  roles, make other owners, hand the role over and remove people below them; admins
+  remove members; anyone can step down except the last owner. Removing someone and
+  handing the role over ask first, and so do making an owner and stepping down, which
+  you can't undo yourself. The API's 403/409 message is shown as it comes, and the list
+  reloads after a refusal. An account outside any organization gets a note instead.
+- **A "Personal" switch on every create flow** (quick create, the full editor and the
+  campaign wizard), off by default: new links and campaigns belong to the organization
+  unless it's on. Its hint names who will see them.
+- **Who created what**: link and campaign lists and pages say "Created by you" or the
+  creator's email, and personal ones carry a "Personal" badge.
+- **Locked controls**: editing, deleting, redirect rules and preview refreshes of an
+  organization link or campaign you can't change (someone else's, when you're a
+  member) are dimmed, say why on hover and explain on click. A 403 that still gets
+  through is shown like any other error, and the page checks your role again. Bulk
+  tagging says how many links it skipped.
+
+### Changed — copy that assumed every link was yours
+- A campaign's per-recipient links are "personalized links": "personal" now means only
+  you can see it.
+- The title hint says visitors never see it (it said "only you see this"), the links
+  page describes the team's links, and a link or campaign that isn't found may be
+  someone else's personal one.
+
+### Fixed — campaign summary returned 500 on PostgreSQL
+- **`GET /api/v1/analytics/campaigns/{id}/summary` failed for every campaign on PostgreSQL**
+  ("could not identify an equality operator for type json"). Its top-performers query
+  grouped by `urls.user_data`, a `json` column PostgreSQL can't GROUP BY; the SQLite test
+  suite allows it, so it never showed. It now groups by `urls.id`, on which the other
+  selected columns depend. Regression test against PostgreSQL:
+  `tests/test_analytics_postgres.py`. Found in the 3.14 frontend's manual pass.
+
+### Fixed — random test failure on UUIDs that look like numbers
+- **The test suite no longer fails at random with `'float' object has no attribute
+  'replace'`.** Its in-memory SQLite created the models' UUID columns as `UUID`, a
+  type SQLite gives numeric affinity, so an id whose 32 hex digits read as a number
+  (all digits, or digits around one `e`: about one uuid4 in 700,000) was stored as a
+  float and failed to load. `tests/conftest.py` now creates them as `CHAR(32)` on
+  SQLite. Test-only: PostgreSQL has a native UUID type, and the models are unchanged.
+
+### Security — only accounts on the organization's email domain join it
+- **A new account joins the organization only if its email is on `ORGANIZATION_DOMAIN`**
+  (default `griddo.io`; exact, case-insensitive; empty lets anyone join). Sign-up is
+  still open to anyone until Google sign-in (3.13), and since 3.14.3 every member sees
+  all of the organization's links and campaigns, recipients' names and emails included.
+  So anyone could register and read or export the team's campaigns. An account off the
+  domain now keeps working with personal links only. The startup sync applies the same
+  rule, and each refused join logs `org.join_refused` with the user id, not the email.
+
+### Security — link previews log the destination's origin, not the URL
+- **A failed link preview no longer writes the destination URL to the log.** The
+  Open Graph fetcher logged the whole URL when a fetch was refused, timed out,
+  got an error status or failed, and so did the preview endpoint's guard. A
+  destination URL is user input, and its path or query string can carry personal
+  data (`/in/jane-doe`, `?email=…`). Those warnings reach CloudWatch although
+  nothing configures logging: the root logger has no handler, so Python's
+  last-resort handler prints them to stderr. They now keep the URL's origin:
+  scheme, host and port (`url_origin` in `server/utils/url.py`). An unexpected
+  error logs its type, not its message, which can repeat the URL, and a refused
+  non-http(s) redirect names its scheme instead of the whole URL.
+
+### Added — links and campaigns belong to the organization (Phase 3.14.3)
+- **Everyone in the organization sees its links and campaigns**, and their stats:
+  per link, per campaign, the overview and the CSV exports. New links and
+  campaigns are the organization's; send `"visibility": "personal"` when creating
+  one that only you see. Link and campaign responses carry `visibility` and
+  `created_by_email`.
+- **Who changes what**: the creator, and for the organization's links and
+  campaigns, admins and owners too. Anyone else who can see one gets a 403 when
+  editing, tagging, refreshing the preview, adding redirect rules or deleting.
+  Bulk tagging skips those links and lists them in `failed`.
+- **Someone else's personal link or campaign doesn't exist for you** (404),
+  whatever your role. Campaigns used to answer 403 here; they now match links.
+- **`POST /api/v1/organization/adopt-personal-links`**: once someone has been
+  removed, an owner moves their personal links and campaigns to the organization,
+  so the team can still manage them. Logs `org.links_adopted`. Not an MCP tool,
+  like the other organization changes.
+- **MCP**: `create_campaign_from_rows` takes `visibility`; `add_redirect_rule`
+  and `get_url_analytics_summary` follow the same rules. The generated tools
+  already did, since they call the API.
+- **Migration `0003`** adds `organization_id` to `urls` and `campaigns` (NULL
+  means personal) and gives the organization everything made so far. It creates
+  the organization when the app hasn't yet, as happens when `0002` and `0003`
+  run in the same deploy.
+- An account outside any organization only sees and makes personal links. None
+  exist in production: sign-up and startup put every active account in it.
+
+### Added — the organization, its members and their roles (Phase 3.14.2)
+- **Every account belongs to one organization** ("Griddo", from
+  `ORGANIZATION_NAME` / `ORGANIZATION_DOMAIN`), as owner, admin or member.
+  Sign-up joins it as member; at startup, active accounts without a membership
+  join too. Migration `0002` adds `organizations` and `organization_members`.
+- **The first owner comes from `BOOTSTRAP_OWNER_EMAIL`**, not from whoever signs
+  up first: that account joins as owner when the organization has none. If no
+  active owner is left, startup makes it owner again (break-glass). Set it
+  before the first sign-up, or nobody can change roles.
+- **`/api/v1/organization`**: the organization and your role; `GET /members`;
+  `PATCH /members/{user_id}` to change a role; `DELETE /members/{user_id}` to
+  remove someone (their account is closed and its API key revoked; their links
+  keep redirecting); `POST /transfer-ownership` to make someone owner and step
+  down to admin.
+- **The rules**: owners change the roles of admins and members, to any role, but
+  never another owner's; admins change no roles and remove members; nobody
+  removes or changes someone with a role equal to or above theirs; anyone may
+  lower their own role, except the last owner (409). That check locks the owner
+  rows, so two owners stepping down at once leave one (tested on PostgreSQL).
+- **Every change is logged**: `org.role_changed` and `org.member_removed` lines
+  in the event log, with who did it.
+- **MCP**: `get_organization` and `list_organization_members` are tools; role
+  changes, removals and handovers are not, so an assistant reading untrusted
+  text can't be talked into them.
+
+### Changed — the schema is migrated with Alembic (Phase 3.14.1)
+- **Startup runs the migrations instead of `create_all()`**, which only created
+  missing tables and never added a column to an existing one. Revisions live in
+  `server/migrations/versions/`; `0001` is the baseline, identical to what
+  `create_all()` built (compared with `pg_dump`).
+- **The existing production database is adopted, not rebuilt**: tables without
+  an `alembic_version` get stamped at the baseline, keeping every row.
+- **Tasks that boot together don't race**: a PostgreSQL advisory lock, held for
+  the migration's transaction, lets one task migrate while the others wait.
+- **New PostgreSQL test suite** (`tests/test_phase3141_migrations.py`): empty
+  and pre-Alembic databases, a second run, three processes booting at once, and
+  a drift check that fails when a model changes without a migration. CI runs it
+  against a PostgreSQL 17 service (`--require-postgres`); locally it needs
+  `TEST_DATABASE_URL`.
+- `scripts/init_database.py` runs the migrations too, so it can't build a schema
+  the app would mistake for the baseline.
+
+### Security — database errors leave out the SQL parameters
+- **A failed database statement no longer writes the user's input to the log.**
+  SQLAlchemy ends a database error's message with the statement's parameters,
+  and a traceback prints that message: uvicorn's for an API request, fastmcp's
+  for a tool call. So when a statement failed (a lost connection, a timeout, a
+  constraint), the log got what the user sent: for `POST /api/v1/auth/register`,
+  the email and the password's bcrypt hash; for a campaign, its rows. The engine
+  now hides them (`hide_parameters=True`, which covers `echo`'s SQL logging too);
+  the statement stays, so the error still says what failed.
+- PostgreSQL's own detail for a constraint violation is part of the driver's
+  message, so it still names the value: `Key (email)=(…) already exists`, or the
+  whole row for a `NOT NULL` violation (`Failing row contains (…)`).
+
+### Security — MCP tool arguments kept out of fastmcp's error log
+- **A failed API call no longer writes the tool's arguments to the log.** fastmcp
+  logs each failed tool call with its traceback, and when a generated tool's call
+  into the API failed, the error carried the API's response body. A `422` body
+  echoes each invalid field's value, or the whole request body when a field is
+  missing, so a `create_campaign` CSV (names, companies, emails) could reach
+  CloudWatch. For an API error the line now keeps the tool and the status, without
+  the body or the traceback: `Error calling tool 'create_short_url': HTTP error 422
+  (response body not logged)`. The MCP client still gets the whole error, and any
+  other exception, including one raised inside the API, still logs its traceback
+  (`ApiErrorLogFilter` in `mcp_server/usage.py`).
+- **Never run production with `FASTMCP_LOG_LEVEL=DEBUG`**: at that level fastmcp
+  logs every tool call's arguments in full. The default, `INFO`, doesn't.
+
+### Added — usage log for MCP tool calls and HTTP requests (Phase 5.6.0)
+- **One JSON line per MCP tool call** (`mcp.tool_call`): tool, argument names,
+  user id, outcome, error type, HTTP status of a failed API call, duration and
+  request id. In the access log every MCP call was a `POST /mcp/`, so nothing
+  recorded which tools were used or how they failed; the dogfood (5.6) needs
+  those numbers. Argument values are never logged: campaign rows carry personal
+  data. Written by a fastmcp middleware (`mcp_server/usage.py`).
+- **One JSON line per HTTP request** (`http.request`): method, path without the
+  query string, status, duration and request id. It replaces uvicorn's access
+  log, now off in the image (`--no-access-log`), and closes the 3.9.6 item "request
+  id in log lines".
+- **A generated tool's call into the API carries the MCP request's id**, so one id
+  links the MCP request, the tool call and the API call behind it.
+- Lines go to stderr, since under the stdio transport stdout is the JSON-RPC
+  channel. The Logs Insights queries (calls, errors and latency per tool, daily
+  users) and the retention setup are in `mcp_server/README.md` § Usage log.
+
 ### Fixed — reserved and colliding custom codes
 - **Custom codes the app serves itself are treated as taken.** `POST
   /api/v1/urls/custom` accepted `mcp`, `docs` and `redoc`, but `/mcp` redirects

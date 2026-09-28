@@ -13,9 +13,15 @@ engine = create_engine(
     max_overflow=settings.db_max_overflow,
     pool_pre_ping=True,  # Verify connections before using (important for Lambda)
     echo=False,  # Set to True for SQL logging during development
+    # A database error's message ends with the statement's parameters, i.e. what
+    # the user sent (emails, password hashes, campaign rows), and a traceback in
+    # the logs prints it. This swaps them for a placeholder, in `echo` too.
+    hide_parameters=True,
     connect_args={
         "sslmode": settings.db_ssl_mode,  # SSL mode for RDS connections
-    } if settings.db_ssl_mode else {},
+    }
+    if settings.db_ssl_mode
+    else {},
 )
 
 # Create SessionLocal class

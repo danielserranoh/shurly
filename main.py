@@ -1,4 +1,5 @@
 import os
+import time
 import uuid
 from contextlib import asynccontextmanager
 
@@ -11,6 +12,7 @@ from server.app import api_router
 from server.app.urls import redirect_router
 from server.core import get_db
 from server.core.config import settings
+from server.utils.event_log import log_event
 
 
 class RequestIdMiddleware(BaseHTTPMiddleware):
@@ -19,13 +21,31 @@ class RequestIdMiddleware(BaseHTTPMiddleware):
 
     Generate a UUID per request unless the client supplied one; echo back in the
     response header; stash on `request.state.request_id` so handlers/log lines can
-    correlate (CloudWatch picks up the value once we add the access log formatter).
+    correlate.
+
+    Phase 5.6.0 — also writes each request's `http.request` line of the event log,
+    which replaces uvicorn's access log (turned off in the image). The path goes
+    without its query string, which can carry tokens. `duration_ms` runs until the
+    response headers are ready, so a streamed body isn't counted.
     """
 
     async def dispatch(self, request: Request, call_next):
         rid = request.headers.get("x-request-id") or uuid.uuid4().hex
         request.state.request_id = rid
-        response = await call_next(request)
+        started = time.perf_counter()
+        status = 500  # what the client gets if the app raises
+        try:
+            response = await call_next(request)
+            status = response.status_code
+        finally:
+            log_event(
+                "http.request",
+                request_id=rid,
+                method=request.method,
+                path=request.url.path,
+                status=status,
+                duration_ms=round((time.perf_counter() - started) * 1000, 1),
+            )
         response.headers["x-request-id"] = rid
         return response
 
@@ -68,15 +88,17 @@ def _try_build_mcp_app(fastapi_app):
 
 def _seed_database():
     """
-    Create the schema if missing, then seed the default domain and predefined tag set,
-    and bind legacy campaign URLs (NULL `domain_id`) to the default domain.
+    Migrate the schema to the latest revision, then seed the default domain and
+    predefined tag set, and bind legacy campaign URLs (NULL `domain_id`) to the
+    default domain.
 
-    `Base.metadata.create_all()` is idempotent — only creates tables that don't
-    exist. Safe on every container start. Switch to Alembic when migrations
-    arrive; until then this avoids a separate bootstrap step against an RDS
-    that lives inside the VPC.
+    Phase 3.14.1 — Alembic replaced `create_all()`, which never adds a column to
+    an existing table. Runs on every container start, under a lock so tasks that
+    boot together don't race (`server/core/migrations.py`); no separate
+    bootstrap step against an RDS that lives inside the VPC.
     """
-    from server.core import Base, engine
+    from server.core import engine
+    from server.core.migrations import run_migrations
     from server.core.models import (  # noqa: F401 — register models with Base
         URL,
         Campaign,
@@ -88,15 +110,19 @@ def _seed_database():
         Visitor,
     )
     from server.utils.domain import backfill_campaign_url_domains, get_or_create_default_domain
+    from server.utils.organization import ensure_memberships
     from server.utils.tags import initialize_predefined_tags
 
-    Base.metadata.create_all(bind=engine)
+    run_migrations(engine)
 
     db = next(get_db())
     try:
         initialize_predefined_tags(db)
         get_or_create_default_domain(db)
         backfill_campaign_url_domains(db)
+        # Phase 3.14.2 — the organization, and a membership for every active account.
+        ensure_memberships(db)
+        db.commit()
     finally:
         db.close()
 

@@ -94,9 +94,7 @@ def test_inactive_user_api_key_rejected(client: TestClient, db_session, test_use
     test_user.api_key = "inactive-but-valid"
     test_user.is_active = False
     db_session.commit()
-    resp = client.get(
-        "/api/v1/auth/me", headers={"Authorization": "Bearer inactive-but-valid"}
-    )
+    resp = client.get("/api/v1/auth/me", headers={"Authorization": "Bearer inactive-but-valid"})
     # Inactive users with API keys fail the key lookup itself (404-ish path),
     # which surfaces as 401. JWTs for inactive users still hit the explicit
     # 403 branch — covered by the existing JWT auth tests.

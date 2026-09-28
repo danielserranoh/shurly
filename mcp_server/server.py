@@ -25,6 +25,10 @@ import os
 from fastmcp import FastMCP
 from fastmcp.server.providers.openapi import MCPType, RouteMap
 
+# Module level, not inside `_register_curated_tools`: with postponed annotations
+# fastmcp resolves the tools' parameter types against this module's globals.
+from server.utils.access import Visibility
+
 # Routes that exist in the FastAPI app but should NOT be MCP tools.
 #
 # Public-facing infrastructure: an LLM driving the API has no business
@@ -43,6 +47,14 @@ EXCLUDED_ROUTE_MAPS: list[RouteMap] = [
     RouteMap(pattern=r"^/api/v1/health(/.*)?$", mcp_type=MCPType.EXCLUDE),
     # Legacy stats namespace — superseded by /api/v1/analytics/*.
     RouteMap(pattern=r"^/api/v1/stats(/.*)?$", mcp_type=MCPType.EXCLUDE),
+    # Phase 3.14.2 — role changes, removals and ownership handovers stay out of the
+    # MCP: an assistant that reads untrusted text (link titles, fetched pages) could
+    # be talked into "make X an owner". Reading the organization is fine.
+    RouteMap(
+        methods=["POST", "PATCH", "DELETE"],
+        pattern=r"^/api/v1/organization(/.*)?$",
+        mcp_type=MCPType.EXCLUDE,
+    ),
 ]
 
 # Maps FastAPI's auto-generated operationIds to clean MCP tool names.
@@ -62,6 +74,9 @@ MCP_TOOL_NAMES: dict[str, str] = {
     "change_password_api_v1_auth_change_password_post": "change_password",
     "generate_api_key_api_v1_auth_api_key_generate_post": "generate_api_key",
     "revoke_api_key_api_v1_auth_api_key_delete": "revoke_api_key",
+    # Organization (Phase 3.14.2) — read-only; changes are excluded above
+    "get_organization_api_v1_organization_get": "get_organization",
+    "list_organization_members_api_v1_organization_members_get": "list_organization_members",
     # URLs
     "create_short_url_api_v1_urls_post": "create_short_url",
     "create_custom_url_api_v1_urls_custom_post": "create_custom_url",
@@ -122,6 +137,11 @@ def _build_mcp_server(fastapi_app=None) -> FastMCP:
     with auth on.
     """
     from mcp_server.auth import ShurlyTokenVerifier, forward_bearer_auth
+    from mcp_server.usage import (
+        UsageLogMiddleware,
+        forward_request_id,
+        install_api_error_log_filter,
+    )
 
     if fastapi_app is None:
         from main import app as fastapi_app  # local import — see docstring
@@ -134,13 +154,22 @@ def _build_mcp_server(fastapi_app=None) -> FastMCP:
         "name": name,
         "route_maps": EXCLUDED_ROUTE_MAPS,
         "mcp_names": MCP_TOOL_NAMES,
-        "httpx_client_kwargs": {"auth": forward_bearer_auth},
+        "httpx_client_kwargs": {
+            "auth": forward_bearer_auth,
+            # Phase 5.6.0 — the API call carries the MCP request's id.
+            "event_hooks": {"request": [forward_request_id]},
+        },
     }
     if not auth_disabled:
         kwargs["auth"] = ShurlyTokenVerifier()
 
     server = FastMCP.from_fastapi(**kwargs)
     _register_curated_tools(server)
+    # Phase 5.6.0 — one `mcp.tool_call` line per call (mcp_server/usage.py).
+    server.add_middleware(UsageLogMiddleware())
+    # fastmcp's own line for a failed API call leaves out the response body,
+    # which can echo the tool's arguments.
+    install_api_error_log_filter()
     return server
 
 
@@ -166,20 +195,26 @@ def _register_curated_tools(server: FastMCP) -> None:
         description=(
             "Create a campaign from a list of row dicts (more LLM-friendly "
             "than the raw CSV-string variant). All rows must share the same "
-            "keys; each row becomes one personalized short URL."
+            "keys; each row becomes one personalized short URL. The campaign "
+            "belongs to the organization unless visibility is 'personal'."
         ),
     )
     def create_campaign_from_rows(
         name: str,
         original_url: str,
         rows: list[dict[str, str]],
+        visibility: Visibility = "organization",
     ) -> dict:
         from server.core import SessionLocal
 
         with SessionLocal() as db:
             return curated.create_campaign_from_rows(
-                db, resolve_current_user(db),
-                name=name, original_url=original_url, rows=rows,
+                db,
+                resolve_current_user(db),
+                name=name,
+                original_url=original_url,
+                rows=rows,
+                visibility=visibility,
             )
 
     @server.tool(
@@ -206,11 +241,18 @@ def _register_curated_tools(server: FastMCP) -> None:
 
         with SessionLocal() as db:
             return curated.add_redirect_rule(
-                db, resolve_current_user(db),
-                short_code=short_code, target_url=target_url, priority=priority,
-                device=device, language=language, browser=browser,
-                query_param=query_param, query_value=query_value,
-                before_date=before_date, after_date=after_date,
+                db,
+                resolve_current_user(db),
+                short_code=short_code,
+                target_url=target_url,
+                priority=priority,
+                device=device,
+                language=language,
+                browser=browser,
+                query_param=query_param,
+                query_value=query_value,
+                before_date=before_date,
+                after_date=after_date,
             )
 
     @server.tool(
@@ -229,8 +271,11 @@ def _register_curated_tools(server: FastMCP) -> None:
 
         with SessionLocal() as db:
             return curated.get_url_analytics_summary(
-                db, resolve_current_user(db),
-                short_code=short_code, days=days, include_bots=include_bots,
+                db,
+                resolve_current_user(db),
+                short_code=short_code,
+                days=days,
+                include_bots=include_bots,
             )
 
     @server.tool(
@@ -248,8 +293,10 @@ def _register_curated_tools(server: FastMCP) -> None:
 
         with SessionLocal() as db:
             return curated.list_orphan_visits_grouped(
-                db, resolve_current_user(db),
-                since_days=since_days, limit_groups=limit_groups,
+                db,
+                resolve_current_user(db),
+                since_days=since_days,
+                limit_groups=limit_groups,
             )
 
 

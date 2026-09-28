@@ -827,6 +827,14 @@
   [data-tooltip-align="end"]:focus-visible::after {
     transform: none;
   }
+  [data-tooltip-align="start"]::after {
+    left: 0;
+    transform: translate(0, 3px);
+  }
+  [data-tooltip-align="start"]:hover::after,
+  [data-tooltip-align="start"]:focus-visible::after {
+    transform: none;
+  }
 
   /* ---- Menus (popover API) ------------------------------------------------ */
   .menu {

@@ -24,10 +24,24 @@ class Campaign(Base):
     created_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
+    # Phase 3.14.3 — the organization the campaign belongs to. NULL = personal.
+    organization_id = Column(
+        UUID(as_uuid=True), ForeignKey("organizations.id"), nullable=True, index=True
+    )
+
     # Relationships
     creator = relationship("User", back_populates="campaigns")
     urls = relationship("URL", back_populates="campaign", cascade="all, delete-orphan")
     tags = relationship("Tag", secondary="campaign_tags", back_populates="campaigns")
+
+    @property
+    def visibility(self) -> str:
+        return "personal" if self.organization_id is None else "organization"
+
+    @property
+    def created_by_email(self) -> str | None:
+        """Lists eager-load `creator`, or this costs a query per campaign."""
+        return self.creator.email if self.creator else None
 
     def __repr__(self):
         return f"<Campaign(id={self.id}, name={self.name})>"

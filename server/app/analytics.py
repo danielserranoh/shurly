@@ -24,6 +24,7 @@ from server.schemas.analytics import (
     WeeklyStatsResponse,
 )
 from server.schemas.responses import get_responses
+from server.utils.access import viewer
 from server.utils.csv_export import stream_csv
 from server.utils.url import build_short_url
 
@@ -70,10 +71,14 @@ def get_url_daily_stats(
     **Responses:**
     - **200**: Daily statistics retrieved successfully - Returns 7 days of click data
     - **401**: Authentication required or invalid token
-    - **404**: URL not found or doesn't belong to current user
+    - **404**: URL not found, or someone else's personal link
     """
-    # Verify URL exists and belongs to user
-    url = db.query(URL).filter(URL.short_code == short_code, URL.created_by == current_user.id).first()
+    # Verify the user can see the URL (Phase 3.14.3 — the organization's, or their own)
+    url = (
+        db.query(URL)
+        .filter(URL.short_code == short_code, viewer(db, current_user).sees(URL))
+        .first()
+    )
     if not url:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -152,10 +157,14 @@ def get_url_weekly_stats(
     **Responses:**
     - **200**: Weekly statistics retrieved successfully - Returns 8 weeks of click data
     - **401**: Authentication required or invalid token
-    - **404**: URL not found or doesn't belong to current user
+    - **404**: URL not found, or someone else's personal link
     """
-    # Verify URL exists and belongs to user
-    url = db.query(URL).filter(URL.short_code == short_code, URL.created_by == current_user.id).first()
+    # Verify the user can see the URL (Phase 3.14.3 — the organization's, or their own)
+    url = (
+        db.query(URL)
+        .filter(URL.short_code == short_code, viewer(db, current_user).sees(URL))
+        .first()
+    )
     if not url:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -192,10 +201,7 @@ def get_url_weekly_stats(
     if format == "csv":
         return stream_csv(
             headers=["week_start", "week_end", "clicks"],
-            rows=(
-                (s.week_start.isoformat(), s.week_end.isoformat(), s.clicks)
-                for s in stats
-            ),
+            rows=((s.week_start.isoformat(), s.week_end.isoformat(), s.clicks) for s in stats),
             filename=f"{short_code}-weekly.csv",
         )
 
@@ -238,10 +244,14 @@ def get_url_geo_stats(
     **Responses:**
     - **200**: Geographic statistics retrieved successfully - Returns clicks by country
     - **401**: Authentication required or invalid token
-    - **404**: URL not found or doesn't belong to current user
+    - **404**: URL not found, or someone else's personal link
     """
-    # Verify URL exists and belongs to user
-    url = db.query(URL).filter(URL.short_code == short_code, URL.created_by == current_user.id).first()
+    # Verify the user can see the URL (Phase 3.14.3 — the organization's, or their own)
+    url = (
+        db.query(URL)
+        .filter(URL.short_code == short_code, viewer(db, current_user).sees(URL))
+        .first()
+    )
     if not url:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -267,8 +277,7 @@ def get_url_geo_stats(
     )
 
     stats = [
-        GeoStats(country=geo.country or "Unknown", clicks=geo.click_count)
-        for geo in geo_stats
+        GeoStats(country=geo.country or "Unknown", clicks=geo.click_count) for geo in geo_stats
     ]
 
     total_clicks = sum(stat.clicks for stat in stats)
@@ -316,7 +325,7 @@ def get_campaign_summary(
     - **200**: Campaign summary retrieved successfully - Includes total clicks, unique IPs, CTR, daily timeline (7 days), and top 5 performers
     - **400**: Invalid campaign ID format (not a valid UUID)
     - **401**: Authentication required or invalid token
-    - **404**: Campaign not found or doesn't belong to current user
+    - **404**: Campaign not found, or someone else's personal campaign
     """
     # Convert campaign_id string to UUID
     try:
@@ -327,10 +336,10 @@ def get_campaign_summary(
             detail="Invalid campaign ID format",
         ) from exc
 
-    # Verify campaign exists and belongs to user
+    # Verify the user can see the campaign (Phase 3.14.3 — the organization's, or their own)
     campaign = (
         db.query(Campaign)
-        .filter(Campaign.id == campaign_uuid, Campaign.created_by == current_user.id)
+        .filter(Campaign.id == campaign_uuid, viewer(db, current_user).sees(Campaign))
         .first()
     )
     if not campaign:
@@ -349,8 +358,7 @@ def get_campaign_summary(
         _exclude_bots(
             db.query(func.count(Visitor.id)).filter(Visitor.url_id.in_(url_ids)),
             include_bots,
-        )
-        .scalar()
+        ).scalar()
         or 0
     )
 
@@ -359,20 +367,16 @@ def get_campaign_summary(
         _exclude_bots(
             db.query(func.count(func.distinct(Visitor.ip))).filter(Visitor.url_id.in_(url_ids)),
             include_bots,
-        )
-        .scalar()
+        ).scalar()
         or 0
     )
 
     # Click-through rate (percentage of URLs that have at least one click)
     urls_with_clicks = (
         _exclude_bots(
-            db.query(func.count(func.distinct(Visitor.url_id))).filter(
-                Visitor.url_id.in_(url_ids)
-            ),
+            db.query(func.count(func.distinct(Visitor.url_id))).filter(Visitor.url_id.in_(url_ids)),
             include_bots,
-        )
-        .scalar()
+        ).scalar()
         or 0
     )
     click_through_rate = (urls_with_clicks / len(campaign_urls) * 100) if campaign_urls else 0.0
@@ -391,7 +395,11 @@ def get_campaign_summary(
     )
     top_performers_data = (
         _exclude_bots(top_q, include_bots)
-        .group_by(URL.id, URL.short_code, URL.user_data)
+        # Group by the primary key only. `user_data` is JSON, which PostgreSQL can't
+        # GROUP BY (no equality operator for `json`): listing it here made every
+        # campaign summary a 500 on PostgreSQL while SQLite's tests passed. The other
+        # selected URL columns depend on `urls.id`, so PostgreSQL accepts them as they are.
+        .group_by(URL.id)
         .order_by(func.count(Visitor.id).desc())
         .limit(5)
         .all()
@@ -419,9 +427,7 @@ def get_campaign_summary(
         Visitor.short_code.in_(short_codes),
         func.date(Visitor.visited_at) >= seven_days_ago,
     )
-    daily_data = (
-        _exclude_bots(daily_q, include_bots).group_by(func.date(Visitor.visited_at)).all()
-    )
+    daily_data = _exclude_bots(daily_q, include_bots).group_by(func.date(Visitor.visited_at)).all()
 
     daily_dict = {day.visit_date: day.click_count for day in daily_data}
     daily_timeline = []
@@ -472,7 +478,7 @@ def get_campaign_users(
     - **200**: Campaign user statistics retrieved successfully - Returns all users with their click stats, sorted by clicks descending
     - **400**: Invalid campaign ID format (not a valid UUID)
     - **401**: Authentication required or invalid token
-    - **404**: Campaign not found or doesn't belong to current user
+    - **404**: Campaign not found, or someone else's personal campaign
     """
     # Convert campaign_id string to UUID
     try:
@@ -483,10 +489,10 @@ def get_campaign_users(
             detail="Invalid campaign ID format",
         ) from exc
 
-    # Verify campaign exists and belongs to user
+    # Verify the user can see the campaign (Phase 3.14.3 — the organization's, or their own)
     campaign = (
         db.query(Campaign)
-        .filter(Campaign.id == campaign_uuid, Campaign.created_by == current_user.id)
+        .filter(Campaign.id == campaign_uuid, viewer(db, current_user).sees(Campaign))
         .first()
     )
     if not campaign:
@@ -543,12 +549,14 @@ def get_campaign_users(
         def _rows():
             for u in users:
                 row = [u.user_data.get(k, "") for k in all_keys]
-                row.extend([
-                    u.short_code,
-                    u.clicks,
-                    u.unique_ips,
-                    u.last_clicked.isoformat() if u.last_clicked else "",
-                ])
+                row.extend(
+                    [
+                        u.short_code,
+                        u.clicks,
+                        u.unique_ips,
+                        u.last_clicked.isoformat() if u.last_clicked else "",
+                    ]
+                )
                 yield row
 
         return stream_csv(
@@ -581,7 +589,8 @@ def get_overview_stats(
     """
     Get overview statistics for the user's dashboard.
 
-    Returns high-level analytics across all user's URLs and campaigns.
+    Returns high-level analytics across the URLs and campaigns the user can see:
+    the organization's and their own personal ones.
 
     **Authentication:** Required (JWT Bearer token)
 
@@ -593,16 +602,16 @@ def get_overview_stats(
     Each `top_urls` item has `short_code`, `short_url`, `title`, `original_url`,
     `url_type` and `clicks` (tracking-pixel opens are never counted as clicks).
     """
+    who = viewer(db, current_user)
+
     # Total URLs
-    total_urls = db.query(func.count(URL.id)).filter(URL.created_by == current_user.id).scalar() or 0
+    total_urls = db.query(func.count(URL.id)).filter(who.sees(URL)).scalar() or 0
 
     # Total campaigns
-    total_campaigns = (
-        db.query(func.count(Campaign.id)).filter(Campaign.created_by == current_user.id).scalar() or 0
-    )
+    total_campaigns = db.query(func.count(Campaign.id)).filter(who.sees(Campaign)).scalar() or 0
 
-    # Get all user's URLs
-    user_url_ids = db.query(URL.id).filter(URL.created_by == current_user.id).all()
+    # Get all the URLs the user can see
+    user_url_ids = db.query(URL.id).filter(who.sees(URL)).all()
     url_ids = [url_id[0] for url_id in user_url_ids]
 
     # Total clicks (all time)
@@ -610,8 +619,7 @@ def get_overview_stats(
         _exclude_bots(
             db.query(func.count(Visitor.id)).filter(Visitor.url_id.in_(url_ids)),
             include_bots,
-        )
-        .scalar()
+        ).scalar()
         or 0
     )
 
@@ -620,8 +628,7 @@ def get_overview_stats(
         _exclude_bots(
             db.query(func.count(func.distinct(Visitor.ip))).filter(Visitor.url_id.in_(url_ids)),
             include_bots,
-        )
-        .scalar()
+        ).scalar()
         or 0
     )
 
@@ -633,8 +640,7 @@ def get_overview_stats(
                 Visitor.url_id.in_(url_ids), Visitor.visited_at >= seven_days_ago
             ),
             include_bots,
-        )
-        .scalar()
+        ).scalar()
         or 0
     )
 
@@ -655,7 +661,7 @@ def get_overview_stats(
             func.count(Visitor.id).label("click_count"),
         )
         .join(Visitor, visitor_join, isouter=True)
-        .filter(URL.created_by == current_user.id)
+        .filter(who.sees(URL))
         .group_by(URL.id, URL.short_code, URL.original_url, URL.url_type, URL.title)
         .order_by(func.count(Visitor.id).desc())
         .limit(5)
@@ -686,9 +692,7 @@ def get_overview_stats(
         Visitor.url_id.in_(url_ids),
         func.date(Visitor.visited_at) >= seven_days_ago_date,
     )
-    daily_data = (
-        _exclude_bots(daily_q, include_bots).group_by(func.date(Visitor.visited_at)).all()
-    )
+    daily_data = _exclude_bots(daily_q, include_bots).group_by(func.date(Visitor.visited_at)).all()
 
     daily_dict = {day.visit_date: day.click_count for day in daily_data}
     recent_activity = []

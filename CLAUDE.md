@@ -50,6 +50,7 @@ Backend (FastAPI)               Frontend (Astro 7 + Tailwind 4)
 │   └── /rules                  ├── /dashboard/link/?code=…
 ├── /api/v1/campaigns/*         ├── /dashboard/campaigns/, …/create
 ├── /api/v1/tags/*              ├── /dashboard/campaign/?id=…
+├── /api/v1/organization/*      │   (members + roles)
 │                               └── /dashboard/analytics, /dashboard/settings
 ├── /api/v1/analytics/*
 │   └── /orphan-visits
@@ -59,15 +60,16 @@ Backend (FastAPI)               Frontend (Astro 7 + Tailwind 4)
     /robots.txt    — default-deny short URLs
 ```
 
-**Database (PostgreSQL)**: 8 models
+**Database (PostgreSQL)**: 10 models, schema migrated by Alembic (`server/migrations/`)
 - `User` (with `api_key_scope` enum + `api_key_constraints`)
 - `Domain` (single-domain at launch; UNIQUE `(domain_id, short_code)` on URLs)
 - `URL` (standard / custom / campaign + crawlable + validity window + visit cap)
 - `Visitor` (with `is_bot`, `is_pixel` flags)
 - `Campaign` (CSV-driven personalized URLs)
 - `Tag` + `url_tags` association
-- `RedirectRule` (priority + JSONB conditions)
+- `RedirectRule` (priority + JSON conditions)
 - `OrphanVisit` (typo'd / unknown short codes)
+- `Organization` + `OrganizationMember` (role: owner / admin / member; rules in `server/utils/organization.py`)
 
 **Key features**:
 - URL shortening (standard 6-char, custom slugs, campaign bulk)
@@ -75,6 +77,7 @@ Backend (FastAPI)               Frontend (Astro 7 + Tailwind 4)
 - Dynamic redirect rules (device/lang/qparam/date/browser, AND-of-conditions, priority-ordered)
 - Email tracking pixel
 - Multi-domain foundation (model-only at launch)
+- Links and campaigns belong to the organization; personal ones on request (`server/utils/access.py`)
 - Analytics with bot + pixel filtering by default
 - Orphan visit tracking
 - CSV export from analytics
@@ -90,7 +93,7 @@ Backend (FastAPI)               Frontend (Astro 7 + Tailwind 4)
 2. **Write tests**: Add/update tests before implementing (TDD).
 3. **Implement**: Make changes to pass the tests.
 4. **Verify**: Run `uv run pytest` — the whole suite must pass.
-5. **Lint**: `uv run ruff check server tests main.py` (focus on the files you touched).
+5. **Lint**: `uv run ruff check . && uv run ruff format --check .` — CI fails on either, so fix before pushing (`uv run ruff format .` rewrites).
 6. **Commit**: Use clear, descriptive commit messages following the existing pattern (`feat: Phase X.Y.Z — …`).
 
 ### Code Conventions
@@ -102,6 +105,8 @@ Backend (FastAPI)               Frontend (Astro 7 + Tailwind 4)
   - Utilities: `server/utils/<topic>.py`
   - Tests: `tests/test_<topic>.py` or `tests/test_phase<N>_<topic>.py`
   - Format: `uv run ruff format .`
+  - Scope link and campaign queries with `viewer(db, user)` from `server/utils/access.py`: `sees(Model)` in the
+    filter, `ensure_can_change(item)` before a change. Never filter by `created_by == user.id`
 
 - **Frontend** (`frontend/`):
   - Pages: `frontend/src/pages/`
@@ -121,6 +126,8 @@ Backend (FastAPI)               Frontend (Astro 7 + Tailwind 4)
   - Use `auth_headers` fixture for authenticated requests
   - For network-touching tests (OG fetcher), monkey-patch `fetch_opengraph_metadata`
   - When seeding URLs directly via ORM, set `domain_id=get_or_create_default_domain(db).id` so per-domain UNIQUE checks behave
+  - `test_user` isn't in an organization, so its links are personal. URLs and campaigns seeded without
+    `organization_id` are personal to their creator
 
 ### Key Files to Know
 
@@ -149,6 +156,12 @@ Backend (FastAPI)               Frontend (Astro 7 + Tailwind 4)
 2. Register it in `server/core/models/__init__.py` (add to imports + `__all__`)
 3. If it relates to URL/Visitor, add the relationship + `back_populates` on both sides
 4. Add a unit test that round-trips through `db_session`
+5. Write the migration (also for a new column on an existing model): against a local PostgreSQL,
+   `DB_HOST=… DB_NAME=… uv run alembic revision --autogenerate --rev-id 0002 -m "what changed"`
+   (next number in `server/migrations/versions/`), then read and fix what it generated. The app
+   runs pending migrations at startup. Keep them working for the previous release too (add now,
+   drop or rename in a later release). `tests/test_phase3141_migrations.py` fails if a model and the
+   migrations disagree; it needs `TEST_DATABASE_URL` pointing at a PostgreSQL server
 
 ### Adding a Frontend Page
 1. Create the page in `frontend/src/pages/*.astro` inside `AppLayout` (dashboard) or `MarketingLayout` (public)
@@ -167,6 +180,11 @@ uv run pytest --cov=server --cov-report=html
 
 # Specific test file
 uv run pytest tests/test_phase3102_redirect_rules.py
+
+# Migration tests need a PostgreSQL server (they skip without one; CI runs them).
+# With `docker compose up -d db`:
+TEST_DATABASE_URL=postgresql+psycopg2://postgres:postgres@localhost:5432/postgres \
+  uv run pytest tests/test_phase3141_migrations.py
 ```
 
 ### Local Development
@@ -217,7 +235,7 @@ docker compose up -d
 | Start frontend | `cd frontend && npm run dev` |
 | Run all tests | `uv run pytest` |
 | Format code | `uv run ruff format .` |
-| Check lint | `uv run ruff check server tests main.py` |
+| Check lint | `uv run ruff check . && uv run ruff format --check .` |
 | View API docs | http://localhost:8000/docs |
 | View frontend | http://localhost:4232 |
 | robots.txt | http://localhost:8000/robots.txt |

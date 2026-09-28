@@ -32,9 +32,7 @@ class User(Base):
     email = Column(String(255), unique=True, nullable=False, index=True)
     password_hash = Column(String(255), nullable=False)
     api_key = Column(String(64), unique=True, nullable=True, index=True)
-    api_key_scope = Column(
-        Enum(ApiKeyScope), nullable=False, default=ApiKeyScope.FULL_ACCESS
-    )
+    api_key_scope = Column(Enum(ApiKeyScope), nullable=False, default=ApiKeyScope.FULL_ACCESS)
     api_key_constraints = Column(JSON, nullable=True)
     is_active = Column(Boolean, default=True, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)

@@ -565,7 +565,9 @@ class TestPhase36Features:
         data = response.json()
         assert data["forward_parameters"] is True
 
-    def test_patch_url_update_title(self, client: TestClient, auth_headers: dict, db_session: Session):
+    def test_patch_url_update_title(
+        self, client: TestClient, auth_headers: dict, db_session: Session
+    ):
         """Test updating URL title via PATCH."""
         # Get user ID
         user_response = client.get("/api/v1/auth/me", headers=auth_headers)
@@ -593,7 +595,9 @@ class TestPhase36Features:
         assert data["title"] == "Updated Title"
         assert data["original_url"] == "https://example.com"  # Unchanged
 
-    def test_patch_url_update_destination(self, client: TestClient, auth_headers: dict, db_session: Session):
+    def test_patch_url_update_destination(
+        self, client: TestClient, auth_headers: dict, db_session: Session
+    ):
         """Test updating destination URL via PATCH."""
         # Get user ID
         user_response = client.get("/api/v1/auth/me", headers=auth_headers)
@@ -620,7 +624,9 @@ class TestPhase36Features:
         data = response.json()
         assert data["original_url"] == "https://new-url.com"
 
-    def test_patch_url_update_forward_parameters(self, client: TestClient, auth_headers: dict, db_session: Session):
+    def test_patch_url_update_forward_parameters(
+        self, client: TestClient, auth_headers: dict, db_session: Session
+    ):
         """Test updating forward_parameters via PATCH."""
         # Get user ID
         user_response = client.get("/api/v1/auth/me", headers=auth_headers)
@@ -667,7 +673,9 @@ class TestPhase36Features:
 
         assert response.status_code == 401
 
-    def test_patch_url_campaign_blocked(self, client: TestClient, auth_headers: dict, db_session: Session):
+    def test_patch_url_campaign_blocked(
+        self, client: TestClient, auth_headers: dict, db_session: Session
+    ):
         """Test that campaign URLs cannot be updated via PATCH."""
         # Get user ID
         user_response = client.get("/api/v1/auth/me", headers=auth_headers)
@@ -750,7 +758,9 @@ class TestPhase36Features:
         db_session.commit()
 
         # Redirect with query params
-        response = client.get("/noparams?utm_source=email&utm_campaign=test", follow_redirects=False)
+        response = client.get(
+            "/noparams?utm_source=email&utm_campaign=test", follow_redirects=False
+        )
         assert response.status_code == 302
 
         # Params should NOT be forwarded
@@ -843,7 +853,9 @@ class TestPhase37OpenGraphFeatures:
         assert data["og_image_url"] is None
         assert data["og_fetched_at"] is None
 
-    def test_get_preview_metadata(self, client: TestClient, auth_headers: dict, db_session: Session):
+    def test_get_preview_metadata(
+        self, client: TestClient, auth_headers: dict, db_session: Session
+    ):
         """Test GET /{short_code}/preview endpoint."""
         # Get user ID
         user_response = client.get("/api/v1/auth/me", headers=auth_headers)
@@ -879,7 +891,9 @@ class TestPhase37OpenGraphFeatures:
         response = client.get("/api/v1/urls/nonexistent/preview", headers=auth_headers)
         assert response.status_code == 404
 
-    def test_refresh_preview_metadata_success(self, client: TestClient, auth_headers: dict, db_session: Session):
+    def test_refresh_preview_metadata_success(
+        self, client: TestClient, auth_headers: dict, db_session: Session
+    ):
         """Test POST /{short_code}/refresh-preview endpoint."""
         # Get user ID
         user_response = client.get("/api/v1/auth/me", headers=auth_headers)
@@ -916,7 +930,9 @@ class TestPhase37OpenGraphFeatures:
         response = client.post("/api/v1/urls/nonexistent/refresh-preview", headers=auth_headers)
         assert response.status_code == 404
 
-    def test_refresh_preview_wrong_user(self, client: TestClient, auth_headers: dict, db_session: Session):
+    def test_refresh_preview_wrong_user(
+        self, client: TestClient, auth_headers: dict, db_session: Session
+    ):
         """Test POST /refresh-preview returns 404 for other user's URL."""
         from server.core.models import User as UserModel
 
@@ -943,7 +959,9 @@ class TestPhase37OpenGraphFeatures:
         response = client.post("/api/v1/urls/notmine/refresh-preview", headers=auth_headers)
         assert response.status_code == 404
 
-    def test_patch_url_update_og_fields(self, client: TestClient, auth_headers: dict, db_session: Session):
+    def test_patch_url_update_og_fields(
+        self, client: TestClient, auth_headers: dict, db_session: Session
+    ):
         """Test updating Open Graph fields via PATCH."""
         # Get user ID
         user_response = client.get("/api/v1/auth/me", headers=auth_headers)
@@ -1129,9 +1147,7 @@ class TestPhase392ExpirationAndQuota:
         assert response.status_code == 302
         assert response.headers["location"] == "https://example.com"
 
-    def test_redirect_expired_returns_410(
-        self, client: TestClient, db_session: Session, test_user
-    ):
+    def test_redirect_expired_returns_410(self, client: TestClient, db_session: Session, test_user):
         from datetime import datetime, timedelta, timezone
 
         url = URL(
@@ -1189,7 +1205,10 @@ class TestPhase392ExpirationAndQuota:
 
         response = client.get("/quota1", follow_redirects=False)
         assert response.status_code == 410
-        assert "limit" in response.json()["detail"].lower() or "max" in response.json()["detail"].lower()
+        assert (
+            "limit" in response.json()["detail"].lower()
+            or "max" in response.json()["detail"].lower()
+        )
 
     def test_redirect_max_visits_consumes_one_per_hit(
         self, client: TestClient, db_session: Session, test_user
@@ -1228,9 +1247,7 @@ class TestPhase392ExpirationAndQuota:
         response = client.get("/vanilla", follow_redirects=False)
         assert response.status_code == 302
 
-    def test_create_url_accepts_validity_fields(
-        self, client: TestClient, auth_headers: dict
-    ):
+    def test_create_url_accepts_validity_fields(self, client: TestClient, auth_headers: dict):
         from datetime import datetime, timedelta, timezone
 
         valid_until = (datetime.now(timezone.utc) + timedelta(days=30)).isoformat()
@@ -1316,25 +1333,25 @@ class TestPhase394Crawlability:
         assert r.headers["content-type"].startswith("text/plain")
         assert r.text == "User-agent: *\nDisallow: /\n"
 
-    def test_robots_lists_crawlable_urls(
-        self, client: TestClient, db_session, test_user
-    ):
-        db_session.add_all([
-            URL(
-                short_code="open1",
-                original_url="https://example.com",
-                url_type=URLType.STANDARD,
-                crawlable=True,
-                created_by=test_user.id,
-            ),
-            URL(
-                short_code="hidden1",
-                original_url="https://example.com",
-                url_type=URLType.STANDARD,
-                crawlable=False,
-                created_by=test_user.id,
-            ),
-        ])
+    def test_robots_lists_crawlable_urls(self, client: TestClient, db_session, test_user):
+        db_session.add_all(
+            [
+                URL(
+                    short_code="open1",
+                    original_url="https://example.com",
+                    url_type=URLType.STANDARD,
+                    crawlable=True,
+                    created_by=test_user.id,
+                ),
+                URL(
+                    short_code="hidden1",
+                    original_url="https://example.com",
+                    url_type=URLType.STANDARD,
+                    crawlable=False,
+                    created_by=test_user.id,
+                ),
+            ]
+        )
         db_session.commit()
 
         r = client.get("/robots.txt")
@@ -1387,9 +1404,7 @@ class TestPhase394Crawlability:
 class TestPhase395IPAnonymization:
     """Phase 3.9.5 — visitor IPs are anonymized at insert time."""
 
-    def test_anonymizes_ipv4_in_visit_log(
-        self, client: TestClient, db_session, test_user
-    ):
+    def test_anonymizes_ipv4_in_visit_log(self, client: TestClient, db_session, test_user):
         from server.core.models import Visitor
 
         url = URL(

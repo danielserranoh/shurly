@@ -45,6 +45,7 @@ mcp_server/
 ├── server.py       # FastMCP.from_fastapi(...) bootstrap + curated-tool wrappers
 ├── curated.py      # hand-curated tool logic (Phase 5.3)
 ├── auth.py         # bearer verification + forwarding (Phase 5.4)
+├── usage.py        # usage log: one JSON line per tool call (Phase 5.6.0)
 └── README.md       # this file
 ```
 
@@ -202,9 +203,15 @@ Two filters live in `mcp_server/server.py`:
   (`create_short_url_api_v1_urls_post`) to clean MCP tool names
   (`create_short_url`).
 
-The surface is now **38 tools**: auth (6), URL CRUD + tagging + previews (11),
-redirect rules (4), campaigns (6), analytics (7), tags (4). Phase 3.11 added
-`get_url` and `fetch_url_metadata` to the original 36.
+The surface is now **40 tools**: auth (6), organization (2), URL CRUD + tagging +
+previews (11), redirect rules (4), campaigns (6), analytics (7), tags (4). Phase 3.11
+added `get_url` and `fetch_url_metadata` to the original 36; Phase 3.14.2 added
+`get_organization` and `list_organization_members`.
+
+Changing the organization (roles, removals, handing ownership over) stays out of
+the MCP on purpose: an assistant that reads untrusted text, such as link titles or
+fetched pages, could be talked into "make X an owner". Those routes are excluded in
+`EXCLUDED_ROUTE_MAPS` and remain available through the web app and the REST API.
 
 `tests/test_phase52_mcp_tools.py` pins this list. When a route is added or
 renamed, the test fails until `MCP_TOOL_NAMES` (or `EXCLUDED_ROUTE_MAPS`) is
@@ -218,6 +225,7 @@ Phase 5.3 ships hand-written tools alongside the auto-generated set:
 - **`create_campaign_from_rows`** — accepts `rows: list[dict]` instead of
   an embedded CSV string. Serialises in-memory and reuses the existing
   campaign generator (same uniqueness retry, same `user_data` shape).
+  The campaign is the organization's unless `visibility="personal"`.
 - **`get_url_analytics_summary`** — composes totals + daily series + top
   countries into one call so the LLM doesn't chain `overview/daily/geo`.
 - **`add_redirect_rule`** — sugar over `POST /urls/{code}/rules` with named
@@ -227,12 +235,16 @@ Phase 5.3 ships hand-written tools alongside the auto-generated set:
   `attempted_path` so typo patterns are obvious instead of paginating
   through a flat event log.
 
+Like the API, they act with the caller's role (Phase 3.14.3): the
+organization's links and the caller's personal ones are visible, and changing
+someone else's organization link takes an admin or owner.
+
 The pure logic lives in `mcp_server/curated.py` (takes `db: Session` and
 `user: User` explicitly — easy to test). The MCP-facing wrappers in
 `mcp_server/server.py` open a `SessionLocal` per call and resolve the
 caller with `resolve_current_user(db)` (Phase 5.4).
 
-Total tool surface: **42 tools** (38 auto-generated + 4 curated). The 5.2 contract test (`tests/test_phase52_mcp_tools.py`) and
+Total tool surface: **44 tools** (40 auto-generated + 4 curated). The 5.2 contract test (`tests/test_phase52_mcp_tools.py`) and
 the 5.3 logic tests (`tests/test_phase53_curated_tools.py`) together pin
 the surface.
 
@@ -297,6 +309,128 @@ policy is decided.
 stdio sessions can list (and, once a DB is wired, invoke) tools without
 a key. **Never set this in production.** The wrapper does not set it by
 default.
+
+## Usage log (Phase 5.6.0)
+
+The dogfood needs to know which tools get used, how often, and how they fail.
+The access log can't say: every MCP call is a `POST /mcp/`, with the tool name
+inside the JSON-RPC body. So the app writes its own events, one JSON object per
+line on **stderr** (under the stdio transport, stdout is the JSON-RPC channel).
+In production they land in the service's CloudWatch log group,
+`/aws/ecs/default/shurly-api-5fdb`, where Logs Insights discovers the fields by
+itself.
+
+`mcp.tool_call` — one per tool call, written by `UsageLogMiddleware`
+(`mcp_server/usage.py`):
+
+```json
+{"ts": "2026-09-27T18:04:12.311+00:00", "event": "mcp.tool_call", "request_id": "5c1e…",
+ "tool": "update_url", "args": ["short_code", "title"], "user_id": "0b6f…",
+ "outcome": "error", "error_type": "ValueError", "http_status": 404, "duration_ms": 18.4}
+```
+
+- `args` lists argument **names**, never values: campaign rows carry names,
+  companies and emails.
+- `outcome` is `ok` or `error`. `error_type` is the exception behind the failure
+  (fastmcp wraps them all in `ToolError`, so the cause says more), `tool_error`
+  when a tool returned an error result without raising, or `cancelled`.
+  `http_status` is set when a generated tool's call into the API failed.
+- `user_id` comes from the access token; `request_id` is null for a direct call
+  or under stdio, where there's no HTTP request.
+
+`http.request` — one per HTTP request, written by `RequestIdMiddleware` in
+`main.py`. It replaces uvicorn's access log, which the image turns off:
+
+```json
+{"ts": "2026-09-27T18:04:12.330+00:00", "event": "http.request", "request_id": "5c1e…",
+ "method": "POST", "path": "/mcp/", "status": 200, "duration_ms": 25.1}
+```
+
+The path goes without its query string, which can carry tokens. `duration_ms` runs
+until the response headers are ready.
+
+A generated tool calls the API over an in-process HTTP client, and that call
+carries the MCP request's id. So one `request_id` links the `POST /mcp/`, the
+`mcp.tool_call` and the API request behind it (which also gets its own
+`http.request` line).
+
+fastmcp also logs each failed call itself, in plain text with a traceback
+(`Error calling tool 'list_urls'`). When a generated tool's API call fails, the
+error carries the API's response body, and a 422 body echoes the invalid values:
+the whole request body, campaign rows included, when a field is missing. So for
+an API error that line keeps the tool and the status, and drops the body and the
+traceback, which would only walk fastmcp's HTTP client:
+
+```
+Error calling tool 'create_short_url': HTTP error 422 (response body not logged)
+```
+
+`ApiErrorLogFilter` (`mcp_server/usage.py`) rewrites it; the MCP client still
+gets the whole error. Any other exception keeps its traceback, including one
+raised inside the API, which reaches the tool as itself.
+
+Never run production with `FASTMCP_LOG_LEVEL=DEBUG`: at that level fastmcp logs
+every call's arguments in full.
+
+### Queries (CloudWatch Logs Insights)
+
+Calls per tool:
+
+```
+filter event = "mcp.tool_call"
+| stats count(*) as calls by tool
+| sort calls desc
+```
+
+Errors per tool:
+
+```
+filter event = "mcp.tool_call" and outcome = "error"
+| stats count(*) as errors by tool, error_type, http_status
+| sort errors desc
+```
+
+Latency per tool:
+
+```
+filter event = "mcp.tool_call"
+| stats count(*) as calls, pct(duration_ms, 50) as p50_ms, pct(duration_ms, 95) as p95_ms by tool
+| sort p95_ms desc
+```
+
+Active users per day:
+
+```
+filter event = "mcp.tool_call"
+| stats count_distinct(user_id) as users, count(*) as calls by bin(1d)
+```
+
+Everything that happened for one request:
+
+```
+filter request_id = "<id>"
+| fields @timestamp, event, method, path, status, tool, outcome, duration_ms
+| sort @timestamp asc
+```
+
+### Setup (once, with SSO)
+
+Keep the logs 90 days; CloudWatch keeps them forever unless told otherwise:
+
+```bash
+AWS_PROFILE=griddo-main aws logs put-retention-policy --region eu-south-2 \
+    --log-group-name /aws/ecs/default/shurly-api-5fdb --retention-in-days 90
+```
+
+Save a query so it shows up under **Saved queries** in the console (the `/` in the
+name makes a folder). Repeat for each query above:
+
+```bash
+AWS_PROFILE=griddo-main aws logs put-query-definition --region eu-south-2 \
+    --name "shurly/mcp-calls-per-tool" \
+    --log-group-names /aws/ecs/default/shurly-api-5fdb \
+    --query-string 'filter event = "mcp.tool_call" | stats count(*) as calls by tool | sort calls desc'
+```
 
 ## Roadmap reference
 

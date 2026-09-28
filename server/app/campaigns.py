@@ -20,6 +20,7 @@ from server.schemas.campaign import (
 )
 from server.schemas.responses import get_responses
 from server.schemas.tag import TagResponse
+from server.utils.access import viewer
 from server.utils.campaign import generate_campaign_urls, parse_csv, validate_csv
 from server.utils.domain import get_or_create_default_domain
 
@@ -28,6 +29,22 @@ from server.utils.domain import get_or_create_default_domain
 from server.utils.url import build_short_url
 
 campaigns_router = APIRouter()
+
+
+def _get_visible_campaign(
+    db: Session, campaign_id: UUID, user: User, *, to_change: bool = False
+) -> Campaign:
+    """Phase 3.14.3 — 404 if the user can't see it; 403 if they see it but can't change it."""
+    who = viewer(db, user)
+    campaign = db.query(Campaign).filter(Campaign.id == campaign_id, who.sees(Campaign)).first()
+    if not campaign:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Campaign not found",
+        )
+    if to_change:
+        who.ensure_can_change(campaign, noun="campaign")
+    return campaign
 
 
 @campaigns_router.post(
@@ -55,6 +72,7 @@ def create_campaign(
     - **name**: Campaign name (required)
     - **original_url**: Base URL that all short URLs will redirect to (required)
     - **csv_data**: CSV string with header row and data rows (required)
+    - **visibility**: `organization` (default) or `personal` (only you see it)
 
     **CSV Format:**
     The CSV should have a header row defining column names, followed by data rows.
@@ -104,6 +122,7 @@ def create_campaign(
         original_url=campaign_data.original_url,
         csv_columns=column_names,
         created_by=current_user.id,
+        organization_id=viewer(db, current_user).organization_for(campaign_data.visibility),
     )
 
     db.add(campaign)
@@ -118,6 +137,7 @@ def create_campaign(
             created_by=current_user.id,
             domain_id=domain.id,
             db_session=db,
+            organization_id=campaign.organization_id,
         )
     except RuntimeError as e:
         db.rollback()
@@ -139,6 +159,8 @@ def create_campaign(
         csv_columns=campaign.csv_columns,
         url_count=len(urls),
         created_at=campaign.created_at,
+        visibility=campaign.visibility,
+        created_by_email=current_user.email,
     )
 
     return response
@@ -161,7 +183,7 @@ def list_campaigns(
     ),
 ):
     """
-    List all campaigns created by the current user.
+    List the campaigns the current user can see: the organization's and their own personal ones.
 
     Returns a paginated list of all campaigns with their URL counts.
 
@@ -178,17 +200,18 @@ def list_campaigns(
     - **401**: Authentication required or invalid token
     - **422**: `skip` or `limit` out of range
     """
+    visible = viewer(db, current_user).sees(Campaign)
     campaigns = (
         db.query(Campaign)
-        .options(selectinload(Campaign.tags))
-        .filter(Campaign.created_by == current_user.id)
+        .options(selectinload(Campaign.tags), selectinload(Campaign.creator))
+        .filter(visible)
         .order_by(Campaign.created_at.desc())
         .offset(skip)
         .limit(limit)
         .all()
     )
 
-    total = db.query(Campaign).filter(Campaign.created_by == current_user.id).count()
+    total = db.query(Campaign).filter(visible).count()
 
     # URL counts for the whole page in one grouped query (no N+1)
     url_counts = dict(
@@ -210,6 +233,8 @@ def list_campaigns(
             "url_count": url_counts.get(campaign.id, 0),
             "created_at": campaign.created_at,
             "tags": campaign.tags,  # Include tags from relationship
+            "visibility": campaign.visibility,
+            "created_by_email": campaign.created_by_email,
         }
         response = CampaignResponse.model_validate(campaign_dict)
         campaign_responses.append(response)
@@ -222,7 +247,7 @@ def list_campaigns(
     response_model=CampaignResponse,
     responses={
         200: {"description": "Campaign details retrieved successfully"},
-        **get_responses(400, 401, 403, 404),
+        **get_responses(400, 401, 404),
     },
 )
 def get_campaign(
@@ -244,8 +269,7 @@ def get_campaign(
     - **200**: Campaign details retrieved successfully - Includes all URLs with user data
     - **400**: Invalid campaign ID format (not a valid UUID)
     - **401**: Authentication required or invalid token
-    - **403**: You don't have permission to access this campaign
-    - **404**: Campaign not found
+    - **404**: Campaign not found, or someone else's personal campaign
     """
     # Convert string to UUID
     try:
@@ -256,20 +280,7 @@ def get_campaign(
             detail="Invalid campaign ID format",
         ) from e
 
-    campaign = db.query(Campaign).filter(Campaign.id == uuid_id).first()
-
-    if not campaign:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Campaign not found",
-        )
-
-    # Check ownership
-    if campaign.created_by != current_user.id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="You don't have permission to access this campaign",
-        )
+    campaign = _get_visible_campaign(db, uuid_id, current_user)
 
     # Get all URLs for this campaign
     urls = db.query(URL).filter(URL.campaign_id == campaign.id).all()
@@ -291,6 +302,8 @@ def get_campaign(
         created_at=campaign.created_at,
         tags=[TagResponse.model_validate(tag) for tag in campaign.tags],
         urls=url_responses,
+        visibility=campaign.visibility,
+        created_by_email=campaign.created_by_email,
     )
 
     return response
@@ -300,7 +313,7 @@ def get_campaign(
     "/{campaign_id}/export",
     responses={
         200: {"description": "CSV file download", "content": {"text/csv": {}}},
-        **get_responses(400, 401, 403, 404),
+        **get_responses(400, 401, 404),
     },
 )
 def export_campaign(
@@ -322,8 +335,7 @@ def export_campaign(
     - **200**: CSV file download - Includes short_code, short_url, original_url, and all user data columns
     - **400**: Invalid campaign ID format (not a valid UUID)
     - **401**: Authentication required or invalid token
-    - **403**: You don't have permission to access this campaign
-    - **404**: Campaign not found or no URLs in campaign
+    - **404**: Campaign not found, someone else's personal campaign, or no URLs in campaign
 
     **Note:** The CSV filename will be `campaign_{name}.csv`
     """
@@ -336,20 +348,7 @@ def export_campaign(
             detail="Invalid campaign ID format",
         ) from e
 
-    campaign = db.query(Campaign).filter(Campaign.id == uuid_id).first()
-
-    if not campaign:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Campaign not found",
-        )
-
-    # Check ownership
-    if campaign.created_by != current_user.id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="You don't have permission to access this campaign",
-        )
+    campaign = _get_visible_campaign(db, uuid_id, current_user)
 
     # Get all URLs for this campaign
     urls = db.query(URL).filter(URL.campaign_id == campaign.id).all()
@@ -419,8 +418,8 @@ def delete_campaign(
     - **204**: Campaign deleted successfully (no content returned)
     - **400**: Invalid campaign ID format (not a valid UUID)
     - **401**: Authentication required or invalid token
-    - **403**: You don't have permission to delete this campaign
-    - **404**: Campaign not found
+    - **403**: Only its creator, or an admin or owner, can change this campaign
+    - **404**: Campaign not found, or someone else's personal campaign
 
     **Warning:** This will cascade delete all URLs and analytics data for this campaign.
     """
@@ -433,20 +432,7 @@ def delete_campaign(
             detail="Invalid campaign ID format",
         ) from e
 
-    campaign = db.query(Campaign).filter(Campaign.id == uuid_id).first()
-
-    if not campaign:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Campaign not found",
-        )
-
-    # Check ownership
-    if campaign.created_by != current_user.id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="You don't have permission to delete this campaign",
-        )
+    campaign = _get_visible_campaign(db, uuid_id, current_user, to_change=True)
 
     # Delete campaign (cascades to URLs)
     db.delete(campaign)
@@ -485,8 +471,8 @@ def update_campaign_tags(
     - **200**: Tags updated successfully
     - **400**: Invalid campaign ID or tag IDs not found
     - **401**: Authentication required or invalid token
-    - **403**: You don't have permission to update this campaign
-    - **404**: Campaign not found
+    - **403**: Only its creator, or an admin or owner, can change this campaign
+    - **404**: Campaign not found, or someone else's personal campaign
     """
     from server.core.models import Tag
     from server.schemas.tag import TagResponse
@@ -500,20 +486,7 @@ def update_campaign_tags(
             detail=f"Invalid campaign ID: {str(e)}",
         ) from e
 
-    campaign = db.query(Campaign).filter(Campaign.id == uuid_id).first()
-
-    if not campaign:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Campaign not found",
-        )
-
-    # Check ownership
-    if campaign.created_by != current_user.id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="You don't have permission to update this campaign",
-        )
+    campaign = _get_visible_campaign(db, uuid_id, current_user, to_change=True)
 
     tag_ids_str = tag_data.get("tag_ids", [])
 
@@ -543,5 +516,5 @@ def update_campaign_tags(
 
     return {
         "campaign_id": str(campaign.id),
-        "tags": [TagResponse.model_validate(tag) for tag in campaign.tags]
+        "tags": [TagResponse.model_validate(tag) for tag in campaign.tags],
     }

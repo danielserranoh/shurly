@@ -7,10 +7,14 @@ addresses: not by IP, not through a hostname, and not through a redirect.
 Nothing here touches the network: for the duration of a test, the `dns` and `web`
 fixtures replace `socket.getaddrinfo` with `FakeDNS` and route `httpx.AsyncClient`
 through `FakeWeb` (an `httpx.MockTransport`).
+
+The fetcher's log lines are covered here too: a failed fetch logs the destination
+URL's origin, never its path or query string, which can carry personal data.
 """
 
 import asyncio
 import ipaddress
+import logging
 import socket
 from collections.abc import Callable
 
@@ -382,3 +386,111 @@ class TestPreviewEndpointsUseTheGuard:
         assert r.json() == {"og_title": None, "og_description": None, "og_image_url": None}
         assert dns.lookups == ["preview.attacker.test"]
         assert web.requests == []
+
+
+# ---------------------------------------------------------------------------
+# Log lines
+# ---------------------------------------------------------------------------
+
+# The root logger has no handler, so Python's last-resort handler prints these
+# warnings to stderr, and in production that's CloudWatch.
+EMAIL = "jane.doe@acme.example"
+PERSONAL_URL = f"https://acme.test/in/jane-doe?email={EMAIL}"
+
+
+def fails_with(error: Exception) -> Route:
+    def route(request: httpx.Request) -> httpx.Response:
+        raise error
+
+    return route
+
+
+@pytest.fixture
+def og_log(caplog):
+    caplog.set_level(logging.INFO, logger="server.utils.opengraph")
+    return caplog
+
+
+def assert_logged_without_path_or_query(log, line: str):
+    assert line in log.messages  # the failure is still logged, with the URL's origin
+    assert "jane-doe" not in log.text
+    assert EMAIL not in log.text
+
+
+class TestLogLines:
+    """A failed fetch logs the URL's origin (scheme, host, port), never its path or query."""
+
+    def test_http_error(self, dns, web, og_log):
+        dns.records["acme.test"] = [PUBLIC_IP]  # no route: FakeWeb answers 404
+
+        fetch(PERSONAL_URL)
+
+        assert_logged_without_path_or_query(og_log, "Failed to fetch https://acme.test: HTTP 404")
+
+    def test_refused_address(self, dns, web, og_log):
+        dns.records["acme.test"] = ["10.0.0.5"]
+
+        fetch(PERSONAL_URL)
+
+        assert_logged_without_path_or_query(
+            og_log,
+            "Refused to fetch metadata from https://acme.test: "
+            "acme.test resolves to non-public 10.0.0.5",
+        )
+
+    def test_refused_redirect(self, dns, web, og_log):
+        """The refusal's own message named the whole URL of the hop."""
+        dns.records["acme.test"] = [PUBLIC_IP]
+        web.routes["acme.test/in/jane-doe"] = redirect(f"ftp://files.test/{EMAIL}")
+
+        fetch(PERSONAL_URL)
+
+        assert_logged_without_path_or_query(
+            og_log,
+            "Refused to fetch metadata from https://acme.test: "
+            "not an http(s) URL with a host (scheme 'ftp')",
+        )
+
+    def test_timeout(self, dns, web, og_log):
+        dns.records["acme.test"] = [PUBLIC_IP]
+        web.routes["acme.test/in/jane-doe"] = fails_with(httpx.ReadTimeout("timed out"))
+
+        fetch(PERSONAL_URL)
+
+        assert_logged_without_path_or_query(
+            og_log, "Timeout fetching metadata from https://acme.test"
+        )
+
+    def test_other_error_logs_its_type_only(self, dns, web, og_log):
+        """A library's error message can repeat the URL."""
+        dns.records["acme.test"] = [PUBLIC_IP]
+        web.routes["acme.test/in/jane-doe"] = fails_with(
+            httpx.ConnectError(f"cannot reach {PERSONAL_URL}")
+        )
+
+        fetch(PERSONAL_URL)
+
+        assert_logged_without_path_or_query(
+            og_log, "Error fetching metadata from https://acme.test: ConnectError"
+        )
+
+    def test_preview_endpoint_guard(
+        self, client: TestClient, auth_headers: dict, caplog, monkeypatch
+    ):
+        """The endpoint's own guard, for a fetcher that raises instead of returning."""
+        from server.app import urls
+
+        async def broken_fetcher(url, timeout=5):
+            raise RuntimeError("fetcher bug")
+
+        monkeypatch.setattr(urls, "fetch_opengraph_metadata", broken_fetcher)
+        caplog.set_level(logging.WARNING, logger="server.app.urls")
+
+        r = client.post(
+            "/api/v1/urls/fetch-metadata", json={"url": PERSONAL_URL}, headers=auth_headers
+        )
+
+        assert r.status_code == 200
+        assert_logged_without_path_or_query(
+            caplog, "Open Graph lookup failed for https://acme.test"
+        )

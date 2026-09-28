@@ -1,6 +1,6 @@
 """Phase 3.10.2 — dynamic redirect rules."""
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
 import pytest
 from fastapi.testclient import TestClient
@@ -11,18 +11,17 @@ from server.core.models.url import URLType
 from server.utils.domain import get_or_create_default_domain
 from server.utils.redirect_rules import pick_target, rule_matches
 
-
 # ---- Pure-function tests for the matcher ----
 
 
 class TestEvaluator:
     def _ctx(self, **overrides):
-        defaults = dict(
-            user_agent=None,
-            accept_language=None,
-            query_params={},
-            now=datetime(2026, 4, 1, tzinfo=timezone.utc),
-        )
+        defaults = {
+            "user_agent": None,
+            "accept_language": None,
+            "query_params": {},
+            "now": datetime(2026, 4, 1, tzinfo=timezone.utc),
+        }
         defaults.update(overrides)
         return defaults
 

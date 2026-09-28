@@ -13,25 +13,26 @@ Example:
     python scripts/init_database.py shurly-dev-db.xxx.rds.amazonaws.com mypassword
 """
 
-import sys
 import os
+import sys
 
 # Add parent directory to path to import server modules
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from sqlalchemy import create_engine, text
-from server.core.models.user import User
-from server.core.models.url import URL
-from server.core.models.visitor import Visitor
-from server.core.models.campaign import Campaign
-from server.core import Base
+
+from server.core.migrations import run_migrations
 
 
-def init_database(db_host: str, db_password: str, db_name: str = "shurly", db_user: str = "postgres"):
+def init_database(
+    db_host: str, db_password: str, db_name: str = "shurly", db_user: str = "postgres"
+):
     """Initialize database with all tables."""
 
     # Construct database URL
-    db_url = f"postgresql+psycopg2://{db_user}:{db_password}@{db_host}:5432/{db_name}?sslmode=require"
+    db_url = (
+        f"postgresql+psycopg2://{db_user}:{db_password}@{db_host}:5432/{db_name}?sslmode=require"
+    )
 
     print(f"Connecting to database at {db_host}...")
 
@@ -40,19 +41,21 @@ def init_database(db_host: str, db_password: str, db_name: str = "shurly", db_us
         engine = create_engine(
             db_url,
             echo=True,  # Show SQL statements
-            pool_pre_ping=True
+            pool_pre_ping=True,
         )
 
         # Test connection
         with engine.connect() as conn:
             result = conn.execute(text("SELECT version()"))
             version = result.scalar()
-            print(f"\n✓ Connected to PostgreSQL!")
+            print("\n✓ Connected to PostgreSQL!")
             print(f"  Version: {version}\n")
 
-        # Create all tables
-        print("Creating tables...")
-        Base.metadata.create_all(bind=engine)
+        # Phase 3.14.1 — through the migrations, as the app does at startup. A schema
+        # made with create_all() would have no alembic_version: the app would stamp
+        # it at the baseline and then fail re-creating what later revisions add.
+        print("Running migrations...")
+        run_migrations(engine)
 
         print("\n✓ Database initialization complete!")
         print("\nCreated tables:")
@@ -63,12 +66,14 @@ def init_database(db_host: str, db_password: str, db_name: str = "shurly", db_us
 
         # Verify tables exist
         with engine.connect() as conn:
-            result = conn.execute(text("""
+            result = conn.execute(
+                text("""
                 SELECT tablename
                 FROM pg_tables
                 WHERE schemaname = 'public'
                 ORDER BY tablename
-            """))
+            """)
+            )
             tables = [row[0] for row in result]
 
             print("\nVerified tables in database:")

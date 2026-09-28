@@ -1,0 +1,367 @@
+---
+/**
+ * Phase 3.14 — Settings → Organization: the members and their roles. Each row offers only
+ * what the viewer's role allows (the 3.14.2 table, server/utils/organization.py); the API
+ * still checks, and its 403/409 `detail` is shown as it comes.
+ */
+import Icon from '@/components/ui/Icon.astro';
+import EmptyState from '@/components/ui/EmptyState.astro';
+import SettingsSection from './SettingsSection.astro';
+---
+
+<div class="grid gap-10" data-org-content>
+  <SettingsSection
+    id="org-members-title"
+    title="Members"
+    description="Everyone here sees the organization’s links, campaigns and stats. Roles decide who can change them."
+  >
+    <span slot="title-end" class="font-normal text-ink-500" data-member-count></span>
+
+    <div class="card overflow-hidden">
+      <div class="flex items-center gap-3 border-b border-line px-4 py-3.5 sm:px-5">
+        <span class="grid size-9 shrink-0 place-items-center rounded-xl bg-ink-950 text-brand-300"><Icon name="users" /></span>
+        <div class="min-w-0">
+          <p class="truncate font-semibold text-ink-950" data-org-name><span class="skeleton inline-block h-4 w-24 align-middle"></span></p>
+          <p class="text-[13px] text-ink-500" data-org-summary></p>
+        </div>
+      </div>
+      <div data-members></div>
+    </div>
+  </SettingsSection>
+
+  <SettingsSection id="org-roles-title" title="Roles" description="What each role can do. There’s always at least one owner.">
+    <dl class="card divide-y divide-line">
+      <div class="grid gap-2 px-5 py-4 sm:grid-cols-[7rem_minmax(0,1fr)] sm:gap-4 sm:px-6">
+        <dt><span class="badge badge-neutral"><Icon name="user" class="size-3" />Member</span></dt>
+        <dd class="text-sm leading-6 text-ink-600">Sees the organization’s links, campaigns and stats, creates their own, and changes the ones they created.</dd>
+      </div>
+      <div class="grid gap-2 px-5 py-4 sm:grid-cols-[7rem_minmax(0,1fr)] sm:gap-4 sm:px-6">
+        <dt><span class="badge badge-brand"><Icon name="shield" class="size-3" />Admin</span></dt>
+        <dd class="text-sm leading-6 text-ink-600">Everything a member can, plus editing and deleting anyone’s organization links and campaigns, and removing members.</dd>
+      </div>
+      <div class="grid gap-2 px-5 py-4 sm:grid-cols-[7rem_minmax(0,1fr)] sm:gap-4 sm:px-6">
+        <dt><span class="badge badge-dark"><Icon name="crown" class="size-3" />Owner</span></dt>
+        <dd class="text-sm leading-6 text-ink-600">Everything an admin can, plus changing roles, making other owners and handing the role over.</dd>
+      </div>
+    </dl>
+  </SettingsSection>
+</div>
+
+<EmptyState
+  id="org-none"
+  hidden
+  illustration="locked"
+  title="You’re not part of an organization"
+  body="Your links and campaigns are personal: only you can see them. People who sign up with the organization’s email domain join it."
+/>
+
+<EmptyState id="org-error" hidden illustration="error" title="We couldn’t load your organization" body="Check your connection and try again.">
+  <button type="button" class="btn btn-primary" data-org-retry><Icon name="refresh" />Try again</button>
+</EmptyState>
+
+<script>
+  import { apiDelete, apiGet, apiPatch, apiPost, errorMessage } from '@/utils/api';
+  import { formatDate, pluralize } from '@/utils/format';
+  import { html, setHTML, type RawHTML } from '@/utils/html';
+  import { icon, type IconName } from '@/utils/icons';
+  import { confirmDialog, toast, type ConfirmOptions } from '@/utils/ui';
+  import { forgetOrganization, getMe, getMyOrganization, installLockedControls } from '@/utils/viewer';
+  import type { AdoptedLinks, OrgMember, OrgRole, Organization, User } from '@/utils/types';
+
+  const ROLES: Record<OrgRole, { label: string; icon: IconName; badge: string; rank: number }> = {
+    member: { label: 'Member', icon: 'user', badge: 'badge-neutral', rank: 0 },
+    admin: { label: 'Admin', icon: 'shield', badge: 'badge-brand', rank: 1 },
+    owner: { label: 'Owner', icon: 'crown', badge: 'badge-dark', rank: 2 },
+  };
+  const withArticle = (role: OrgRole) => (role === 'admin' || role === 'owner' ? `an ${role}` : `a ${role}`);
+  const LAST_OWNER = 'Make someone else owner first: an organization needs at least one.';
+
+  const $ = <T extends HTMLElement = HTMLElement>(sel: string) => document.querySelector<T>(sel)!;
+  const content = $('[data-org-content]');
+  const noneState = $('#org-none');
+  const errorState = $('#org-error');
+  const host = $('[data-members]');
+
+  let me: User;
+  let org: Organization;
+  let members: OrgMember[] = [];
+  installLockedControls();
+
+  // ---------------------------------------------------------------- What the viewer may do
+  type Action = { kind: 'role'; role: OrgRole; label: string; locked?: boolean } | { kind: 'transfer' } | { kind: 'remove' };
+
+  /** The rules of server/utils/organization.py, seen from the viewer. */
+  function actionsFor(m: OrgMember): Action[] {
+    const mine = org.role;
+    if (m.user_id === me.id) {
+      // Anyone may lower their own role, except the last owner.
+      const lastOwner = mine === 'owner' && members.filter((x) => x.role === 'owner').length < 2;
+      return (['admin', 'member'] as OrgRole[])
+        .filter((r) => ROLES[r].rank < ROLES[mine].rank)
+        .map((role) => ({ kind: 'role', role, label: `Step down to ${role}`, locked: lastOwner }));
+    }
+    const out: Action[] = [];
+    // Owners change admins' and members' roles; owners step down themselves.
+    if (mine === 'owner' && m.role !== 'owner') {
+      for (const role of ['member', 'admin', 'owner'] as OrgRole[]) {
+        if (role !== m.role) out.push({ kind: 'role', role, label: `Make ${role}` });
+      }
+      out.push({ kind: 'transfer' });
+    }
+    // Admins and owners remove people below their role.
+    if (mine !== 'member' && ROLES[m.role].rank < ROLES[mine].rank) out.push({ kind: 'remove' });
+    return out;
+  }
+
+  // ---------------------------------------------------------------- Rendering
+  function renderSkeleton() {
+    setHTML(
+      host,
+      html`<ul class="divide-y divide-ink-100" aria-hidden="true">
+        ${['w-44', 'w-36', 'w-52'].map(
+          (w) => html`<li class="flex items-center gap-4 px-4 py-3.5 sm:px-5">
+            <span class="skeleton h-4 ${w}"></span>
+            <span class="skeleton ml-auto h-5 w-16 rounded-full"></span>
+            <span class="skeleton hidden h-4 w-24 sm:block"></span>
+            <span class="skeleton size-8"></span>
+          </li>`,
+        )}
+      </ul>`,
+    );
+  }
+
+  function menuItem(m: OrgMember, a: Action): RawHTML {
+    if (a.kind === 'remove') {
+      return html`<div class="menu-sep"></div>
+        <button type="button" class="menu-item" data-danger data-member-action="remove" data-user="${m.user_id}">${icon('log-out')}Remove from organization</button>`;
+    }
+    if (a.kind === 'transfer') {
+      return html`<button type="button" class="menu-item" data-member-action="transfer" data-user="${m.user_id}">${icon('send')}Hand over ownership</button>`;
+    }
+    // Popover menus clip CSS tooltips, so a locked item says why in a native `title`.
+    const locked = a.locked ? html`aria-disabled="true" data-locked="${LAST_OWNER}" title="Make someone else owner first"` : '';
+    return html`<button type="button" class="menu-item" data-member-action="role" data-role="${a.role}" data-user="${m.user_id}" ${locked}>${icon(ROLES[a.role].icon)}${a.label}</button>`;
+  }
+
+  function row(m: OrgMember): RawHTML {
+    const role = ROLES[m.role];
+    const actions = actionsFor(m);
+    const menuId = `member-menu-${m.user_id}`;
+    return html`<tr data-member="${m.user_id}">
+      <td class="px-4 sm:px-5">
+        <div class="flex min-w-0 items-center gap-2">
+          <span class="truncate font-medium text-ink-900" title="${m.email}">${m.email}</span>
+          ${m.user_id === me.id ? html`<span class="badge badge-outline shrink-0">You</span>` : ''}
+        </div>
+        <p class="mt-0.5 text-xs text-ink-500 sm:hidden">Joined ${formatDate(m.joined_at)}</p>
+      </td>
+      <td class="px-2 sm:px-4"><span class="badge ${role.badge}">${icon(role.icon, 'size-3')}${role.label}</span></td>
+      <td class="p-0 whitespace-nowrap text-ink-500 sm:px-4 sm:py-3"><span class="hidden sm:inline">${formatDate(m.joined_at)}</span></td>
+      <td class="py-2 pr-3 pl-1 sm:pr-4">
+        <div class="flex justify-end">
+          ${actions.length
+            ? html`<button type="button" class="btn btn-ghost btn-sm btn-icon" popovertarget="${menuId}" aria-label="Change ${m.email}’s role or membership" data-member-menu="${m.user_id}">${icon('more')}</button>
+                <div id="${menuId}" popover class="menu" data-align="end">${actions.map((a) => menuItem(m, a))}</div>`
+            : ''}
+        </div>
+      </td>
+    </tr>`;
+  }
+
+  function render() {
+    $('[data-org-name]').textContent = org.name;
+    $('[data-org-summary]').textContent = org.google_domain
+      ? `You’re ${withArticle(org.role)}. People who sign up with an @${org.google_domain} email join as members.`
+      : `You’re ${withArticle(org.role)}.`;
+    $('[data-member-count]').textContent = ` · ${members.length}`;
+    // Fixed layout so the columns hold still between renders. On phones the Joined column
+    // collapses to zero width and the date moves under the email.
+    setHTML(
+      host,
+      html`<table class="table table-fixed">
+        <caption class="sr-only">Members of ${org.name}</caption>
+        <thead>
+          <tr>
+            <th scope="col" class="px-4 sm:px-5">Member</th>
+            <th scope="col" class="w-26 px-2 sm:w-30 sm:px-4">Role</th>
+            <th scope="col" class="w-0 p-0 sm:w-34 sm:px-4 sm:py-2.5"><span class="hidden sm:inline">Joined</span></th>
+            <th scope="col" class="w-12 pr-3 pl-1 sm:w-14 sm:pr-4"><span class="sr-only">Actions</span></th>
+          </tr>
+        </thead>
+        <tbody>${members.map(row)}</tbody>
+      </table>`,
+    );
+  }
+
+  // ---------------------------------------------------------------- Load
+  async function load(): Promise<boolean> {
+    try {
+      const [user, organization] = await Promise.all([getMe(), getMyOrganization()]);
+      if (!organization) {
+        content.hidden = true;
+        errorState.hidden = true;
+        noneState.hidden = false;
+        return false;
+      }
+      me = user;
+      org = organization;
+      members = await apiGet<OrgMember[]>('/api/v1/organization/members');
+    } catch (err) {
+      content.hidden = true;
+      noneState.hidden = true;
+      errorState.hidden = false;
+      errorState.querySelector('[data-empty-body]')!.textContent = errorMessage(err);
+      return false;
+    }
+    content.hidden = false;
+    noneState.hidden = true;
+    errorState.hidden = true;
+    render();
+    return true;
+  }
+
+  /** Reload after a change; the viewer's own role may have changed too. */
+  async function reload(focusUser?: string) {
+    forgetOrganization();
+    if (!(await load())) return;
+    const again = focusUser && host.querySelector<HTMLElement>(`[data-member-menu="${CSS.escape(focusUser)}"]`);
+    (again || host.querySelector<HTMLElement>('[data-member-menu]') || $('#org-members-title'))?.focus();
+  }
+
+  $('[data-org-retry]').addEventListener('click', () => {
+    renderSkeleton();
+    content.hidden = false;
+    errorState.hidden = true;
+    void load();
+  });
+
+  // ---------------------------------------------------------------- Actions
+  const setRole = (userId: string, role: OrgRole) => apiPatch<OrgMember>(`/api/v1/organization/members/${encodeURIComponent(userId)}`, { role });
+
+  /**
+   * Confirm, then act. The dialog shows the API's 403/409 `detail`; after a refusal the list
+   * reloads, since the roles on screen were most likely out of date.
+   */
+  async function confirmThen(opts: Omit<ConfirmOptions, 'onConfirm'>, action: () => Promise<unknown>, focusUser?: string): Promise<boolean> {
+    let refused = false;
+    const ok = await confirmDialog({
+      ...opts,
+      onConfirm: () =>
+        action().then(
+          () => undefined,
+          (err) => {
+            refused = true;
+            throw err;
+          },
+        ),
+    });
+    if (!ok && refused) await reload(focusUser);
+    return ok;
+  }
+
+  async function changeRole(m: OrgMember, role: OrgRole) {
+    const self = m.user_id === me.id;
+    // Confirm what the viewer can't take back: their own step down, and a new owner.
+    if (self || role === 'owner') {
+      const ok = await confirmThen(
+        self
+          ? {
+              title: `Step down to ${role}?`,
+              body: `${role === 'member' ? 'You’ll only change the links and campaigns you created.' : 'You’ll no longer change roles.'} Only an owner can give the role back.`,
+              confirmLabel: 'Step down',
+            }
+          : {
+              title: `Make ${m.email} an owner?`,
+              body: 'Owners change roles and can hand the role over. You can’t take it back: owners step down themselves.',
+              confirmLabel: 'Make owner',
+            },
+        () => setRole(m.user_id, role),
+        m.user_id,
+      );
+      if (!ok) return;
+    } else {
+      try {
+        await setRole(m.user_id, role);
+      } catch (err) {
+        toast('Couldn’t change the role', 'error', { description: errorMessage(err) });
+        await reload(m.user_id); // the roles on screen were most likely out of date
+        return;
+      }
+    }
+    toast(self ? `You’re now ${withArticle(role)}` : `${m.email} is now ${withArticle(role)}`, 'success');
+    await reload(m.user_id);
+  }
+
+  async function transfer(m: OrgMember) {
+    const ok = await confirmThen(
+      {
+        title: `Hand ownership to ${m.email}?`,
+        body: 'They become an owner and you become an admin. Only an owner can make you owner again.',
+        confirmLabel: 'Hand over ownership',
+      },
+      () => apiPost('/api/v1/organization/transfer-ownership', { user_id: m.user_id }),
+      m.user_id,
+    );
+    if (!ok) return;
+    toast(`${m.email} is now an owner`, 'success', { description: 'You’re an admin now.' });
+    await reload(m.user_id);
+  }
+
+  async function remove(m: OrgMember) {
+    const ok = await confirmThen(
+      {
+        title: `Remove ${m.email}?`,
+        body: 'Their account is closed and they can’t sign in any more. Their links keep working.',
+        confirmLabel: 'Remove from organization',
+        danger: true,
+      },
+      () => apiDelete(`/api/v1/organization/members/${encodeURIComponent(m.user_id)}`),
+      m.user_id,
+    );
+    if (!ok) return;
+    toast(`${m.email} removed`, 'success');
+    await reload();
+    if (org.role === 'owner') await offerAdoption(m);
+  }
+
+  /**
+   * Owners only: move a removed person's personal links and campaigns to the organization.
+   * Offered right after the removal, the one moment the page knows who it was (no endpoint
+   * lists removed people yet). Skipping is safe: the links keep redirecting either way.
+   */
+  async function offerAdoption(m: OrgMember) {
+    let moved: AdoptedLinks | null = null;
+    const ok = await confirmThen(
+      {
+        title: `Move ${m.email}’s personal links to ${org.name}?`,
+        body: `Nobody else can see or change them now. Moved, everyone at ${org.name} sees them and admins manage them. Skipping is fine: they keep working either way.`,
+        confirmLabel: `Move to ${org.name}`,
+        cancelLabel: 'Skip',
+      },
+      async () => {
+        moved = await apiPost<AdoptedLinks>('/api/v1/organization/adopt-personal-links', { user_id: m.user_id });
+      },
+    );
+    if (!ok || !moved) return;
+    const { links, campaigns } = moved as AdoptedLinks;
+    if (!links && !campaigns) toast('Nothing to move', 'info', { description: `${m.email} had no personal links or campaigns.` });
+    else {
+      const what = [links && pluralize(links, 'link'), campaigns && pluralize(campaigns, 'campaign')].filter(Boolean).join(' and ');
+      toast(`Moved to ${org.name}`, 'success', { description: `${what} now ${links + campaigns === 1 ? 'belongs' : 'belong'} to the organization.` });
+    }
+  }
+
+  host.addEventListener('click', (e) => {
+    const btn = (e.target as HTMLElement).closest<HTMLElement>('[data-member-action]');
+    if (!btn) return;
+    btn.closest<HTMLElement>('[popover]')?.hidePopover();
+    const m = members.find((x) => x.user_id === btn.dataset.user);
+    if (!m) return;
+    if (btn.dataset.memberAction === 'role') void changeRole(m, btn.dataset.role as OrgRole);
+    else if (btn.dataset.memberAction === 'transfer') void transfer(m);
+    else if (btn.dataset.memberAction === 'remove') void remove(m);
+  });
+
+  renderSkeleton();
+  void load();
+</script>

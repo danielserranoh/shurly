@@ -3,6 +3,7 @@ import AppLayout from '@/layouts/AppLayout.astro';
 import PageHeader from '@/components/ui/PageHeader.astro';
 import Icon from '@/components/ui/Icon.astro';
 import QrModal from '@/components/app/QrModal.astro';
+import VisibilityToggle from '@/components/app/VisibilityToggle.astro';
 import Illustration from '@/components/illustrations/Illustration.astro';
 import { site } from '@/config/site';
 ---
@@ -22,7 +23,7 @@ import { site } from '@/config/site';
         </div>
 
         <div class="grid gap-1.5">
-          <label for="title" class="label">Title <span class="font-normal text-ink-500">— only you see this</span></label>
+          <label for="title" class="label">Title <span class="font-normal text-ink-500">— internal, visitors never see it</span></label>
           <input id="title" name="title" class="input" maxlength="255" placeholder="e.g. Q4 proposal — Acme Corp" />
         </div>
 
@@ -46,6 +47,8 @@ import { site } from '@/config/site';
           <span id="tags-label" class="label">Tags</span>
           <div id="tags" data-placeholder="Add tags — channel, audience, client…" aria-labelledby="tags-label"></div>
         </div>
+
+        <VisibilityToggle noun="link" />
 
         <label class="flex items-start justify-between gap-4 rounded-xl border border-line p-4">
           <span>
@@ -184,6 +187,7 @@ import { site } from '@/config/site';
   import { createLink, fetchMetadata, linkHref, openQr, setLinkTags } from '@/utils/links';
   import { mountTagInput } from '@/utils/tag-input';
   import { copyWithFeedback, setLoading, toast, writeClipboard } from '@/utils/ui';
+  import { visibilityOf } from '@/utils/viewer';
   import type { CreateLinkRequest, LinkMetadata, ShortLink } from '@/utils/types';
 
   const form = document.getElementById('create-form') as HTMLFormElement;
@@ -358,6 +362,7 @@ import { site } from '@/config/site';
       url: dest,
       forward_parameters: field('forward_parameters').checked,
       crawlable: field('crawlable').checked,
+      visibility: visibilityOf(form),
     };
     const title = field('title').value.trim();
     if (title) payload.title = title;

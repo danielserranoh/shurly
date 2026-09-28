@@ -154,3 +154,22 @@ def is_valid_url(url: str, max_length: int = 2048) -> bool:
 
     except Exception:
         return False
+
+
+def url_origin(url: str) -> str:
+    """
+    A URL's scheme, host and port: all a log line may keep of a destination URL.
+
+    The rest is user input that can carry personal data: the path (`/in/jane-doe`),
+    the query string (`?email=…`) and credentials before the host (`user:pass@`).
+    """
+    try:
+        parsed = urlparse(url)
+        host, port = parsed.hostname, parsed.port
+    except ValueError:  # e.g. a port that isn't a number
+        return "<invalid URL>"
+    if not host:
+        return "<URL without a host>"
+    if ":" in host:  # an IPv6 address goes back in its brackets
+        host = f"[{host}]"
+    return f"{parsed.scheme}://{host}" + (f":{port}" if port is not None else "")

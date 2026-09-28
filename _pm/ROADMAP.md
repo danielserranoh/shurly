@@ -9,6 +9,27 @@ Modern URL shortener for B2B campaigns with analytics, built for AWS serverless 
 
 ---
 
+## Next up (updated 2026-09-27)
+
+Order agreed in the 2026-09-27 review; confirm each item before starting it.
+
+1. **MCP usage log** (5.6.0): without it the dogfood produces no numbers. Code done; retention and saved queries
+   are an AWS step.
+2. **Organization and roles** (3.14): links belong to the organization by default; owner, admin and member.
+   Done before anyone creates links, so nothing has to be migrated. Brings in Alembic. API and MCP done; the
+   frontend (Settings → Organization, the personal toggle, who created each link) is left.
+3. **Frontend hosting** (4.10): S3 + CloudFront; AWS steps run with SSO.
+4. **Identity**: sign in with Google Workspace, for the web (3.13) and the MCP (5.8). One Google project covers
+   both.
+5. **MCP install guide**, in the app and in the user manual (5.9): after 5.8, since OAuth changes the steps.
+6. **Internal dogfood** with the frontend and the MCP (5.6).
+7. **Replace Shlink on `go.griddo.io`** (Phase 8): after the dogfood and error alerting (6.4).
+
+Tasks marked 🔎 were not in the original plan. Each one points to an entry in the
+[retro log](#retro-log--work-we-did-not-see-coming) at the end of this file.
+
+---
+
 ## Use Cases
 
 ### 1. Standard URL Shortening
@@ -77,7 +98,7 @@ System creates:
 - [x] Create User model (authentication)
   - [x] id, email, password_hash, api_key, created_at, is_active
 - [x] Update URL model
-  - [x] Add: short_code (indexed), url_type (enum), campaign_id, user_data (JSONB), created_by
+  - [x] Add: short_code (indexed), url_type (enum), campaign_id, user_data (JSON — planned as JSONB; PostgreSQL can't GROUP BY `json`, see the 2026-09-28 campaign-summary fix), created_by
   - [x] Remove: old short_url field if needed
 - [x] Create Campaign model
   - [x] id, name, original_url, csv_columns, created_by, created_at
@@ -192,7 +213,7 @@ System creates:
   - [x] URLs table with user data
   - [x] Export campaign URLs button (CSV download)
   - [x] Delete campaign functionality
-- [ ] Campaign analytics visualization (deferred to Phase 3.4)
+- [x] Campaign analytics visualization — summary stat cards + clicks-per-day chart on `dashboard/campaign.astro` (Phase 3.11)
 
 ### 3.4 Analytics Dashboard ✅
 - [x] Overview page (aggregate stats)
@@ -443,18 +464,19 @@ System creates:
 - [x] Truncate IPv6 to `/64` at insert time
 - [x] Config flag `ANONYMIZE_REMOTE_ADDR` (default true)
 - [x] Tests verifying no full IPs are persisted (`tests/test_network.py`)
-- [ ] Document GDPR posture in DEPLOYMENT.md (deferred to Phase 4 deployment doc pass)
+- [x] Document GDPR posture in DEPLOYMENT.md — "GDPR posture" section
 
 ### 3.9.6 Architectural Lessons - "Free" Wins ✅
 - [x] **X-Request-Id middleware** — `RequestIdMiddleware` in `main.py`
   - [x] Generate UUID per request if not provided
   - [x] Accept and propagate client-supplied `X-Request-Id` header
   - [x] Echo back in response headers
-  - [ ] Include in all log lines for CloudWatch correlation (defer access-log formatter to Phase 4)
+  - [x] Include in all log lines for CloudWatch correlation → 5.6.0: every `http.request` and `mcp.tool_call` line carries `request_id` (other lines, e.g. warnings and fastmcp's own errors, don't)
 - [x] **SHORT_URL_MODE config (`strict` | `loose`)**
   - [x] In `loose` mode: lowercase generated codes and lowercase custom slugs at insert
   - [x] In `strict` mode: preserve case, treat `Abc` and `abc` as distinct
-  - [x] Default to `loose` (Shlink's default)
+  - [x] Default to `loose` (~~Shlink's default~~: Shlink defaults to `strict`, and its `loose` also matches
+        case-insensitively, which Shurly's doesn't 🔎 R6)
 - [x] **Short-code collision retry**
   - [x] Verified existing 10-attempt retry loop in `create_short_url`
   - [x] Explicit retry-on-conflict test (`TestShortCodeCollisionRetry`)
@@ -466,7 +488,7 @@ System creates:
   - [x] Do NOT auto-trust `X-Forwarded-For`
   - [x] `TRUSTED_PROXIES` env var (CIDR list)
   - [x] Only honor `X-Forwarded-For` when source IP matches a trusted proxy
-  - [ ] Document deployment guidance in DEPLOYMENT.md (deferred to Phase 4)
+  - [x] Document deployment guidance in DEPLOYMENT.md — "Trusted-Proxy Configuration" section; prod runs `TRUSTED_PROXIES=["172.31.0.0/16"]`
 - [x] **DISABLE_TRACK_PARAM**
   - [x] Config: query param name (default `nostat`) that suppresses visit logging
   - [x] Tests confirming the redirect still happens but no Visitor row is inserted
@@ -501,7 +523,7 @@ System creates:
 - [x] Tests verifying same code can exist on different domains (`tests/test_phase310_multidomain.py`)
 
 ### 3.10.2 Dynamic Redirect Rules ✅
-- [x] Create RedirectRule model (id, url_id, priority, conditions JSONB, target_url, created_at)
+- [x] Create RedirectRule model (id, url_id, priority, conditions JSON, target_url, created_at)
 - [x] Condition types: `device` (ios/android/desktop/linux/windows/macos), `language`, `query_param`, `before_date`, `after_date`, `browser`
 - [x] Ordered evaluation by priority (first match wins)
 - [x] Endpoints: GET/POST/PATCH/DELETE `/api/v1/urls/{code}/rules`
@@ -570,6 +592,8 @@ scheduled later (sends, reports, digests) — which needs to know the user's loc
 created_at) — no name, country, timezone or avatar. The app header shows the user's initial in a `size-9`
 circle (`AppLayout.astro`, `data-user-initial`); `AccountPanel.astro` has no avatar; the backend has no
 file storage (no S3, no `UploadFile` endpoints).
+**Note (2026-09-27):** with sign-in through Google (3.13), the ID token already carries the name and a photo URL.
+Pre-fill the profile from them; the upload and crop below remain for changing the photo.
 
 ### 3.12.1 Data model — new `user_profiles` table ✅ decided
 Storage is the database, not S3 (the Phase 4.5/4.6 bucket + CloudFront doesn't exist yet). And it's a
@@ -659,7 +683,190 @@ Australia have several. So store `country` *and* `timezone`:
 
 ---
 
-## Phase 4: AWS Deployment (ECS Express on griddo-main) ✅
+## Phase 3.13: Sign in with Google (Workspace), with an optional password 🔎 R1 · 🔎 R11
+
+**Goal:** people at Griddo get in with their Griddo Google account. An account can also have a password, set by
+its owner once signed in, and both lead to the same account.
+**Priority:** 🔴 HIGH — before the dogfood. `POST /api/v1/auth/register` has accepted any email since the first
+deploy (2026-04-27): no domain check, no confirmation, no rate limit. Anyone who finds `s.griddo.io` can create
+links on a Griddo domain, which is how URL shorteners end up on phishing blocklists.
+**Decided (2026-09-27):** Griddo's mail runs on Google Workspace. Accounts are created only by signing in with
+Google (`@griddo.io`); a password is optional. This replaces the email-confirmation design, which moved to 3.15
+for external users. No email sending needed here.
+
+Why both can live together: after either login Shurly issues its own JWT, as today, so the API, the dashboard and
+the MCP's API keys don't care how someone signed in. Changing methods later (enforcing SSO, or leaving Google)
+logs nobody out: JWTs keep working until they expire (7 days in `deploy_ecs.sh`), API keys until revoked.
+
+### ~~3.13.1 Stopgap: close sign-up in production now~~ (dropped 2026-09-27)
+Not needed: production has no users and no frontend yet, and 3.13 locks sign-up down before anyone is invited.
+Until then `POST /auth/register` stays reachable through the public API and its `/docs` page.
+
+### 3.13.2 Google sign-in
+- [ ] Google Cloud project inside the griddo.io organization, OAuth consent screen **Internal** (only Griddo
+      accounts can sign in), a web OAuth client with the redirect URIs of the web sign-in and of the MCP proxy
+      (5.8). Client secret in Secrets Manager (6.3). Done by whoever administers Workspace
+- [ ] `GET /api/v1/auth/google/start` → Google (OpenID Connect, `state` + PKCE, `hd=griddo.io` as a hint) →
+      `GET /api/v1/auth/google/callback`
+- [ ] Verify the ID token server-side: signature, `aud`, `iss`, `exp`, `email_verified`, and `hd` equal to the
+      organization's domain (the `hd` parameter sent to Google is only a hint)
+- [ ] New table `user_identities` (user_id, provider, subject, email, created_at; unique provider + subject): an
+      account is recognised by Google's `sub`, which survives an email rename
+- [ ] The first sign-in creates the user and adds them to the organization as a member (3.14); later ones match
+      by `sub`
+- [ ] Hand the session to the static frontend with a one-time code that the page exchanges by `POST` for the JWT,
+      so the JWT never travels in a URL
+- [ ] `auth.login` line in the event log with the method (`google` | `password`), needed before enforcing SSO
+- [ ] With Google as the only way in, `POST /auth/register` goes, and with it the MCP `register` tool
+      (`tests/test_phase52_mcp_tools.py` pins the surface). `POST /auth/login` stays, for passwords
+
+### 3.13.3 Optional password, set by the account's owner
+- [ ] Settings → Account: set, change or remove a password, only while signed in, so it's always set by someone
+      who already proved they own the account
+- [ ] Never link a Google identity to a password nobody verified. That's account pre-hijacking: someone
+      registers `ana@griddo.io` with a password before Ana, Ana later signs in with Google, and the attacker keeps
+      a way in. With accounts created only through Google, the path doesn't exist
+- [ ] Forgot the password → sign in with Google and set a new one; no reset email 🔎 R2
+
+### 3.13.4 Changing methods without disruption
+- [ ] Setting to turn password login off for the organization's domain (SSO enforced), keeping one break-glass
+      account in case Google fails or is misconfigured. Before turning it off, the `auth.login` lines show who
+      still uses a password
+- [ ] Leaving Google some day: everyone sets a password while Google still works, then Google sign-in goes off
+- [ ] Offboarding checklist: suspending someone in Google blocks their Google sign-in, but a Shurly password and
+      their API key keep working until the account is deactivated in Shurly
+
+### 3.13.5 Frontend
+- [ ] "Sign in with Google" on the login page; the register page goes
+- [ ] Settings → Account: the password section of 3.13.3
+- [ ] Needs the frontend hosted (4.10)
+
+### 3.13.6 Verification
+- [ ] Tests (TDD) against a faked Google: `hd` and `email_verified` enforced, `state` checked, first sign-in
+      creates the user and the membership, matching by `sub` after an email change, one-time code single use and
+      short-lived, passwords set only while signed in, register gone
+- [ ] End to end against the real Google project with a Griddo account
+
+---
+
+## Phase 3.14: Organization and roles — links belong to the organization by default 🔎 R7
+
+**Goal:** everyone at Griddo sees and works on the same links, as with Shlink today, and three roles decide who
+may change what. A personal link is possible, but only when someone chooses it on purpose.
+**Decided (2026-09-27):**
+- Links and campaigns belong to the organization by default; personal ones are opt-in.
+- An **organization** entity (the "team" of earlier drafts) with three roles: **owner**, **admin**, **member**.
+- Admins can edit and delete the organization's links. Owners promote members to admin and demote them.
+- An admin can't demote an owner. An owner stops being one by stepping down or handing the role over, and the
+  only owner must hand it over first.
+- The rest of 3.14.2 and 3.14.3 (the permissions table, the role-change rule, the first owner from
+  configuration, two owners, personal links of people who leave) was proposed in review and accepted the same day.
+
+**Priority:** 🔴 HIGH — before the dogfood. With no users yet, nothing has to be migrated.
+**Today:** every link, campaign and stat is scoped to its creator. Some 20 queries filter by `created_by`
+(`server/app/urls.py`, `campaigns.py`, `analytics.py`, `mcp_server/curated.py`), so each person sees only their
+own links. Tags are already global.
+
+### 3.14.1 Schema: adopt Alembic first
+- [x] Alembic, with a baseline of the current schema (`0001`, identical to what `create_all()` built). `create_all()`
+      only creates missing tables, and this phase adds columns to `urls` and `campaigns` (4.3 planned the switch
+      "before the first non-additive change"; adding a column to an existing table already needs it)
+- [x] Migrations run at startup under a Postgres advisory lock, so tasks that boot together don't race
+      (`server/core/migrations.py`); production gets stamped at the baseline. Tested on PostgreSQL in CI
+- [x] `organizations` (id, name, google_domain, created_at) and `organization_members` (organization_id, user_id,
+      role: `owner` | `admin` | `member`, joined_at)
+- [x] `urls.organization_id` and `campaigns.organization_id`, nullable: set = organization link, NULL = personal.
+      Migration `0003` gives the organization every existing link and campaign, and creates the organization when
+      the app hasn't yet 🔎 R12
+- [x] Update "Adding a New Model" in `CLAUDE.md` with the migration step
+
+### 3.14.2 Roles
+| | member | admin | owner |
+|---|:-:|:-:|:-:|
+| See the organization's links, campaigns and stats | ✓ | ✓ | ✓ |
+| Create links and campaigns (organization or personal) | ✓ | ✓ | ✓ |
+| Edit and delete the ones they created | ✓ | ✓ | ✓ |
+| Edit and delete anyone's organization links and campaigns | | ✓ | ✓ |
+| Remove members from the organization | | ✓ | ✓ |
+| Promote members to admin, demote admins | | | ✓ |
+| Make other owners, step down, hand the role over | | | ✓ |
+
+- [x] Rule: nobody changes the role of someone whose role is equal to or above theirs, and nobody grants a role
+      above their own. So an admin can't demote an owner, nor another admin (otherwise two admins could strip
+      each other)
+- [x] At least one owner, always: the last owner can't step down, leave, be demoted or be deactivated until
+      another owner exists. Checked in one transaction, so two owners demoting each other at once can't leave none
+- [x] "Hand the role over" = make someone owner and step down, in one action
+- [x] The first owner comes from configuration (`BOOTSTRAP_OWNER_EMAIL`), not from whoever signs in first
+- [ ] Two owners from day one (yours to do after the first sign-ups; the break-glass is in place): if the only owner leaves Griddo and their Google account is suspended,
+      nobody can manage roles. Break-glass: changing `BOOTSTRAP_OWNER_EMAIL` restores an owner
+- [x] Every role change writes an `org.role_changed` line to the event log (who, whom, from, to)
+- [x] Only accounts on `ORGANIZATION_DOMAIN` (default `griddo.io`) join: exact, case-insensitive match, so
+      `evilgriddo.io`, `griddo.io.evil.com` and `eu.griddo.io` stay out; empty = anyone. An outsider keeps an
+      account with personal links only, and each refused join logs `org.join_refused` (user id, no email) 🔎 R13
+
+### 3.14.3 Behaviour
+- [ ] One organization at launch, "Griddo", with `google_domain = griddo.io`: whoever signs in with a Griddo
+      Google account joins as a member (3.13)
+- [x] New links and campaigns belong to the organization unless the request asks for `visibility: "personal"`:
+      API field, MCP tool argument, and a UI toggle that starts off: the "Personal" switch on quick create, the
+      full editor and the campaign wizard (`components/app/VisibilityToggle.astro`). An account outside any
+      organization gets a note instead, since everything it creates is personal
+- [x] Every read scoped to "my organization's links + my personal links", and every write checked against the
+      role: link CRUD, bulk tags, redirect rules, campaigns, analytics (overview, per link, per campaign, CSV) and
+      the curated MCP tools. An API key acts with its user's role. `server/utils/access.py`: a link you can't see
+      is a 404, one you can see but not change is a 403
+- [x] `created_by` stays, so lists can show who created each link (`created_by_email` in the responses). The
+      frontend shows "Created by …" ("you" for your own) and a "Personal" badge on link and campaign lists and
+      pages, and locks edit/delete where the viewer's role can't change the item (`utils/viewer.ts`)
+- [x] Someone leaves: their personal links keep redirecting, and an owner can move them to the
+      organization so someone can still manage them (`POST /api/v1/organization/adopt-personal-links`). The UI
+      offers it to an owner right after they remove someone in Settings → Organization; skipping is safe
+- [x] One organization per user at launch (the membership table allows more later). Tags stay global while
+      there's a single organization; scope them per organization before a second one
+- [x] Settings → Organization: members, roles, remove, hand the role over. Each row offers only what the
+      viewer's role allows; the API's 403/409 message is shown as is (`components/settings/OrganizationPanel.astro`)
+- [ ] Removed people list in Settings → Organization, so an owner who skipped the move at removal time can still
+      move someone's personal links later (needs `GET /api/v1/organization/removed-members`)
+
+### 3.14.4 Verification
+- [x] Tests (TDD): visibility matrix (A sees B's organization links, not B's personal ones), organization by
+      default and personal only on request; the roles table row by row, through the API and the MCP; the
+      last-owner invariant (step down, demote, deactivate, two owners demoting each other); analytics and CSV
+      follow the same scope (`tests/test_phase3142_organization_roles.py`,
+      `tests/test_phase3143_organization_links.py`)
+- [x] Migrations run against PostgreSQL (docker-compose), not only the in-memory SQLite of the test suite → PostgreSQL 17 service in CI (`--require-postgres`)
+
+---
+
+## Phase 3.15: External users by invitation (later)
+
+**Goal:** people outside Griddo's Google Workspace (agencies, freelancers) get an account when someone invites
+them.
+**Priority:** 🟢 LOW — no external users yet (2026-09-27). Build it when the first one arrives.
+**Needs email sending**: an invitation that reaches the person's mailbox is what proves the address is theirs, and
+without Workspace behind them a forgotten password can only be recovered by email.
+
+- [ ] Invitation: an owner or admin invites an email → email with a single-use link (≥32 random bytes, stored as
+      a SHA-256 hash, with an expiry) → the page asks for a password and creates the account. Opening the link
+      changes nothing, so mail security scanners that open links by themselves can't activate anything
+- [ ] Password reset by email, on the same token machinery
+- [ ] Amazon SES (`griddo-main`, eu-south-2): verify the sender domain (DKIM CNAMEs in the `griddo.io` zone in
+      `griddo-production`), agree the sender with whoever runs Griddo's mail so SPF/DMARC stay valid, and
+      **request production access**: the sandbox only delivers to verified domains (AWS usually answers within a
+      day). ECS task role with `ses:SendEmail`, so no SMTP password to store
+- [ ] `server/utils/email.py` with a `console` backend for dev and tests; templates with Jinja2
+- [ ] Rate limits on invitations, resends and resets, since each one sends an email
+- [ ] The role an external gets, and whether they see every organization link (maybe a guest role that only
+      sees what's shared with them)
+- Without SES, if externals stay few: (a) a copyable invitation link sent by the inviter's own means; it works
+  for whoever holds it, and resets are manual; (b) externals with their own Google account sign in with it: the
+  consent screen moves from Internal to External and Shurly admits only the organization's domain or invited
+  emails; no SES, but no help for people on Microsoft 365 or other mail
+
+---
+
+## Phase 4: AWS Deployment (ECS Express on griddo-main) — backend ✅ · frontend pending (4.10)
 
 **Status:** live at `https://s.griddo.io` since **2026-04-27** (first deploy, PRs #7–#11). `main` is
 production: every merge auto-deploys through `deploy-backend.yml`. The lessons from the rollout, the
@@ -684,7 +891,7 @@ written, with notes where reality differed.
 
 **Hostnames**:
 - `s.griddo.io` — Shurly API + redirect path (short, optimized for printing/QR — short URLs benefit from short hosts).
-- `shurl.griddo.io` (or `shurly.griddo.io`) — reserved for the future frontend (Phase 7).
+- `shurl.griddo.io` (or `shurly.griddo.io`) — reserved for the frontend (4.10).
 
 **Existing reusable infrastructure** (created during the Shlink deploy):
 - VPC `vpc-01b31e19aa032bcff` (default)
@@ -776,7 +983,8 @@ End-to-end run with the user driving SSO locally:
 - [x] `./scripts/setup_custom_domain.sh` (cert, rule, DNS)
 - [x] Update Lambda `RULE_SYNC_MAP`
 - [ ] Smoke checklist — only `/api/v1/health` (checked by CI on every deploy) and the forced redeploy are on record; re-run the rest against production and tick them here:
-  - `register` → `login` → returns JWT
+  - `register` → `login` → returns JWT (once 3.13 lands, register goes: sign in with Google, or with a password
+    set afterwards)
   - `POST /api/v1/urls` creates a short URL bound to `s.griddo.io`
   - `GET /<code>` returns 302 to destination
   - `GET /<code>/track` returns 43-byte GIF
@@ -785,18 +993,53 @@ End-to-end run with the user driving SSO locally:
   - Force `update-express-gateway-service --force-new-deployment` → verify `s.griddo.io` stays up
 - [x] Capture findings → the 13 lessons in `docs/AWS_ECS_DEPLOYMENT.md`, fixed in the `fix(scripts)` / `hotfix` commits of PRs #7–#10
 
+### 4.10 Frontend hosting 🔎 R3
+The Lambda-era plan hosted the frontend on S3 + CloudFront ("Phase 4.6"). The ECS rewrite of this phase
+(2026-04-26) dropped both and sent the frontend to "Phase 7", which is Documentation & Handoff. The frontend
+has been finished since 3.11 with nowhere to run: `deploy-frontend.yml` is manual-only and points at
+buckets that no doc says were created.
+
+**Decided (2026-09-27): one private S3 bucket behind CloudFront**, for the public pages (landing,
+pricing, sign-in) and the dashboard alike. The build is static on purpose: 3.11 dropped the Node adapter
+for this.
+- *One hosting is enough.* The dashboard's HTML/JS holds no data and no secrets; every record comes from the
+  API, behind a JWT or an API key. The privacy of the dashboard lives in the API.
+- *Cheapest.* The traffic fits CloudFront's always-free tier (1 TB and 10M requests a month) and S3 storage
+  costs cents. A container means a Fargate task running around the clock (a second Express service, as
+  shlink-web does), or frontend releases tied to backend deploys (served from the API container, where the
+  root path belongs to short codes).
+- *Safest.* No server to patch; the bucket stays private behind Origin Access Control (OAC); HSTS and CSP
+  headers come from a CloudFront response-headers policy. CSP matters here: the JWT lives in `localStorage` (3.1).
+
+- [ ] Choose the hostname. Proposed: `links.griddo.io` for good, the address the team already uses to shorten
+      links (it frees up when Shlink's web client retires, Phase 8); until then a working host for the dogfood
+      (e.g. `shurly.griddo.io`) that later redirects there
+- [ ] S3 bucket (Block Public Access on) + CloudFront distribution with OAC
+- [ ] ACM certificate in **us-east-1**: CloudFront only takes certificates from N. Virginia (the ALB's is in
+      eu-south-2). DNS validation in `griddo-production`
+- [ ] CloudFront Function rewriting `/dashboard/` → `/dashboard/index.html`: a private bucket is reached through
+      the S3 REST endpoint, which doesn't resolve directory indexes. The comment in `astro.config.mjs` saying no
+      CDN rewrites are needed only holds for the public website endpoint
+- [ ] Error response: 404 → `/404.html`
+- [ ] Route 53 alias record, from `griddo-production`
+- [ ] Rewrite `deploy-frontend.yml`: OIDC role as in 4.8 (it still uses access keys), the real bucket,
+      `PUBLIC_API_URL=https://s.griddo.io`, `PUBLIC_SITE_URL`; re-enable `push` on `frontend/**`. Its header
+      still points at the Lambda-era "Phase 4.5/4.6"
+- [ ] `CORS_ORIGINS` in the task matches the chosen hostname (`deploy_ecs.sh` defaults to `https://shurl.griddo.io`)
+- [ ] Update the hostnames table in `DEPLOYMENT.md` (it still says "Future frontend | 7")
+
 ---
 
 ## Phase 5: MCP Server over Streamable HTTP
 
-**Goal:** Expose the existing API as an MCP server so internal users (and Claude Code / Claude Desktop) can drive Shurly without a frontend. Pilot for the broader "MCP-as-product" thesis: capture how people actually use the service via natural language, and use those signals to prioritize Phase 7 (frontend) features.
+**Goal:** Expose the existing API as an MCP server so internal users (and Claude Code / Claude Desktop) can drive Shurly without a frontend. Pilot for the broader "MCP-as-product" thesis: capture how people actually use the service via natural language, and use those signals to prioritize frontend features.
 **Duration:** ~1.5–2 weeks
-**Priority:** 🟡 MEDIUM — Runs after Phase 4 (deploy) and before Phase 7 (frontend). Backend-only stack already has 3.9 + 3.10 hardening, so this exposes a stable surface.
+**Priority:** 🟡 MEDIUM — Runs after Phase 4 (deploy). It was planned to run before the frontend existed; 3.11 built the frontend first, so the dogfood now feeds the frontend backlog. Backend-only stack already has 3.9 + 3.10 hardening, so this exposes a stable surface.
 **Reference:** [Model Context Protocol spec](https://modelcontextprotocol.io/), Anthropic Python SDK (`mcp`), FastMCP (https://github.com/jlowin/fastmcp). Decision rationale recorded in conversation thread (PR review).
 
 **Sequencing:**
 - Phase 4 (deploy) must complete first — MCP runs against the same backend; we don't want to debug Lambda cold starts and MCP transports simultaneously.
-- Internal dogfood window of ~2–4 weeks before Phase 7 starts. Findings feed the frontend prioritization.
+- Internal dogfood window of ~2–4 weeks. Findings feed the frontend backlog.
 
 ### 5.1 Foundation & framework choice ✅
 - [x] Decision recorded: start with **`fastmcp` standalone** for fast prototyping (auto-generates tools from FastAPI), reserve the option to migrate to `mcp.server.fastmcp` (official SDK) if upstream divergence becomes a real risk.
@@ -850,10 +1093,40 @@ End-to-end run with the user driving SSO locally:
 - [x] **Reserved short codes**: custom codes `mcp`, `docs`, `redoc` get a suffixed code, as for a taken one (PR #35).
 
 ### 5.6 Internal dogfood + signal capture
-- [ ] Roll out to the Griddo team: 3–5 internal users with API keys.
+**Prerequisites:** the usage log (5.6.0), the organization and roles (3.14), the hosted frontend (4.10), Google
+sign-in and OAuth (3.13, 5.8) and the install guide (5.9). **Decided (2026-09-27):** the dogfood runs with the frontend too.
+
+#### 5.6.0 Usage log (prerequisite) 🔎 R4 — code ✅, AWS setup pending
+In the access log every MCP call is a `POST /mcp/`: the tool name travels inside the JSON-RPC body, so nothing
+records which tools get used, how often, or how they fail.
+- [x] One JSON line per tool call (`mcp.tool_call`: tool, argument names, user, outcome, error type, HTTP status,
+      duration, request id). On **stderr**, not stdout: under the stdio transport stdout is the JSON-RPC channel
+- [x] Hooked as a fastmcp middleware (`on_call_tool`, `mcp_server/usage.py`), so auto-generated and curated tools
+      are covered alike
+- [x] Never log argument values: campaign rows carry names, companies and emails (GDPR). Argument names only
+  - [x] Nor in fastmcp's own line for a failed call 🔎 R10: for an API error it printed the response body, and a 422
+        echoes the invalid values (the whole request body, CSV rows included, when a field is missing). Now it keeps
+        the tool and the status, without the body or the traceback (`ApiErrorLogFilter`, `mcp_server/usage.py`).
+        Other exceptions keep their traceback. Production never runs `FASTMCP_LOG_LEVEL=DEBUG`, which logs arguments
+  - [x] Nor in a database error's message, for any request 🔎 R10: SQLAlchemy ends it with the statement's
+        parameters, and the traceback kept for real errors prints it. The engine hides them (`hide_parameters=True`;
+        `tests/test_db_error_messages.py`). PostgreSQL's own detail for a constraint violation still names the value
+  - [x] Nor in the link-preview fetcher's warnings 🔎 R10: a refused, timed-out or failed fetch logged the whole
+        destination URL (a tool argument of `create_short_url`), whose path or query can carry personal data. They
+        keep its origin only (`url_origin`, `server/utils/url.py`; tests in `tests/test_opengraph_ssrf.py`)
+- [x] Same JSON format for the HTTP request line (`http.request`, from `RequestIdMiddleware`), with `request_id`;
+      uvicorn's access log is off in the image. A generated tool's call into the API carries the MCP request's id
+- [x] Logs Insights queries (calls, errors and latency per tool, daily users, one request end to end) documented
+      in `mcp_server/README.md` § Usage log
+- [ ] Save those queries in CloudWatch and set retention on the log group (90 days): commands in the same section,
+      to run once with SSO
+- [x] Tests: `tests/test_phase560_usage_log.py` (14)
+
+#### 5.6.1 Rollout and signal capture
+- [ ] Roll out to the Griddo team: 3–5 internal users, with the frontend and the MCP.
 - [ ] Capture for 2–4 weeks: tool invocation counts (which tools get used vs ignored), tool error rates, average call duration.
 - [ ] Capture qualitatively: which workflows feel smooth in chat, which feel awkward (e.g. CSV import, charts).
-- [ ] Output: a "frontend feature priority" list backed by real signal, fed into Phase 7.
+- [ ] Output: a "frontend feature priority" list backed by real signal, fed into the frontend backlog.
 
 ### 5.7 Verification
 - [ ] All auto-generated + curated tools have at least one happy-path test. → curated tools: yes (`tests/test_phase53_curated_tools.py`); auto-generated: see the open item in 5.2
@@ -862,11 +1135,47 @@ End-to-end run with the user driving SSO locally:
 - [ ] `mcp_server/README.md` exists and covers: architecture, framework choice, auth, deployment, how to add a new tool. → everything but "how to add a new tool"
 - [ ] CHANGELOG.md entry under "Added" describing the MCP surface. → missing: the CHANGELOG only mentions MCP in passing (fixes and the Phase 3.11 tools)
 
+### 5.8 OAuth 2.1 sign-in for the MCP, alongside API keys 🔎 R8
+**Decided (2026-09-27):** MCP clients can sign in with OAuth 2.1; API keys keep working. claude.ai's custom
+connectors only authenticate with OAuth (their form has no field for a bearer token), so without it Shurly can't be
+added there; Claude Code gets by with `--header`.
+- [x] **Authorization server: Google Workspace** (decided 2026-09-27), through fastmcp's OAuth proxy
+      (`GoogleProvider`, in fastmcp 4.0.10), which also handles client registration (Dynamic Client Registration,
+      Client ID Metadata Documents). Same Google project as the web sign-in (3.13.2)
+- [ ] Add the MCP proxy's redirect URI to the Google OAuth client of 3.13.2
+- [ ] Protected-resource metadata (RFC 9728), and 401s carrying `WWW-Authenticate: Bearer resource_metadata="…"`
+      (answers the open question at the end of this phase)
+- [ ] Map the Google identity to the Shurly user through `user_identities` (3.13.2): organization domain only,
+      member of the organization (3.14)
+- [ ] API keys keep working: the verifier accepts either an API key or an OAuth access token. Check this first:
+      fastmcp takes a single auth provider, so it likely needs a small one wrapping `GoogleProvider` and
+      `ShurlyTokenVerifier`
+- [ ] No collisions with short codes: auth routes served at the root (`/authorize`, `/token`, `/register`,
+      `/.well-known/…`) get reserved like `mcp`, `docs` and `redoc` (PR #35), or live under `/mcp/`
+- [ ] Pick the canonical MCP host (`s.griddo.io` or `go.griddo.io`) before people install it: OAuth ties the
+      client's configuration to the resource URL
+- [ ] Tests: metadata documents, the 401 header, both token types, user mapping, non-griddo identities refused
+- [ ] Check it end to end: Claude Code (`claude mcp add --transport http …`, sign-in in the browser) and a
+      claude.ai custom connector
+
+### 5.9 MCP install guide, in the app and in the user manual 🔎 R9
+**Decided (2026-09-27):** the app explains how to install the MCP, and the user manual carries the same instructions.
+**Today:** Settings → API & MCP shows the API key and a `curl` example, nothing about installing the MCP. The steps
+live in `mcp_server/README.md`, written for developers. There is no user manual (7.1).
+- [ ] One source for both: the manual as Markdown inside the frontend (e.g. an Astro content collection under
+      `frontend/src/content/manual/`, published at `/manual/`), and Settings → API & MCP renders the same MCP page,
+      so the two can't drift
+- [ ] Steps per client: Claude Code and claude.ai / Claude Desktop (custom connector), plus any other client the
+      team uses. OAuth sign-in (5.8) first, the API key as the alternative
+- [ ] In the app, the user's own values filled in (endpoint URL, and their key if they take that route)
+- [ ] Voice and patterns from `design/DESIGN_SYSTEM.md`
+- [ ] Written once 5.8 lands, since OAuth changes the steps
+
 ### Open questions (resolve during 5.1)
 - Does `fastmcp.from_fastapi()` produce useful tool descriptions, or do we need to enrich them via Pydantic `Field(..., description=...)` everywhere first? (Likely yes — most of our schemas already have descriptions; sweep the gaps.) → still open: nobody has done the sweep
 - ~~Should pixel/redirect endpoints be exposed as tools at all?~~ **Resolved:** no — excluded in `EXCLUDED_ROUTE_MAPS` (5.2).
 - ~~Per-user MCP config in Claude Code: how does the team add their personal API key without committing it?~~ **Resolved:** `claude mcp add shurly --transport http --url https://s.griddo.io/mcp/ --header "Authorization: Bearer <api_key>"`, documented in `mcp_server/README.md`.
-- Authorization discovery: we publish no RFC 9728 protected-resource metadata. All four `.well-known` paths 404, and the 401 carries a bare `WWW-Authenticate: Bearer` with no `resource_metadata=` pointer, so MCP clients cannot auto-discover how to authenticate and must be handed an API key. Not a flag we can flip — it needs our own authorization server or delegation to an IdP (fastmcp ships providers for Auth0, Azure, Clerk, Google, Keycloak, WorkOS, …). A product decision, not a technical one.
+- Authorization discovery: we publish no RFC 9728 protected-resource metadata. All four `.well-known` paths 404, and the 401 carries a bare `WWW-Authenticate: Bearer` with no `resource_metadata=` pointer, so MCP clients cannot auto-discover how to authenticate and must be handed an API key. Not a flag we can flip — it needs our own authorization server or delegation to an IdP (fastmcp ships providers for Auth0, Azure, Clerk, Google, Keycloak, WorkOS, …). A product decision, not a technical one. **Decided 2026-09-27:** yes, OAuth 2.1 alongside API keys → 5.8.
 
 ---
 
@@ -894,7 +1203,7 @@ End-to-end run with the user driving SSO locally:
 - [ ] ~~Lambda cold start optimization~~ — not applicable on ECS; containers have no cold start
 
 ### 6.3 Security Hardening
-- [ ] Rate limiting — no API Gateway on this stack, so it needs app-level limiting or AWS WAF on the shared ALB
+- [ ] Rate limiting — no API Gateway on this stack, so it needs app-level limiting or AWS WAF on the shared ALB (first slice: invitations and resets in 3.15, since each one sends an email)
 - [ ] Input validation review
 - [ ] SQL injection prevention check
 - [ ] XSS prevention in frontend (dynamic HTML goes through the escaping `html` tag from `@/utils/html`; audit the remaining raw `innerHTML` uses)
@@ -905,7 +1214,7 @@ End-to-end run with the user driving SSO locally:
 
 ### 6.4 Monitoring & Logging
 - [x] CloudWatch Logs setup → `/aws/ecs/default/shurly-api-5fdb`; `X-Request-Id` correlates requests
-- [ ] Error alerting (SNS/email)
+- [ ] Error alerting (SNS/email) — required before the Shlink cutover (8.5)
 - [ ] Key metrics dashboard
   - [ ] ECS task count / CPU / memory
   - [ ] ALB 5xx and target health
@@ -919,18 +1228,93 @@ End-to-end run with the user driving SSO locally:
 ### 7.1 Documentation
 - [x] API documentation (OpenAPI/Swagger) - auto-generated by FastAPI (`/docs`, `/redoc`)
 - [x] Deployment guide → `DEPLOYMENT.md` (walkthrough) + `docs/AWS_ECS_DEPLOYMENT.md` (playbook)
-- [ ] User manual for dashboard
+- [ ] User manual for dashboard: starts with the MCP install page (5.9), which lives in the frontend
 - [ ] Architecture diagram
 - [ ] Database schema diagram
 - [ ] Environment variables reference
 
 ### 7.2 Operational Runbook
-- [ ] How to add new users
+- [ ] How to add new users → self-service sign-up for `@griddo.io` once 3.13 ships
 - [x] How to investigate issues → troubleshooting catalog in `docs/AWS_ECS_DEPLOYMENT.md`
 - [x] How to scale if needed → "Scale up/down" in the same runbook
 - [ ] Backup and recovery procedures
 - [ ] Cost monitoring guide
 
+---
+
+## Phase 8: Replace Shlink on go.griddo.io 🔎 R5
+
+**Goal:** Shurly takes over `go.griddo.io` and the Shlink stack is retired (shlink-api, shlink-web on
+`links.griddo.io`, and its RDS). Every link already in circulation keeps working.
+**Priority:** 🟡 MEDIUM — after the dogfood (5.6), the organization and roles (3.14) and error alerting (6.4): from the
+cutover on, links printed and emailed over the years depend on Shurly.
+
+**Can both coexist?** They already do: the shared ALB routes by hostname (`go.griddo.io` → Shlink,
+`s.griddo.io` → Shurly). Each hostname points at one service at a time, so the cutover moves `go.griddo.io`
+with one ALB change, and rolling back restores it. Shurly resolves links by (Host → domain, code) since
+3.10.1, so one instance can serve both hostnames.
+
+### 8.1 Decisions first
+- [x] Hostname for new links after the cutover: **`go.griddo.io`** (decided 2026-09-27). A new address for links
+      would confuse people; `s.griddo.io` keeps working in parallel. Until the cutover `go.griddo.io` still points
+      at Shlink, so links made in Shurly before then live on `s.griddo.io` (and keep working)
+- [x] Shared or personal links 🔎 R7: **the organization's by default, personal only on purpose** (decided
+      2026-09-27) → 3.14
+- [x] Owner of the migrated links: the Griddo organization (3.14)
+- [ ] Visit history: import it as `Visitor` rows (no schema change, but Shlink exposes no IPs, so unique-visitor
+      counts won't cover it) or archive Shlink's export and start counting at the cutover
+
+### 8.2 Case sensitivity 🔎 R6
+Shlink defaults to `SHORT_URL_MODE=strict`: case-sensitive lookups and mixed-case generated codes. Shurly's
+`loose` lowercases codes when they are created but matches the path exactly; Shlink's `loose` also matches
+case-insensitively.
+- [ ] Check which mode `go.griddo.io` runs
+- [ ] `strict` → import codes verbatim (skip `normalize_short_code`); Shurly's exact-match resolver already
+      behaves like Shlink's strict mode. Pin it with a test so lookups never get lowercased by accident
+- [ ] `loose` → case-insensitive lookup on that domain before the cutover
+
+### 8.3 Finish multi-domain (3.10.1 shipped the model only)
+- [ ] `Domain` row for `go.griddo.io`
+- [ ] `build_short_url()` uses the link's own domain; today it always builds on the default one, so a migrated
+      link would be shown as `s.griddo.io/<code>`
+- [ ] Make `go.griddo.io` the default domain at the cutover. Changing `DEFAULT_DOMAIN` alone won't do it:
+      `get_or_create_default_domain()` keeps the row already marked default (`s.griddo.io`), so new links would
+      still be created there (and, until the previous item lands, shown on `go.griddo.io`). Demote `s.` and
+      promote `go.` explicitly, with a test
+- [ ] No per-link domain choice needed: every new link goes on `go.griddo.io`
+
+### 8.4 Export → clean → import
+Clean in the export, not in Shlink: Shlink stays intact as the rollback, every decision is written down, and
+the import can be re-run.
+- [ ] Export script over Shlink's REST API (`/rest/v3/short-urls`, `…/redirect-rules`, `…/visits`) with an API
+      key → raw JSON snapshot, archived untouched
+- [ ] Review sheet (CSV), one row per link: code, domain, destination, title, tags, created, visits, last visit,
+      expired/capped, destination HTTP status, duplicate-of, and a `decision` column: `keep`, `archive` or `drop`
+- [ ] Default to `keep`: a kept link costs a row; a dropped one that turns out to be on a poster, a QR code or a
+      PDF breaks for good. `archive` = migrate with a `legacy` tag the dashboard can hide; `drop` only for tests
+      and duplicates
+- [ ] Field mapping: long URL, title, tags, valid since/until, max visits, crawlable, `forwardQuery` →
+      `forward_parameters`, redirect rules. Conditions Shurly lacks (e.g. IP or geolocation) go in the report;
+      nothing is dropped silently
+- [ ] Import (idempotent, `--dry-run` first): exact code, original domain and creation date; fails on a
+      conflict instead of suffixing like the custom-code path does. It writes to the private RDS, so it runs
+      as an admin-only endpoint or through ECS Exec (documented in `DEPLOYMENT.md`; it needs an ECS task role
+      with SSM permissions, and `deploy_ecs.sh` sets none today)
+
+### 8.5 Cutover
+- [ ] Freeze link creation in Shlink; final delta export + import
+- [ ] ALB: add `go.griddo.io` to the host condition of rule 12 (Shurly), then delete rule 10 (Shlink). Rollback:
+      recreate rule 10. Update `RULE_SYNC_MAP` in `infra/ecs-alb-rule-sync/`. The `go.griddo.io` certificate is
+      already on the listener
+- [ ] Switch the default domain to `go.griddo.io` (8.3) in the same window
+- [ ] Smoke on `go.griddo.io` with a sample of migrated codes, mixed case included
+- [ ] Watch orphan visits on `go.griddo.io` for 2–4 weeks: hits on dropped codes show what was still in use →
+      re-import them from the raw export
+
+### 8.6 Decommission
+- [ ] Shlink stopped but restorable during the rollback window; final RDS snapshot
+- [ ] Delete shlink-api and shlink-web, ALB rules 10/11, their `RULE_SYNC_MAP` entries and Shlink's RDS
+- [ ] Point `links.griddo.io` at the Shurly frontend, if 4.10 chooses it
 
 ---
 
@@ -973,7 +1357,7 @@ To maximize velocity, we'll use specialized agents:
 ## Notes & Decisions
 
 ### Database Choice: PostgreSQL ✅
-- JSONB for flexible campaign user data
+- JSON for flexible campaign user data (planned as JSONB; the columns are `json`)
 - Better AWS integration
 - Native UUID support
 - Superior analytics query performance
@@ -989,7 +1373,135 @@ To maximize velocity, we'll use specialized agents:
   pay cold starts, and the RDS pool stays warm. See Phase 4 and the decision log in `docs/AWS_ECS_DEPLOYMENT.md`.
 
 ### Campaign URL Approach: Lookup Token ✅
-- Short code maps to JSONB user_data
+- Short code maps to JSON user_data
 - Privacy-friendly (no PII in URLs)
 - Flexible (any CSV columns)
 - Server-side parameter injection on redirect
+
+---
+
+## Retro log — work we did not see coming
+
+Every task that joined the plan late, or turned out to be missing, gets an entry here and a 🔎 R<n> marker
+where the task lives. Kinds: **missed** (should have been planned), **new scope** (decided later), **wrong
+record** (the docs said something the code or the source didn't). This log feeds the final retro: what to
+check earlier in the next project.
+
+### R1 — Sign-up open to anyone in production · missed · found 2026-09-27
+- **What:** `POST /api/v1/auth/register` took any email, unconfirmed and unthrottled, from the first deploy
+  (2026-04-27) → 3.13
+- **How it surfaced:** reviewing the pending work before the dogfood
+- **Why it slipped:** Phase 1.3 built open sign-up as the default, and the pre-launch hardening (3.9) covered
+  the redirect path but never asked who may sign up
+- **Lesson:** before going public, list every unauthenticated endpoint and decide who may call it. Who can
+  sign up is a product decision to make explicitly
+- **Decision:** the stopgap (3.13.1) was dropped on 2026-09-27, since production has no users and no frontend yet
+- **Later the same day:** 3.14.2 + 3.14.3 made the open sign-up worse — any new account joined the organization
+  and could read and export every campaign, recipients' names and emails included → closed by the domain gate
+  in 3.14.2 (R13). Sign-up itself stays open until 3.13
+
+### R2 — No password reset · missed · found 2026-09-27
+- **What:** a user who forgets the password has no way back → 3.13.3 (sign in with Google and set a new one;
+  external users get a reset email in 3.15)
+- **How it surfaced:** designing the confirmation email for R1
+- **Why it slipped:** with no email sending in the stack, every flow that needs a mailbox stayed invisible
+- **Lesson:** settle "can the app send email?" early; confirmation, reset and notifications all depend on it
+
+### R3 — Frontend hosting fell out of the plan · missed · found 2026-09-27
+- **What:** the ECS rewrite of Phase 4 (2026-04-26, `eb0efd6`) dropped the S3 + CloudFront items and pointed
+  the frontend at "Phase 7", which is Documentation. The frontend was finished (3.11) with nowhere to run → 4.10
+- **How it surfaced:** asking why the redesign had no public URL
+- **Why it slipped:** the pivot rewrote the phase around the backend, and nobody compared the deliverables of
+  the old plan with the new one
+- **Lesson:** after a pivot, diff the deliverables of the old plan against the new one: each one gets a home or
+  an explicit "dropped"
+
+### R4 — The dogfood had nothing to measure with · missed · found 2026-09-27
+- **What:** 5.6 asks for per-tool counts, errors and durations, and nothing logs them → 5.6.0
+- **How it surfaced:** checking what 5.6 needs before starting it
+- **Why it slipped:** the goal named the measurement but not the task that produces the data
+- **Lesson:** every "measure X" goal gets its instrumentation task, done before the measuring window opens
+
+### R5 — Replace Shlink · new scope · decided 2026-09-27
+- **What:** Shurly reused Shlink's infrastructure, but the plan never said whether it would replace it.
+  Decided: it will, migrating its links → Phase 8
+- **Lesson:** when a new system overlaps an existing one, write down its fate on day one (coexist, replace or
+  absorb): it shapes the data model (R7) and the migration
+
+### R6 — Shlink's defaults recorded wrong · wrong record · found 2026-09-27
+- **What:** 3.9.6 says `loose` is Shlink's default; it's `strict`. And Shurly's `loose` only lowercases codes
+  on create, while Shlink's also matches case-insensitively → 8.2
+- **How it surfaced:** reading Shlink's docs to plan the migration
+- **Why it slipped:** the setting was borrowed by name, without checking its default or behaviour at the source
+- **Lesson:** when a design copies a reference system, cite the source for each default and behaviour it copies
+
+### R7 — Links belong to a person; Shlink's belong to the team · missed · found 2026-09-27
+- **What:** every Shurly query filters by `created_by`; replacing a shared Shlink needs shared links or a team
+  model → 8.1. Decided: links belong to the organization by default, personal ones on purpose, with three
+  roles (owner, admin, member) → 3.14
+- **How it surfaced:** deciding who would own the migrated links
+- **Why it slipped:** the use cases at the top of this file are one person's flows; a team sharing links never
+  was one
+- **Lesson:** in B2B tools, decide early whether data belongs to the person or to the team: cheap on day one,
+  a migration later
+
+### R8 — API keys don't fit every MCP client we targeted · missed · found 2026-09-27
+- **What:** Phase 5 named Claude Desktop among its clients but only built API-key auth. claude.ai's custom
+  connectors only authenticate with OAuth: their form has no field for a bearer token → 5.8
+- **How it surfaced:** planning how people would install the MCP
+- **Why it slipped:** the server's auth was chosen without checking how each target client authenticates
+- **Lesson:** for any integration, list the target clients first and check how each one authenticates
+
+### R9 — No install guide for the people who would use the MCP · missed · found 2026-09-27
+- **What:** the install steps live only in `mcp_server/README.md`, written for developers; the app's "API & MCP"
+  tab shows an API key and a `curl` example. The dogfood targets the Griddo team → 5.9
+- **How it surfaced:** the product owner asked for in-app instructions, mirrored in the user manual
+- **Why it slipped:** "document it" was read as developer docs; nobody pictured the people who'd install it
+- **Lesson:** onboarding docs for the real audience are part of a feature's definition of done
+
+### R10 — fastmcp's error line logged tool arguments · missed · found 2026-09-27
+- **What:** the usage log (5.6.0) logs argument names only, but fastmcp logs each failed call itself, with a
+  traceback. For a generated tool the error carries the API's response body, and a 422 body echoes the invalid
+  values: the whole request body, a campaign's CSV rows included, when a field is missing. So argument values
+  could reach CloudWatch. So could any request's input through a database error, whose message SQLAlchemy ends
+  with the statement's parameters, and a destination URL through the link-preview fetcher's own warnings → 5.6.0
+- **How it surfaced:** probing the usage log's test harness: a `create_short_url` call with an invalid URL put the
+  value on stderr. Then checking what the traceback kept for real errors prints turned up the SQL parameters, and
+  a pass over the app's own log calls the fetcher's
+- **Why it slipped:** "never log argument values" was checked against the lines the usage log writes; the test
+  read only those JSON lines, not everything the process wrote, and the older log calls were never checked
+  against the new rule
+- **Lesson:** test a "never log X" rule against the whole of stderr for a call that carries X, failures included:
+  frameworks log on their own, libraries put data in their exception messages, and old log lines predate the
+  rule
+
+### R11 — Sign-up designed before asking which identity provider the company runs · missed · found 2026-09-27
+- **What:** 3.13 was first planned as email confirmation over SES, with our own password reset. Griddo runs Google
+  Workspace, and signing in with it covers the domain check, email verification, MFA and resets → 3.13
+  rewritten; the email flow moved to 3.15, for external users
+- **How it surfaced:** planning OAuth for the MCP (5.8), which needed an identity provider anyway
+- **Why it slipped:** sign-up was designed from the app outwards, not from the accounts the company already has
+- **Lesson:** for an internal tool, ask first which identity provider the company runs; signing in with it
+  usually replaces sign-up, verification and password resets
+
+### R12 — A data migration counted on a row the app makes after migrating · missed · found 2026-09-27
+- **What:** migration `0003` gives the organization every existing link, but the app creates the organization at
+  startup, after the migrations. With `0002` and `0003` in one deploy it found none and left every link personal
+  → `0003` creates the organization itself (3.14.1)
+- **How it surfaced:** re-reading the diff before pushing. The test passed because it inserted the organization
+  by hand before migrating
+- **Why it slipped:** the test built the state the migration expected, not the one a deploy starts from
+- **Lesson:** test a data migration from what a real deploy starts with: the last release's schema and data, and
+  every pending revision in one run
+
+### R13 — Joining the organization didn't check the email domain · missed · found 2026-09-28
+- **What:** 3.14.2 put every new account in the organization, and 3.14.3 let every member see the organization's
+  links and campaigns, CSV exports included. With sign-up still open (R1), anyone could register with any
+  address and read the team's campaigns, recipients' personal data included → domain gate in 3.14.2
+- **How it surfaced:** reviewing #57 and #58 against each other, not one at a time; each was right on its own
+- **Why it slipped:** the domain setting existed (`ORGANIZATION_DOMAIN`, for Google sign-in in 3.13), so it read
+  as already enforced; 3.14 assumed 3.13 would land first, and the stopgap that would have covered the gap had
+  been dropped (3.13.1)
+- **Lesson:** when a change widens what a role can see, re-check who can get that role today, not after the
+  planned phases land. A setting that names a boundary isn't the boundary until something enforces it
+

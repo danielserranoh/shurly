@@ -7,6 +7,7 @@ from uuid import UUID
 from pydantic import BaseModel, Field, field_validator
 
 from server.core.models.url import URLType
+from server.utils.access import Visibility
 from server.utils.url import is_valid_url
 
 if TYPE_CHECKING:
@@ -29,12 +30,24 @@ class URLCreate(BaseModel):
     og_image_url: str | None = Field(None, description="Custom Open Graph image URL")
 
     # Phase 3.9.2 — validity window and visit cap (all optional, NULL = no constraint)
-    valid_since: datetime | None = Field(None, description="URL becomes active at this UTC timestamp")
-    valid_until: datetime | None = Field(None, description="URL stops being active at this UTC timestamp")
-    max_visits: int | None = Field(None, ge=1, description="Hard cap on real visits before returning 410 Gone")
+    valid_since: datetime | None = Field(
+        None, description="URL becomes active at this UTC timestamp"
+    )
+    valid_until: datetime | None = Field(
+        None, description="URL stops being active at this UTC timestamp"
+    )
+    max_visits: int | None = Field(
+        None, ge=1, description="Hard cap on real visits before returning 410 Gone"
+    )
 
     # Phase 3.9.4 — default-deny crawlability
     crawlable: bool = Field(False, description="Allow this short URL in robots.txt (default: deny)")
+
+    # Phase 3.14.3 — the organization's unless its creator asks for a personal one
+    visibility: Visibility = Field(
+        "organization",
+        description="'organization' (everyone in it sees it) or 'personal' (only you do)",
+    )
 
     @field_validator("url")
     @classmethod
@@ -65,12 +78,24 @@ class URLCustomCreate(BaseModel):
     og_image_url: str | None = Field(None, description="Custom Open Graph image URL")
 
     # Phase 3.9.2 — validity window and visit cap
-    valid_since: datetime | None = Field(None, description="URL becomes active at this UTC timestamp")
-    valid_until: datetime | None = Field(None, description="URL stops being active at this UTC timestamp")
-    max_visits: int | None = Field(None, ge=1, description="Hard cap on real visits before returning 410 Gone")
+    valid_since: datetime | None = Field(
+        None, description="URL becomes active at this UTC timestamp"
+    )
+    valid_until: datetime | None = Field(
+        None, description="URL stops being active at this UTC timestamp"
+    )
+    max_visits: int | None = Field(
+        None, ge=1, description="Hard cap on real visits before returning 410 Gone"
+    )
 
     # Phase 3.9.4 — default-deny crawlability
     crawlable: bool = Field(False, description="Allow this short URL in robots.txt (default: deny)")
+
+    # Phase 3.14.3 — the organization's unless its creator asks for a personal one
+    visibility: Visibility = Field(
+        "organization",
+        description="'organization' (everyone in it sees it) or 'personal' (only you do)",
+    )
 
     @field_validator("url")
     @classmethod
@@ -100,8 +125,12 @@ class URLUpdate(BaseModel):
     og_image_url: str | None = Field(None, description="Update Open Graph image URL")
 
     # Phase 3.9.2 — validity window and visit cap (passing null clears the field)
-    valid_since: datetime | None = Field(None, description="Update activation timestamp (null clears)")
-    valid_until: datetime | None = Field(None, description="Update expiration timestamp (null clears)")
+    valid_since: datetime | None = Field(
+        None, description="Update activation timestamp (null clears)"
+    )
+    valid_until: datetime | None = Field(
+        None, description="Update expiration timestamp (null clears)"
+    )
     max_visits: int | None = Field(None, ge=1, description="Update visit cap (null clears)")
 
     # Phase 3.9.4 — toggle crawlability
@@ -166,6 +195,9 @@ class URLResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
     warning: str | None = None  # For custom URLs when code was modified
+    # Phase 3.14.3 — whose it is
+    visibility: Visibility = "organization"
+    created_by_email: str | None = None
 
     model_config = {"from_attributes": True}
 

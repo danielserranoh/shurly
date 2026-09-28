@@ -12,9 +12,10 @@ Mapeo de reglas:
 
 Cuándo se ejecuta (EventBridge "ECS Deployment State Change"):
   - SERVICE_DEPLOYMENT_IN_PROGRESS → sigue el despliegue: sincroniza cada
-    POLL_SECONDS hasta que ECS lo da por COMPLETED/FAILED (o se acaba el
-    tiempo de la Lambda). Así los custom domains siguen el canary de Express
-    en vez de quedarse en el TG viejo.
+    POLL_SECONDS hasta que ECS lo da por COMPLETED/FAILED. Así los custom
+    domains siguen el canary de Express en vez de quedarse en el TG viejo.
+    Si se acaba el tiempo de la Lambda (900 s máx.) con el despliegue aún en
+    curso, se re-invoca para seguir (hasta MAX_HOPS relevos).
   - SERVICE_DEPLOYMENT_COMPLETED / _FAILED → una pasada final.
   - Invocación manual (payload {}) → una pasada, como siempre.
 
@@ -32,12 +33,13 @@ import boto3
 
 elbv2 = boto3.client("elbv2", region_name="eu-south-2")
 ecs = boto3.client("ecs", region_name="eu-south-2")
+lambda_ = boto3.client("lambda", region_name="eu-south-2")
 
 # Express Mode priority → custom rule priority
 RULE_SYNC_MAP = {
-    "1": "10",   # shlink-api → go.griddo.io
-    "3": "11",   # shlink-web → links.griddo.io
-    "4": "12",   # shurly-api → s.griddo.io
+    "1": "10",  # shlink-api → go.griddo.io
+    "3": "11",  # shlink-web → links.griddo.io
+    "4": "12",  # shurly-api → s.griddo.io
 }
 
 LISTENER_ARN = "arn:aws:elasticloadbalancing:eu-south-2:686255983646:listener/app/ecs-express-gateway-alb-d37ca364/8d6cb22fed5c0e8b/f182b836d7cff456"
@@ -45,6 +47,13 @@ LISTENER_ARN = "arn:aws:elasticloadbalancing:eu-south-2:686255983646:listener/ap
 POLL_SECONDS = 5
 # Margen para la pasada final antes de que la Lambda agote su timeout.
 SAFETY_MARGIN_MS = 15_000
+
+# 900 s es el máximo de Lambda. Si el despliegue sigue en curso al acabarse el
+# tiempo, la Lambda se re-invoca (asíncrona) para seguir vigilándolo. HOP_KEY
+# cuenta los relevos y MAX_HOPS los limita: 4 relevos = ~75 min en total, de
+# sobra para un canary de ~12 min, y la cadena nunca puede ser infinita.
+HOP_KEY = "_follow_hop"
+MAX_HOPS = 4
 
 
 def sync_once():
@@ -70,17 +79,23 @@ def sync_once():
 
         elbv2.modify_rule(
             RuleArn=target_rule["RuleArn"],
-            Actions=[{
-                "Type": "forward",
-                "ForwardConfig": {
-                    "TargetGroups": source_tgs
-                }
-            }]
+            Actions=[{"Type": "forward", "ForwardConfig": {"TargetGroups": source_tgs}}],
         )
-        weights = ", ".join(f"{w}%" for w in source_weights.values())
-        changes.append(f"Synced priority {target_pri} with {source_pri} ({weights})")
+        changes.append(
+            f"Synced priority {target_pri} with {source_pri} ({describe_weights(source_tgs)})"
+        )
 
     return changes
+
+
+def describe_weights(target_groups):
+    """Render weights like `weights 950/50 = 95%/5%` (ALB weights are relative)."""
+    raw = [tg["Weight"] for tg in target_groups]
+    total = sum(raw)
+    if not total:
+        return "weights " + "/".join(str(w) for w in raw)
+    pct = "/".join(f"{round(w * 100 / total):g}%" for w in raw)
+    return "weights " + "/".join(str(w) for w in raw) + " = " + pct
 
 
 def deployment_in_progress(service_arn, deployment_id):
@@ -113,17 +128,40 @@ def lambda_handler(event, context):
         and context is not None
     )
     if follow:
-        print(json.dumps({"following": deployment_id, "service": service_arn}))
+        hop = int(event.get(HOP_KEY, 0))
+        print(json.dumps({"following": deployment_id, "service": service_arn, "hop": hop}))
+        still_running = True
         while context.get_remaining_time_in_millis() > SAFETY_MARGIN_MS + POLL_SECONDS * 1000:
             time.sleep(POLL_SECONDS)
             step = sync_once()
             if step:
                 print(json.dumps(step))
                 changes.extend(step)
-            if not deployment_in_progress(service_arn, deployment_id):
+            still_running = deployment_in_progress(service_arn, deployment_id)
+            if not still_running:
                 break
         # Pasada final: recoge el último cambio de weights, si lo hubo.
         changes.extend(sync_once())
+
+        if still_running:
+            if hop < MAX_HOPS:
+                # Relevo: una invocación nueva sigue vigilando el despliegue.
+                lambda_.invoke(
+                    FunctionName=context.invoked_function_arn,
+                    InvocationType="Event",
+                    Payload=json.dumps({**event, HOP_KEY: hop + 1}),
+                )
+                print(json.dumps({"handed_off": deployment_id, "next_hop": hop + 1}))
+            else:
+                print(
+                    json.dumps(
+                        {
+                            "gave_up": deployment_id,
+                            "hops": hop,
+                            "note": "COMPLETED/FAILED will still do the final sync",
+                        }
+                    )
+                )
 
     result = changes if changes else ["No changes needed"]
     print(json.dumps(result))

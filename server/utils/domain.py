@@ -26,9 +26,7 @@ def get_or_create_default_domain(db: Session) -> Domain:
     if existing:
         return existing
 
-    by_host = (
-        db.query(Domain).filter(Domain.hostname == settings.default_domain).first()
-    )
+    by_host = db.query(Domain).filter(Domain.hostname == settings.default_domain).first()
     if by_host:
         by_host.is_default = True
         db.commit()

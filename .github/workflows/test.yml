@@ -13,6 +13,21 @@ jobs:
       matrix:
         python-version: ["3.10", "3.11"]
 
+    # Phase 3.14.1 — the migration tests need a real PostgreSQL (DDL, enum
+    # types, advisory locks). Same major version as production's RDS.
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
@@ -36,11 +51,9 @@ jobs:
         uv sync --extra dev --extra mcp
 
     - name: Lint with ruff
-      # Pre-existing lint/format debt across the codebase (35 errors,
-      # 28 files needing reformat at last count). Tracked separately for a
-      # one-shot `ruff check --fix && ruff format` cleanup PR. Until then we
-      # surface warnings without failing CI so deploy gating stays meaningful.
-      continue-on-error: true
+      # Gating. The codebase was brought to zero lint errors and fully
+      # formatted in one cleanup PR (27 Sep 2026); keep it there. Locally:
+      # `uv run ruff check . && uv run ruff format --check .`
       run: |
         uv run ruff check .
         uv run ruff format --check .
@@ -48,8 +61,11 @@ jobs:
     - name: Run tests
       # --require-mcp errors out if fastmcp is missing, instead of letting the
       # MCP suites skip and hide a failure (see tests/conftest.py).
+      # --require-postgres does the same for the migration tests.
+      env:
+        TEST_DATABASE_URL: postgresql+psycopg2://postgres:postgres@localhost:5432/postgres
       run: |
-        uv run pytest --require-mcp --cov=server --cov-report=xml --cov-report=term
+        uv run pytest --require-mcp --require-postgres --cov=server --cov-report=xml --cov-report=term
 
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v4
