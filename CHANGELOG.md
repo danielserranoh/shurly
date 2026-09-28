@@ -26,6 +26,14 @@ implementation lifecycle and is independent of the URL version segment.
 
 ## [Unreleased]
 
+### Added — a campaign's recipients table (styleguide, Phase 3.17)
+- **`recipientsView()`** (`frontend/src/utils/recipients.ts`), for the campaign page's Recipients: a table on
+  wide screens (the CSV's columns, the link with Copy and QR, clicks, opens, the last click) and stacked rows
+  on phones, with Clicked and Opened badges. Clicks, opens, the last click and the link sort from their
+  headers (`aria-sort`); phones get a **Sort by** select. Each recipient's two checkboxes stay alike.
+- The logic in `recipients-view.ts` (no imports, tested): sorting, the `/recipients` query, a recipient's name
+  and line, the count, and why the list is empty. In `/styleguide/` → Data viz.
+
 ### Fixed — a link's last click is a click, and an unknown address isn't a visitor
 - **A link's `last_click_at` moved on every visit the redirect logged, bots included.** So a link only bots had
   visited showed "Last … ago" in the dashboard next to no clicks, instead of "No clicks yet". It moves on a click
