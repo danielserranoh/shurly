@@ -47,3 +47,12 @@ class AdoptedLinks(BaseModel):
 
     links: int
     campaigns: int
+
+
+class RemovedMember(BaseModel):
+    """Someone removed from the organization, and what they still own that an owner can move."""
+
+    user_id: uuid_pkg.UUID
+    email: str
+    links: int
+    campaigns: int

@@ -136,3 +136,6 @@ instead of a dynamic path.
 `/dashboard/campaigns/create/` (4-step wizard) · `/dashboard/campaign/?id=…` ·
 `/dashboard/analytics/` · `/dashboard/settings/` (`#account`, `#organization`, `#api`, `#tags`, `#notifications`,
 `#plan`).
+
+Settings → Organization lists the members, each with only the actions the viewer's role allows. Owners
+also see the people removed, with the personal links they left, and move them to the organization.
