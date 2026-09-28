@@ -226,12 +226,11 @@ curl https://s.griddo.io/api/v1/health
 # Readiness (DB connectivity)
 curl https://s.griddo.io/api/v1/health/db
 
-# Register a test user
-curl -X POST https://s.griddo.io/api/v1/auth/register \
-    -H "Content-Type: application/json" \
-    -d '{"email":"smoke@griddo.io","password":"smoke-test-1234"}'
+# Sign in with Google, once configured: /start redirects to accounts.google.com
+curl -s -o /dev/null -w '%{http_code} %{redirect_url}\n' https://s.griddo.io/api/v1/auth/google/start
 
-# Login → JWT
+# Login → JWT. There's no sign-up with a password in production since 3.13: the smoke
+# account predates it, and keeps its password until someone signs in with Google as it.
 TOKEN=$(curl -s -X POST https://s.griddo.io/api/v1/auth/login \
     -H "Content-Type: application/json" \
     -d '{"email":"smoke@griddo.io","password":"smoke-test-1234"}' | jq -r .access_token)
@@ -415,6 +414,65 @@ TRUSTED_PROXIES='["172.31.0.0/16"]'
 The resolver (`server/utils/network.py::resolve_client_ip`) checks the request's source against every CIDR; only when it matches does it honor the leftmost `X-Forwarded-For` entry. Outside the allowlist the socket address wins.
 
 If you ever front the ALB with CloudFront, append the CloudFront edge CIDRs from <https://ip-ranges.amazonaws.com/ip-ranges.json> (filter `service=CLOUDFRONT`).
+
+## Sign in with Google (Phase 3.13)
+
+Accounts come from signing in with a Google Workspace account of `ORGANIZATION_DOMAIN` (`griddo.io`).
+A password is optional: its owner sets it once signed in. Either way the API issues its own JWT, as
+before, so API keys and the MCP don't change.
+
+### Prerequisite: the Google Cloud project
+
+Done once, by whoever administers Google Workspace (ROADMAP 3.13.2):
+
+1. A Google Cloud project inside the griddo.io organization.
+2. OAuth consent screen **Internal**, so only Griddo accounts can sign in. Scopes: `openid`, `email`.
+3. An OAuth client of type **Web application**, with the authorized redirect URI
+   `https://s.griddo.io/api/v1/auth/google/callback` (the MCP proxy's joins it in 5.8).
+4. The client secret goes to Secrets Manager (6.3), never into the repo or a task definition in clear.
+
+### Settings
+
+| Variable | Example | Notes |
+|---|---|---|
+| `GOOGLE_CLIENT_ID` | `1234-abc.apps.googleusercontent.com` | The OAuth client's id |
+| `GOOGLE_CLIENT_SECRET` | from Secrets Manager | Never logged |
+| `GOOGLE_REDIRECT_URI` | `https://s.griddo.io/api/v1/auth/google/callback` | Exactly as registered with the client |
+| `FRONTEND_URL` | the frontend's origin | After Google, the browser goes to `{FRONTEND_URL}/login/` |
+| `ORGANIZATION_DOMAIN` | `griddo.io` (default) | Only ID tokens whose `hd` claim is this domain get in |
+| `ALLOW_PASSWORD_SIGNUP` | `false` (default) | `POST /auth/register`, for local development and tests. **Never** `true` in production; the app logs `auth.password_signup_enabled` at startup when it is |
+
+- Until the first four and `ORGANIZATION_DOMAIN` are set, sign in with Google is off:
+  `/api/v1/auth/google/start` and `/callback` send the browser to
+  `{FRONTEND_URL}/login/#error=google_unavailable`, or answer `503` when `FRONTEND_URL` isn't set
+  either. The rest of the app works as before, password logins included. An empty
+  `ORGANIZATION_DOMAIN` keeps it off: it would let any Google account in, Gmail included.
+- `CORS_ORIGINS` must include the frontend's origin: the page `POST`s the one-time code to
+  `/api/v1/auth/google/exchange`.
+- **Not wired yet:** `scripts/deploy_ecs.sh` builds the task's environment variable by variable, and
+  the four Google ones aren't in it. Until they are, production runs with sign in with Google off.
+- To rotate the client secret: add a new secret to the OAuth client, update Secrets Manager, redeploy,
+  then delete the old secret in Google Cloud.
+
+### The flow, and the frontend's contract
+
+`GET /api/v1/auth/google/start` → Google → `GET /api/v1/auth/google/callback` →
+`{FRONTEND_URL}/login/#code=…` → `POST /api/v1/auth/google/exchange` → the JWT. The code works once,
+within 60 seconds, and the JWT never travels in a URL. The state cookie, the fragment's error codes and
+the password endpoints' `reauth_required` answer are specified in the docstring of
+`server/app/google_auth.py`, the one reference for the backend and the frontend.
+
+### What the event log records
+
+- `auth.login` `{method: google | password, user_id}` on every sign-in. Before turning password logins
+  off for the domain (3.13.4), this shows who still uses one:
+  `filter event = "auth.login" | stats count() by method`
+- `auth.google_refused` `{reason}`: a refused Google sign-in (another domain, cancelled, …).
+- `auth.identity_linked`: a Google sign-in took over an account made by the open sign-up before 3.13.
+  Nobody verified that account's address, so its password, API key and sessions were revoked.
+- `auth.password_set`, `auth.password_removed`.
+
+None of them carries an email address, a token or a code.
 
 ---
 

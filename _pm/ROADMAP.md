@@ -20,7 +20,7 @@ Order agreed in the 2026-09-27 review; confirm each item before starting it.
    frontend (Settings → Organization, the personal toggle, who created each link) is left.
 3. **Frontend hosting** (4.10): S3 + CloudFront; AWS steps run with SSO.
 4. **Identity**: sign in with Google Workspace, for the web (3.13) and the MCP (5.8). One Google project covers
-   both.
+   both. The backend of 3.13 is done; the Google project, the frontend (3.13.5) and 5.8 are left.
 5. **MCP install guide**, in the app and in the user manual (5.9): after 5.8, since OAuth changes the steps.
 6. **Internal dogfood** with the frontend and the MCP (5.6).
 7. **Replace Shlink on `go.griddo.io`** (Phase 8): after the dogfood and error alerting (6.4).
@@ -706,27 +706,37 @@ Until then `POST /auth/register` stays reachable through the public API and its 
 - [ ] Google Cloud project inside the griddo.io organization, OAuth consent screen **Internal** (only Griddo
       accounts can sign in), a web OAuth client with the redirect URIs of the web sign-in and of the MCP proxy
       (5.8). Client secret in Secrets Manager (6.3). Done by whoever administers Workspace
-- [ ] `GET /api/v1/auth/google/start` → Google (OpenID Connect, `state` + PKCE, `hd=griddo.io` as a hint) →
-      `GET /api/v1/auth/google/callback`
-- [ ] Verify the ID token server-side: signature, `aud`, `iss`, `exp`, `email_verified`, and `hd` equal to the
-      organization's domain (the `hd` parameter sent to Google is only a hint)
-- [ ] New table `user_identities` (user_id, provider, subject, email, created_at; unique provider + subject): an
-      account is recognised by Google's `sub`, which survives an email rename
-- [ ] The first sign-in creates the user and adds them to the organization as a member (3.14); later ones match
-      by `sub`
-- [ ] Hand the session to the static frontend with a one-time code that the page exchanges by `POST` for the JWT,
-      so the JWT never travels in a URL
-- [ ] `auth.login` line in the event log with the method (`google` | `password`), needed before enforcing SSO
-- [ ] With Google as the only way in, `POST /auth/register` goes, and with it the MCP `register` tool
-      (`tests/test_phase52_mcp_tools.py` pins the surface). `POST /auth/login` stays, for passwords
+- [x] `GET /api/v1/auth/google/start` → Google (OpenID Connect, `state` + PKCE, `hd=griddo.io` as a hint) →
+      `GET /api/v1/auth/google/callback` → `server/app/google_auth.py`, whose docstring is the frontend's
+      contract. The state is hashed, single use and 10 minutes, and bound to the browser by a cookie
+- [x] Verify the ID token server-side: signature, `aud`, `iss`, `exp`, `email_verified`, and `hd` equal to the
+      organization's domain (the `hd` parameter sent to Google is only a hint) → google-auth for the first
+      four, `server/utils/google_oidc.py` for the last two
+- [x] New table `user_identities` (user_id, provider, subject, email, created_at; unique provider + subject): an
+      account is recognised by Google's `sub`, which survives an email rename → migration `0004`
+- [x] The first sign-in creates the user and adds them to the organization as a member (3.14); later ones match
+      by `sub` → `server/utils/google_sign_in.py`. An address whose account is linked to another `sub` is
+      refused (`account_conflict`), never linked
+- [x] Hand the session to the static frontend with a one-time code that the page exchanges by `POST` for the JWT,
+      so the JWT never travels in a URL → `{FRONTEND_URL}/login/#code=…`, then
+      `POST /api/v1/auth/google/exchange`; the code is hashed, single use and 60 seconds
+- [x] `auth.login` line in the event log with the method (`google` | `password`), needed before enforcing SSO
+- [x] With Google as the only way in, `POST /auth/register` goes, and with it the MCP `register` tool
+      (`tests/test_phase52_mcp_tools.py` pins the surface). `POST /auth/login` stays, for passwords → 404
+      unless `ALLOW_PASSWORD_SIGNUP` (local development and tests only)
 
 ### 3.13.3 Optional password, set by the account's owner
 - [ ] Settings → Account: set, change or remove a password, only while signed in, so it's always set by someone
-      who already proved they own the account
-- [ ] Never link a Google identity to a password nobody verified. That's account pre-hijacking: someone
+      who already proved they own the account → API done: `PUT`/`DELETE /api/v1/auth/password`, JWT sessions
+      only, and without the current password a sign-in at most 10 minutes old (`reauth_required`);
+      `/auth/me` says `has_password` and `has_google`. The page is 3.13.5
+- [x] Never link a Google identity to a password nobody verified. That's account pre-hijacking: someone
       registers `ana@griddo.io` with a password before Ana, Ana later signs in with Google, and the attacker keeps
-      a way in. With accounts created only through Google, the path doesn't exist
-- [ ] Forgot the password → sign in with Google and set a new one; no reset email 🔎 R2
+      a way in. With accounts created only through Google, the path doesn't exist → for accounts from before
+      3.13, the first Google sign-in links them but clears the password, revokes the API key and ends every
+      session (`users.sessions_valid_from`), and logs `auth.identity_linked`
+- [ ] Forgot the password → sign in with Google and set a new one; no reset email 🔎 R2 → API done (the
+      `PUT /api/v1/auth/password` above, right after signing in with Google); the page is 3.13.5
 
 ### 3.13.4 Changing methods without disruption
 - [ ] Setting to turn password login off for the organization's domain (SSO enforced), keeping one break-glass
@@ -742,9 +752,10 @@ Until then `POST /auth/register` stays reachable through the public API and its 
 - [ ] Needs the frontend hosted (4.10)
 
 ### 3.13.6 Verification
-- [ ] Tests (TDD) against a faked Google: `hd` and `email_verified` enforced, `state` checked, first sign-in
+- [x] Tests (TDD) against a faked Google: `hd` and `email_verified` enforced, `state` checked, first sign-in
       creates the user and the membership, matching by `sub` after an email change, one-time code single use and
-      short-lived, passwords set only while signed in, register gone
+      short-lived, passwords set only while signed in, register gone → `tests/test_phase3132_google_sign_in.py`
+      and `tests/test_phase3133_passwords.py`, on `tests/fake_google.py` (real RS256 tokens, no network)
 - [ ] End to end against the real Google project with a Griddo account
 
 ---
@@ -976,8 +987,8 @@ End-to-end run with the user driving SSO locally:
 - [x] `./scripts/setup_custom_domain.sh` (cert, rule, DNS)
 - [x] Update Lambda `RULE_SYNC_MAP`
 - [ ] Smoke checklist — only `/api/v1/health` (checked by CI on every deploy) and the forced redeploy are on record; re-run the rest against production and tick them here:
-  - `register` → `login` → returns JWT (once 3.13 lands, register goes: sign in with Google, or with a password
-    set afterwards)
+  - `login` → returns JWT (register is gone since 3.13.2: sign in with Google, or with a password set
+    afterwards)
   - `POST /api/v1/urls` creates a short URL bound to `s.griddo.io`
   - `GET /<code>` returns 302 to destination
   - `GET /<code>/track` returns 43-byte GIF
@@ -1227,7 +1238,8 @@ live in `mcp_server/README.md`, written for developers. There is no user manual 
 - [ ] Environment variables reference
 
 ### 7.2 Operational Runbook
-- [ ] How to add new users → self-service sign-up for `@griddo.io` once 3.13 ships
+- [ ] How to add new users → self-service sign-up for `@griddo.io`: signing in with Google makes the account
+      (3.13.2); left: the Google project, and writing it down here
 - [x] How to investigate issues → troubleshooting catalog in `docs/AWS_ECS_DEPLOYMENT.md`
 - [x] How to scale if needed → "Scale up/down" in the same runbook
 - [ ] Backup and recovery procedures
@@ -1392,6 +1404,8 @@ check earlier in the next project.
 - **Later the same day:** 3.14.2 + 3.14.3 made the open sign-up worse — any new account joined the organization
   and could read and export every campaign, recipients' names and emails included → closed by the domain gate
   in 3.14.2 (R13). Sign-up itself stays open until 3.13
+- **Closed (2026-09-28):** 3.13.2 turns `POST /auth/register` off (404 unless `ALLOW_PASSWORD_SIGNUP`, local
+  development only). Accounts come from signing in with Google
 
 ### R2 — No password reset · missed · found 2026-09-27
 - **What:** a user who forgets the password has no way back → 3.13.3 (sign in with Google and set a new one;
