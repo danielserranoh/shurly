@@ -654,7 +654,7 @@ condition on priority 12 nor a security group limited to CloudFront's origin-fac
 | ECS Fargate task (0.25 vCPU, 0.5 GB) | ~$9 |
 | ALB (shared with Shlink) | $0 marginal |
 | ECR (one image, ~200 MB) | <$0.10 |
-| CloudWatch Logs (30-day retention) | ~$0.50 |
+| CloudWatch Logs (60-day retention) | ~$0.50 |
 | Route 53 query traffic | ~$0.20 |
 | ACM certificate | $0 |
 | Lambda + EventBridge for ALB rule sync | $0 (free tier) |
@@ -878,8 +878,7 @@ sends the email. None of it is set up yet (ROADMAP 6.4).
 aws logs tail /aws/ecs/default/shurly-api-5fdb --follow --region eu-south-2 --profile griddo-main
 ```
 
-The log group's retention is "never expire" today. 5.6.0's 90 days is still an AWS step to run
-(`mcp_server/README.md` § Usage log).
+The log group keeps **60 days** (set 2026-09-28; `mcp_server/README.md` § Usage log has the command).
 
 ### Force a redeploy (e.g. after Lambda rule-sync change)
 
