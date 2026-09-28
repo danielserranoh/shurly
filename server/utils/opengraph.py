@@ -51,7 +51,7 @@ class OpenGraphMetadata:
         return any([self.title, self.description, self.image_url])
 
 
-class _FetchRefusedError(Exception):
+class FetchRefusedError(Exception):
     """The URL (or one of its redirect hops) must not be requested; see the SSRF guard."""
 
 
@@ -60,7 +60,7 @@ async def fetch_opengraph_metadata(url: str, timeout: int = 5) -> OpenGraphMetad
     Fetch Open Graph metadata from a URL.
 
     The URL is user-supplied, so the request goes through the SSRF guard (see
-    `_guarded_get`). A refused URL yields empty metadata, like any other fetch failure,
+    `guarded_request`). A refused URL yields empty metadata, like any other fetch failure,
     so URL creation never breaks. Log lines keep the URL's origin only (`url_origin`):
     its path and query string can carry personal data.
 
@@ -76,7 +76,7 @@ async def fetch_opengraph_metadata(url: str, timeout: int = 5) -> OpenGraphMetad
         >>> print(metadata.title)  # "Example Domain"
     """
     try:
-        response = await _guarded_get(url, timeout)
+        response = await guarded_request("GET", url, timeout)
 
         # Only parse successful responses
         if response.status_code != 200:
@@ -122,7 +122,7 @@ async def fetch_opengraph_metadata(url: str, timeout: int = 5) -> OpenGraphMetad
             url=og_url or url,
         )
 
-    except _FetchRefusedError as e:
+    except FetchRefusedError as e:
         logger.warning("Refused to fetch metadata from %s: %s", url_origin(url), e)
         return OpenGraphMetadata()
 
@@ -136,23 +136,28 @@ async def fetch_opengraph_metadata(url: str, timeout: int = 5) -> OpenGraphMetad
         return OpenGraphMetadata()
 
 
-async def _guarded_get(url: str, timeout: int) -> httpx.Response:
-    """GET `url`, following up to `_MAX_REDIRECTS` redirects by hand so each hop is checked."""
+async def guarded_request(method: str, url: str, timeout: float) -> httpx.Response:
+    """
+    `method` `url` through the SSRF guard, following up to `_MAX_REDIRECTS` redirects by
+    hand so each hop is checked; FetchRefusedError when a hop mustn't be requested. The
+    link previews GET; the Shlink review (server/tools/shlink) checks destinations with
+    HEAD.
+    """
     target = httpx.URL(url)
     # No keep-alive: pooled connections are keyed by IP, so one reused for another
     # hostname on the same IP would skip that hostname's TLS certificate check.
     limits = httpx.Limits(max_keepalive_connections=0)
     async with httpx.AsyncClient(timeout=timeout, follow_redirects=False, limits=limits) as client:
         for _ in range(_MAX_REDIRECTS + 1):
-            response = await _get_pinned(client, target)
+            response = await _request_pinned(client, method, target)
             if not response.is_redirect:
                 return response
             target = target.join(response.headers["location"])
-    raise _FetchRefusedError(f"more than {_MAX_REDIRECTS} redirects")
+    raise FetchRefusedError(f"more than {_MAX_REDIRECTS} redirects")
 
 
-async def _get_pinned(client: httpx.AsyncClient, url: httpx.URL) -> httpx.Response:
-    """GET `url` from one of its host's checked addresses.
+async def _request_pinned(client: httpx.AsyncClient, method: str, url: httpx.URL) -> httpx.Response:
+    """`method` `url` from one of its host's checked addresses.
 
     Connecting to the checked IP, instead of letting httpx resolve the name again, is
     what defeats DNS rebinding (a second lookup could return an internal address). The
@@ -163,18 +168,20 @@ async def _get_pinned(client: httpx.AsyncClient, url: httpx.URL) -> httpx.Respon
     extensions = {"sni_hostname": url.raw_host.decode("ascii")}
     for address in fallbacks:
         try:
-            return await client.get(
-                url.copy_with(host=address), headers=headers, extensions=extensions
+            return await client.request(
+                method, url.copy_with(host=address), headers=headers, extensions=extensions
             )
         except httpx.ConnectError:
             continue  # e.g. an IPv6 address on a host without IPv6 connectivity
-    return await client.get(url.copy_with(host=last), headers=headers, extensions=extensions)
+    return await client.request(
+        method, url.copy_with(host=last), headers=headers, extensions=extensions
+    )
 
 
 async def _resolve_checked_addresses(url: httpx.URL, timeout: float | None) -> list[str]:
     """Resolve the URL's host, refusing it unless every address it resolves to is public."""
     if url.scheme not in _ALLOWED_SCHEMES or not url.host:
-        raise _FetchRefusedError(f"not an http(s) URL with a host (scheme {url.scheme!r})")
+        raise FetchRefusedError(f"not an http(s) URL with a host (scheme {url.scheme!r})")
     host = url.raw_host.decode("ascii")
     # getaddrinfo blocks, so it runs in a thread. The lookup counts against the connect
     # timeout, as it did when httpx resolved the name itself.
@@ -186,7 +193,7 @@ async def _resolve_checked_addresses(url: httpx.URL, timeout: float | None) -> l
     if not settings.og_fetch_allow_private:
         blocked = [a for a in addresses if not _is_public_ip(ipaddress.ip_address(a))]
         if blocked:
-            raise _FetchRefusedError(f"{host} resolves to non-public {', '.join(blocked)}")
+            raise FetchRefusedError(f"{host} resolves to non-public {', '.join(blocked)}")
     return addresses
 
 

@@ -81,12 +81,18 @@ select = [
     "B",   # flake8-bugbear
     "C4",  # flake8-comprehensions
     "UP",  # pyupgrade
+    "TID251",  # banned APIs, below
 ]
 ignore = [
     "E501",  # line too long, handled by formatter
     "B008",  # do not perform function calls in argument defaults
     "C901",  # too complex
 ]
+
+# requires-python is >=3.10 and CI runs 3.10: keep target-version at py310, so pyupgrade
+# (UP017) never suggests what 3.10 lacks.
+[tool.ruff.lint.flake8-tidy-imports.banned-api]
+"datetime.UTC".msg = "Python 3.10 has no datetime.UTC (added in 3.11): use datetime.timezone.utc"
 
 [tool.ruff.lint.isort]
 known-first-party = ["server"]
