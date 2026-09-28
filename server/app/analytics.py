@@ -1,9 +1,11 @@
 """Analytics endpoints for URLs and campaigns."""
 
 from datetime import datetime, timedelta
+from typing import Annotated
 from uuid import UUID as UUIDType
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from pydantic import BeforeValidator
 from sqlalchemy import func
 from sqlalchemy.orm import Query as SAQuery
 from sqlalchemy.orm import Session
@@ -26,6 +28,8 @@ from server.schemas.analytics import (
 from server.schemas.responses import get_responses
 from server.utils.access import viewer
 from server.utils.csv_export import stream_csv
+from server.utils.local_days import LocalDays, count_per_period, last_days
+from server.utils.profile import clean_timezone
 from server.utils.url import build_short_url
 
 
@@ -39,6 +43,19 @@ def _exclude_bots(query: SAQuery, include_bots: bool) -> SAQuery:
     q = query.filter(Visitor.is_pixel.is_(False))
     return q if include_bots else q.filter(Visitor.is_bot.is_(False))
 
+
+# Days are counted where the viewer is (server/utils/local_days.py): `tz`, else their
+# profile's zone, else UTC. `tz` changes how visits are grouped into days, never which count.
+TimeZoneParam = Annotated[
+    str | None,
+    BeforeValidator(clean_timezone),
+    Query(
+        description=(
+            "IANA time zone to count days in, e.g. Europe/Madrid. Defaults to your profile's, "
+            "else UTC. It changes how visits are grouped into days, not which ones count."
+        ),
+    ),
+]
 
 analytics_router = APIRouter()
 
@@ -55,13 +72,14 @@ def get_url_daily_stats(
     short_code: str,
     include_bots: bool = Query(False, description="Include bot/crawler visits in counts"),
     format: str = Query("json", pattern="^(json|csv)$", description="Response format"),
+    tz: TimeZoneParam = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """
-    Get daily click statistics for a URL (last 7 days).
+    Get daily click statistics for a URL: the last 7 days, today included.
 
-    Returns day-by-day click counts for the last 7 days.
+    Days are local to your profile's time zone, or to `tz`, else UTC; `timezone` says which.
 
     **Authentication:** Required (JWT Bearer token)
 
@@ -85,35 +103,11 @@ def get_url_daily_stats(
             detail="URL not found",
         )
 
-    # Get last 7 days
-    today = datetime.utcnow().date()
-    seven_days_ago = today - timedelta(days=6)
-    # Convert to datetime for comparison
-    seven_days_ago_dt = datetime.combine(seven_days_ago, datetime.min.time())
-
-    # Query visits grouped by date
-    base_q = db.query(
-        func.date(Visitor.visited_at).label("visit_date"),
-        func.count(Visitor.id).label("click_count"),
-    ).filter(
-        Visitor.short_code == short_code,
-        Visitor.visited_at >= seven_days_ago_dt,
-    )
-    visits_by_date = (
-        _exclude_bots(base_q, include_bots).group_by(func.date(Visitor.visited_at)).all()
-    )
-
-    # Create dict for easy lookup
-    visits_dict = {visit.visit_date: visit.click_count for visit in visits_by_date}
-
-    # Build stats for all 7 days (fill zeros for missing days)
-    stats = []
-    total_clicks = 0
-    for i in range(7):
-        day = seven_days_ago + timedelta(days=i)
-        clicks = visits_dict.get(day, 0)
-        total_clicks += clicks
-        stats.append(DailyStats(date=day, clicks=clicks))
+    # The last 7 days where the viewer is, today included.
+    days = LocalDays.of(current_user, tz)
+    visits = _exclude_bots(db.query(Visitor).filter(Visitor.short_code == short_code), include_bots)
+    stats = [DailyStats(date=day, clicks=clicks) for day, clicks in last_days(visits, days, 7)]
+    total_clicks = sum(day.clicks for day in stats)
 
     if format == "csv":
         return stream_csv(
@@ -126,6 +120,7 @@ def get_url_daily_stats(
         short_code=short_code,
         stats=stats,
         total_clicks=total_clicks,
+        timezone=days.name,
     )
 
 
@@ -141,13 +136,14 @@ def get_url_weekly_stats(
     short_code: str,
     include_bots: bool = Query(False, description="Include bot/crawler visits in counts"),
     format: str = Query("json", pattern="^(json|csv)$", description="Response format"),
+    tz: TimeZoneParam = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """
-    Get weekly click statistics for a URL (last 8 weeks).
+    Get weekly click statistics for a URL: 8 seven-day weeks, the last ending today.
 
-    Returns week-by-week click counts for the last 8 weeks.
+    Days are local to your profile's time zone, or to `tz`, else UTC; `timezone` says which.
 
     **Authentication:** Required (JWT Bearer token)
 
@@ -171,32 +167,20 @@ def get_url_weekly_stats(
             detail="URL not found",
         )
 
-    today = datetime.utcnow().date()
-    eight_weeks_ago = today - timedelta(weeks=8)
-
-    stats = []
-    total_clicks = 0
-
-    for i in range(8):
-        week_start = eight_weeks_ago + timedelta(weeks=i)
-        week_end = week_start + timedelta(days=6)
-
-        # Count visits in this week
-        wq = db.query(func.count(Visitor.id)).filter(
-            Visitor.short_code == short_code,
-            func.date(Visitor.visited_at) >= week_start,
-            func.date(Visitor.visited_at) <= week_end,
+    # 8 seven-day weeks where the viewer is, the last ending today (it used to end yesterday).
+    days = LocalDays.of(current_user, tz)
+    first = days.today() - timedelta(days=8 * 7 - 1)
+    visits = _exclude_bots(db.query(Visitor).filter(Visitor.short_code == short_code), include_bots)
+    counts = count_per_period(visits, days.bounds(first, 8 * 7)[::7])
+    stats = [
+        WeeklyStats(
+            week_start=first + timedelta(weeks=week),
+            week_end=first + timedelta(weeks=week, days=6),
+            clicks=clicks,
         )
-        click_count = _exclude_bots(wq, include_bots).scalar() or 0
-
-        total_clicks += click_count
-        stats.append(
-            WeeklyStats(
-                week_start=week_start,
-                week_end=week_end,
-                clicks=click_count,
-            )
-        )
+        for week, clicks in enumerate(counts)
+    ]
+    total_clicks = sum(counts)
 
     if format == "csv":
         return stream_csv(
@@ -209,6 +193,7 @@ def get_url_weekly_stats(
         short_code=short_code,
         stats=stats,
         total_clicks=total_clicks,
+        timezone=days.name,
     )
 
 
@@ -308,6 +293,7 @@ def get_url_geo_stats(
 def get_campaign_summary(
     campaign_id: str,
     include_bots: bool = Query(False, description="Include bot/crawler visits in counts"),
+    tz: TimeZoneParam = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -416,25 +402,14 @@ def get_campaign_summary(
         for perf in top_performers_data
     ]
 
-    # Daily timeline (last 7 days)
-    today = datetime.utcnow().date()
-    seven_days_ago = today - timedelta(days=6)
-
-    daily_q = db.query(
-        func.date(Visitor.visited_at).label("visit_date"),
-        func.count(Visitor.id).label("click_count"),
-    ).filter(
-        Visitor.short_code.in_(short_codes),
-        func.date(Visitor.visited_at) >= seven_days_ago,
+    # Daily timeline: the last 7 days where the viewer is, today included.
+    days = LocalDays.of(current_user, tz)
+    visits = _exclude_bots(
+        db.query(Visitor).filter(Visitor.short_code.in_(short_codes)), include_bots
     )
-    daily_data = _exclude_bots(daily_q, include_bots).group_by(func.date(Visitor.visited_at)).all()
-
-    daily_dict = {day.visit_date: day.click_count for day in daily_data}
-    daily_timeline = []
-    for i in range(7):
-        day = seven_days_ago + timedelta(days=i)
-        clicks = daily_dict.get(day, 0)
-        daily_timeline.append(DailyStats(date=day, clicks=clicks))
+    daily_timeline = [
+        DailyStats(date=day, clicks=clicks) for day, clicks in last_days(visits, days, 7)
+    ]
 
     return CampaignSummary(
         campaign_id=str(campaign.id),
@@ -446,6 +421,7 @@ def get_campaign_summary(
         click_through_rate=round(click_through_rate, 2),
         top_performers=top_performers,
         daily_timeline=daily_timeline,
+        timezone=days.name,
     )
 
 
@@ -583,6 +559,7 @@ def get_campaign_users(
 )
 def get_overview_stats(
     include_bots: bool = Query(False, description="Include bot/crawler visits in counts"),
+    tz: TimeZoneParam = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -598,7 +575,9 @@ def get_overview_stats(
     - **200**: Overview statistics retrieved successfully - Includes total URLs, campaigns, clicks, unique visitors, recent activity (7 days), and top 5 URLs
     - **401**: Authentication required or invalid token
 
-    **Note:** Includes all-time totals and recent activity for the last 7 days.
+    **Note:** Includes all-time totals and recent activity for the last 7 days, today
+    included, in your profile's time zone (or `tz`, else UTC; `timezone` says which).
+    `recent_clicks_7d` is their sum.
     Each `top_urls` item has `short_code`, `short_url`, `title`, `original_url`,
     `url_type` and `clicks` (tracking-pixel opens are never counted as clicks).
     """
@@ -632,17 +611,14 @@ def get_overview_stats(
         or 0
     )
 
-    # Recent clicks (last 7 days)
-    seven_days_ago = datetime.utcnow() - timedelta(days=7)
-    recent_clicks_7d = (
-        _exclude_bots(
-            db.query(func.count(Visitor.id)).filter(
-                Visitor.url_id.in_(url_ids), Visitor.visited_at >= seven_days_ago
-            ),
-            include_bots,
-        ).scalar()
-        or 0
-    )
+    # Recent activity: the last 7 days where the viewer is, today included. The headline is
+    # their sum, so it matches the chart (it used to be a rolling 168 hours).
+    days = LocalDays.of(current_user, tz)
+    recent = _exclude_bots(db.query(Visitor).filter(Visitor.url_id.in_(url_ids)), include_bots)
+    recent_activity = [
+        DailyStats(date=day, clicks=clicks) for day, clicks in last_days(recent, days, 7)
+    ]
+    recent_clicks_7d = sum(day.clicks for day in recent_activity)
 
     # Top 5 URLs by click count.
     # outer-join keeps URLs with zero visits; click filters must be expressed on the join
@@ -681,26 +657,6 @@ def get_overview_stats(
         for url in top_urls_data
     ]
 
-    # Recent activity (last 7 days)
-    today = datetime.utcnow().date()
-    seven_days_ago_date = today - timedelta(days=6)
-
-    daily_q = db.query(
-        func.date(Visitor.visited_at).label("visit_date"),
-        func.count(Visitor.id).label("click_count"),
-    ).filter(
-        Visitor.url_id.in_(url_ids),
-        func.date(Visitor.visited_at) >= seven_days_ago_date,
-    )
-    daily_data = _exclude_bots(daily_q, include_bots).group_by(func.date(Visitor.visited_at)).all()
-
-    daily_dict = {day.visit_date: day.click_count for day in daily_data}
-    recent_activity = []
-    for i in range(7):
-        day = seven_days_ago_date + timedelta(days=i)
-        clicks = daily_dict.get(day, 0)
-        recent_activity.append(DailyStats(date=day, clicks=clicks))
-
     return OverviewStats(
         total_urls=total_urls,
         total_campaigns=total_campaigns,
@@ -709,6 +665,7 @@ def get_overview_stats(
         recent_clicks_7d=recent_clicks_7d,
         top_urls=top_urls,
         recent_activity=recent_activity,
+        timezone=days.name,
     )
 
 

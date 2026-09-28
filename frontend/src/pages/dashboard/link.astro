@@ -92,6 +92,7 @@ import { BROWSERS, DEVICES, LANGUAGES } from '@/utils/rules';
         </div>
         <div class="mt-6" data-chart></div>
         <div class="mt-4 max-h-80 overflow-auto rounded-xl border border-line" data-table hidden></div>
+        <p class="hint mt-4" data-days-hint hidden></p>
       </section>
 
       <!-- Social preview -->
@@ -192,6 +193,7 @@ import { BROWSERS, DEVICES, LANGUAGES } from '@/utils/rules';
 <script>
   import { apiGet, ApiError, errorMessage } from '@/utils/api';
   import { barList, bindChartTableToggle, columnChart, dataTable, sparkline } from '@/utils/charts';
+  import { todayIn } from '@/utils/days';
   import { clearErrors, setFieldError } from '@/utils/forms';
   import { formatDate, formatDateTime, formatNumber, fromLocalInput, hostname, isValidHttpUrl, linkTitle, normalizeUrlInput, parseDate, pluralize, prettyUrl } from '@/utils/format';
   import { html, safeUrl, setHTML } from '@/utils/html';
@@ -202,7 +204,7 @@ import { BROWSERS, DEVICES, LANGUAGES } from '@/utils/rules';
   import { tagPill } from '@/utils/tags';
   import { confirmDialog, copyWithFeedback, hydrateTimes, setLoading, toast } from '@/utils/ui';
   import { apiPost } from '@/utils/api';
-  import { canChange, creatorName, getViewer, installLockedControls, lockControl, onForbidden, type Viewer } from '@/utils/viewer';
+  import { canChange, creatorName, getViewer, installLockedControls, lockControl, onForbidden, showDaysZoneHint, type Viewer } from '@/utils/viewer';
   import type { CampaignListResponse, DailyStatsResponse, GeoStatsResponse, PreviewMetadata, RedirectRule, RuleCondition, RuleConditionType, ShortLink, WeeklyStatsResponse } from '@/utils/types';
 
   const code = new URLSearchParams(location.search).get('code') ?? '';
@@ -315,8 +317,9 @@ import { BROWSERS, DEVICES, LANGUAGES } from '@/utils/rules';
   function renderChart() {
     const chartEl = $('[data-chart]');
     const tableEl = $('[data-table]');
+    void showDaysZoneHint($('[data-days-hint]'));
     if (period === 'daily' && daily) {
-      const today = new Date().toISOString().slice(0, 10);
+      const today = todayIn(daily.timezone);
       const rows = daily.stats.map((s) => {
         const d = new Date(`${s.date}T12:00:00`);
         return {

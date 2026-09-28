@@ -51,6 +51,7 @@ from server.utils.campaign import (
     validate_csv,
 )
 from server.utils.domain import get_or_create_default_domain
+from server.utils.local_days import LocalDays, last_days
 from server.utils.url import is_valid_url
 
 # ---------------------------------------------------------------------------
@@ -261,25 +262,11 @@ def get_url_analytics_summary(
     # the previous `query.distinct(col).count()` form silently no-ops on SQLite.
     unique_ips = base.with_entities(func.count(func.distinct(Visitor.ip))).scalar() or 0
 
-    # Daily series (most recent `days` calendar days, oldest → newest).
-    end_date = datetime.now(timezone.utc).date()
-    start_date = end_date - timedelta(days=days - 1)
-    daily_rows = (
-        base.with_entities(
-            func.date(Visitor.visited_at).label("d"),
-            func.count(Visitor.id).label("c"),
-        )
-        .filter(func.date(Visitor.visited_at) >= start_date)
-        .group_by(func.date(Visitor.visited_at))
-        .all()
-    )
-    counts_by_day = {str(r.d): int(r.c) for r in daily_rows}
+    # Daily series: the last `days` days where the viewer is (their profile's time zone,
+    # else UTC), oldest → newest. The app's days (server/utils/local_days.py), so its numbers.
+    local = LocalDays.of(user)
     daily = [
-        {
-            "date": (start_date + timedelta(days=i)).isoformat(),
-            "clicks": counts_by_day.get((start_date + timedelta(days=i)).isoformat(), 0),
-        }
-        for i in range(days)
+        {"date": day.isoformat(), "clicks": clicks} for day, clicks in last_days(base, local, days)
     ]
 
     # Top countries (ungrouped — we want the absolute counts, not a
@@ -306,6 +293,7 @@ def get_url_analytics_summary(
             "include_bots": include_bots,
         },
         "daily": daily,
+        "timezone": local.name,
         "top_countries": top_countries,
     }
 

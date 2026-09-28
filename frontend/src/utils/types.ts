@@ -180,12 +180,16 @@ export interface DailyStatsResponse {
   short_code: string;
   stats: DailyStat[];
   total_clicks: number;
+  /** The IANA zone the days are counted in: the viewer's, else UTC. Absent from older APIs. */
+  timezone?: string;
 }
 
 export interface WeeklyStatsResponse {
   short_code: string;
   stats: WeeklyStat[];
   total_clicks: number;
+  /** The IANA zone the days are counted in: the viewer's, else UTC. Absent from older APIs. */
+  timezone?: string;
 }
 
 export interface GeoStat {
@@ -218,6 +222,8 @@ export interface CampaignSummary {
   click_through_rate: number; // % of links clicked at least once
   top_performers: CampaignRecipientStat[];
   daily_timeline: DailyStat[];
+  /** The IANA zone the days are counted in: the viewer's, else UTC. Absent from older APIs. */
+  timezone?: string;
 }
 
 export interface CampaignUsersResponse {
@@ -244,6 +250,8 @@ export interface OverviewStats {
   recent_clicks_7d: number;
   top_urls: TopLink[];
   recent_activity: DailyStat[];
+  /** The IANA zone the days are counted in: the viewer's, else UTC. Absent from older APIs. */
+  timezone?: string;
 }
 
 export interface OrphanVisit {

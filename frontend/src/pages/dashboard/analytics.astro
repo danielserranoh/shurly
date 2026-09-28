@@ -42,6 +42,7 @@ import ProBadge from '@/components/ui/ProBadge.astro';
       </div>
       <div class="mt-6" data-chart></div>
       <div class="mt-4 max-h-80 overflow-auto rounded-xl border border-line" data-table hidden></div>
+      <p class="hint mt-4" data-days-hint hidden></p>
     </section>
 
     <div class="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]">
@@ -71,12 +72,14 @@ import ProBadge from '@/components/ui/ProBadge.astro';
 <script>
   import { apiGet, saveBlob } from '@/utils/api';
   import { barList, bindChartTableToggle, columnChart, dataTable, sparkline } from '@/utils/charts';
+  import { todayIn } from '@/utils/days';
   import { toCsv } from '@/utils/csv';
   import { formatDateTime, formatNumber, hostname, pluralize, prettyUrl } from '@/utils/format';
   import { html, setHTML } from '@/utils/html';
   import { icon } from '@/utils/icons';
   import { linkHref, listLinks } from '@/utils/links';
   import { hydrateTimes, toast } from '@/utils/ui';
+  import { showDaysZoneHint } from '@/utils/viewer';
   import type { OrphanVisitsResponse, OverviewStats } from '@/utils/types';
 
   const $ = <T extends HTMLElement = HTMLElement>(sel: string) => document.querySelector<T>(sel)!;
@@ -108,7 +111,7 @@ import ProBadge from '@/components/ui/ProBadge.astro';
     setStat('unique', formatNumber(o.total_unique_visitors), 'Distinct visitors, all time');
     setStat('links', formatNumber(o.total_urls), html`${pluralize(o.total_campaigns, 'campaign')} · <a class="link" href="/dashboard/">View links</a>`);
 
-    const today = new Date().toISOString().slice(0, 10);
+    const today = todayIn(o.timezone);
     const rows = o.recent_activity.map((d) => {
       const date = new Date(`${d.date}T12:00:00`);
       return {
@@ -119,6 +122,7 @@ import ProBadge from '@/components/ui/ProBadge.astro';
     });
     columnChart($('[data-chart]'), rows, { ariaLabel: `Clicks per day across all links, last 7 days. Total ${o.recent_clicks_7d}.`, height: 260 });
     setHTML($('[data-table]'), dataTable(rows.map((r) => ({ label: r.title, value: r.value })), ['Day', 'Clicks']));
+    void showDaysZoneHint($('[data-days-hint]'));
 
     const top = o.top_urls.filter((u) => u.clicks > 0);
     setHTML(

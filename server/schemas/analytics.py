@@ -2,7 +2,7 @@
 
 from datetime import date, datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class DailyStats(BaseModel):
@@ -18,6 +18,8 @@ class DailyStatsResponse(BaseModel):
     short_code: str
     stats: list[DailyStats]
     total_clicks: int
+    # The IANA time zone the days are counted in: `?tz=`, else the viewer's profile, else UTC.
+    timezone: str = Field(description="The IANA time zone the days are counted in")
 
 
 class WeeklyStats(BaseModel):
@@ -34,6 +36,8 @@ class WeeklyStatsResponse(BaseModel):
     short_code: str
     stats: list[WeeklyStats]
     total_clicks: int
+    # The IANA time zone the days are counted in: `?tz=`, else the viewer's profile, else UTC.
+    timezone: str = Field(description="The IANA time zone the days are counted in")
 
 
 class GeoStats(BaseModel):
@@ -83,6 +87,8 @@ class CampaignSummary(BaseModel):
     click_through_rate: float  # Percentage of URLs that have been clicked
     top_performers: list[CampaignUserStat]  # Top 5 most clicked
     daily_timeline: list[DailyStats]  # Last 7 days
+    # The IANA time zone the days are counted in: `?tz=`, else the viewer's profile, else UTC.
+    timezone: str = Field(description="The IANA time zone the days are counted in")
 
 
 class OverviewStats(BaseModel):
@@ -92,6 +98,9 @@ class OverviewStats(BaseModel):
     total_campaigns: int
     total_clicks: int
     total_unique_visitors: int
+    # The last 7 days where the viewer is, today included: the sum of recent_activity.
     recent_clicks_7d: int
     top_urls: list[dict]  # Top 5 URLs with click counts
     recent_activity: list[DailyStats]  # Last 7 days
+    # The IANA time zone the days are counted in: `?tz=`, else the viewer's profile, else UTC.
+    timezone: str = Field(description="The IANA time zone the days are counted in")
