@@ -44,10 +44,10 @@ class User(Base):
     # Phase 3.13.3 — NULL: no password (an account made by signing in with Google).
     password_hash = Column(String(255), nullable=True)
     # Phase 6.3 — API keys are kept as a hash and a prefix, never as themselves: a key
-    # is shown once, when it's made (set_api_key). The plaintext column is empty since
-    # migration 0007 and goes in a later release; mapped under another name so that
-    # nothing reads or writes it by accident.
-    _legacy_api_key = Column("api_key", String(64), unique=True, nullable=True, index=True)
+    # is shown once, when it's made (set_api_key). The plaintext column, users.api_key,
+    # is empty since migration 0007 and isn't mapped: the ORM names every mapped column
+    # in its SELECTs and INSERTs, and 0009 drops it in the next release while this one
+    # still serves.
     api_key_hash = Column(String(64), unique=True, nullable=True, index=True)
     api_key_prefix = Column(String(API_KEY_PREFIX_LENGTH), nullable=True)
     api_key_scope = Column(Enum(ApiKeyScope), nullable=False, default=ApiKeyScope.FULL_ACCESS)

@@ -1296,7 +1296,13 @@ live in `mcp_server/README.md`, written for developers. There is no user manual 
 - [x] API keys stored as a hash → SHA-256 and the first 12 characters (migration `0007`), shown once when
       generated; `/auth/me`, and so the MCP's `get_current_user_info`, no longer returns the key; new keys
       start with `shurly_` (`tests/test_phase63_api_keys.py`)
-  - [ ] Drop the emptied `users.api_key` column, in the release after `0007`
+  - [x] Stop mapping the emptied `users.api_key`: the ORM names every mapped column in its SELECTs and INSERTs,
+        so dropping it while a task of that release serves fails every user query mid-rollout. A test drops it by
+        hand and runs this release against it: signing in, an API key, `/me`, the MCP, revoking
+        (`tests/test_phase63_api_keys.py`)
+  - [ ] Migration `0009` drops `users.api_key` and `ix_users_api_key`, and the drift test's `_PENDING_DROP` goes:
+        **only after the release that stopped mapping it is in production**, since until then a running task still
+        names the column. It takes `0009` after Agent 2's `0008`
   - [x] The MCP can't generate or revoke a key: talked into it by untrusted text, an assistant would get
         the new key in its context. Nor `login` or `change_password`: no password or JWT passes through an
         assistant (`EXCLUDED_ROUTE_MAPS`, pinned by `tests/test_phase52_mcp_tools.py`)
