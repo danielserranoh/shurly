@@ -26,6 +26,14 @@ implementation lifecycle and is independent of the URL version segment.
 
 ## [Unreleased]
 
+### Fixed — random test failure on UUIDs that look like numbers
+- **The test suite no longer fails at random with `'float' object has no attribute
+  'replace'`.** Its in-memory SQLite created the models' UUID columns as `UUID`, a
+  type SQLite gives numeric affinity, so an id whose 32 hex digits read as a number
+  (all digits, or digits around one `e`: about one uuid4 in 700,000) was stored as a
+  float and failed to load. `tests/conftest.py` now creates them as `CHAR(32)` on
+  SQLite. Test-only: PostgreSQL has a native UUID type, and the models are unchanged.
+
 ### Security — only accounts on the organization's email domain join it
 - **A new account joins the organization only if its email is on `ORGANIZATION_DOMAIN`**
   (default `griddo.io`; exact, case-insensitive; empty lets anyone join). Sign-up is
