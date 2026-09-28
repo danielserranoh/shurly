@@ -1134,7 +1134,9 @@ and every link on it would pay for the header's numbers.
       Unknown last
 - [x] Visits: clicks, email opens, bots or all; a table on wide screens, stacked rows on phones; 20 a page
 - [x] Export CSV: `/visits.csv` for the period, every kind
-- [ ] Check it against the real routes once Agent 1's two PRs land, at 1440 and 390 px, empty periods included
+- [x] Check it against the real routes once Agent 1's two PRs land, at 1440 and 390 px, empty periods included
+      → on seeded data: 95 days of clicks, opens and bots, a link with only opens, one with nothing; Europe/Madrid
+      and UTC; the CSV downloaded from the page, with formula-like user agents and referrers quoted as text
 
 ---
 

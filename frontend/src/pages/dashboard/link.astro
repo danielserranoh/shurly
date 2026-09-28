@@ -713,7 +713,7 @@ const donuts = [
           (visit) => html`<li class="grid gap-1 px-4 py-3 text-sm">
             <div class="flex items-center justify-between gap-3"><span class="font-medium text-ink-900">${when(visit)}</span>${withKind ? badge(visit) : ''}</div>
             <p class="text-ink-700">${summary(visit)}</p>
-            <p class="truncate text-ink-500">${visit.referrer === 'Direct' ? 'Direct' : `From ${visit.referrer}`}</p>
+            <p class="truncate text-ink-500">${visit.referrer === 'Direct' ? 'Direct' : known(visit.referrer) ? `From ${visit.referrer}` : 'Unknown referrer'}</p>
           </li>`,
         )}</ul>`,
     );
