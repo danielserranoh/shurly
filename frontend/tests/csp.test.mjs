@@ -8,7 +8,8 @@ import vm from 'node:vm';
 import { checkPage, parsePolicy, sha256 } from '../scripts/csp-rules.mjs';
 import { GUEST_GUARD, PROTECTED_GUARD } from '../src/inline-scripts.mjs';
 
-const BASE = "default-src 'self'; connect-src 'self' https://shurly.griddo.io; img-src 'self' https: data: blob:; object-src 'none'; base-uri 'self'; form-action 'self'";
+const TRUSTED_TYPES = "require-trusted-types-for 'script'; trusted-types shurly-html";
+const BASE = `default-src 'self'; connect-src 'self' https://shurly.griddo.io; img-src 'self' https: data: blob:; object-src 'none'; base-uri 'self'; form-action 'self'; ${TRUSTED_TYPES}`;
 const policy = (scriptSrc = "'self'") => `${BASE}; script-src ${scriptSrc}; style-src 'self'`;
 const meta = (content) => `<meta http-equiv="content-security-policy" content="${content}">`;
 const page = ({ head = '', body = '', csp = meta(policy()) } = {}) =>
@@ -52,6 +53,15 @@ describe('checkPage', () => {
     assert.ok(problems(page({ csp: meta("script-src 'self'") })).includes("object-src lacks 'none'"));
     assert.ok(problems(page({ csp: meta(policy("'self' 'unsafe-inline'")) })).includes("script-src allows 'unsafe-inline'"));
     assert.deepEqual(problems(page({ csp: '' })), ['expected one CSP <meta>, found 0']);
+  });
+
+  test('Trusted Types: required, with the one policy and no other', () => {
+    const without = `${BASE.replace(`; ${TRUSTED_TYPES}`, '')}; script-src 'self'; style-src 'self'`;
+    assert.deepEqual(problems(page({ csp: meta(without) })), ["require-trusted-types-for lacks 'script'", 'trusted-types lacks shurly-html']);
+    for (const extra of ["'default'", 'default', '*', "'allow-duplicates'"]) {
+      const loose = `${BASE} ${extra}; script-src 'self'; style-src 'self'`;
+      assert.deepEqual(problems(page({ csp: meta(loose) })), [`trusted-types allows ${extra}`], extra);
+    }
   });
 
   test('HTML-escaped quotes in the policy read the same', () => {

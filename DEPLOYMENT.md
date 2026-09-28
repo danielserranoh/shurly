@@ -449,7 +449,15 @@ CloudFront setting that would need updating on every deploy. The policy:
 | `connect-src` | `'self'` plus the origin of `PUBLIC_API_URL` | The API: the same origin in production |
 | `default-src`, `base-uri`, `form-action` | `'self'` | |
 | `object-src` | `'none'` | |
+| `require-trusted-types-for` | `'script'` | The DOM's HTML sinks (`innerHTML` and the like) take TrustedHTML only, not strings |
+| `trusted-types` | `shurly-html` | The one policy allowed: `src/utils/html.ts`, behind `setHTML` and `toElement` |
 
+- **Trusted Types:** the only way to put markup into the page is `setHTML` or `toElement` (`src/utils/html.ts`).
+  They pass it through the one policy, `shurly-html`, and escape anything that isn't markup from the escaping
+  `html` tag.
+  - A raw `el.innerHTML = '…'` anywhere else throws, and so does creating any other policy or a second one.
+  - Browsers without Trusted Types ignore both directives, and the markup stays a string.
+  - `frontend/tests/no-raw-html.test.mjs` fails on a `createPolicy` outside `html.ts`.
 - **What a `<meta>` policy can't do:** it can't set `frame-ancestors`. `X-Frame-Options: DENY` above covers
   framing.
 - **Placement:** a `<meta>` policy only governs what comes after it. Astro writes it at the end of `<head>`, so the
@@ -458,7 +466,9 @@ CloudFront setting that would need updating on every deploy. The policy:
   - lacks the policy;
   - has a script or preload before it;
   - has an inline script or `<style>` its hashes don't cover;
-  - has an inline event handler or a `javascript:` URL.
+  - has an inline event handler or a `javascript:` URL;
+  - lacks `require-trusted-types-for 'script'` or `trusted-types shurly-html`, or allows `default`, `*` or
+    `'allow-duplicates'`.
 - **Local testing:** `astro dev` has no CSP (an Astro limitation). To see it, run `npm run build` and then
   `npx astro preview`, with `PUBLIC_API_URL` pointing at a running API.
 

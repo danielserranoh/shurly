@@ -14,8 +14,13 @@ const REQUIRED = {
   'script-src': ["'self'"],
   'img-src': ['https:'],
   'connect-src': ["'self'"],
+  // Trusted Types: TrustedHTML at every HTML sink, from the one policy (src/utils/html.ts).
+  'require-trusted-types-for': ["'script'"],
+  'trusted-types': ['shurly-html'],
 };
 const FORBIDDEN_IN_SCRIPT_SRC = ["'unsafe-inline'", "'unsafe-eval'"];
+// A default policy would catch every sink; more policies, or duplicates, more ways to mint TrustedHTML.
+const FORBIDDEN_IN_TRUSTED_TYPES = ["'default'", 'default', '*', "'allow-duplicates'"];
 
 const decode = (text) => text.replace(/&#39;/g, "'").replace(/&quot;/g, '"').replace(/&amp;/g, '&');
 
@@ -60,6 +65,9 @@ export function checkPage(html) {
   }
   for (const value of FORBIDDEN_IN_SCRIPT_SRC) {
     if (policy['script-src']?.includes(value)) problems.push(`script-src allows ${value}`);
+  }
+  for (const value of FORBIDDEN_IN_TRUSTED_TYPES) {
+    if (policy['trusted-types']?.includes(value)) problems.push(`trusted-types allows ${value}`);
   }
 
   let inlineScripts = 0;

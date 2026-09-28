@@ -40,6 +40,20 @@ implementation lifecycle and is independent of the URL version segment.
 - **The Shlink import stores country codes too** (`visitLocation.countryCode`), since providers name some countries
   differently. The geo CSV and the MCP's summary carry codes.
 
+### Security — Trusted Types on every page (Phase 6.3)
+- **Every page's policy now includes `require-trusted-types-for 'script'` and `trusted-types shurly-html`.**
+  The DOM's HTML sinks (`innerHTML` and the like) take TrustedHTML only, from one policy.
+- **That policy lives in `src/utils/html.ts`**, behind `setHTML` and `toElement`, and nowhere else can reach
+  it. It lets through only markup built by the escaping `html` tag, and escapes anything else: a string, or
+  an object that merely looks like `html`'s output.
+- **A stray `el.innerHTML = '…'` now throws**, in the browsers that support Trusted Types. So does any
+  other policy, or a second one. Other browsers ignore the directives and render as before.
+- **The QR code's preview goes through `setHTML` too.** It was the last raw sink.
+- **Checked before switching it on:** the built bundles, and the app page by page with Trusted Types enforced.
+  The only sinks are ours; Astro and the libraries use none.
+- **The build now fails** without the two directives, or when the policy allows `default`, `*` or
+  `'allow-duplicates'`. `frontend/tests/no-raw-html.test.mjs` fails on a `createPolicy` outside `html.ts`.
+
 ### Added — importing Shlink's links (Phase 8.4)
 - **`python -m server.tools.shlink import <snapshot> <review.csv> --as <owner>`** imports every link the review
   keeps, with its exact code (never lowercased), its domain and its creation date, owned by the organization.

@@ -53,9 +53,8 @@ function check(found, allowed, extra = () => null) {
 }
 
 const ALLOWED_SINKS = [
-  ['src/utils/html.ts', 'el.innerHTML = typeof markup', 'setHTML itself: escapes strings, and RawHTML only comes from `html`'],
-  ['src/utils/html.ts', 'template.innerHTML = markup.value', 'toElement itself: RawHTML only'],
-  ['src/components/app/QrModal.astro', 'preview.innerHTML = qrSvg(url)', 'numbers and fixed colours; no text from the URL'],
+  ['src/utils/html.ts', 'el.innerHTML = trusted(', 'setHTML itself: through the Trusted Types policy, escaping all but RawHTML'],
+  ['src/utils/html.ts', 'template.innerHTML = trusted(', 'toElement itself: through the Trusted Types policy, escaping all but RawHTML'],
 ];
 
 test('raw HTML sinks are only the allowlisted, static ones', () => {
@@ -67,7 +66,10 @@ test('raw HTML sinks are only the allowlisted, static ones', () => {
 });
 
 test('raw() only wraps string literals, or an icon', () => {
-  const allowed = [['src/utils/icons.ts', 'return raw(iconSvg(name, className, strokeWidth))', 'the icon helper: our own SVG']];
+  const allowed = [
+    ['src/utils/icons.ts', 'return raw(iconSvg(name, className, strokeWidth))', 'the icon helper: our own SVG'],
+    ['src/components/app/QrModal.astro', 'setHTML(preview, raw(qrSvg(url)))', 'our own SVG: module coordinates, a path and fixed colours; never text from the link'],
+  ];
   const calls = [...occurrences(/\braw\(/)].filter((o) => o.file !== 'src/utils/html.ts');
   const literal = /\braw\((['"])[^'"$]*\1\)/g;
   const loose = calls.filter((o) => o.text.replace(literal, '').match(/\braw\(/));
@@ -105,4 +107,12 @@ test('set:html is build-time only, with our own markup', () => {
   const found = [...occurrences(/set:html/)];
   const problems = check(found, allowed);
   assert.deepEqual(problems, [], 'set:html renders raw markup:\n' + problems.join('\n'));
+});
+
+test('one Trusted Types policy, in html.ts', () => {
+  // Phase 6.3: the CSP allows one policy (shurly-html). Its createHTML passes markup through,
+  // which is only safe behind setHTML and toElement: a policy anywhere else could mint
+  // TrustedHTML from anything.
+  const found = [...occurrences(/\bcreatePolicy\s*\(/)].filter((o) => o.file !== 'src/utils/html.ts');
+  assert.deepEqual(found.map((o) => `${o.file}:${o.line}  ${o.text}`), [], 'Render through setHTML / toElement (src/utils/html.ts) instead');
 });
