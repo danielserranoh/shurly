@@ -11,11 +11,13 @@ from server.core.models.redirect_rule import RedirectRule
 from server.core.models.tag import Tag, campaign_tags, url_tags
 from server.core.models.url import URL, URLType
 from server.core.models.user import ApiKeyScope, User
+from server.core.models.user_profile import UserProfile
 from server.core.models.visitor import Visitor
 
 __all__ = [
     "User",
     "ApiKeyScope",
+    "UserProfile",
     "UserIdentity",
     "GoogleAuthState",
     "LoginCode",

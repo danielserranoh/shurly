@@ -591,20 +591,21 @@ System creates:
 timezone, and an avatar uploaded with a crop step. Name and timezone also lay the groundwork for anything
 scheduled later (sends, reports, digests) — which needs to know the user's local time.
 **Priority:** 🟢 LOW - UX polish; no dependency on Phase 4/5
-**Today:** `users` holds auth data only (email, password hash, API key + scope/constraints, is_active,
-created_at) — no name, country, timezone or avatar. The app header shows the user's initial in a `size-9`
-circle (`AppLayout.astro`, `data-user-initial`); `AccountPanel.astro` has no avatar; the backend has no
-file storage (no S3, no `UploadFile` endpoints).
+**Today:** the profile's fields are in (3.12.1–3.12.2: names, country, time zone, in `user_profiles`); the
+avatar isn't. The app header shows the first name's initial (the email's without one) in a `size-9` circle
+(`AppLayout.astro`, `data-user-initial`); `AccountPanel.astro` has no avatar; the backend has no file
+storage (no S3, no `UploadFile` endpoints).
 **Note (2026-09-27):** with sign-in through Google (3.13), the ID token already carries the name and a photo URL.
-Pre-fill the profile from them; the upload and crop below remain for changing the photo.
+Pre-fill the profile from them; the upload and crop below remain for changing the photo. → names done: the web
+sign-in asks for the `profile` scope (the MCP's doesn't), and `given_name`/`family_name` start the profile of an
+account without one; an existing profile is never touched, cleared names included
+(`server/utils/google_sign_in.py`). The photo is left out (decided 2026-09-28).
 
 ### 3.12.1 Data model — new `user_profiles` table ✅ decided
 Storage is the database, not S3 (the Phase 4.5/4.6 bucket + CloudFront doesn't exist yet). And it's a
-**new table rather than new columns on `users`**, for two reasons:
-- **No migrations.** There's no Alembic; the schema comes from `Base.metadata.create_all()` at startup,
-  which creates missing *tables* but never adds *columns* to existing ones. New columns on `users` would
-  exist in the test DB (built from scratch) and be missing on RDS — a production-only failure needing a
-  hand-run `ALTER TABLE` inside the VPC. A new table is created on the next boot, no manual step.
+**new table rather than new columns on `users`**:
+- ~~No migrations~~ → out of date: Alembic runs migrations at startup since 3.14.1, and columns would be
+  fine. The table came with migration 0008 (a new table only, so the previous release is unaffected).
 - **`users` is read on every request.** `server/core/auth.py` loads `User` on every authenticated call
   (JWT and API key); keeping profile and image out of it keeps that path lean.
 
@@ -620,11 +621,12 @@ user_profiles
   avatar_updated_at    DateTime     nullable   cache-busting version for the image
   updated_at           DateTime
 ```
-- [ ] Model `server/core/models/user_profile.py`, registered in `__init__.py`; `User.profile` relationship
+- [x] Model `server/core/models/user_profile.py`, registered in `__init__.py`; `User.profile` relationship
       (`uselist=False`, `back_populates`) — lazy, never joined into the auth query
 - [ ] `avatar` column mapped with `deferred()`, so reading names/country/timezone never loads the image bytes
-- [ ] Row created lazily on first save; existing users simply have no row and read as an empty profile
-- [ ] All fields nullable — nothing is required to keep using the product
+      → with the avatar (3.12.5); 0008 has the profile's fields only
+- [x] Row created lazily on first save; existing users simply have no row and read as an empty profile
+- [x] All fields nullable — nothing is required to keep using the product
 
 **Timezone is its own field, not derived from country.** A country does not determine a timezone:
 Spain alone has two (`Europe/Madrid`, `Atlantic/Canary`), and Mexico, Brazil, the US, Canada, Russia and
@@ -634,13 +636,19 @@ Australia have several. So store `country` *and* `timezone`:
 - Pre-fill from the browser (`Intl.DateTimeFormat().resolvedOptions().timeZone`); use `country` to narrow
   the timezone picker, and auto-select when the country has a single zone
 - Validate server-side against `zoneinfo.available_timezones()`; validate `country` against ISO 3166-1
+  → against the `tzdata` package instead (a dependency, `server/utils/timezones.py`): the production image's
+  database (Debian) has 486 zones and none of the legacy names browsers still report (`Asia/Calcutta`, from
+  Chrome in India). Countries come from its `iso3166.tab`. A legacy name is stored as the current one
+  (`Asia/Kolkata`); the names zone.tab gives a country stay (`Europe/Stockholm`). The picker's lists are
+  `frontend/src/data/timezones.json`, generated from the same package (`scripts/generate_timezones.py`)
 
 ### 3.12.2 Profile fields (frontend + API)
-- [ ] Account section: first name, last name, country (select), timezone (select, filtered by country,
-      pre-filled from the browser)
-- [ ] `PATCH /api/v1/auth/me/profile` — partial update; `GET /api/v1/auth/me` returns the profile
-      (names, country, timezone, avatar version) alongside the existing fields
-- [ ] Header initial comes from `first_name` when set, falling back to the email as today
+- [x] Account section: first name, last name, country (select), timezone (select, filtered by country,
+      pre-filled from the browser) → Settings → Account → Profile; a country with one zone picks it
+- [x] `PATCH /api/v1/auth/me/profile` — partial update; `GET /api/v1/auth/me` returns the profile
+      (names, country, timezone, avatar version) alongside the existing fields → `profile` on /auth/me
+      (additive), and the MCP tool `update_my_profile`; the avatar version comes with the avatar
+- [x] Header initial comes from `first_name` when set, falling back to the email as today
 
 ### 3.12.3 Avatar picker (frontend)
 - [ ] Avatar block at the top of `AccountPanel.astro`: current avatar (or initial placeholder) + change / remove
@@ -675,9 +683,10 @@ Australia have several. So store `country` *and* `timezone`:
 - [ ] Fall back to the initial when there is no avatar or the image fails to load
 
 ### 3.12.7 Verification
-- [ ] Backend tests (TDD): profile round-trip through `db_session`; `PATCH` partial updates; country and
+- [x] Backend tests (TDD): profile round-trip through `db_session`; `PATCH` partial updates; country and
       timezone validation (reject unknown ISO codes and non-IANA zones, accept `Atlantic/Canary`);
       user without a profile row reads as empty; deleting a user cascades to the profile
+      → `tests/test_phase312_profile.py`; the pre-fill from Google in `tests/test_phase3132_google_sign_in.py`
 - [ ] Avatar tests: upload, replace, delete, type/size rejection, auth required, ETag/cache headers, and
       that loading the profile does **not** load the avatar bytes (deferred)
 - [ ] Crop-logic unit tests for the cover constraint: min zoom, pan clamping at every zoom, re-clamp on
@@ -1091,7 +1100,7 @@ for this.
 
 ### 5.2 Auto-generated tools from FastAPI
 - [x] Bootstrap: `FastMCP.from_fastapi(app)` (or equivalent) — generate the first cut of tools automatically. (47 raw tools)
-- [x] Audit the generated tool list: for each `/api/v1/...` endpoint, verify the tool name, description, schema, and return shape are LLM-friendly. → `MCP_TOOL_NAMES` strips the `_api_v1_<path>_<method>` suffix from operationIds; `tests/test_phase52_mcp_tools.py` pins the surface (38 tools today)
+- [x] Audit the generated tool list: for each `/api/v1/...` endpoint, verify the tool name, description, schema, and return shape are LLM-friendly. → `MCP_TOOL_NAMES` strips the `_api_v1_<path>_<method>` suffix from operationIds; `tests/test_phase52_mcp_tools.py` pins the surface (40 tools today)
 - [x] Filter out endpoints that should NOT be MCP tools: legacy `statistics.py`, internal-only routes, anything that handles file uploads (campaign CSV — see 5.3). → `EXCLUDED_ROUTE_MAPS` drops `/api/v1/stats/*` and the health probes. No route takes a file upload: `create_campaign` takes the CSV as a string and stays a tool, with `create_campaign_from_rows` (5.3) as the LLM-friendly variant
 - [x] Verify the OG-preview, robots.txt, redirect path, and tracking pixel routes are excluded (they're public unversioned routes, not management API). → `/`, `/robots.txt`, `/{short_code}` and `/{short_code}/track` are excluded. The OG-preview routes (`/api/v1/urls/{code}/preview`, `…/refresh-preview`, `fetch-metadata`) are authenticated management API, so they **stay** as tools
 - [ ] Tests: each auto-generated tool round-trips through the MCP server and produces the same output as the underlying endpoint. → open: only `get_current_user_info` is called through the MCP layer (`tests/test_phase54_mcp_auth.py`); the other generated tools are covered by their REST tests, not through MCP

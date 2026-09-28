@@ -26,6 +26,30 @@ implementation lifecycle and is independent of the URL version segment.
 
 ## [Unreleased]
 
+### Added — a profile: name, country and time zone (Phase 3.12)
+- **Settings → Account → Profile** has first name, last name, country and time zone, saved together.
+  - The time zone list follows the country, and a country with one zone picks it.
+  - Without a saved time zone, this browser's is picked, for the person to save.
+  - Labels show the current offset, e.g. "Atlantic/Canary (GMT+1)".
+- **The header's initial comes from the first name**, and from the email without one.
+- **`GET /api/v1/auth/me` returns `profile`**: `first_name`, `last_name`, `country` and `timezone`,
+  each null until set. Nothing else in the response changed.
+- **`PATCH /api/v1/auth/me/profile`** changes the fields it's sent; null, or a blank name, clears one.
+  - Names are trimmed, 100 characters at most, one line.
+  - `country` is an ISO 3166-1 alpha-2 code.
+  - `timezone` is an IANA name, never an offset. A legacy one is stored as the current one:
+    `Asia/Calcutta`, which Chrome still reports in India, becomes `Asia/Kolkata`.
+  - The MCP has it too, as `update_my_profile`.
+- **Signing in with Google starts the profile** with the names in the ID token, for an account that has
+  no profile yet. After that the profile is the person's: Google never changes it, not even names they
+  cleared. The web sign-in now asks Google for the `profile` scope; the MCP's sign-in doesn't.
+- **Time zones and countries are checked against the `tzdata` package, a new dependency**, not the
+  server's own database. The production image's has 486 zones and none of the legacy names.
+  - The picker's lists (`frontend/src/data/timezones.json`) come from the same package, through
+    `scripts/generate_timezones.py`.
+  - A test fails when they drift apart.
+- **Migration 0008** adds the `user_profiles` table. A row is made on the first save.
+
 ### Changed — `users.api_key` is no longer mapped, ahead of its drop (Phase 6.3)
 - The plaintext column, empty since `0007`, stayed mapped as `_legacy_api_key`, so the ORM still named it in every
   SELECT and INSERT of a user. Dropping it in the next release would have failed every user query on the task still
