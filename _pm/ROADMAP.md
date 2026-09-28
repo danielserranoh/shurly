@@ -185,7 +185,8 @@ System creates:
 ### 2.2 Enhanced Visitor Tracking ✅
 - [x] User agent parsing utilities (browser, OS, device type detection)
 - [x] Referer tracking (already in Visitor model)
-- [ ] IP geolocation service integration (deferred - optional feature) → wanted before the Shlink cutover: see 8.4
+- [x] IP geolocation service integration (deferred - optional feature) → wanted before the Shlink cutover: see 8.4
+      → done there: DB-IP's country database, in process
 - [ ] Background task for async logging (deferred - visitor logging is synchronous)
 
 ---
@@ -1469,9 +1470,11 @@ the import can be re-run.
       it too, unless the review drops it; a later snapshot adds only newer visits (the cutover's delta)
   - [ ] How it runs in production: it writes to the private RDS. Decision B, with the user: a one-off ECS task
         (recommended) or ECS Exec (needs an ECS task role with SSM permissions; `deploy_ecs.sh` sets none)
-- [ ] Fill `Visitor.country` for Shurly's own visits (geolocation: 2.x's deferred "IP geolocation service
+- [x] Fill `Visitor.country` for Shurly's own visits (geolocation: 2.x's deferred "IP geolocation service
       integration"). Nothing fills it today, so once Shlink's history is imported the geo view shows only that
-      history, and would mislead
+      history, and would mislead → the ISO code, from DB-IP's IP to Country Lite (CC BY 4.0, no account),
+      looked up in process from the stored, anonymized address (`server/utils/geo.py`). The image build fetches
+      the file, and the deploy job warns without it. The Shlink import stores codes too; the page shows names
 
 ### 8.5 Cutover
 - [ ] Freeze link creation in Shlink; final delta export + import

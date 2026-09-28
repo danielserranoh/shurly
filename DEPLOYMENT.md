@@ -674,6 +674,7 @@ Mitigations if cost ever pinches:
 Visitor logging is privacy-first by default, configured via env vars:
 
 - **`ANONYMIZE_REMOTE_ADDR=true`** (default): IPv4 truncated to `/24`, IPv6 to `/64` at insert time. Truncation happens in `server/utils/network.py::anonymize_ip` before the `Visitor` row is committed — full addresses never reach Postgres. The client IP is resolved first and truncated after (`visit_ip`), for orphan visits too.
+- **A visit's country (Phase 8.4)** is looked up from the address that's stored: the anonymized one when `ANONYMIZE_REMOTE_ADDR` is on. The lookup never sees more than what's kept, and only the country, an ISO code, is stored: no city, no coordinates. The cost: a country range finer than a `/24` (rare in the data) can give no country or the wrong one. The lookup runs in process against a file, with no network call (§ Geolocation data).
 - Bots and email tracking pixels share the `visits` table but carry `is_bot` / `is_pixel` flags so click analytics exclude them by default.
 - Tracking pixel responses set `Cache-Control: no-store` so HTML email clients re-fetch on every open.
 - The `User.api_key_scope` enum is in place so post-launch role rollouts (`READ_ONLY`, `CREATE_ONLY`, `DOMAIN_SPECIFIC`) ship without a destructive migration; only `FULL_ACCESS` is enforced today.
@@ -869,6 +870,18 @@ sends the email. None of it is set up yet (ROADMAP 6.4).
 3. **Is the database there?** `GET /api/v1/health/db`, then RDS's connections and CPU.
 4. **Write it down** in the troubleshooting catalog (`docs/AWS_ECS_DEPLOYMENT.md`): the symptom, the cause and the
    fix.
+
+## Geolocation data (Phase 8.4)
+
+A visit's country comes from DB-IP's IP to Country Lite database (CC BY 4.0: pages that show countries credit DB-IP),
+which the image carries at `/app/data/dbip-country-lite.mmdb`. `GEOIP_DATABASE` names it; empty turns lookups off.
+
+- **The build fetches it** (`scripts/fetch_geoip.py`, the dockerfile's `geoip` stage): this month's file, or last
+  month's until this month's is out. It's installed only if it opens and places 8.8.8.8 in the US. Every release
+  therefore carries a recent one; DB-IP publishes monthly.
+- **Without it, the build still succeeds** and visits have no country. The deploy job warns on the run's page
+  (`No geolocation data`), and the app logs `geo.database_missing` once at startup. The next release fetches it again.
+- **Locally:** `uv run python scripts/fetch_geoip.py` puts it in `data/` (git-ignored). Without it, countries are null.
 
 ## Moving Shlink's links (Phase 8.4)
 

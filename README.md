@@ -123,6 +123,7 @@ CORS_ORIGINS=["http://localhost:4232","http://localhost:3000"]
 
 # Phase 3.9 / 3.10 settings (all optional, sensible defaults shown)
 ANONYMIZE_REMOTE_ADDR=true                 # Truncate IPv4→/24, IPv6→/64
+GEOIP_DATABASE=data/dbip-country-lite.mmdb # A visit's country (scripts/fetch_geoip.py); empty: off
 TRUSTED_PROXIES=[]                         # CIDR allowlist for X-Forwarded-For
 DISABLE_TRACK_PARAM=nostat                 # Query string that suppresses logging
 SHORT_URL_MODE=loose                       # "loose" lowercases codes/slugs
@@ -480,6 +481,8 @@ Note: Update the Docker configuration with environment variables for production 
 - **SQL injection**: SQLAlchemy ORM, parameterized queries throughout
 - **Authorization**: user-scoped resources for URLs / campaigns / tags
 - **GDPR by default**: visitor IPs anonymized at insert (`/24` IPv4, `/64` IPv6); toggle with `ANONYMIZE_REMOTE_ADDR`
+- **Countries from the stored address**: a visit's country (an ISO code) is looked up in process, from the anonymized
+  address when anonymization is on, so the lookup never sees more than what's kept; nothing but the country is stored
 - **Trusted-proxy allowlist**: `X-Forwarded-For` is **never** trusted unless the request source is in `TRUSTED_PROXIES` (CIDRs)
 - **SSRF-safe link previews**: the Open Graph fetcher only requests http(s) URLs whose host resolves exclusively to public addresses (no loopback, private, link-local/cloud metadata), re-checks every redirect hop (max 5), and connects to the checked IP so DNS rebinding can't swap it; `OG_FETCH_ALLOW_PRIVATE=true` relaxes this for local development only
 - **Default-deny crawlability**: short URLs are excluded from `/robots.txt` unless explicitly marked `crawlable=true`
@@ -516,3 +519,7 @@ checklist:
 ## License
 
 MIT
+
+IP geolocation by [DB-IP](https://db-ip.com), from its IP to Country Lite database, licensed under
+[CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). The image fetches it at build time
+(`scripts/fetch_geoip.py`); it isn't in this repository.

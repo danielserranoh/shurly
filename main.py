@@ -154,6 +154,10 @@ def create_app(mcp_auth=None) -> FastAPI:
         # `TESTING=1` skips DB seeding (conftest manages the in-memory schema).
         if not os.getenv("TESTING"):
             _seed_database()
+            # Phase 8.4 — open the geolocation database now: a missing one is logged at startup.
+            from server.utils.geo import open_database
+
+            open_database()
 
         # `app.state.mcp_app` is set during construction below (after the
         # routers are registered, so the MCP introspection sees them all).

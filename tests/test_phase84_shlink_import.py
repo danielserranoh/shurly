@@ -274,9 +274,9 @@ class TestVisits:
 
         rows = db_session.query(Visitor).order_by(Visitor.visited_at).all()
         assert [(v.ip, v.country, v.referer, v.is_bot, v.is_pixel) for v in rows] == [
-            ("unknown", "Spain", "https://t.co", True, False),
+            ("unknown", "ES", "https://t.co", True, False),
             ("unknown", None, None, False, False),
-            ("unknown", "Spain", "https://t.co", False, True),
+            ("unknown", "ES", "https://t.co", False, True),
         ]
         assert [v.visited_at for v in rows] == [
             datetime(2025, 3, 1, 8, 0),

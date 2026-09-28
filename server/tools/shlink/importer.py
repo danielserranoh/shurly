@@ -349,7 +349,8 @@ def _visits(db, report, url: URL, visits: list[dict]) -> None:
                 url_id=url.id,
                 short_code=url.short_code,
                 ip=IMPORTED_IP,
-                country=fit(location.get("countryName") or None, Visitor.country),
+                # Phase 8.4 — an ISO code, as Shurly stores a country: names differ by provider.
+                country=fit(location.get("countryCode") or None, Visitor.country),
                 user_agent=visit.get("userAgent"),
                 referer=visit.get("referer"),
                 is_bot=bool(visit.get("potentialBot")),

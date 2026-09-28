@@ -76,6 +76,16 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
+      - name: Geolocation data (Phase 8.4)
+        run: |
+          # The image's geoip stage fetches DB-IP's country database, and the build below
+          # reuses it from this builder's cache. It never fails the build, so a release
+          # without it shows here, on the run's page, as well as in CloudWatch.
+          docker buildx build --target geoip-data --output type=local,dest=geoip-data .
+          if [ ! -s geoip-data/dbip-country-lite.mmdb ]; then
+            echo "::warning title=No geolocation data::The image ships without DB-IP's country database: visits will have no country until the next release (scripts/fetch_geoip.py)."
+          fi
+
       - name: Build and push image (multi-arch)
         env:
           REGISTRY: ${{ steps.ecr-login.outputs.registry }}
