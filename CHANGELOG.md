@@ -26,6 +26,19 @@ implementation lifecycle and is independent of the URL version segment.
 
 ## [Unreleased]
 
+### Fixed — a link's last click is a click, and an unknown address isn't a visitor
+- **A link's `last_click_at` moved on every visit the redirect logged, bots included.** So a link only bots had
+  visited showed "Last … ago" in the dashboard next to no clicks, instead of "No clicks yet". It moves on a click
+  now, as the analytics' `/totals` counts one: not a bot's visit, an email open, a crawler's preview or a
+  `?nostat` hit. The Shlink import counted Shlink's potential bots the same way; it doesn't anymore.
+- **Migration `0010` repairs what's stored:** each link's latest click, or nothing. Data only, in two
+  statements. During the rollout, the previous release can still set a bot's time. So `users.api_key`'s drop
+  takes `0011`.
+- **Unique visitors don't count an unknown address.** Every visit imported from Shlink has ip "unknown" (it
+  exposes none), and so does a visit whose address Shurly couldn't read. They made one extra "visitor" in the
+  overview, a campaign's summary, top performers and users, and the MCP's link summary. So unique-visitor counts
+  now cover the cutover onward, as the importer's README says.
+
 ### Added — a donut chart, and "Show all" for bar lists (styleguide)
 - **`donutChart()`** (`frontend/src/utils/charts.ts`, geometry in `donut.ts`), for the link's analytics by
   context: shares of one total in one hue, four blues and a grey tail ("Other" past five), the total in
@@ -315,7 +328,7 @@ implementation lifecycle and is independent of the URL version segment.
   running this one, mid-rollout: signing in, every authenticated call, the MCP.
 - This release doesn't map it. A PostgreSQL test drops the column by hand and runs this release against the result:
   signing in, generating an API key, `/me`, an MCP tool call with the key, revoking.
-- The release after drops it, in migration `0010` (0009 is the avatar, 3.12). Until then the migration drift test ignores exactly that column
+- The release after drops it, in migration `0011` (0009 is the avatar, 3.12; 0010 repairs `last_click_at`). Until then the migration drift test ignores exactly that column
   and its index, and a guard fails once they're gone.
 
 ### Security — the client IP behind CloudFront (Phase 6.3)

@@ -36,7 +36,7 @@ from typing import Any
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from server.app.analytics import _exclude_bots
+from server.app.analytics import _distinct_visitors, _exclude_bots
 from server.core.models import (
     Campaign,
     OrphanVisit,
@@ -258,9 +258,9 @@ def get_url_analytics_summary(
     base = _exclude_bots(db.query(Visitor).filter(Visitor.url_id == url.id), include_bots)
 
     total_clicks = base.count()
-    # `func.count(func.distinct(...))` is portable across SQLite and Postgres;
-    # the previous `query.distinct(col).count()` form silently no-ops on SQLite.
-    unique_ips = base.with_entities(func.count(func.distinct(Visitor.ip))).scalar() or 0
+    # Unique visitors: distinct addresses, an unknown one aside (`_distinct_visitors`). A
+    # count of distinct values is portable; `query.distinct(col).count()` no-ops on SQLite.
+    unique_ips = base.with_entities(_distinct_visitors()).scalar() or 0
 
     # Daily series: the last `days` days where the viewer is (their profile's time zone,
     # else UTC), oldest → newest. The app's days (server/utils/local_days.py), so its numbers.
