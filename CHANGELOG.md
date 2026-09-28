@@ -67,7 +67,7 @@ implementation lifecycle and is independent of the URL version segment.
   and each value names its unit for screen readers.
 - **`dataTable()`** can add a share column: whole percents that add up to 100.
 
-### Added — a link's analytics, as on Shlink's link page (Phase 3.16)
+### Added — the API for a link's analytics (Phase 3.16)
 - **Five new routes under `/api/v1/analytics/urls/{short_code}/`, for the link's page.** The contract is in
   ROADMAP 3.16.1:
   - **`/totals`**: the header's all-time numbers: clicks, email opens, the countries clicks came from, and the
