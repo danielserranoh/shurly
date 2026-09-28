@@ -247,6 +247,9 @@ Phase 5.3 ships hand-written tools alongside the auto-generated set:
 - **`add_redirect_rule`** — sugar over `POST /urls/{code}/rules` with named
   condition args (`device="ios"`, `language="en"`, etc.) instead of a raw
   conditions list.
+
+Like every tool that takes a link's code, these two take a `domain` too (Phase 8.3): one
+code can name links on several domains, and without it the default domain's link answers.
 - **`list_orphan_visits_grouped`** — clusters orphan visits by
   `attempted_path` so typo patterns are obvious instead of paginating
   through a flat event log.

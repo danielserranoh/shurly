@@ -38,14 +38,13 @@ from sqlalchemy.orm import Session
 
 from server.app.analytics import _exclude_bots
 from server.core.models import (
-    URL,
     Campaign,
     OrphanVisit,
     RedirectRule,
     User,
     Visitor,
 )
-from server.utils.access import Visibility, viewer
+from server.utils.access import Visibility, find_url, viewer
 from server.utils.campaign import (
     generate_campaign_urls,
     parse_csv,
@@ -53,7 +52,7 @@ from server.utils.campaign import (
 )
 from server.utils.domain import get_or_create_default_domain
 from server.utils.local_days import LocalDays, last_days
-from server.utils.url import is_valid_url
+from server.utils.url import is_valid_url, link_hostname
 
 # ---------------------------------------------------------------------------
 # create_campaign_from_rows
@@ -153,6 +152,7 @@ def add_redirect_rule(
     *,
     short_code: str,
     target_url: str,
+    domain: str | None = None,
     priority: int = 0,
     device: str | None = None,
     language: str | None = None,
@@ -200,7 +200,7 @@ def add_redirect_rule(
 
     # Phase 3.14.3 — the same rules as the endpoint: see the link, then be able to change it.
     who = viewer(db, user)
-    url = db.query(URL).filter(URL.short_code == short_code, who.sees(URL)).first()
+    url = find_url(db, who, short_code, domain)  # Phase 8.3 — the code on `domain`
     if url is None:
         raise LookupError(f"URL with short_code={short_code!r} not found for current user")
     if not who.can_change(url):
@@ -236,6 +236,7 @@ def get_url_analytics_summary(
     user: User,
     *,
     short_code: str,
+    domain: str | None = None,
     days: int = 7,
     include_bots: bool = False,
 ) -> dict[str, Any]:
@@ -248,7 +249,7 @@ def get_url_analytics_summary(
     if days < 1 or days > 90:
         raise ValueError("days must be between 1 and 90")
 
-    url = db.query(URL).filter(URL.short_code == short_code, viewer(db, user).sees(URL)).first()
+    url = find_url(db, viewer(db, user), short_code, domain)  # Phase 8.3 — the code on `domain`
     if url is None:
         raise LookupError(f"URL with short_code={short_code!r} not found for current user")
 
@@ -284,6 +285,7 @@ def get_url_analytics_summary(
 
     return {
         "short_code": url.short_code,
+        "domain": link_hostname(url),
         "original_url": url.original_url,
         "url_type": url.url_type.value if url.url_type else None,
         "totals": {

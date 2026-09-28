@@ -40,7 +40,7 @@ from server.schemas.url import (
     URLResponse,
     URLUpdate,
 )
-from server.utils.access import viewer
+from server.utils.access import LinkDomain, find_url, find_urls, viewer
 from server.utils.columns import fit
 from server.utils.domain import get_or_create_default_domain, resolve_domain_for_host
 from server.utils.network import visit_ip
@@ -51,6 +51,8 @@ from server.utils.url import (
     generate_short_code,
     is_reserved_short_code,
     is_valid_custom_code,
+    link_hostname,
+    link_short_url,
     make_code_unique,
     normalize_short_code,
     url_origin,
@@ -99,7 +101,8 @@ def _click_count(db: Session, url: URL) -> int:
 def _to_url_response(url: URL, click_count: int) -> URLResponse:
     """Serialize a URL row plus its computed `short_url` and `click_count`."""
     response = URLResponse.model_validate(url)
-    response.short_url = build_short_url(url.short_code)
+    response.short_url = link_short_url(url)
+    response.domain = link_hostname(url)
     response.click_count = click_count
     return response
 
@@ -509,6 +512,7 @@ def list_urls(
 )
 def get_url(
     short_code: str,
+    domain: LinkDomain = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -528,7 +532,7 @@ def get_url(
     - **401**: Authentication required or invalid token
     - **404**: URL not found, or someone else's personal link
     """
-    url = _get_visible_url(db, short_code, current_user)
+    url = _get_visible_url(db, short_code, current_user, domain=domain)
     return _to_url_response(url, _click_count(db, url))
 
 
@@ -542,6 +546,7 @@ def get_url(
 )
 def delete_url(
     short_code: str,
+    domain: LinkDomain = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -564,7 +569,7 @@ def delete_url(
 
     **Note:** Only standard and custom URLs can be deleted directly. Campaign URLs must be deleted through the campaign.
     """
-    url = _get_visible_url(db, short_code, current_user, to_change=True)
+    url = _get_visible_url(db, short_code, current_user, domain=domain, to_change=True)
 
     # Prevent deleting campaign URLs directly
     if url.url_type == URLType.CAMPAIGN:
@@ -591,6 +596,7 @@ def delete_url(
 def update_url(
     short_code: str,
     url_update: URLUpdate,
+    domain: LinkDomain = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -622,7 +628,7 @@ def update_url(
 
     **Note:** The short_code itself cannot be changed. Campaign URLs must be managed through the campaign.
     """
-    url = _get_visible_url(db, short_code, current_user, to_change=True)
+    url = _get_visible_url(db, short_code, current_user, domain=domain, to_change=True)
 
     # Prevent updating campaign URLs
     if url.url_type == URLType.CAMPAIGN:
@@ -653,6 +659,7 @@ def update_url(
 def update_url_tags(
     short_code: str,
     tag_data: dict,
+    domain: LinkDomain = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -678,7 +685,7 @@ def update_url_tags(
     """
     from server.core.models import Tag
 
-    url = _get_visible_url(db, short_code, current_user, to_change=True)
+    url = _get_visible_url(db, short_code, current_user, domain=domain, to_change=True)
 
     tag_ids_str = tag_data.get("tag_ids", [])
 
@@ -729,7 +736,10 @@ def bulk_tag_urls(
     **Authentication:** Required (JWT Bearer token)
 
     **Request Body:**
-    - **short_codes**: List of short codes to tag
+    - **links**: The links to tag, each `{"short_code": …, "domain": …}`. Use `links` when
+      codes exist on several domains: the domain picks the link
+    - **short_codes**: Short codes to tag, one link per code: the default domain's, then
+      the other domains' by hostname (as without `?domain=`)
     - **tag_ids**: List of tag IDs to apply
 
     **Responses:**
@@ -740,7 +750,12 @@ def bulk_tag_urls(
     """
     from server.core.models import Tag
 
-    short_codes = bulk_data.get("short_codes", [])
+    # Phase 8.3 — a link is its code and its domain: `links` name both; a plain code takes
+    # one link, by the same rule as a route without `?domain=` (`find_url`).
+    addresses = [
+        (item.get("short_code"), item.get("domain")) for item in bulk_data.get("links", [])
+    ]
+    addresses += [(code, None) for code in bulk_data.get("short_codes", [])]
     tag_ids_str = bulk_data.get("tag_ids", [])
 
     # Convert string UUIDs to UUID objects
@@ -751,14 +766,11 @@ def bulk_tag_urls(
     except (ValueError, AttributeError) as e:
         raise HTTPException(status_code=400, detail=f"Invalid tag ID format: {str(e)}") from e
 
-    # Fetch the URLs the user can see, with their current tags in one query (no N+1)
+    # The links the user can see, each once, with their current tags in one query (no N+1)
     who = viewer(db, current_user)
-    urls = (
-        db.query(URL)
-        .options(selectinload(URL.tags))
-        .filter(URL.short_code.in_(short_codes), who.sees(URL))
-        .all()
-    )
+    addresses = [(code, domain) for code, domain in addresses if isinstance(code, str)]
+    found = find_urls(db, who, addresses, selectinload(URL.tags))
+    urls = list({url.id: url for url in found.values()}.values())
 
     # Fetch tags
     tags = db.query(Tag).filter(Tag.id.in_(tag_ids)).all()
@@ -798,6 +810,7 @@ def bulk_tag_urls(
 )
 def get_url_preview(
     short_code: str,
+    domain: LinkDomain = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -816,7 +829,7 @@ def get_url_preview(
     - **401**: Authentication required or invalid token
     - **404**: URL not found, or someone else's personal link
     """
-    url = _get_visible_url(db, short_code, current_user)
+    url = _get_visible_url(db, short_code, current_user, domain=domain)
 
     has_custom = bool(url.og_title or url.og_description or url.og_image_url)
 
@@ -824,7 +837,7 @@ def get_url_preview(
         og_title=url.og_title or url.title,
         og_description=url.og_description,
         og_image_url=url.og_image_url,
-        og_url=build_short_url(short_code),
+        og_url=link_short_url(url),
         has_custom_preview=has_custom,
         fetched_at=url.og_fetched_at,
     )
@@ -840,6 +853,7 @@ def get_url_preview(
 )
 async def refresh_url_preview(
     short_code: str,
+    domain: LinkDomain = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -862,7 +876,7 @@ async def refresh_url_preview(
 
     **Note:** Custom Open Graph values (manually set) will not be overwritten.
     """
-    url = _get_visible_url(db, short_code, current_user, to_change=True)
+    url = _get_visible_url(db, short_code, current_user, domain=domain, to_change=True)
 
     # Fetch metadata from destination
     metadata = await fetch_opengraph_metadata(str(url.original_url))
@@ -884,7 +898,7 @@ async def refresh_url_preview(
         og_title=url.og_title or url.title,
         og_description=url.og_description,
         og_image_url=url.og_image_url,
-        og_url=build_short_url(short_code),
+        og_url=link_short_url(url),
         has_custom_preview=bool(url.og_title or url.og_description or url.og_image_url),
         fetched_at=url.og_fetched_at,
     )
@@ -901,9 +915,12 @@ def _as_utc(dt: datetime | None) -> datetime | None:
 # change is a 403 (server/utils/access.py).
 
 
-def _get_visible_url(db: Session, short_code: str, user: User, *, to_change: bool = False) -> URL:
+def _get_visible_url(
+    db: Session, short_code: str, user: User, *, domain: str | None = None, to_change: bool = False
+) -> URL:
+    """Phase 8.3 — `domain` picks among the links one code names (`find_url`)."""
     who = viewer(db, user)
-    url = db.query(URL).filter(URL.short_code == short_code, who.sees(URL)).first()
+    url = find_url(db, who, short_code, domain)
     if not url:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -921,10 +938,11 @@ def _get_visible_url(db: Session, short_code: str, user: User, *, to_change: boo
 )
 def list_redirect_rules(
     short_code: str,
+    domain: LinkDomain = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    url = _get_visible_url(db, short_code, current_user)
+    url = _get_visible_url(db, short_code, current_user, domain=domain)
     rules = (
         db.query(RedirectRule)
         .filter(RedirectRule.url_id == url.id)
@@ -943,10 +961,11 @@ def list_redirect_rules(
 def create_redirect_rule(
     short_code: str,
     rule_data: RedirectRuleCreate,
+    domain: LinkDomain = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    url = _get_visible_url(db, short_code, current_user, to_change=True)
+    url = _get_visible_url(db, short_code, current_user, domain=domain, to_change=True)
     rule = RedirectRule(
         url_id=url.id,
         priority=rule_data.priority,
@@ -968,10 +987,11 @@ def update_redirect_rule(
     short_code: str,
     rule_id: str,
     rule_update: RedirectRuleUpdate,
+    domain: LinkDomain = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    url = _get_visible_url(db, short_code, current_user, to_change=True)
+    url = _get_visible_url(db, short_code, current_user, domain=domain, to_change=True)
     from uuid import UUID as _UUID
 
     try:
@@ -1000,10 +1020,11 @@ def update_redirect_rule(
 def delete_redirect_rule(
     short_code: str,
     rule_id: str,
+    domain: LinkDomain = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    url = _get_visible_url(db, short_code, current_user, to_change=True)
+    url = _get_visible_url(db, short_code, current_user, domain=domain, to_change=True)
     from uuid import UUID as _UUID
 
     try:
@@ -1258,7 +1279,8 @@ def redirect_short_url(short_code: str, request: Request, db: Session = Depends(
                 "og_title": url.og_title or url.title or url.original_url,
                 "og_description": url.og_description or f"Visit {url.original_url}",
                 "og_image_url": url.og_image_url,
-                "short_url": build_short_url(short_code),
+                # Phase 8.3 — the domain it was asked on.
+                "short_url": build_short_url(short_code, domain.hostname),
                 "destination_url": redirect_url,
             },
             headers={"Cache-Control": "public, max-age=300"},  # Cache for 5 min

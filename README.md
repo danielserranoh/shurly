@@ -362,6 +362,12 @@ full versioning policy.
 - `DELETE /api/v1/auth/api-key`
 
 ### URL Shortening
+
+A link is its code and its domain (Phase 8.3): one code can name links on several domains. Every route
+below that takes `{short_code}`, the analytics and the rules included, also takes `?domain=`. Without
+it, the default domain's link answers, then the other domains' by hostname. Each link comes with its
+`domain`, and its `short_url` is on that domain.
+
 - `POST /api/v1/urls` — auto-generated 6-char code
 - `POST /api/v1/urls/custom` — user-supplied slug
 - `GET /api/v1/urls` — list (supports `tags=`, `tag_filter=any|all`, `q=` search, repeatable `url_type=`, pagination); each item carries `click_count`
@@ -372,7 +378,7 @@ full versioning policy.
 - `GET /api/v1/urls/{short_code}/preview` — OG metadata
 - `POST /api/v1/urls/{short_code}/refresh-preview`
 - `PATCH /api/v1/urls/{short_code}/tags`
-- `POST /api/v1/urls/bulk/tags`
+- `POST /api/v1/urls/bulk/tags` — `links: [{short_code, domain}]`, or `short_codes` (one link per code, by the default rule)
 
 ### Redirect Rules (Phase 3.10.2)
 - `GET /api/v1/urls/{short_code}/rules`

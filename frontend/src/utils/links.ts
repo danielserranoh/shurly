@@ -7,9 +7,10 @@ import { icon } from './icons';
 import { tagPill } from './tags';
 import { openDialog } from './ui';
 import { canChange, creatorName, lockedMenuAttrs, personalBadge, type Viewer } from './viewer';
+import { linkApi, linkHref, type LinkAddress } from './link-address';
 import type { CreateLinkRequest, LinkListResponse, LinkMetadata, ShortLink, Tag, UpdateLinkRequest, URLType } from './types';
 
-export const linkHref = (code: string) => `/dashboard/link/?code=${encodeURIComponent(code)}`;
+export { linkHref, type LinkAddress } from './link-address';
 export const campaignHref = (id: string) => `/dashboard/campaign/?id=${encodeURIComponent(id)}`;
 
 /** Display form of a short link: host/code without protocol. */
@@ -43,7 +44,8 @@ export function listLinks(query: LinkQuery = {}): Promise<LinkListResponse> {
   );
 }
 
-export const getLink = (code: string) => apiGet<ShortLink>(`/api/v1/urls/${encodeURIComponent(code)}`);
+// Phase 8.3 — a link is addressed by its code and its domain (`LinkAddress`): a ShortLink is one.
+export const getLink = (link: LinkAddress) => apiGet<ShortLink>(linkApi(link));
 
 export function createLink(data: CreateLinkRequest): Promise<ShortLink> {
   const { custom_code, ...rest } = data;
@@ -52,16 +54,18 @@ export function createLink(data: CreateLinkRequest): Promise<ShortLink> {
     : apiPost<ShortLink>('/api/v1/urls', rest);
 }
 
-export const updateLink = (code: string, data: UpdateLinkRequest) =>
-  apiPatch<ShortLink>(`/api/v1/urls/${encodeURIComponent(code)}`, data);
+export const updateLink = (link: LinkAddress, data: UpdateLinkRequest) => apiPatch<ShortLink>(linkApi(link), data);
 
-export const setLinkTags = (code: string, tagIds: string[]) =>
-  apiPatch<{ short_code: string; tags: Tag[] }>(`/api/v1/urls/${encodeURIComponent(code)}/tags`, { tag_ids: tagIds });
+export const setLinkTags = (link: LinkAddress, tagIds: string[]) =>
+  apiPatch<{ short_code: string; tags: Tag[] }>(linkApi(link, '/tags'), { tag_ids: tagIds });
 
-export const bulkTagLinks = (codes: string[], tagIds: string[]) =>
-  apiPost<{ updated: number; failed: { short_code: string; error: string }[] }>('/api/v1/urls/bulk/tags', { short_codes: codes, tag_ids: tagIds });
+export const bulkTagLinks = (links: LinkAddress[], tagIds: string[]) =>
+  apiPost<{ updated: number; failed: { short_code: string; error: string }[] }>('/api/v1/urls/bulk/tags', {
+    links: links.map(({ short_code, domain }) => ({ short_code, domain: domain ?? null })),
+    tag_ids: tagIds,
+  });
 
-export const deleteLink = (code: string) => apiDelete(`/api/v1/urls/${encodeURIComponent(code)}`);
+export const deleteLink = (link: LinkAddress) => apiDelete(linkApi(link));
 
 export const fetchMetadata = (url: string) => apiPost<LinkMetadata>('/api/v1/urls/fetch-metadata', { url });
 
@@ -137,16 +141,16 @@ export function renderLinkCard(link: ShortLink, opts: CardOptions = {}): RawHTML
   const creator = creatorName(link, opts.viewer ?? null);
   const locked = canChange(link, opts.viewer ?? null) ? '' : lockedMenuAttrs('link');
 
-  return html`<li class="card card-interactive group relative flex gap-3 p-4 sm:gap-4 sm:p-5 ${opts.fresh ? 'animate-flash' : ''}" data-link="${link.short_code}">
+  return html`<li class="card card-interactive group relative flex gap-3 p-4 sm:gap-4 sm:p-5 ${opts.fresh ? 'animate-flash' : ''}" data-link="${link.id}">
     <label class="absolute top-5 -left-3 hidden size-6 place-items-center rounded-md bg-white shadow-sm ring-1 ring-ink-200 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 sm:grid ${opts.selected ? 'opacity-100' : 'opacity-0 [.selecting_&]:opacity-100'}">
-      <input type="checkbox" class="checkbox" data-select="${link.short_code}" ${opts.selected ? raw('checked') : ''} aria-label="Select ${title}" />
+      <input type="checkbox" class="checkbox" data-select="${link.id}" ${opts.selected ? raw('checked') : ''} aria-label="Select ${title}" />
     </label>
 
-    <a href="${linkHref(link.short_code)}" class="shrink-0 rounded-xl" tabindex="-1" aria-hidden="true">${linkThumb(link)}</a>
+    <a href="${linkHref(link.short_code, link.domain)}" class="shrink-0 rounded-xl" tabindex="-1" aria-hidden="true">${linkThumb(link)}</a>
 
     <div class="min-w-0 flex-1">
       <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
-        <a href="${linkHref(link.short_code)}" class="min-w-0 truncate font-semibold text-ink-950 hover:underline decoration-ink-300 underline-offset-4">${title}</a>
+        <a href="${linkHref(link.short_code, link.domain)}" class="min-w-0 truncate font-semibold text-ink-950 hover:underline decoration-ink-300 underline-offset-4">${title}</a>
         ${linkBadges(link)}
       </div>
       <div class="mt-1 flex min-w-0 items-center gap-1.5">
@@ -177,15 +181,15 @@ export function renderLinkCard(link: ShortLink, opts: CardOptions = {}): RawHTML
       </button>
       <button type="button" class="btn btn-ghost btn-sm btn-icon" popovertarget="${menuId}" aria-label="More actions for ${title}">${icon('more')}</button>
       <div id="${menuId}" popover class="menu" data-align="end">
-        <a class="menu-item" href="${linkHref(link.short_code)}">${icon('chart')}View details</a>
+        <a class="menu-item" href="${linkHref(link.short_code, link.domain)}">${icon('chart')}View details</a>
         ${canDelete
-          ? html`<button type="button" class="menu-item" data-action="edit" data-code="${link.short_code}" ${locked}>${icon('pencil')}Edit</button>`
+          ? html`<button type="button" class="menu-item" data-action="edit" data-id="${link.id}" ${locked}>${icon('pencil')}Edit</button>`
           : html`<a class="menu-item" href="${link.campaign_id ? campaignHref(link.campaign_id) : '/dashboard/campaigns/'}">${icon('megaphone')}Open campaign</a>`}
-        <button type="button" class="menu-item" data-action="qr" data-code="${link.short_code}">${icon('qr')}QR code</button>
+        <button type="button" class="menu-item" data-action="qr" data-id="${link.id}">${icon('qr')}QR code</button>
         <a class="menu-item" href="${safeUrl(shortUrl)}" target="_blank" rel="noopener">${icon('external-link')}Open short link</a>
         <div class="menu-sep"></div>
         ${canDelete
-          ? html`<button type="button" class="menu-item" data-danger data-action="delete" data-code="${link.short_code}" ${locked}>${icon('trash')}Delete</button>`
+          ? html`<button type="button" class="menu-item" data-danger data-action="delete" data-id="${link.id}" ${locked}>${icon('trash')}Delete</button>`
           : html`<span class="menu-item" aria-disabled="true" title="Campaign links are deleted together with their campaign">${icon('lock')}Delete via campaign</span>`}
       </div>
     </div>

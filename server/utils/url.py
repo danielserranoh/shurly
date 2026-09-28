@@ -6,6 +6,7 @@ import string
 from urllib.parse import urlparse
 
 from server.core.config import settings
+from server.utils.domain import normalize_hostname
 
 # Matches the `URL.short_code` column (String(20)).
 MAX_SHORT_CODE_LENGTH = 20
@@ -23,7 +24,7 @@ RESERVED_SHORT_CODES = frozenset(
 )
 
 
-def build_short_url(short_code: str) -> str:
+def build_short_url(short_code: str, hostname: str | None = None) -> str:
     """Build the full short URL from a short code.
 
     Single source of truth for every absolute short URL the API emits (URL
@@ -35,7 +36,12 @@ def build_short_url(short_code: str) -> str:
         2. https://<default_domain> in production-style deploys.
         3. http://localhost:8000 as the local-dev fallback so unit tests and
            docker-compose work without extra config.
+
+    Phase 8.3 — `hostname` is the link's own domain (`link_short_url`). That order is
+    for DEFAULT_DOMAIN's links; a link on another domain is always https on its own.
     """
+    if hostname and normalize_hostname(hostname) != normalize_hostname(settings.default_domain):
+        return f"https://{normalize_hostname(hostname)}/{short_code}"
     if getattr(settings, "base_url", "") and settings.base_url:
         base_url = settings.base_url.rstrip("/")
     elif settings.is_lambda or settings.default_domain not in ("", "localhost"):
@@ -44,6 +50,17 @@ def build_short_url(short_code: str) -> str:
     else:
         base_url = "http://localhost:8000"
     return f"{base_url}/{short_code}"
+
+
+def link_hostname(url) -> str:
+    """Phase 8.3 — the domain a link lives on. One from before domains counts as the
+    default domain's."""
+    return url.domain.hostname if url.domain else normalize_hostname(settings.default_domain)
+
+
+def link_short_url(url) -> str:
+    """Phase 8.3 — a link's short URL, on its own domain."""
+    return build_short_url(url.short_code, url.domain.hostname if url.domain else None)
 
 
 def generate_short_code(length: int = 6) -> str:

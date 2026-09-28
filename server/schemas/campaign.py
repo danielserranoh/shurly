@@ -49,10 +49,17 @@ class CampaignURLResponse(BaseModel):
     id: UUID
     short_code: str
     short_url: str | None = None
+    domain: str | None = None  # Phase 8.3 — the link's domain; see URLResponse
     user_data: dict | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+    @field_validator("domain", mode="before")
+    @classmethod
+    def _hostname(cls, value: object) -> object:
+        """`URL.domain` is the Domain row: its hostname."""
+        return getattr(value, "hostname", value)
 
 
 class CampaignResponse(BaseModel):

@@ -649,6 +649,7 @@ class TestOverviewTopURLs:
         assert items["top1"] == {
             "short_code": "top1",
             "short_url": build_short_url("top1"),
+            "domain": settings.default_domain,  # Phase 8.3
             "title": "Top One",
             "original_url": "https://example.com",
             "url_type": "standard",
@@ -764,11 +765,14 @@ class TestCampaignShortURLHost:
 @pytest.mark.unit
 class TestBuildShortURL:
     def test_is_the_same_callable_everywhere(self):
-        from server.app.campaigns import build_short_url as campaigns_build
+        """Phase 8.3 — a link's short URL goes through `link_short_url`, on its domain."""
+        from server.app.campaigns import link_short_url as campaigns_link
         from server.app.urls import build_short_url as urls_build
+        from server.app.urls import link_short_url as urls_link
+        from server.utils.url import link_short_url
 
         assert urls_build is build_short_url
-        assert campaigns_build is build_short_url
+        assert campaigns_link is urls_link is link_short_url
 
     def test_base_url_override_wins(self, monkeypatch: pytest.MonkeyPatch):
         monkeypatch.setattr(settings, "base_url", "https://staging.example.test/")

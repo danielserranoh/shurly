@@ -40,17 +40,29 @@ def get_or_create_default_domain(db: Session) -> Domain:
     return domain
 
 
+def normalize_hostname(host: str | None) -> str:
+    """
+    A host as a Domain row names it: lowercase, without a port or a trailing dot. Used for
+    a request's Host header and for the API's `?domain=` (Phase 8.3), so the two agree.
+    """
+    host = (host or "").strip().lower()
+    if host.startswith("["):  # an IPv6 literal, maybe with a port
+        return host[1 : host.find("]")] if "]" in host else host
+    return host.split(":", 1)[0].rstrip(".")
+
+
 def resolve_domain_for_host(db: Session, host_header: str | None) -> Domain:
     """
     Map a request Host header to a Domain row, falling back to the default.
 
-    The Host header may include a port (`shurl.griddo.io:8000`); we strip it
-    before matching. Unknown hosts fall back to the default domain so existing
+    The Host header may include a port (`shurl.griddo.io:8000`) or a trailing dot;
+    `normalize_hostname` strips them before matching. Unknown hosts fall back to the
+    default domain so existing
     short URLs keep working when a new vanity host points at the same backend
     but hasn't been registered yet.
     """
     if host_header:
-        bare_host = host_header.split(":", 1)[0].strip().lower()
+        bare_host = normalize_hostname(host_header)
         match = db.query(Domain).filter(Domain.hostname == bare_host).first()
         if match:
             return match
