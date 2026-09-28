@@ -89,6 +89,7 @@ test('set:html is build-time only, with our own markup', () => {
   const allowed = [
     ['src/components/ui/Icon.astro', 'set:html={iconSvg(name, className, strokeWidth)}', 'icons, at build time'],
     ['src/pages/styleguide.astro', 'set:html={pill(', 'specimens with literal tag names, at build time'],
+    ['src/components/manual/ManualArticle.astro', 'set:html={body}', 'the manual: our own Markdown, rendered and filled at build time'],
   ];
   // The styleguide has many specimens: one entry covers them all.
   const found = [...occurrences(/set:html/)];

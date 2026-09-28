@@ -184,6 +184,7 @@ Accounts live in your local database, so each environment needs its own.
 | `PUBLIC_SHORT_DOMAIN` | host of `PUBLIC_API_URL` | Domain shown in short-link previews |
 | `PUBLIC_SITE_URL` | `http://localhost:4232` | Canonical/OG URLs |
 | `PUBLIC_SOURCE_URL`, `PUBLIC_SPONSOR_URL` | unset | Footer and plan links (hidden when unset) |
+| `PUBLIC_MCP_URL` | `PUBLIC_API_URL` + `/mcp/` | The MCP address the user manual and Settings show (trailing slash added) |
 
 Routes are all static. Record pages take a query parameter instead of a path segment
 (`/dashboard/link/?code=abc123`, `/dashboard/campaign/?id=…`), so no server adapter is needed.

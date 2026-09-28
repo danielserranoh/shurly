@@ -1,0 +1,39 @@
+---
+/**
+ * Phase 5.9 — a page of the user manual (src/content/manual/), rendered at build time.
+ * /manual/ and Settings → API & MCP both use it, so the two show the same words.
+ */
+import type { CollectionEntry } from 'astro:content';
+import { fillPlaceholders } from '@/content/placeholders.mjs';
+import { site } from '@/config/site';
+import { escapeHtml } from '@/utils/html';
+
+interface Props {
+  entry: CollectionEntry<'manual'>;
+}
+
+const { entry } = Astro.props;
+// At build time: the entry's HTML, which Astro rendered from our own Markdown, with the
+// build's values filled in (escaped). Nothing here comes from a visitor or the API.
+const body = fillPlaceholders(entry.rendered?.html ?? '', { MCP_URL: escapeHtml(site.mcpUrl) });
+---
+
+<div class="manual" data-manual set:html={body} />
+
+<script>
+  import { html, setHTML } from '@/utils/html';
+  import { icon } from '@/utils/icons';
+
+  // A Copy button on each command. They're the manual's own text: never a key.
+  document.querySelectorAll<HTMLElement>('[data-manual] pre').forEach((pre) => {
+    const box = document.createElement('div');
+    box.className = 'manual-code';
+    pre.replaceWith(box);
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'btn btn-sm manual-copy';
+    button.dataset.copy = pre.textContent?.trim() ?? '';
+    setHTML(button, html`<span data-copy-icon>${icon('copy')}</span><span data-copy-label>Copy</span><span class="sr-only"> command</span>`);
+    box.append(pre, button);
+  });
+</script>

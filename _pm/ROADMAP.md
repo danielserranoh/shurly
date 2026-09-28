@@ -9,20 +9,22 @@ Modern URL shortener for B2B campaigns with analytics, built for AWS serverless 
 
 ---
 
-## Next up (updated 2026-09-27)
+## Next up (updated 2026-09-28)
 
 Order agreed in the 2026-09-27 review; confirm each item before starting it.
 
 1. **MCP usage log** (5.6.0): without it the dogfood produces no numbers. Code done; retention and saved queries
    are an AWS step.
-2. **Organization and roles** (3.14): links belong to the organization by default; owner, admin and member.
-   Done before anyone creates links, so nothing has to be migrated. Brings in Alembic. API and MCP done; the
-   frontend (Settings → Organization, the personal toggle, who created each link) is left.
+2. ✅ **Organization and roles** (3.14): links belong to the organization by default; owner, admin and member.
+   Done: API, MCP and frontend (Settings → Organization, the personal toggle, who created each link, removed
+   people). Left: two owners from day one, once people have signed up.
 3. **Frontend hosting** (4.10): S3 + CloudFront; AWS steps run with SSO.
 4. **Identity**: sign in with Google Workspace, for the web (3.13) and the MCP (5.8). One Google project covers
    both. The code of both is done (3.13's backend and frontend, 5.8); left: the Google project, hosting the
    frontend (4.10) and wiring `shurly.griddo.io` (chosen 2026-09-28 for the app, API and MCP).
-5. **MCP install guide**, in the app and in the user manual (5.9): after 5.8, since OAuth changes the steps.
+5. ✅ **MCP install guide**, in the app and in the user manual (5.9): `/manual/install-mcp/` and Settings → API &
+   MCP. Its address comes from the build: `https://shurly.griddo.io/mcp/` once 4.10's production build sets
+   `PUBLIC_API_URL`.
 6. **Internal dogfood** with the frontend and the MCP (5.6).
 7. **Replace Shlink on `go.griddo.io`** (Phase 8): after the dogfood and error alerting (6.4).
 
@@ -1043,9 +1045,13 @@ for this.
       CDN rewrites are needed only holds for the public website endpoint
 - [ ] Error response: 404 → `/404.html`
 - [ ] Route 53 alias record, from `griddo-production`
-- [ ] Rewrite `deploy-frontend.yml`: OIDC role as in 4.8 (it still uses access keys), the real bucket,
-      `PUBLIC_API_URL=https://s.griddo.io`, `PUBLIC_SITE_URL`; re-enable `push` on `frontend/**`. Its header
-      still points at the Lambda-era "Phase 4.5/4.6"
+- [ ] Rewrite `deploy-frontend.yml`: OIDC role as in 4.8 (it still uses access keys), the real bucket, the
+      production build values below, `PUBLIC_SITE_URL`; re-enable `push` on `frontend/**`. Its header still
+      points at the Lambda-era "Phase 4.5/4.6"
+- [ ] Production build values: `PUBLIC_API_URL=https://shurly.griddo.io` and `PUBLIC_SHORT_DOMAIN=s.griddo.io`
+      (`go.griddo.io` from Phase 8). Without `PUBLIC_SHORT_DOMAIN` the app shows short links on the API's host
+      (`shurly.griddo.io/abc`). The MCP address in the manual and Settings then derives as
+      `https://shurly.griddo.io/mcp/` (`PUBLIC_MCP_URL` only to override it)
 - [ ] `CORS_ORIGINS` in the task matches the chosen hostname (`deploy_ecs.sh` defaults to `https://shurl.griddo.io`)
 - [ ] Update the hostnames table in `DEPLOYMENT.md` (it still says "Future frontend | 7")
 
@@ -1197,14 +1203,15 @@ added there; Claude Code gets by with `--header`.
 **Decided (2026-09-27):** the app explains how to install the MCP, and the user manual carries the same instructions.
 **Today:** Settings → API & MCP shows the API key and a `curl` example, nothing about installing the MCP. The steps
 live in `mcp_server/README.md`, written for developers. There is no user manual (7.1).
-- [ ] One source for both: the manual as Markdown inside the frontend (e.g. an Astro content collection under
+- [x] One source for both: the manual as Markdown inside the frontend (e.g. an Astro content collection under
       `frontend/src/content/manual/`, published at `/manual/`), and Settings → API & MCP renders the same MCP page,
-      so the two can't drift
-- [ ] Steps per client: Claude Code and claude.ai / Claude Desktop (custom connector), plus any other client the
+      so the two can't drift → `frontend/src/content/manual/install-mcp.md`, rendered by `ManualArticle.astro` in both
+- [x] Steps per client: Claude Code and claude.ai / Claude Desktop (custom connector), plus any other client the
       team uses. OAuth sign-in (5.8) first, the API key as the alternative
-- [ ] In the app, the user's own values filled in (endpoint URL, and their key if they take that route)
-- [ ] Voice and patterns from `design/DESIGN_SYSTEM.md`
-- [ ] Written once 5.8 lands, since OAuth changes the steps
+- [x] In the app, the user's own values filled in (endpoint URL, and their key if they take that route) → the
+      address from `PUBLIC_MCP_URL` at build time; "Copy with my key" builds the command when clicked, never in the page
+- [x] Voice and patterns from `design/DESIGN_SYSTEM.md`
+- [x] Written once 5.8 lands, since OAuth changes the steps
 
 ### Open questions (resolve during 5.1)
 - Does `fastmcp.from_fastapi()` produce useful tool descriptions, or do we need to enrich them via Pydantic `Field(..., description=...)` everywhere first? (Likely yes — most of our schemas already have descriptions; sweep the gaps.) → still open: nobody has done the sweep
@@ -1265,7 +1272,7 @@ live in `mcp_server/README.md`, written for developers. There is no user manual 
 ### 7.1 Documentation
 - [x] API documentation (OpenAPI/Swagger) - auto-generated by FastAPI (`/docs`, `/redoc`)
 - [x] Deployment guide → `DEPLOYMENT.md` (walkthrough) + `docs/AWS_ECS_DEPLOYMENT.md` (playbook)
-- [ ] User manual for dashboard: starts with the MCP install page (5.9), which lives in the frontend
+- [x] User manual for dashboard: starts with the MCP install page (5.9), which lives in the frontend → `/manual/`, Markdown in `frontend/src/content/manual/`
 - [ ] Architecture diagram
 - [ ] Database schema diagram
 - [ ] Environment variables reference
