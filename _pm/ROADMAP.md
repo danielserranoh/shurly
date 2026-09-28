@@ -1034,9 +1034,8 @@ for this.
 - *Safest.* No server to patch; the bucket stays private behind Origin Access Control (OAC); HSTS and CSP
   headers come from a CloudFront response-headers policy. CSP matters here: the JWT lives in `localStorage` (3.1).
 
-- [ ] Choose the hostname. Proposed: `links.griddo.io` for good, the address the team already uses to shorten
-      links (it frees up when Shlink's web client retires, Phase 8); until then a working host for the dogfood
-      (e.g. `shurly.griddo.io`) that later redirects there
+- [x] Choose the hostname → **`shurly.griddo.io`** (decided 2026-09-28), for the web, the app, the API and the
+      MCP, split by path; `go.griddo.io` is for short links only. `links.griddo.io` retires with Shlink (Phase 8)
 - [ ] S3 bucket (Block Public Access on) + CloudFront distribution with OAC
 - [ ] ACM certificate in **us-east-1**: CloudFront only takes certificates from N. Virginia (the ALB's is in
       eu-south-2). DNS validation in `griddo-production`
