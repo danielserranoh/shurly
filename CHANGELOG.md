@@ -26,6 +26,13 @@ implementation lifecycle and is independent of the URL version segment.
 
 ## [Unreleased]
 
+### Removed — the legacy `/api/v1/stats/*` routes
+- **`GET /api/v1/stats/day/{surl}`, `…/week/{surl}`, `…/world/{surl}`, `…/main` and `…/next/{surl}` answer `404`.**
+  They were mounted without authentication, and broken since Phase 1.4: they queried columns that don't exist
+  (`urls.short_url`, `visits.created_at`), so every call was a `500`. No client can depend on them, since no call
+  ever succeeded. `/api/v1/analytics/*` serves these numbers, for the links the caller can see.
+- The MCP's rule that kept them out of its tools is gone with them.
+
 ### Fixed — a link's click limit counts clicks only
 - **The click limit (`max_visits`) counted every visit, email opens through the tracking pixel and bot hits
   included.** So a link could answer 410 Gone while its page still showed clicks left ("3 of 5 clicks used").

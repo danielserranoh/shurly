@@ -7,7 +7,6 @@ from server.app.campaigns import campaigns_router
 from server.app.google_auth import google_router
 from server.app.health import health_router
 from server.app.organization import organization_router
-from server.app.statistics import statistics_router
 from server.app.tags import tags_router
 from server.app.urls import urls_router
 
@@ -22,5 +21,4 @@ api_router.include_router(organization_router, prefix="/organization", tags=["or
 api_router.include_router(urls_router, prefix="/urls", tags=["urls"])
 api_router.include_router(campaigns_router, prefix="/campaigns", tags=["campaigns"])
 api_router.include_router(analytics_router, prefix="/analytics", tags=["analytics"])
-api_router.include_router(statistics_router, prefix="/stats", tags=["statistics"])  # Legacy
 api_router.include_router(tags_router, prefix="", tags=["tags"])

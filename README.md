@@ -275,8 +275,7 @@ shurly/
 │   │   ├── urls.py                # URL CRUD + redirect + /robots.txt + tracking pixel
 │   │   ├── campaigns.py           # Campaign CRUD + CSV upload
 │   │   ├── analytics.py           # Stats endpoints (daily / weekly / geo / overview / orphans)
-│   │   ├── tags.py                # Tag CRUD + URL tagging
-│   │   └── statistics.py          # Legacy (deprecated)
+│   │   └── tags.py                # Tag CRUD + URL tagging
 │   ├── core/
 │   │   ├── auth.py                # JWT + bcrypt helpers (with 72-byte truncation shim)
 │   │   ├── config.py              # Settings: CORS, GDPR, redirect, multi-domain, …
