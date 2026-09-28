@@ -35,6 +35,9 @@ class UserResponse(BaseModel):
     is_active: bool
     created_at: datetime
     api_key: str | None = None
+    # Phase 3.13.3 — how this account signs in, for Settings → Account.
+    has_password: bool = False
+    has_google: bool = False
 
     class Config:
         from_attributes = True  # Pydantic v2 (was orm_mode in v1)
@@ -47,6 +50,27 @@ class ChangePasswordRequest(BaseModel):
     new_password: str = Field(
         ..., min_length=8, description="Password must be at least 8 characters"
     )
+
+
+class SetPasswordRequest(BaseModel):
+    """Phase 3.13.3 — set or replace the password (PUT /auth/password)."""
+
+    new_password: str = Field(
+        ..., min_length=8, description="Password must be at least 8 characters"
+    )
+    current_password: str | None = Field(
+        None,
+        description=(
+            "The password to replace. Required when the account has no Google sign-in; "
+            "without it, the session must be at most 10 minutes old."
+        ),
+    )
+
+
+class GoogleCodeExchange(BaseModel):
+    """Phase 3.13.2 — the one-time code the Google callback put in the frontend's URL."""
+
+    code: str = Field(..., min_length=1, max_length=128)
 
 
 class APIKeyResponse(BaseModel):

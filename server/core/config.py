@@ -1,7 +1,7 @@
 import json
 from typing import Any
 
-from pydantic import field_validator
+from pydantic import SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -84,6 +84,32 @@ class Settings(BaseSettings):
     # that has none, and at startup it restores one if none is left (break-glass).
     # Empty = no bootstrap owner.
     bootstrap_owner_email: str = ""
+
+    # Phase 3.13.2 — sign in with Google (OpenID Connect). Until these four and
+    # `organization_domain` are set, the Google endpoints answer 503 and the rest
+    # of the app works as before. An empty domain would let any Google account in.
+    google_client_id: str = ""
+    google_client_secret: SecretStr = SecretStr("")
+    # This API's /api/v1/auth/google/callback, as registered with the Google client.
+    google_redirect_uri: str = ""
+    # The static frontend. After Google, the browser goes to {frontend_url}/login/
+    # with a one-time code in the fragment (server/app/google_auth.py).
+    frontend_url: str = ""
+    # POST /auth/register. Accounts come from Google, so it's off; turn it on only
+    # for local development and tests, never in production.
+    allow_password_signup: bool = False
+
+    @property
+    def google_sign_in_configured(self) -> bool:
+        return all(
+            (
+                self.google_client_id,
+                self.google_client_secret.get_secret_value(),
+                self.google_redirect_uri,
+                self.frontend_url,
+                self.organization_domain.strip(),
+            )
+        )
 
     # Phase 3.10.6 — Configurable redirect behavior.
     # `redirect_status_code`: 302 (default) keeps every hit hitting the backend so
