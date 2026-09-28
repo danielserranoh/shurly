@@ -246,7 +246,7 @@ import { BROWSERS, DEVICES, LANGUAGES } from '@/utils/rules';
         ${link.valid_until ? html`<span class="inline-flex items-center gap-1.5">${icon('timer', 'size-3.5')}Expires ${formatDateTime(link.valid_until)}</span>` : ''}
         ${link.max_visits ? html`<span class="inline-flex items-center gap-1.5">${icon('ban', 'size-3.5')}${formatNumber(link.click_count)} of ${formatNumber(link.max_visits)} clicks used</span>` : ''}`,
     );
-    setHTML($('[data-tags]'), html`${link.tags.map((t) => tagPill(t, { href: `/dashboard/?tags=${t.id}` }))}`);
+    setHTML($('[data-tags]'), html`${link.tags.map((t) => tagPill(t, { href: `/dashboard/?tags=${encodeURIComponent(t.id)}` }))}`);
     hydrateTimes($('[data-meta]'));
 
     const isCampaign = link.url_type === 'campaign';
