@@ -17,6 +17,8 @@ export const site = {
   /** Host shown in front of back-halves ("s.griddo.io/"). The API host also serves redirects. */
   shortDomain: (import.meta.env.PUBLIC_SHORT_DOMAIN as string | undefined) || hostOf(API_BASE_URL),
   apiDocsUrl: `${API_BASE_URL}/docs`,
+  /** Where AI assistants connect (Phase 5.9), with the trailing slash they need. */
+  mcpUrl: __SHURLY_MCP_URL__,
   /** Optional links for the open-source / sponsor strip on the landing page. Hidden when empty. */
   sourceUrl: (import.meta.env.PUBLIC_SOURCE_URL as string | undefined) || '',
   sponsorUrl: (import.meta.env.PUBLIC_SPONSOR_URL as string | undefined) || '',

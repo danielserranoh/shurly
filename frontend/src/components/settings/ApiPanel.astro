@@ -1,7 +1,13 @@
 ---
+import { getEntry } from 'astro:content';
 import Icon from '@/components/ui/Icon.astro';
+import ManualArticle from '@/components/manual/ManualArticle.astro';
 import SettingsSection from './SettingsSection.astro';
 import { site } from '@/config/site';
+
+// Phase 5.9 — the manual's MCP page, the same file as /manual/install-mcp/.
+const mcpGuide = await getEntry('manual', 'install-mcp');
+if (!mcpGuide) throw new Error('src/content/manual/install-mcp.md is missing');
 ---
 
 <div class="grid gap-10">
@@ -49,7 +55,7 @@ import { site } from '@/config/site';
               <button type="button" class="btn btn-secondary btn-sm min-w-[5.75rem]" aria-pressed="false" data-key-reveal>
                 <span data-eye><Icon name="eye" /></span><span data-eye-off hidden><Icon name="eye-off" /></span><span data-reveal-label>Reveal</span>
               </button>
-              <button type="button" class="btn btn-secondary btn-sm" data-copy="" data-key-copy>
+              <button type="button" class="btn btn-secondary btn-sm" data-key-copy>
                 <span data-copy-icon><Icon name="copy" /></span><span data-copy-label>Copy</span><span class="sr-only"> API key</span>
               </button>
             </div>
@@ -64,11 +70,24 @@ import { site } from '@/config/site';
     </div>
   </SettingsSection>
 
+  <SettingsSection
+    id="mcp-title"
+    title="Connect Claude"
+    description="Let Claude create links and read their stats for you. The same steps are in the user manual."
+  >
+    <a slot="aside" href="/manual/install-mcp/" class="link mt-3 inline-flex items-center gap-1 text-sm">
+      User manual<Icon name="arrow-up-right" class="size-3.5" />
+    </a>
+    <div class="card p-5 sm:p-6">
+      <ManualArticle entry={mcpGuide} />
+    </div>
+  </SettingsSection>
+
   <SettingsSection id="try-title" title="Try it" description="Paste this into a terminal to list your links. They come back as JSON.">
     <div class="overflow-hidden rounded-2xl bg-ink-950 shadow-sm">
       <div class="flex items-center justify-between gap-3 border-b border-white/10 py-2 pr-2 pl-4">
         <p class="flex items-center gap-2 text-xs font-medium text-ink-400"><Icon name="terminal" class="size-3.5" />Terminal</p>
-        <button type="button" class="btn btn-sm text-ink-200 hover:bg-white/10 hover:text-white" data-copy="" data-snippet-copy>
+        <button type="button" class="btn btn-sm text-ink-200 hover:bg-white/10 hover:text-white" data-snippet-copy>
           <span data-copy-icon><Icon name="copy" /></span><span data-copy-label>Copy</span><span class="sr-only"> command</span>
         </button>
       </div>
@@ -80,8 +99,10 @@ import { site } from '@/config/site';
 
 <script>
   import { API_BASE_URL, apiDelete, apiPost, errorMessage } from '@/utils/api';
+  import { site } from '@/config/site';
   import { html, setHTML } from '@/utils/html';
-  import { confirmDialog, setLoading, toast } from '@/utils/ui';
+  import { icon } from '@/utils/icons';
+  import { confirmDialog, copyWithFeedback, setLoading, toast } from '@/utils/ui';
   import { currentUser } from './store';
   import type { ApiKeyResponse, MessageResponse } from '@/utils/types';
 
@@ -112,7 +133,6 @@ import { site } from '@/config/site';
     loading.hidden = true;
     empty.hidden = key !== null;
     present.hidden = key === null;
-    copyBtn.dataset.copy = key ?? '';
     if (key) {
       valueEl.textContent = revealed ? key : masked(key);
       // Dots are noise to a screen reader: describe the hidden state instead.
@@ -133,10 +153,45 @@ import { site } from '@/config/site';
       snippet,
       html`<span class="text-ink-500 select-none">$ </span><span class="text-brand-300">curl</span> -H <span class="text-ink-300">"Authorization: Bearer ${shown}"</span> \\\n    <span class="text-ink-300">${LIST_URL}</span>`,
     );
-    snippetCopy.dataset.copy = `curl -H "Authorization: Bearer ${key ?? PLACEHOLDER}" \\\n  ${LIST_URL}`;
     const hint = !loaded ? '' : key ? (revealed ? '' : 'Copying includes your full key.') : `Swap ${PLACEHOLDER} for your key once you’ve generated one.`;
     snippetHint.textContent = hint;
     snippetHint.hidden = !hint;
+    renderMcpCopy();
+  }
+
+  // The key is copied from memory when clicked, never written into the page (data-copy) first.
+  copyBtn.addEventListener('click', () => {
+    if (key) void copyWithFeedback(key, copyBtn);
+  });
+  snippetCopy.addEventListener('click', () => {
+    void copyWithFeedback(`curl -H "Authorization: Bearer ${key ?? PLACEHOLDER}" \\\n  ${LIST_URL}`, snippetCopy);
+  });
+
+  // ---------------------------------------------------------------- Connect Claude (Phase 5.9)
+  // The guide's API key command with the key in it: built when clicked, like the copies above.
+  // Keep it in step with src/content/manual/install-mcp.md (tests/manual.test.mjs checks).
+  const mcpKeyCommand = (k: string) => `claude mcp add --transport http --scope user shurly ${site.mcpUrl} --header "Authorization: Bearer ${k}"`;
+  const mcpMount = document.querySelector<HTMLElement>('[data-mcp-key-copy]');
+  let mcpCopy: HTMLButtonElement | null = null;
+  let mcpHint: HTMLElement | null = null;
+  if (mcpMount) {
+    setHTML(
+      mcpMount,
+      html`<button type="button" class="btn btn-secondary btn-sm"><span data-copy-icon>${icon('copy')}</span><span data-copy-label>Copy with my key</span></button><p class="hint mt-2"></p>`,
+    );
+    mcpCopy = mcpMount.querySelector('button');
+    mcpHint = mcpMount.querySelector('p');
+    mcpCopy!.addEventListener('click', () => {
+      if (key) void copyWithFeedback(mcpKeyCommand(key), mcpCopy);
+    });
+    mcpMount.hidden = false;
+  }
+
+  function renderMcpCopy() {
+    if (!mcpCopy || !mcpHint) return;
+    mcpCopy.hidden = !key;
+    mcpHint.textContent = !loaded ? '' : key ? 'Copies the command above with your key in it.' : 'Generate an API key above, and this button copies the command with it.';
+    mcpHint.hidden = !mcpHint.textContent;
   }
 
   function showFreshKey(fresh: string) {

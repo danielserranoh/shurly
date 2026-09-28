@@ -26,6 +26,20 @@ implementation lifecycle and is independent of the URL version segment.
 
 ## [Unreleased]
 
+### Added — the user manual, starting with how to connect Claude (Phase 5.9)
+- **`/manual/`**: Markdown in `frontend/src/content/manual/` (an Astro content collection),
+  rendered at build time. Its first page, "Connect Claude to Shurly", covers Claude Code and
+  claude.ai / Claude Desktop: signing in with Google first, an API key as the route that works on
+  its own, and what to do when something goes wrong.
+- **Settings → API & MCP shows the same page**, so the app and the manual can't drift, with
+  "Copy with my key": it builds the API key command when clicked, from the key the page already
+  holds, and never writes the key into the page, a URL or storage.
+- **The MCP address comes from `PUBLIC_MCP_URL`** at build time, or the API's `/mcp/`, always
+  with the trailing slash people must use.
+- **Fixed:** the API key panel wrote the full key into its Copy buttons' `data-copy` attributes
+  when the page loaded, behind the masked display. The buttons now copy from memory when
+  clicked.
+
 ### Security — the frontend's markup, audited (Phase 6.3)
 - **Every raw `innerHTML` that carried data now goes through the escaping `html` tag and
   `setHTML`**: toasts, confirm dialogs, form alerts, the tag picker, charts and their
