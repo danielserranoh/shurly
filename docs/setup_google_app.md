@@ -67,8 +67,9 @@ Shurly comprueba además, por su cuenta, que el token de Google venga del domini
 
 - `openid` — obligatorio
 - `.../auth/userinfo.email` — obligatorio
-- `.../auth/userinfo.profile` — opcional: hoy Shurly no lo pide (solo `openid email`), pero la
-  Phase 3.12 querrá rellenar el nombre y la foto desde Google. Puedes añadirlo ya.
+- `.../auth/userinfo.profile` — el inicio de sesión web lo pide desde la Phase 3.12, para empezar el
+  perfil de una cuenta nueva con su nombre (la foto no se usa); el del MCP pide solo `openid email`.
+  Añádelo.
 
 No añadas ninguno más. Ninguno de estos es sensible, así que no hace falta revisión de Google.
 

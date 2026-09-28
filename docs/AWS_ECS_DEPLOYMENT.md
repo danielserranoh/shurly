@@ -192,10 +192,11 @@ Defensive choice for production hygiene; pain during the iteration loop when you
 A `.env` line like `CORS_ORIGINS=["a", "b"]` makes bash try to execute `"a", "b"]` as a command. Even when bash silently absorbs partial assignments, the inner quotes get stripped: `CORS_ORIGINS=[a]` instead of `["a"]`. JSON-decode at runtime fails. Single-quote the entire value:
 
 ```
-CORS_ORIGINS='["https://shurl.griddo.io","http://localhost:4232"]'
+CORS_ORIGINS='["https://shurly.griddo.io","http://localhost:4232"]'
 ```
 
 The single quotes prevent any shell expansion or quote-stripping. The application sees a valid JSON string and parses it correctly.
+Which origins production needs is in [`DEPLOYMENT.md`](../DEPLOYMENT.md) § CORS: none once the frontend shares the API's host (4.10).
 
 ### 9. Bash heredoc + JSON template = quoting hell
 
@@ -241,7 +242,7 @@ aws ecs describe-services --cluster default --services shurly-api  # full info
 
 Express Mode rotates active/standby target groups during deploys. The custom-domain rule (priority 12) you created with `setup_custom_domain.sh` points at a specific TG ARN. After Express Mode flips, that TG goes from 100% weight to 0% and your custom domain returns 503.
 
-The `ecs-alb-rule-sync` Lambda solves this: triggered by the EventBridge `SERVICE_DEPLOYMENT_COMPLETED` event, it reads the current weights of the Express Mode rule (priority 4) and replicates them onto the custom rule (priority 12). The mapping lives in `RULE_SYNC_MAP` in `alb-rule-sync.py` (in the Shlink repo); update it whenever you wire a new service.
+The `ecs-alb-rule-sync` Lambda solves this: triggered by EventBridge on the service's deployment state changes, it reads the current weights of the Express Mode rule (priority 4) and replicates them onto the custom rule (priority 12). Since 27 Sep 2026 it follows each rollout from `SERVICE_DEPLOYMENT_IN_PROGRESS` instead of syncing once on `COMPLETED`, which removed a ~1 min 503 per deploy. The mapping lives in `RULE_SYNC_MAP` in `alb-rule-sync.py`, whose source is now in this repo ([`infra/ecs-alb-rule-sync/`](../infra/ecs-alb-rule-sync/README.md)); update it whenever you wire a new service.
 
 For Shurly: `"4": "12"` is the entry. Lambda confirmed working with `["Synced priority 12 with 4"]`.
 
@@ -365,14 +366,10 @@ aws lambda get-function --function-name ecs-alb-rule-sync \
 # (download via the URL, unzip, inspect alb-rule-sync.py)
 ```
 
-Should include `"4": "12"` for Shurly. If missing, edit and redeploy:
-
-```bash
-cd ~/Documents/Cowork/Griddo/Marketing\ \&\ Comms/WebAnalytics/ga-gtm
-zip alb-rule-sync.zip alb-rule-sync.py
-aws lambda update-function-code --region eu-south-2 --profile griddo-main \
-    --function-name ecs-alb-rule-sync --zip-file fileb://alb-rule-sync.zip
-```
+Should include `"4": "12"` for Shurly. If missing, edit `RULE_SYNC_MAP` in
+[`infra/ecs-alb-rule-sync/alb-rule-sync.py`](../infra/ecs-alb-rule-sync/alb-rule-sync.py) and redeploy it as its
+[README](../infra/ecs-alb-rule-sync/README.md) § Deploy says. The Lambda serves Shlink's rules too, so a change
+there changes their routing as well.
 
 ### Auto-deploy from GitHub Actions failed
 
@@ -601,6 +598,6 @@ Considered after Phase 4 went live (2026-04-27). Lightsail Containers is **genui
 - **Standby TG** — the other one, weight=0. Used during blue/green to bring up the new version before switching weights.
 - **Auto-host** — Express Mode auto-generated hostname `sh-<32-hex>.ecs.<region>.on.aws`. Reachable for testing without setting up a custom domain.
 - **Custom rule** — manually-created ALB rule (priority 10+) that maps a custom domain to a service's active TG.
-- **Rule-sync Lambda** — `ecs-alb-rule-sync`, fires on `SERVICE_DEPLOYMENT_COMPLETED`, replicates active TG weights from the Express Mode rule to the custom rule.
+- **Rule-sync Lambda** — `ecs-alb-rule-sync` ([`infra/ecs-alb-rule-sync/`](../infra/ecs-alb-rule-sync/README.md)), follows each deployment from `SERVICE_DEPLOYMENT_IN_PROGRESS` (one more pass on `COMPLETED` or `FAILED`), replicates active TG weights from the Express Mode rule to the custom rule.
 - **Circuit breaker** — ECS deployment safeguard that stops launching tasks after N consecutive failures, sets `desiredCount=0`. Reset by `update-express-gateway-service --scaling-target`.
 - **Cross-account profile** — AWS CLI profile that resolves to a different account. Shurly uses `griddo-main` for service operations and `griddo-production` for DNS writes.
