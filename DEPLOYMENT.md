@@ -46,7 +46,8 @@ Decided 2026-09-28. Nothing was published on `s.griddo.io`, so it goes at the Ph
 
 - AWS CLI configured with two SSO profiles (`griddo-main`, `griddo-production`).
 - Docker (BuildKit + buildx). On Apple Silicon, `linux/arm64` builds are native; on x86_64 hosts buildx falls back to QEMU emulation, which works but is slower.
-- Python 3.10+, `uv`, and the project deps installed locally for the test step inside `scripts/deploy_ecs.sh`.
+- Python 3.10+ and `uv`, to run the tests before the first deploy: `scripts/deploy_ecs.sh` doesn't run them
+  (the deploy workflow does, before every later one).
 - Existing infrastructure already provisioned in `griddo-main` for the Shlink deploy (we reuse it):
   - Default VPC `vpc-01b31e19aa032bcff`
   - IAM roles `ecsTaskExecutionRole` and `ecsInfrastructureRoleForExpressServices`
@@ -152,7 +153,10 @@ The script:
   `<sha>-<timestamp>`.
 - Calls `aws ecs create-express-gateway-service` with all Phase 3.9/3.10 settings as env vars, `--cpu 256 --memory 512`, healthcheck `/api/v1/health`, scaling 1–2 tasks, and Shlink's existing IAM roles.
 - Tolerates the documented `--monitor-resources` timeout (Shlink lesson #2) and verifies via `describe-express-gateway-service`.
-- On subsequent runs, the script detects the service exists and calls `update-express-gateway-service` instead — Express Mode handles the blue/green target group rotation.
+- **Creates only.** Once the service exists, the script stops before building anything: an update would send
+  the container it builds, whose environment holds only the variables above, and drop every setting added on
+  the service since. Later images go out with the deploy workflow (§ CI/CD with OIDC), which changes only the
+  image; settings change on the live service (§ Settings, under Sign in with Google).
 
 Smoke the auto-generated host:
 
@@ -798,11 +802,13 @@ Done once, by whoever administers Google Workspace (ROADMAP 3.13.2). Step by ste
   `{FRONTEND_URL}/login/#error=google_unavailable`, or answer `503` when `FRONTEND_URL` isn't set
   either. The rest of the app works as before, password logins included. An empty
   `ORGANIZATION_DOMAIN` keeps it off: it would let any Google account in, Gmail included.
-- `CORS_ORIGINS` must include the frontend's origin: the page `POST`s the one-time code to
-  `/api/v1/auth/google/exchange`.
+- The page `POST`s the one-time code to `/api/v1/auth/google/exchange`. In production that's the same origin
+  (`shurly.griddo.io`), so `CORS_ORIGINS` needs no entry for it (§ CORS); a frontend served from another origin
+  needs its origin listed.
 - **Where they go:** the GitHub deploy keeps the live service's environment and swaps only the image,
   so add these variables to the live ECS config ([docs/setup_google_app.md](docs/setup_google_app.md),
-  step 7). `scripts/deploy_ecs.sh` only builds the environment when the service is first created.
+  step 7). Changing it starts a deployment. `scripts/deploy_ecs.sh` only creates the service, and stops once
+  it exists.
 - To rotate the client secret: add a new secret to the OAuth client, update Secrets Manager, redeploy,
   then delete the old secret in Google Cloud.
 
@@ -951,7 +957,9 @@ PGPASSWORD=$DB_PASSWORD psql -h $DB_HOST -U $DB_USER -d $DB_NAME
 ### Rotate the JWT secret
 
 1. `JWT_SECRET_KEY=$(openssl rand -hex 32)`
-2. Update the env var in the ECS service (console or `aws ecs update-express-gateway-service`).
+2. Update the env var in the ECS service (console or `aws ecs update-express-gateway-service`). With the CLI,
+   start from the service's current container, as the deploy workflow does: `--primary-container` replaces
+   the whole environment, so one built from scratch drops every other setting.
 3. Force a redeploy. Existing JWTs will become invalid; clients will need to re-authenticate.
 
 ---

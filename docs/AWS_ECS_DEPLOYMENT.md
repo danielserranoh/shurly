@@ -36,8 +36,8 @@
 
 | Need | Command |
 |---|---|
-| Deploy from local | `AWS_PROFILE=griddo-main ./scripts/deploy_ecs.sh` |
-| Deploy from CI | `git push origin main` (auto via GitHub Actions) |
+| Deploy | Merge to `main`: GitHub Actions ships the new image and keeps the live environment |
+| Create the service (first deploy only) | `AWS_PROFILE=griddo-main ./scripts/deploy_ecs.sh`. It stops once the service exists: run against it, it would replace the live environment |
 | View logs | `aws logs tail /aws/ecs/default/shurly-api-5fdb --follow --region eu-south-2 --profile griddo-main` |
 | Force redeploy | `aws ecs update-express-gateway-service --service-arn $(aws ecs list-services ... --query "serviceArns[?contains(@,'shurly-api')] \| [0]" -o text) --force-new-deployment` |
 | Trigger Lambda sync | `aws lambda invoke --function-name ecs-alb-rule-sync --payload '{}' /dev/stdout` |
@@ -388,13 +388,15 @@ Common: AWS_DEPLOY_ROLE_ARN secret missing or pointing at a deleted role; OIDC t
 
 ## Operational runbook
 
-### Deploy from local
+### Create the service (first deploy only)
 
 ```bash
 AWS_PROFILE=griddo-main ./scripts/deploy_ecs.sh
 ```
 
-The script handles the entire build → push → roll-out cycle. Run it from the project root with a populated `.env` (see `.env.production.example`).
+The script builds and pushes the image, then creates the service. Run it from the project root with a populated `.env` (see `.env.production.example`).
+
+**It stops once the service exists**, before building anything. An update would send the container it builds, whose environment holds only the variables the script knows, and drop every setting added on the service since (sign in with Google, the MCP's OAuth, …). New images go out through the CI deploy below; settings change on the live service ([`DEPLOYMENT.md`](../DEPLOYMENT.md) § Settings).
 
 ### Deploy from CI
 
@@ -470,9 +472,9 @@ Useful for re-applying env vars after `update-express-gateway-service --primary-
 ### Rotate the JWT secret
 
 1. `JWT_SECRET_KEY=$(openssl rand -hex 32)` — new value.
-2. Update the env var in the `.env` AND the ECS service's primary container env.
-3. `./scripts/deploy_ecs.sh` (or push to main).
-4. **All existing JWTs become invalid.** Clients must log in again.
+2. Set it in the live service's environment ([`DEPLOYMENT.md`](../DEPLOYMENT.md) § Settings). Changing the
+   environment starts a deployment. `scripts/deploy_ecs.sh` won't do it: it only creates the service.
+3. **All existing JWTs become invalid.** Clients must log in again.
 
 For zero-downtime rotation, you'd need to support two keys briefly — not implemented today.
 
@@ -489,7 +491,7 @@ aws rds wait db-instance-available --region eu-south-2 --profile griddo-main \
     --db-instance-identifier shurly-db
 ```
 
-Then update `.env` and redeploy. Existing tasks die when their connections are reset; new tasks pick up the new password.
+Then set `DB_PASSWORD` in the live service's environment ([`DEPLOYMENT.md`](../DEPLOYMENT.md) § Settings), which starts a deployment. Existing tasks die when their connections are reset; new tasks pick up the new password.
 
 ### Scale up/down
 

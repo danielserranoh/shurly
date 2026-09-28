@@ -26,6 +26,17 @@ implementation lifecycle and is independent of the URL version segment.
 
 ## [Unreleased]
 
+### Security — `deploy_ecs.sh` no longer overwrites production's settings
+- **The script only creates the ECS service now.** Run against the live service, its update path sent the
+  container it builds, whose environment holds 20 variables, and so dropped every setting added on the service
+  since: sign in with Google, the MCP's OAuth, `FRONTEND_URL`, and whatever gets added there later.
+- Once the service exists it stops before building anything, and says where to go: a merge to `main` for an
+  image (the deploy workflow changes only the image), the live service for a setting (DEPLOYMENT.md § Settings).
+  A failed lookup stops it too. `tests/test_deploy_ecs_script.py` runs it against stubbed `aws` and `docker`.
+- The playbook's "Deploy from local", and its JWT and database password rotations, no longer re-run it.
+- Docs: in production the Google sign-in's code exchange is same-origin, so `CORS_ORIGINS` needs no entry for
+  it (DEPLOYMENT.md § Settings, `docs/setup_google_app.md` step 7).
+
 ### Removed — the legacy `/api/v1/stats/*` routes
 - **`GET /api/v1/stats/day/{surl}`, `…/week/{surl}`, `…/world/{surl}`, `…/main` and `…/next/{surl}` answer `404`.**
   They were mounted without authentication, and broken since Phase 1.4: they queried columns that don't exist

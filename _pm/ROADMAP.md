@@ -1382,6 +1382,12 @@ live in `mcp_server/README.md`, written for developers. There is no user manual 
   - [x] The MCP can't generate or revoke a key: talked into it by untrusted text, an assistant would get
         the new key in its context. Nor `login` or `change_password`: no password or JWT passes through an
         assistant (`EXCLUDED_ROUTE_MAPS`, pinned by `tests/test_phase52_mcp_tools.py`)
+- [x] `scripts/deploy_ecs.sh` can't overwrite production's settings 🔎 R14: run against the live service, its
+      update path replaced the whole environment with the 20 variables it builds, dropping every setting added
+      on the service since (sign in with Google, the MCP's OAuth, …) → it only creates the service, and stops
+      before building anything once it exists; a failed lookup stops it too. Images go out with the deploy
+      workflow, settings change on the live service (`tests/test_deploy_ecs_script.py`, on stubbed `aws` and
+      `docker`)
 
 ### 6.4 Monitoring & Logging
 - [x] CloudWatch Logs setup → `/aws/ecs/default/shurly-api-5fdb`; `X-Request-Id` correlates requests
@@ -1711,4 +1717,16 @@ check earlier in the next project.
   been dropped (3.13.1)
 - **Lesson:** when a change widens what a role can see, re-check who can get that role today, not after the
   planned phases land. A setting that names a boundary isn't the boundary until something enforces it
+
+### R14 — The first-deploy script could wipe production's settings · missed · found 2026-09-29
+- **What:** `scripts/deploy_ecs.sh` created the service, and on later runs updated it with the container it built.
+  That container's environment holds 20 variables; since 3.13 production also carries settings added on the
+  live service (sign in with Google, the MCP's OAuth, `FRONTEND_URL`, …), and an update would have dropped
+  them all. The playbook still offered it as "Deploy from local" → the script only creates (6.3)
+- **How it surfaced:** the docs sweep, following why the script's `CORS_ORIGINS` default mattered at all
+- **Why it slipped:** the GitHub deploy moved to swapping only the image, and settings moved to the live service,
+  but the local script kept its create-or-update path; the rule "it's first-create only" lived in people's
+  heads and one doc line, not in the script
+- **Lesson:** when the source of truth for a setting moves, check every tool that still writes it. A rule about
+  when not to run a script belongs in the script
 
