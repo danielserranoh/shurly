@@ -68,6 +68,8 @@ implementation lifecycle and is independent of the URL version segment.
 - **Campaign cards and the campaign page say who created it by name**, e.g. "Created … by Ana García", with
   the email as a tooltip. "You" stays "you", and someone without a name still shows their email. Links
   follow once their responses change for 8.3.
+  - **On phones, the card's "by …" takes its own line under the date.** It used to be cut off beside "View
+    campaign". Wider screens keep one line.
 - **Campaign responses keep `created_by_email` and gain `created_by_first_name` and
   `created_by_last_name`**, null without a profile. That covers creating a campaign, the list, the detail
   and the MCP's campaign tools. The list loads every creator's profile with the page: one query, not one

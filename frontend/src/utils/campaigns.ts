@@ -39,6 +39,7 @@ export function renderCampaignCard(c: Campaign, viewer: Viewer | null = null): R
   const menuId = `campaign-menu-${c.id}`;
   const creator = creatorName(c, viewer);
   const creatorEmail = creatorEmailBehindName(c, viewer);
+  // Under "Created …": on phones "by …" takes a line of its own, as it truncated beside "View campaign".
   const locked = canChange(c, viewer) ? '' : lockedMenuAttrs('campaign');
   return html`<li class="card card-interactive flex flex-col gap-4 p-5" data-campaign="${c.id}">
     <div class="flex items-start gap-3">
@@ -73,7 +74,7 @@ export function renderCampaignCard(c: Campaign, viewer: Viewer | null = null): R
     ${c.tags?.length ? html`<div class="flex flex-wrap gap-1.5">${c.tags.map((t) => tagPill(t))}</div>` : ''}
 
     <div class="mt-auto flex items-center justify-between gap-3 border-t border-line pt-3 text-xs text-ink-500">
-      <span class="min-w-0 truncate" ${creatorEmail ? html`title="${creatorEmail}"` : ''}>Created ${formatDate(c.created_at)}${creator ? ` by ${creator}` : ''}</span>
+      <span class="min-w-0 sm:truncate" ${creatorEmail ? html`title="${creatorEmail}"` : ''}>Created ${formatDate(c.created_at)}${creator ? html`<span class="max-sm:block max-sm:truncate"> by ${creator}</span>` : ''}</span>
       <a class="inline-flex shrink-0 items-center gap-1 font-semibold text-ink-900 hover:text-ink-950" href="${campaignHref(c.id)}">View campaign ${icon('arrow-right', 'size-3.5')}</a>
     </div>
   </li>`;
