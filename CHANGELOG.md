@@ -26,6 +26,14 @@ implementation lifecycle and is independent of the URL version segment.
 
 ## [Unreleased]
 
+### Security — the deploy masks the container's credentials again
+- **`deploy-backend.yml` reads the container from `service.activeConfigurations[0]`**: it read
+  `service.primaryContainer`, which is null for Express services, so the step that masks
+  credential-looking values (`DB_PASSWORD`, `*SECRET*`, `*KEY*`…) in the logs masked nothing. No value
+  was printed (the update's response goes to /dev/null), but the defence wasn't there. It takes the
+  newest active configuration (a rollout has two, in no promised order, and the old one would put
+  previous settings back), and stops if it finds no image and environment.
+
 ### Removed — `CI_CD_SETUP.md`, the Lambda-era deploy guide
 - It described access keys, SAM and API Gateway. The deploys it covered are in DEPLOYMENT.md:
   § CI/CD with OIDC (the backend, to ECS) and § Frontend hosting (the frontend, to S3 + CloudFront).
