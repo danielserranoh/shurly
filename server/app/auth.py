@@ -7,22 +7,27 @@ from sqlalchemy.orm import Session
 
 from server.core import get_db
 from server.core.auth import (
+    SignedInSession,
     authenticate_user,
     create_access_token,
     get_current_user,
+    get_signed_in_session,
     hash_password,
     verify_password,
 )
+from server.core.config import settings
 from server.core.models import User
 from server.schemas.auth import (
     APIKeyResponse,
     ChangePasswordRequest,
+    SetPasswordRequest,
     Token,
     UserLogin,
     UserRegister,
     UserResponse,
 )
 from server.schemas.responses import MessageResponse, get_responses
+from server.utils.event_log import log_event
 from server.utils.organization import join_default_organization
 
 auth_router = APIRouter()
@@ -36,12 +41,17 @@ auth_router = APIRouter()
         201: {"description": "User successfully created"},
         **get_responses(400, 422),
     },
+    # Phase 3.13.2 — out of the API docs, and so of the MCP tools, unless it's on.
+    include_in_schema=settings.allow_password_signup,
 )
 def register(user_data: UserRegister, db: Session = Depends(get_db)):
     """
     Register a new user.
 
     Creates a new user account with the provided email and password.
+
+    Phase 3.13.2: off unless `ALLOW_PASSWORD_SIGNUP` is on (local development and
+    tests only). Accounts come from signing in with Google.
 
     **Request Body:**
     - **email**: Valid email address (required)
@@ -50,8 +60,13 @@ def register(user_data: UserRegister, db: Session = Depends(get_db)):
     **Responses:**
     - **201**: User successfully created - Returns user information
     - **400**: Email already registered
+    - **404**: Sign-up with a password is off
     - **422**: Validation error (invalid email format, password too short, etc.)
     """
+    # Read per request, so tests can turn it on.
+    if not settings.allow_password_signup:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not Found")
+
     # Check if user already exists
     existing_user = db.query(User).filter(User.email == user_data.email).first()
     if existing_user:
@@ -111,6 +126,8 @@ def login(user_data: UserLogin, db: Session = Depends(get_db)):
 
     # Create access token
     access_token = create_access_token(data={"sub": user.email})
+    # Phase 3.13.2 — who still signs in with a password, before enforcing Google (3.13.4).
+    log_event("auth.login", method="password", user_id=str(user.id))
 
     return {"access_token": access_token, "token_type": "bearer"}
 
@@ -144,7 +161,7 @@ def get_current_user_info(current_user: User = Depends(get_current_user)):
     status_code=status.HTTP_200_OK,
     responses={
         200: {"description": "Password changed successfully"},
-        **get_responses(400, 401, 422),
+        **get_responses(400, 401, 409, 422),
     },
 )
 def change_password(
@@ -167,8 +184,15 @@ def change_password(
     - **200**: Password changed successfully
     - **400**: Current password is incorrect
     - **401**: Authentication required or invalid token
+    - **409**: The account has no password yet (set one with `PUT /api/v1/auth/password`)
     - **422**: Validation error (new password too short, etc.)
     """
+    if current_user.password_hash is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This account has no password yet. Set one with PUT /api/v1/auth/password.",
+        )
+
     # Verify current password
     if not verify_password(password_data.current_password, current_user.password_hash):
         raise HTTPException(
@@ -181,6 +205,107 @@ def change_password(
     db.commit()
 
     return {"message": "Password changed successfully"}
+
+
+def _reauth_required(message: str) -> HTTPException:
+    """Phase 3.13.3 — a 403 the frontend can act on: send the person through Google, retry."""
+    return HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail={"code": "reauth_required", "message": message},
+    )
+
+
+@auth_router.put(
+    "/password",
+    response_model=MessageResponse,
+    responses={
+        200: {"description": "Password set"},
+        **get_responses(400, 401, 403, 422),
+    },
+)
+def set_password(
+    body: SetPasswordRequest,
+    session: SignedInSession = Depends(get_signed_in_session),
+    db: Session = Depends(get_db),
+):
+    """
+    Set or replace the password (Phase 3.13.3). Signed-in sessions only: an API key
+    gets a 403.
+
+    - With `current_password`, when the account has a password: it must match.
+    - Without it: the account must sign in with Google (otherwise its password is
+      the only proof of who this is), and the session must be at most 10 minutes
+      old, so a stolen token can't mint a password that outlives it. That's the
+      way back from a forgotten password: sign in with Google, set a new one.
+
+    **Responses:**
+    - **200**: Password set
+    - **400**: Current password missing or incorrect
+    - **401**: Authentication required or invalid token
+    - **403**: An API key, or a session older than 10 minutes without `current_password`
+    - **422**: Validation error (new password too short, etc.)
+    """
+    user = session.user
+    if body.current_password is not None and user.password_hash is not None:
+        if not verify_password(body.current_password, user.password_hash):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Current password is incorrect",
+            )
+    elif user.password_hash is not None and not user.has_google:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Give your current password to replace it.",
+        )
+    elif not session.is_fresh():
+        raise _reauth_required("Sign in with Google again to set a password.")
+
+    user.password_hash = hash_password(body.new_password)
+    db.commit()
+    log_event("auth.password_set", user_id=str(user.id))
+
+    return {"message": "Password set"}
+
+
+@auth_router.delete(
+    "/password",
+    response_model=MessageResponse,
+    responses={
+        200: {"description": "Password removed"},
+        **get_responses(401, 403, 409),
+    },
+)
+def remove_password(
+    session: SignedInSession = Depends(get_signed_in_session),
+    db: Session = Depends(get_db),
+):
+    """
+    Remove the password (Phase 3.13.3), leaving sign in with Google. Signed-in
+    sessions only (an API key gets a 403), at most 10 minutes old, so a stolen
+    token can't take the owner's password away.
+
+    **Responses:**
+    - **200**: Password removed, or there was none
+    - **401**: Authentication required or invalid token
+    - **403**: An API key, or a session older than 10 minutes (`reauth_required`)
+    - **409**: The account doesn't sign in with Google: it would have no way in
+    """
+    user = session.user
+    if not user.has_google:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Sign in with Google once first: without a password, this account "
+            "would have no way in.",
+        )
+    if not session.is_fresh():
+        raise _reauth_required("Sign in with Google again to remove the password.")
+
+    if user.password_hash is not None:
+        user.password_hash = None
+        db.commit()
+        log_event("auth.password_removed", user_id=str(user.id))
+
+    return {"message": "Password removed"}
 
 
 @auth_router.post(

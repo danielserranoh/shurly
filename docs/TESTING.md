@@ -72,6 +72,9 @@ DB_PASSWORD=postgres
 DB_NAME=shurly
 JWT_SECRET_KEY=dev-secret-key-change-in-production
 CORS_ORIGINS=http://localhost:4321,http://localhost:3000
+# Phase 3.13: accounts come from signing in with Google, so POST /auth/register is
+# off. Turn it on to make local accounts with a password (never in production):
+ALLOW_PASSWORD_SIGNUP=true
 ```
 
 #### 3. Start Backend
@@ -113,7 +116,7 @@ npm run dev
 
 ### 1. Authentication Flow
 
-**Registration:**
+**Registration** (needs `ALLOW_PASSWORD_SIGNUP=true` since Phase 3.13):
 - [x] Navigate to http://localhost:4232/register
 - [x] Try registering with invalid email → Should show error
 - [x] Try password < 8 characters → Should show error
@@ -389,7 +392,7 @@ npm run dev
 
 Navigate to http://localhost:8000/docs for interactive API testing:
 
-**Authentication Flow:**
+**Authentication Flow** (register needs `ALLOW_PASSWORD_SIGNUP=true` since Phase 3.13):
 1. POST /api/auth/register
 2. POST /api/auth/login → Copy access_token
 3. Click "Authorize" button → Enter token as "Bearer {token}"
@@ -418,7 +421,7 @@ Navigate to http://localhost:8000/docs for interactive API testing:
 ### Using cURL
 
 ```bash
-# Register
+# Register (needs ALLOW_PASSWORD_SIGNUP=true since Phase 3.13)
 curl -X POST http://localhost:8000/api/auth/register \
   -H "Content-Type: application/json" \
   -d '{"email":"test@example.com","password":"testpass123"}'

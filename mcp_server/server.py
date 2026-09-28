@@ -55,6 +55,15 @@ EXCLUDED_ROUTE_MAPS: list[RouteMap] = [
         pattern=r"^/api/v1/organization(/.*)?$",
         mcp_type=MCPType.EXCLUDE,
     ),
+    # Phase 3.13 — signing in with Google is a browser flow (redirects and a cookie),
+    # and only the signed-in person sets or removes a password: the same untrusted
+    # text could talk an assistant into it.
+    RouteMap(pattern=r"^/api/v1/auth/google/.*$", mcp_type=MCPType.EXCLUDE),
+    RouteMap(
+        methods=["PUT", "DELETE"],
+        pattern=r"^/api/v1/auth/password$",
+        mcp_type=MCPType.EXCLUDE,
+    ),
 ]
 
 # Maps FastAPI's auto-generated operationIds to clean MCP tool names.
@@ -67,7 +76,8 @@ EXCLUDED_ROUTE_MAPS: list[RouteMap] = [
 # added or its function renamed, add/update its entry here so the MCP tool
 # name stays stable. Tests in `tests/test_mcp_tools.py` enforce coverage.
 MCP_TOOL_NAMES: dict[str, str] = {
-    # Auth
+    # Auth. `register` is a tool only with ALLOW_PASSWORD_SIGNUP on at startup (local
+    # development, Phase 3.13.2); otherwise its route is out of the schema.
     "register_api_v1_auth_register_post": "register",
     "login_api_v1_auth_login_post": "login",
     "get_current_user_info_api_v1_auth_me_get": "get_current_user_info",

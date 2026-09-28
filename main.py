@@ -130,6 +130,15 @@ def _seed_database():
 def create_app() -> FastAPI:
     """Create and configure the FastAPI application."""
 
+    # Phase 3.13.2 — accounts come from Google; POST /auth/register is for local
+    # development and tests only.
+    if settings.allow_password_signup:
+        log_event(
+            "auth.password_signup_enabled",
+            warning="ALLOW_PASSWORD_SIGNUP is on: anyone can make an account with a "
+            "password. Never in production.",
+        )
+
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         # `TESTING=1` skips DB seeding (conftest manages the in-memory schema).

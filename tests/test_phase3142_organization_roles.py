@@ -96,6 +96,7 @@ class TestDefaultOrganization:
         assert (first.name, first.google_domain) == ("Griddo", "griddo.io")
         assert db_session.query(Organization).count() == 1
 
+    @pytest.mark.usefixtures("allow_password_signup")
     def test_sign_up_joins_as_member(self, client, db_session):
         response = client.post(
             "/api/v1/auth/register", json={"email": "new@griddo.io", "password": "secret123"}
@@ -105,6 +106,7 @@ class TestDefaultOrganization:
         user = db_session.query(User).filter_by(email="new@griddo.io").one()
         assert _role(db_session, user) == OrgRole.MEMBER
 
+    @pytest.mark.usefixtures("allow_password_signup")
     def test_configured_email_becomes_the_first_owner(self, client, db_session, monkeypatch):
         monkeypatch.setattr(settings, "bootstrap_owner_email", "boss@griddo.io")
 

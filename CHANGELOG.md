@@ -26,6 +26,57 @@ implementation lifecycle and is independent of the URL version segment.
 
 ## [Unreleased]
 
+### Added — sign in with Google (Phase 3.13.2)
+- **People at Griddo sign in with their Google Workspace account.** `GET /api/v1/auth/google/start`
+  sends the browser to Google (OpenID Connect, authorization code with PKCE), and
+  `GET /api/v1/auth/google/callback` checks the result and sends the browser to
+  `{FRONTEND_URL}/login/#code=…`. The page trades that one-time code for the usual JWT at
+  `POST /api/v1/auth/google/exchange`, so the JWT never travels in a URL. The contract with the
+  frontend is in the docstring of `server/app/google_auth.py`.
+- **Only the organization's accounts get in.** The ID token is checked on the server: signature
+  against Google's keys, audience, issuer and expiry (google-auth), a verified address, and an `hd`
+  claim equal to `ORGANIZATION_DOMAIN`. The `hd` sent to Google is only a hint.
+- **A sign-in can't be finished in another browser, or twice.** The `state` is stored hashed, works
+  once, expires in 10 minutes and must match an HttpOnly cookie set by `/start`. The one-time code
+  is stored hashed, works once and expires in 60 seconds.
+- **An account is recognised by Google's `sub`**, in the new `user_identities` table (migration
+  `0004`), so an address change on Google's side keeps the account. The first sign-in makes the
+  account and joins the organization; the 3.14.2 domain gate still applies. An address whose
+  account is linked to another Google account is refused (`account_conflict`), never linked.
+- **An account made before Google is taken back from whoever made it.** The open sign-up never
+  verified addresses, so when such an account first signs in with Google it's linked, but its
+  password is cleared, its API key revoked and every existing session ended (account
+  pre-hijacking). Logged as `auth.identity_linked`.
+- **Event log:** `auth.login` `{method, user_id}` for every sign-in, with Google or a password, and
+  `auth.google_refused` `{reason}`. Never an address, a token or a code.
+- **New settings:** `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI` and
+  `FRONTEND_URL`. Until they're set, the Google endpoints send the browser back with
+  `#error=google_unavailable`, or answer `503` without `FRONTEND_URL`, and everything else works as
+  before. DEPLOYMENT.md § Sign in with Google has the Google Cloud setup.
+
+### Added — an optional password, set by the account's owner (Phase 3.13.3)
+- **`PUT /api/v1/auth/password` sets or replaces the password; `DELETE` removes it.** Only from a
+  signed-in session: an API key gets a `403`, so a leaked key can't become a password. Without the
+  current password, the sign-in must be at most 10 minutes old, or it's a `403` with
+  `{"code": "reauth_required", …}`: that's the way back from a forgotten password (sign in with
+  Google, set a new one). Removing is refused (`409`) when the account doesn't sign in with Google.
+  Logged as `auth.password_set` and `auth.password_removed`. Neither endpoint is an MCP tool.
+- **`GET /api/v1/auth/me` says `has_password` and `has_google`**, for Settings → Account.
+- **Sessions can be ended.** JWTs now carry `iat`, and an account's `sessions_valid_from` refuses
+  the ones issued before it, in the API and the MCP alike. Tokens from before this release have no
+  `iat` and keep working until their account gets a cutoff, so nobody is logged out.
+- `users.password_hash` may be NULL (migration `0004`): an account made through Google has no
+  password. `POST /auth/login` answers `401` for it, and `POST /auth/change-password` a `409` that
+  points to `PUT /api/v1/auth/password`. During the rollout, the previous release answers `500` to a
+  password login for an account whose password the new one has just cleared.
+
+### Removed — sign-up with a password (Phase 3.13.2)
+- **`POST /api/v1/auth/register` answers `404`** and is gone from the API docs and the MCP (the
+  `register` tool), unless `ALLOW_PASSWORD_SIGNUP=true`, which is for local development and tests,
+  never production. The app logs `auth.password_signup_enabled` at startup when it's on. Accounts
+  come from signing in with Google. A deliberate break of the versioning policy above: anyone could
+  make an account on a Griddo domain (retro R1).
+
 ### Added — move a removed person's personal links from Settings (Phase 3.14)
 - **When an owner removes someone** in Settings → Organization, a follow-up asks whether
   to move that person's personal links and campaigns to the organization, so the team

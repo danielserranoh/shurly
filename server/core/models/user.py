@@ -30,16 +30,28 @@ class User(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     email = Column(String(255), unique=True, nullable=False, index=True)
-    password_hash = Column(String(255), nullable=False)
+    # Phase 3.13.3 — NULL: no password (an account made by signing in with Google).
+    password_hash = Column(String(255), nullable=True)
     api_key = Column(String(64), unique=True, nullable=True, index=True)
     api_key_scope = Column(Enum(ApiKeyScope), nullable=False, default=ApiKeyScope.FULL_ACCESS)
     api_key_constraints = Column(JSON, nullable=True)
     is_active = Column(Boolean, default=True, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    # Phase 3.13.3 — JWTs issued in an earlier second are refused (server/core/auth.py).
+    sessions_valid_from = Column(DateTime, nullable=True)
 
     # Relationships
     urls = relationship("URL", back_populates="creator", cascade="all, delete-orphan")
     campaigns = relationship("Campaign", back_populates="creator", cascade="all, delete-orphan")
+    identities = relationship("UserIdentity", back_populates="user")
+
+    @property
+    def has_password(self) -> bool:
+        return self.password_hash is not None
+
+    @property
+    def has_google(self) -> bool:
+        return any(identity.provider == "google" for identity in self.identities)
 
     def __repr__(self):
         return f"<User(id={self.id}, email={self.email})>"

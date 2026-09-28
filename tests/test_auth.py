@@ -1,11 +1,13 @@
 """Tests for authentication endpoints."""
 
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 from server.core.models import User
 
 
+@pytest.mark.usefixtures("allow_password_signup")
 class TestUserRegistration:
     """Test user registration endpoint."""
 
@@ -296,6 +298,7 @@ class TestAPIKeyManagement:
         assert response.status_code == 401  # HTTPBearer returns 401 when no credentials
 
 
+@pytest.mark.usefixtures("allow_password_signup")
 class TestAuthenticationEdgeCases:
     """Test edge cases and error scenarios."""
 

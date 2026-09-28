@@ -45,6 +45,7 @@ def _membership(db, email: str) -> OrganizationMember | None:
     return db.query(OrganizationMember).filter_by(user_id=user.id).one_or_none()
 
 
+@pytest.mark.usefixtures("allow_password_signup")
 class TestSignUp:
     def test_an_address_on_the_domain_joins(self, client, db_session):
         assert _register(client, "alice@griddo.io").status_code == 201
@@ -80,6 +81,7 @@ class TestSignUp:
         assert _membership(db_session, "boss@example.com") is None
 
 
+@pytest.mark.usefixtures("allow_password_signup")
 class TestAnOutsiderCannotReadTheTeam:
     """The attack this closes: register with any address, then read the team's data."""
 

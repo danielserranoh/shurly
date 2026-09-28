@@ -31,7 +31,7 @@ from fastmcp.server.auth import AccessToken, TokenVerifier
 from fastmcp.server.dependencies import get_access_token
 
 from server.core import SessionLocal as _DefaultSessionLocal
-from server.core.auth import _looks_like_jwt, decode_access_token, get_user_by_api_key
+from server.core.auth import _looks_like_jwt, get_user_by_api_key, get_user_by_jwt
 from server.core.models import User
 
 if TYPE_CHECKING:
@@ -77,14 +77,8 @@ def _resolve_user_from_token(db, token: str) -> User | None:
     if not token:
         return None
     if _looks_like_jwt(token):
-        try:
-            payload = decode_access_token(token)
-        except Exception:  # HTTPException from decode → invalid JWT
-            return None
-        email = payload.get("sub")
-        if not email:
-            return None
-        user = db.query(User).filter(User.email == email).first()
+        # Phase 3.13.3 — the API's helper, so `sessions_valid_from` holds here too.
+        user = get_user_by_jwt(db, token)
         if user is None or not user.is_active:
             return None
         return user

@@ -281,7 +281,7 @@ Curated tools (Phase 5.3 wrappers) read the AccessToken via
 ### Generating an API key
 
 ```bash
-# 1. Get a JWT via /auth/login (or use the existing dashboard).
+# 1. Get a JWT: sign in to the dashboard (with Google), or /auth/login with a password.
 # 2. Mint an API key:
 curl -X POST https://s.griddo.io/api/v1/auth/api-key/generate \
   -H "Authorization: Bearer <jwt>"

@@ -164,9 +164,11 @@ npm run dev
 
 The frontend will be available at `http://localhost:4232`
 
-**First run:** there is no default account. Open `http://localhost:4232/register/` and sign up with any
-email and a password of 8+ characters; you're signed in straight away. Accounts live in your local
-database, so each environment needs its own.
+**First run:** there is no default account. Accounts come from signing in with Google (Phase 3.13,
+set up in [DEPLOYMENT.md](DEPLOYMENT.md#sign-in-with-google-phase-313)), so sign-up with a password is
+off. Locally, set `ALLOW_PASSWORD_SIGNUP=true` in the backend's `.env` (never in production), then open
+`http://localhost:4232/register/` and sign up with any email and a password of 8+ characters; you're
+signed in straight away. Accounts live in your local database, so each environment needs its own.
 
 #### Configuration (optional, build-time)
 
@@ -327,10 +329,16 @@ public-facing and must remain stable. See [CHANGELOG.md](CHANGELOG.md) for the
 full versioning policy.
 
 ### Authentication
-- `POST /api/v1/auth/register`
-- `POST /api/v1/auth/login`
-- `GET /api/v1/auth/me`
+- `GET /api/v1/auth/google/start` → Google → `GET /api/v1/auth/google/callback` — sign in with
+  Google, a browser flow (Phase 3.13.2). The callback sends the browser to the frontend with a
+  one-time code
+- `POST /api/v1/auth/google/exchange` — the one-time code → JWT
+- `POST /api/v1/auth/login` — email and password, for an account that has one
+- `GET /api/v1/auth/me` — says `has_password` and `has_google`
+- `PUT /api/v1/auth/password` · `DELETE /api/v1/auth/password` — set or remove the password
+  (signed-in sessions only, Phase 3.13.3)
 - `POST /api/v1/auth/change-password`
+- `POST /api/v1/auth/register` — off unless `ALLOW_PASSWORD_SIGNUP` (local development only)
 - `POST /api/v1/auth/api-key/generate` — returns `{api_key, scope}` (Phase 3.9.6)
 - `DELETE /api/v1/auth/api-key`
 
