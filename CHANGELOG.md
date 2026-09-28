@@ -26,6 +26,24 @@ implementation lifecycle and is independent of the URL version segment.
 
 ## [Unreleased]
 
+### Added — a link's analytics, as on Shlink's link page (Phase 3.16)
+- **Three new routes under `/api/v1/analytics/urls/{short_code}/`, for the link's page.** The contract is in
+  ROADMAP 3.16.1:
+  - **`/totals`**: the header's all-time numbers: clicks, email opens, the countries clicks came from, and the
+    last click.
+  - **`/timeseries`**: clicks and opens side by side, per local day, ISO week or month, clipped to the period.
+    Also per hour of day and per day of week.
+  - **`/breakdown`**: by OS and browser family, device, referrer host and country. Each value has its count
+    and share, with "Unknown" and "Direct" (no referrer) as values.
+- **They take a period:** `period=N`, the last N local days with today (30 by default), or `from` and `to`, at
+  most 731 days and ending today at the latest. With `tz` and `domain`, as the others.
+- **Every visit is one kind: a click, an email open (a pixel hit that isn't a bot's) or a bot's.**
+  `/breakdown` takes `type=clicks|opens|bots|all`. A click is what every other count calls one.
+- **Opens overcount:** Apple Mail Privacy Protection loads the pixel when a message arrives, read or not.
+- **User agents are parsed when the numbers are asked for, not stored.** So the labels always follow the parser.
+- **The MCP gains `get_url_totals`, `get_url_timeseries` and `get_url_breakdown`.** `/daily`, `/weekly` and
+  `/geo` are unchanged.
+
 ### Security — `deploy_ecs.sh` no longer overwrites production's settings
 - **The script only creates the ECS service now.** Run against the live service, its update path sent the
   container it builds, whose environment holds 20 variables, and so dropped every setting added on the service

@@ -987,6 +987,9 @@ which follows Agent 2's approved layout. Cities wait for the user's decision and
 | `open` | A hit on the email pixel (`/{code}/track`), not a bot |
 | `bot` | Any visit whose user agent was a bot's, pixel hits included |
 
+Opens overcount: Apple Mail Privacy Protection loads the pixel, like every image, when a message arrives, read or
+not. The page says so next to them, and so do the API docs.
+
 `/breakdown`, `/visits` and `/visits.csv` filter by kind with `type=clicks|opens|bots|all`. `/timeseries` gives
 clicks and opens side by side.
 
@@ -1100,12 +1103,14 @@ and every link on it would pay for the header's numbers.
 `list_url_visits`). `/visits.csv` is excluded.
 
 ### 3.16.2 API (Agent 1)
-- [ ] The period params, one dependency for every route: `period`, `from`/`to`, clipping, the 422s, `tz`
-- [ ] The kinds (`click`, `open`, `bot`) as one filter, next to `_exclude_bots`, which stays what a click is
-- [ ] `/totals`
-- [ ] `/timeseries`: the range's visits read once (`visited_at` and the kind), then bucketed in Python on local
+- [x] The period params, one dependency for every route: `period`, `from`/`to`, clipping, the 422s, `tz`
+      (`Period`, `server/utils/local_days.py`)
+- [x] The kinds (`click`, `open`, `bot`) as one filter, next to `_exclude_bots`, which stays what a click is
+      (`_of_type`; `kind_of` in `server/utils/visit_facets.py` draws the same lines)
+- [x] `/totals`
+- [x] `/timeseries`: the range's visits read once (`visited_at` and the kind), then bucketed in Python on local
       time: the days, weeks, months, hours and weekdays
-- [ ] `/breakdown`: grouped in SQL by user agent, referrer and country, each distinct user agent parsed once
+- [x] `/breakdown`: grouped in SQL by user agent, referrer and country, each distinct user agent parsed once
 - [ ] `/visits`: paged in SQL, each page's user agents parsed. `/visits.csv`, streamed
 - [ ] MCP: the tool names, `/visits.csv` excluded, `EXPECTED_TOOLS`
 - [ ] README endpoints, CHANGELOG

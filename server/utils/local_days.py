@@ -12,6 +12,9 @@ support from the database, and nothing depends on what SQL's `date()` returns (a
 SQLite, a date on PostgreSQL, which hid wrong counts from the tests).
 
 The zone only groups the visits into days: which visits count stays the caller's query.
+
+Phase 3.16 — a `Period` is the local days a per-link analytics route counts: the last N, or a
+custom range, at most two years, never past today.
 """
 
 from dataclasses import dataclass
@@ -24,6 +27,8 @@ from sqlalchemy.orm import Query
 from server.core.models import User, Visitor
 
 DEFAULT_ZONE = "Etc/UTC"
+DEFAULT_PERIOD_DAYS = 30
+MAX_PERIOD_DAYS = 731  # two years, a leap day included
 
 
 def _now() -> datetime:
@@ -53,15 +58,76 @@ class LocalDays:
     def today(self) -> date:
         return _now().astimezone(self.zone).date()
 
+    def midnight(self, day: date) -> datetime:
+        """The local midnight `day` starts at, as naive UTC like `visited_at`."""
+        aware = datetime.combine(day, time.min, tzinfo=self.zone)
+        return aware.astimezone(timezone.utc).replace(tzinfo=None)
+
+    def local(self, at: datetime) -> datetime:
+        """A naive-UTC instant (`visited_at`) as the zone's local time."""
+        return at.replace(tzinfo=timezone.utc).astimezone(self.zone)
+
     def bounds(self, first: date, days: int) -> list[datetime]:
         """`days` + 1 naive-UTC instants: the local midnight each day starts at, then the
         one after the last."""
-        return [
-            datetime.combine(first + timedelta(days=offset), time.min, tzinfo=self.zone)
-            .astimezone(timezone.utc)
-            .replace(tzinfo=None)
-            for offset in range(days + 1)
-        ]
+        return [self.midnight(first + timedelta(days=offset)) for offset in range(days + 1)]
+
+
+class PeriodError(ValueError):
+    """A period a route can't count: the message says why (a 422)."""
+
+
+@dataclass(frozen=True)
+class Period:
+    """Phase 3.16 — the local days a per-link analytics route counts, `first` to `last`."""
+
+    first: date
+    last: date
+    days: LocalDays
+
+    @classmethod
+    def resolve(
+        cls, days: LocalDays, period: int | None, first: date | None, last: date | None
+    ) -> "Period":
+        """The last `period` local days, today included, or `first` to `last`. A custom range
+        ends today at the latest, and lasts at most MAX_PERIOD_DAYS once it does."""
+        if (first is None) != (last is None):
+            raise PeriodError("Give both from and to, or neither.")
+        if first is not None and period is not None:
+            raise PeriodError("Give a period, or from and to, not both.")
+        today = days.today()
+        if first is None or last is None:
+            length = period or DEFAULT_PERIOD_DAYS
+            return cls(today - timedelta(days=length - 1), today, days)
+        if first > last:
+            raise PeriodError("from is after to.")
+        last = min(last, today)
+        if first > last:
+            raise PeriodError("The range starts after today.")
+        if (last - first).days + 1 > MAX_PERIOD_DAYS:
+            raise PeriodError(f"A range lasts at most {MAX_PERIOD_DAYS} days.")
+        return cls(first, last, days)
+
+    def bounds(self) -> tuple[datetime, datetime]:
+        """Naive UTC: the local midnight `first` starts at, and the one after `last`."""
+        return self.days.midnight(self.first), self.days.midnight(self.last + timedelta(days=1))
+
+    def buckets(self, group_by: str) -> list[tuple[date, date]]:
+        """The local days, ISO weeks (from Monday) or months of the period, oldest first, as
+        their first and last day, the first and last bucket clipped to the period."""
+        buckets = []
+        day = self.first
+        while day <= self.last:
+            if group_by == "week":
+                end = day + timedelta(days=6 - day.weekday())
+            elif group_by == "month":
+                end = date(day.year + day.month // 12, day.month % 12 + 1, 1) - timedelta(days=1)
+            else:
+                end = day
+            end = min(end, self.last)
+            buckets.append((day, end))
+            day = end + timedelta(days=1)
+        return buckets
 
 
 def count_per_period(visits: Query, bounds: list[datetime]) -> list[int]:

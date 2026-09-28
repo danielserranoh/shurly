@@ -104,3 +104,72 @@ class OverviewStats(BaseModel):
     recent_activity: list[DailyStats]  # Last 7 days
     # The IANA time zone the days are counted in: `?tz=`, else the viewer's profile, else UTC.
     timezone: str = Field(description="The IANA time zone the days are counted in")
+
+
+# Phase 3.16 — per-link analytics, as on Shlink's link page (ROADMAP 3.16.1).
+
+
+class LinkPeriodResponse(BaseModel):
+    """What every per-link response over a period starts with: the link, and the range counted."""
+
+    short_code: str
+    domain: str = Field(description="The link's domain")
+    first: date = Field(alias="from", description="The first local day counted")
+    last: date = Field(alias="to", description="The last local day counted: today at the latest")
+    timezone: str = Field(description="The IANA time zone the days are counted in")
+
+
+class LinkTotalsResponse(BaseModel):
+    """A link's all-time numbers, for the header of its page."""
+
+    short_code: str
+    domain: str = Field(description="The link's domain")
+    timezone: str = Field(description="The IANA time zone `last_click_at` is given in")
+    clicks: int = Field(description="Every click, as `click_count`")
+    opens: int = Field(description="Hits on its email tracking pixel that aren't a bot's")
+    countries: int = Field(description="How many distinct countries its clicks came from")
+    last_click_at: datetime | None = Field(description="The latest click, or null")
+
+
+class TimeseriesBucket(BaseModel):
+    start: date
+    end: date = Field(description="The bucket's last day, inclusive")
+    clicks: int
+    opens: int
+
+
+class HourCounts(BaseModel):
+    hour: int = Field(description="0 to 23, local")
+    clicks: int
+    opens: int
+
+
+class WeekdayCounts(BaseModel):
+    day: int = Field(description="1 is Monday, 7 Sunday")
+    clicks: int
+    opens: int
+
+
+class TimeseriesResponse(LinkPeriodResponse):
+    group_by: str
+    clicks: int
+    opens: int
+    stats: list[TimeseriesBucket]
+    hour_of_day: list[HourCounts]
+    day_of_week: list[WeekdayCounts]
+
+
+class BreakdownItem(BaseModel):
+    name: str = Field(description='The value, or "Unknown"; a referrer\'s is "Direct" without one')
+    count: int
+    share: float = Field(description="`count` over the response's `total`, 0 to 1, 4 decimals")
+
+
+class BreakdownResponse(LinkPeriodResponse):
+    type: str = Field(description="The kind of visit counted: clicks, opens, bots or all")
+    total: int
+    os: list[BreakdownItem]
+    browsers: list[BreakdownItem]
+    devices: list[BreakdownItem]
+    referrers: list[BreakdownItem]
+    countries: list[BreakdownItem]
