@@ -1725,6 +1725,25 @@ const colorCount = allColors.length;
           </div>
         </Specimen>
 
+        <Specimen title="Recipients table" description="A campaign's people, a page at a time. Sort by a header (on phones, Sort by), and tick rows to copy their links. In the app the API sorts and pages; here the page does." code={['recipientsView()', 'recipientTable()', 'recipientRows()', 'sortSelect()']}>
+          <div class="grid gap-6">
+            <section class="card overflow-hidden" aria-labelledby="sg-recipients-title">
+              <div class="border-b border-line p-5">
+                <h4 id="sg-recipients-title" class="font-semibold text-ink-950">Recipients <span class="font-normal text-ink-500">· 8</span></h4>
+                <p class="text-sm text-ink-500">Wide screens: every column of the CSV, then the link, clicks, opens and the last click.</p>
+              </div>
+              <div class="max-h-[28rem] overflow-auto" data-sg-recipients></div>
+            </section>
+            <section class="card w-full max-w-sm overflow-hidden" aria-labelledby="sg-recipient-rows-title">
+              <div class="flex flex-wrap items-center justify-between gap-3 border-b border-line p-4">
+                <h4 id="sg-recipient-rows-title" class="font-semibold text-ink-950">On a phone</h4>
+                <div data-sg-recipient-sort></div>
+              </div>
+              <div class="max-h-[28rem] overflow-auto" data-sg-recipient-rows></div>
+            </section>
+          </div>
+        </Specimen>
+
         <Specimen title="Bar list, meter & sparkline" code={['barList()', 'meter()', 'sparkline()']}>
           <div class="grid gap-4 xl:grid-cols-[1.4fr_1fr]">
             <section class="card p-5 sm:p-6" aria-labelledby="sg-geo-title">
@@ -2007,6 +2026,8 @@ const colorCount = allColors.length;
 
 <script>
   import { barList, bindChartTableToggle, bindShowNumbers, columnChart, dataTable, donutChart, donutTable, meter, sparkline, type ColumnDatum } from '@/utils/charts';
+  import { recipientRows, recipientTable, sortSelect, syncSelection, type Recipient } from '@/utils/recipients';
+  import { DEFAULT_SORT, nextSort, type RecipientSort, type SortState } from '@/utils/recipients-view';
   import { html, setHTML } from '@/utils/html';
   import { renderLinkCard, renderLinkSkeleton } from '@/utils/links';
   import { closeDialog, confirmDialog, hydrateTimes, setLoading, toast } from '@/utils/ui';
@@ -2397,6 +2418,78 @@ const colorCount = allColors.length;
       { limit: 5 },
     ),
   );
+  // Recipients table: sample people, sorted here as the API would.
+  const ago = (hours: number) => new Date(Date.now() - hours * 3600_000).toISOString();
+  const people: Recipient[] = [
+    ['ana-7k2', 'Ana', 'Acme', 'Madrid', 12, 3, ago(2)],
+    ['luis-p4q', 'Luis', 'Globex', 'Barcelona', 7, 1, ago(26)],
+    ['marta-x9', 'Marta', 'Initech', 'Valencia', 0, 2, null],
+    ['john-3fd', 'John', 'Umbrella Corporation', 'London', 3, 0, ago(70)],
+    ['sofia-m1', 'Sofía', '', 'Sevilla', 1, 1, ago(5)],
+    ['pierre-q8', 'Pierre', 'Hooli', 'Paris', 0, 0, null],
+    ['lena-b5', 'Lena', 'Vandelay Industries', 'Berlin', 5, 4, ago(1)],
+    ['ivan-2c', 'Iván', 'Stark', 'Bilbao', 0, 0, null],
+  ].map(([code, firstName, company, region, clicks, opens, last]) => ({
+    short_code: code as string,
+    short_url: `https://go.griddo.io/${code}`,
+    domain: 'go.griddo.io',
+    user_data: { firstName: firstName as string, company: company as string, region: region as string },
+    clicks: clicks as number,
+    opens: opens as number,
+    last_click_at: last as string | null,
+    last_open_at: null,
+  }));
+  const recipientColumns = ['firstName', 'company', 'region'];
+  const picked = new Set<string>(['lena-b5']);
+  let recipientSort: SortState = DEFAULT_SORT;
+  const byKey: Record<RecipientSort, (r: Recipient) => number | string> = {
+    clicks: (r) => r.clicks,
+    opens: (r) => r.opens,
+    last_click: (r) => r.last_click_at ?? '',
+    code: (r) => r.short_code,
+  };
+  function drawRecipients() {
+    const key = byKey[recipientSort.sort];
+    const sorted = [...people].sort((a, b) => {
+      const x = key(a);
+      const y = key(b);
+      const order = x < y ? -1 : x > y ? 1 : 0;
+      return (recipientSort.order === 'asc' ? order : -order) || a.short_code.localeCompare(b.short_code);
+    });
+    const opts = { columns: recipientColumns, sort: recipientSort, selected: picked };
+    const table = $('[data-sg-recipients]');
+    const rows = $('[data-sg-recipient-rows]');
+    if (table) setHTML(table, recipientTable(sorted, opts));
+    if (rows) setHTML(rows, recipientRows(sorted, opts));
+    const sortBox = $('[data-sg-recipient-sort]');
+    if (sortBox) setHTML(sortBox, sortSelect(recipientSort));
+    [table, rows].forEach((el) => el && hydrateTimes(el));
+  }
+  drawRecipients();
+  document.addEventListener('click', (e) => {
+    const header = (e.target as HTMLElement).closest<HTMLElement>('[data-sg-recipients] [data-sort]');
+    if (!header) return;
+    recipientSort = nextSort(recipientSort, header.dataset.sort as RecipientSort);
+    drawRecipients();
+    $<HTMLElement>(`[data-sg-recipients] [data-sort="${recipientSort.sort}"]`)?.focus();
+  });
+  document.addEventListener('change', (e) => {
+    const target = e.target as HTMLInputElement | HTMLSelectElement;
+    if (target.matches('[data-sg-recipient-sort] [data-sort-select]')) {
+      const [sort, order] = target.value.split(':');
+      recipientSort = { sort: sort as RecipientSort, order: order as SortState['order'] };
+      drawRecipients();
+    } else if (target.closest('[data-sg-recipients], [data-sg-recipient-rows]') && target.matches('[data-select]')) {
+      const box = target as HTMLInputElement;
+      if (box.checked) picked.add(box.dataset.select!);
+      else picked.delete(box.dataset.select!);
+      document.querySelectorAll('[data-sg-recipients], [data-sg-recipient-rows]').forEach((root) => syncSelection(root, box.dataset.select!, box.checked));
+    } else if (target.matches('[data-sg-recipients] [data-select-all]')) {
+      people.forEach((r) => ((target as HTMLInputElement).checked ? picked.add(r.short_code) : picked.delete(r.short_code)));
+      drawRecipients();
+    }
+  });
+
   setHTML($('[data-sg-meter]'), meter(34, 50, 'Click-through: 34 of 50 recipients'));
   setHTML($('[data-sg-spark]'), sparkline([6, 9, 7, 12, 10, 15, 13, 18], 120, 36));
 

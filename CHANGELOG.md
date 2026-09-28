@@ -26,6 +26,14 @@ implementation lifecycle and is independent of the URL version segment.
 
 ## [Unreleased]
 
+### Added — a campaign's recipients table (styleguide, Phase 3.17)
+- **`recipientsView()`** (`frontend/src/utils/recipients.ts`), for the campaign page's Recipients: a table on
+  wide screens (the CSV's columns, the link with Copy and QR, clicks, opens, the last click) and stacked rows
+  on phones, with Clicked and Opened badges. Clicks, opens, the last click and the link sort from their
+  headers (`aria-sort`); phones get a **Sort by** select. Each recipient's two checkboxes stay alike.
+- The logic in `recipients-view.ts` (no imports, tested): sorting, the `/recipients` query, a recipient's name
+  and line, the count, and why the list is empty. In `/styleguide/` → Data viz.
+
 ### Added — a link's analytics, as on Shlink's link page (Phase 3.16)
 - **The link page has an Analytics section for a period:** 7, 30 or 90 days, or a custom range. The period
   stays in the address and the tab in its hash, so a reload or a shared link keeps both.

@@ -66,7 +66,8 @@ Astro components (`frontend/src/components/`): `brand/Logo`, `ui/Icon` (Lucide),
 Rendered in TypeScript (`frontend/src/utils/`): link card (`links.ts`), campaign card
 (`campaigns.ts`), tag pill and tag picker (`tags.ts`, `tag-input.ts`), charts (`charts.ts`),
 toasts, confirm dialogs and copy feedback (`ui.ts`), who's looking and locked controls
-(`viewer.ts`), the avatar and its crop (`avatar.ts`, `avatar-cropper.ts`, `avatar-crop.ts`). Every interpolation goes through the escaping `html` template tag (`html.ts`).
+(`viewer.ts`), the avatar and its crop (`avatar.ts`, `avatar-cropper.ts`, `avatar-crop.ts`), a campaign's recipients
+(`recipients.ts`, logic in `recipients-view.ts`). Every interpolation goes through the escaping `html` template tag (`html.ts`).
 
 ## Patterns
 
@@ -126,6 +127,10 @@ with whole-percent shares that add up to 100, and the legend's percents are the 
 
 **Bar lists** rank counts with long labels (countries, referrers): the value at the bar tip, the full
 label on hover when it's cut. Past a limit the rest wait behind **Show all N**.
+
+**Sortable tables** (a campaign's recipients): the headers that sort are buttons with `aria-sort`. The
+first press sorts the most first (a link A to Z), the next flips it. Phones have no headers: the table
+becomes stacked rows, and a **Sort by** select offers the same sorts by name.
 
 ## Decisions on the brief's open questions (§11)
 
