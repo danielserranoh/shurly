@@ -1419,6 +1419,11 @@ case-insensitively.
       still be created there (and, until the previous item lands, shown on `go.griddo.io`). Demote `s.` and
       promote `go.` explicitly, with a test
 - [ ] No per-link domain choice needed: every new link goes on `go.griddo.io`
+- [x] A link's analytics count its own visits: keyed on `visits.url_id`, never on the code, which can name
+      links on both domains while Shlink's are imported next to the test links (`tests/test_visits_per_link.py`)
+- [ ] The API finds a link by its code alone (`/urls/{code}`, its analytics, rules…): the first of the links
+      the viewer sees. With one code on both domains, both visible, which one answers is arbitrary. Before the
+      import: a domain qualifier (`?domain=`), or a rule such as the default domain first
 
 ### 8.4 Export → clean → import
 Clean in the export, not in Shlink: Shlink stays intact as the rollback, every decision is written down, and

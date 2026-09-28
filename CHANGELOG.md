@@ -26,6 +26,13 @@ implementation lifecycle and is independent of the URL version segment.
 
 ## [Unreleased]
 
+### Fixed — a link's analytics count only its own visits
+- **Daily, weekly and geo stats (and their CSVs) and the campaign timeline counted visits by code.** The same
+  code can name links on two domains, as at the Phase 8 import, next to the test links on `s.griddo.io`. So one
+  link's stats could include another's visits. They're keyed on the link now (`visits.url_id`).
+- **The MCP's `get_url_analytics_summary` counted tracking-pixel hits as clicks with `include_bots`.** It
+  follows the app's rule now: a pixel hit is an open, never a click.
+
 ### Changed — analytics days are the viewer's days
 - **Link daily and weekly stats, the overview's recent activity and the campaign summary's timeline count
   days in the viewer's time zone.** That's their profile's zone, or UTC without one (as before).

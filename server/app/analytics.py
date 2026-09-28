@@ -103,9 +103,10 @@ def get_url_daily_stats(
             detail="URL not found",
         )
 
-    # The last 7 days where the viewer is, today included.
+    # The last 7 days where the viewer is, today included. Keyed on the link, never its code:
+    # the same code can name links on two domains.
     days = LocalDays.of(current_user, tz)
-    visits = _exclude_bots(db.query(Visitor).filter(Visitor.short_code == short_code), include_bots)
+    visits = _exclude_bots(db.query(Visitor).filter(Visitor.url_id == url.id), include_bots)
     stats = [DailyStats(date=day, clicks=clicks) for day, clicks in last_days(visits, days, 7)]
     total_clicks = sum(day.clicks for day in stats)
 
@@ -170,7 +171,7 @@ def get_url_weekly_stats(
     # 8 seven-day weeks where the viewer is, the last ending today (it used to end yesterday).
     days = LocalDays.of(current_user, tz)
     first = days.today() - timedelta(days=8 * 7 - 1)
-    visits = _exclude_bots(db.query(Visitor).filter(Visitor.short_code == short_code), include_bots)
+    visits = _exclude_bots(db.query(Visitor).filter(Visitor.url_id == url.id), include_bots)
     counts = count_per_period(visits, days.bounds(first, 8 * 7)[::7])
     stats = [
         WeeklyStats(
@@ -250,7 +251,7 @@ def get_url_geo_stats(
         Visitor.country,
         func.count(Visitor.id).label("click_count"),
     ).filter(
-        Visitor.short_code == short_code,
+        Visitor.url_id == url.id,
         Visitor.visited_at >= cutoff_date,
         Visitor.country.isnot(None),
     )
@@ -337,7 +338,6 @@ def get_campaign_summary(
     # Get all URLs for this campaign
     campaign_urls = db.query(URL).filter(URL.campaign_id == campaign_uuid).all()
     url_ids = [url.id for url in campaign_urls]
-    short_codes = [url.short_code for url in campaign_urls]
 
     # Total clicks
     total_clicks = (
@@ -404,9 +404,7 @@ def get_campaign_summary(
 
     # Daily timeline: the last 7 days where the viewer is, today included.
     days = LocalDays.of(current_user, tz)
-    visits = _exclude_bots(
-        db.query(Visitor).filter(Visitor.short_code.in_(short_codes)), include_bots
-    )
+    visits = _exclude_bots(db.query(Visitor).filter(Visitor.url_id.in_(url_ids)), include_bots)
     daily_timeline = [
         DailyStats(date=day, clicks=clicks) for day, clicks in last_days(visits, days, 7)
     ]
