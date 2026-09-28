@@ -359,7 +359,7 @@ full versioning policy.
 - `POST /api/v1/auth/change-password` — with the current password (signed-in sessions only)
 - `POST /api/v1/auth/register` — off unless `ALLOW_PASSWORD_SIGNUP` (local development only)
 - `POST /api/v1/auth/api-key/generate` — returns `{api_key, scope}` (Phase 3.9.6), the only time
-  the key is shown: Shurly keeps its SHA-256 hash (Phase 6.3)
+  the key is shown: Shurly keeps its SHA-256 hash (Phase 6.3). Signed-in sessions only
 - `DELETE /api/v1/auth/api-key`
 
 ### URL Shortening

@@ -722,7 +722,7 @@ What anyone can call is limited per client IP, counted in the database (`rate_li
   | Variable | Default | Limits |
   |---|---|---|
   | `RATE_LIMIT_LOGIN_PER_IP` | `20` | `POST /api/v1/auth/login` |
-  | `RATE_LIMIT_LOGIN_FAILURES_PER_ACCOUNT` | `10` | Failed password logins per address, per 15 minutes |
+  | `RATE_LIMIT_LOGIN_FAILURES_PER_ACCOUNT` | `10` | Failed password checks per address, per 15 minutes: logins, and the current password given to `POST /api/v1/auth/change-password` or `PUT /api/v1/auth/password` |
   | `RATE_LIMIT_SIGN_IN_PER_IP` | `30` | Google's sign-in (`/api/v1/auth/google/*`), the MCP's sign-in pages (`/mcp/authorize`, `/mcp/consent`, `/mcp/auth/callback`) and `POST /auth/register` |
   | `RATE_LIMIT_MCP_CLIENTS_PER_IP` | `60` | `/mcp/register` and `/mcp/token`, which claude.ai calls from Anthropic's addresses, shared by everybody |
 

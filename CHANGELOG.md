@@ -53,6 +53,20 @@ implementation lifecycle and is independent of the URL version segment.
   takes a signed-in session now, like setting and removing a password (Phase 3.13.3): an API key gets a `403`,
   even with the current password.
 
+### Security — every password check is limited, and an API key can't make a new one
+- **A wrong current password counts as a failed login.** `POST /api/v1/auth/change-password` and
+  `PUT /api/v1/auth/password` (with `current_password`) checked it without a limit. So a stolen session could guess
+  the password for as long as it lived, then set one that outlives it.
+  - A wrong one now counts with the login's failures for that account (`RATE_LIMIT_LOGIN_FAILURES_PER_ACCOUNT`,
+    10 per 15 minutes), so guesses on any of the three add up. Over the limit, each answers `429` with
+    `Retry-After`.
+  - The right password never counts. As with the login, over the limit it waits for the window too. Signing in
+    with Google stays open, and with it a new password without the old one.
+- **`POST /api/v1/auth/api-key/generate` takes a signed-in session.** An API key could call it, so a leaked key
+  could mint its own replacement, ending the owner's. It gets a `403` now. Revoking with a key still works: that
+  gives nothing away.
+- The API docs list the `429` of these endpoints, and the login's.
+
 ### Security — Trusted Types on every page (Phase 6.3)
 - **Every page's policy now includes `require-trusted-types-for 'script'` and `trusted-types shurly-html`.**
   The DOM's HTML sinks (`innerHTML` and the like) take TrustedHTML only, from one policy.

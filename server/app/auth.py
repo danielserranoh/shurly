@@ -35,6 +35,45 @@ from server.utils.rate_limit import LOGIN_FAILURES_PER_ACCOUNT
 auth_router = APIRouter()
 
 
+# Phase 6.3 — every password check counts its failures per account, in one count: the
+# login's, and the current password given to change or set one. Guesses spread over those
+# paths add up. Only failures count, so the right password isn't counted with a guesser's.
+# Over the limit, the right password waits for the window too; signing in with Google
+# stays open, and with it a new password without the old one (`PUT /auth/password`).
+# check() then hit() isn't atomic: guesses sent at the same moment can all pass check()
+# and overshoot the limit by a few. The login's per-IP limit bounds how many there.
+
+
+def _password_account(email: str) -> str:
+    """The account a password check counts against: its address, as the login reads it."""
+    return email.strip().lower()
+
+
+def _refuse_while_locked(account: str, path: str) -> None:
+    """A 429 while the account's failed password checks are over the limit."""
+    locked = rate_limit.check(LOGIN_FAILURES_PER_ACCOUNT, account)
+    if not locked.allowed:
+        log_event("http.rate_limited", path=path, limit=LOGIN_FAILURES_PER_ACCOUNT.name)
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=f"Too many failed attempts. Try again in {locked.retry_after} seconds, "
+            "or sign in with Google.",
+            headers={"Retry-After": str(locked.retry_after)},
+        )
+
+
+def _check_current_password(user: User, password: str, path: str) -> None:
+    """The current password, before changing or setting one: a guess like a login's."""
+    account = _password_account(user.email)
+    _refuse_while_locked(account, path)
+    if not verify_password(password, user.password_hash):
+        rate_limit.hit(LOGIN_FAILURES_PER_ACCOUNT, account)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Current password is incorrect",
+        )
+
+
 @auth_router.post(
     "/register",
     response_model=UserResponse,
@@ -99,7 +138,7 @@ def register(user_data: UserRegister, db: Session = Depends(get_db)):
     response_model=Token,
     responses={
         200: {"description": "Login successful - Returns JWT access token"},
-        **get_responses(401, 422),
+        **get_responses(401, 422, 429),
     },
 )
 def login(user_data: UserLogin, db: Session = Depends(get_db)):
@@ -116,24 +155,12 @@ def login(user_data: UserLogin, db: Session = Depends(get_db)):
     - **200**: Login successful - Returns JWT access token valid for 7 days
     - **401**: Incorrect email or password
     - **422**: Validation error (invalid email format, missing fields, etc.)
+    - **429**: Too many failed password checks for this account (see `Retry-After`)
     """
     # Phase 6.3 — failed attempts per account (the per-IP limit is the middleware's).
-    # Only failures count, so the right password isn't counted with a guesser's; the
-    # address needn't have an account, so a 429 tells nothing about who has one.
-    # check() then hit() isn't atomic: guesses sent at the same moment can all pass
-    # check() and overshoot the limit by a few. The per-IP limit bounds how many.
-    account = user_data.email.strip().lower()
-    locked = rate_limit.check(LOGIN_FAILURES_PER_ACCOUNT, account)
-    if not locked.allowed:
-        log_event(
-            "http.rate_limited", path="/api/v1/auth/login", limit=LOGIN_FAILURES_PER_ACCOUNT.name
-        )
-        raise HTTPException(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail=f"Too many failed attempts. Try again in {locked.retry_after} seconds, "
-            "or sign in with Google.",
-            headers={"Retry-After": str(locked.retry_after)},
-        )
+    # The address needn't have an account, so a 429 tells nothing about who has one.
+    account = _password_account(user_data.email)
+    _refuse_while_locked(account, "/api/v1/auth/login")
 
     user = authenticate_user(db, user_data.email, user_data.password)
 
@@ -223,7 +250,7 @@ def update_my_profile(
     status_code=status.HTTP_200_OK,
     responses={
         200: {"description": "Password changed successfully"},
-        **get_responses(400, 401, 403, 409, 422),
+        **get_responses(400, 401, 403, 409, 422, 429),
     },
 )
 def change_password(
@@ -250,6 +277,7 @@ def change_password(
     - **403**: An API key
     - **409**: The account has no password yet (set one with `PUT /api/v1/auth/password`)
     - **422**: Validation error (new password too short, etc.)
+    - **429**: Too many failed password checks for this account, the login's included
     """
     current_user = session.user
     if current_user.password_hash is None:
@@ -258,12 +286,9 @@ def change_password(
             detail="This account has no password yet. Set one with PUT /api/v1/auth/password.",
         )
 
-    # Verify current password
-    if not verify_password(password_data.current_password, current_user.password_hash):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Current password is incorrect",
-        )
+    _check_current_password(
+        current_user, password_data.current_password, "/api/v1/auth/change-password"
+    )
 
     # Update password
     current_user.password_hash = hash_password(password_data.new_password)
@@ -285,7 +310,7 @@ def _reauth_required(message: str) -> HTTPException:
     response_model=MessageResponse,
     responses={
         200: {"description": "Password set"},
-        **get_responses(400, 401, 403, 422),
+        **get_responses(400, 401, 403, 422, 429),
     },
 )
 def set_password(
@@ -309,14 +334,11 @@ def set_password(
     - **401**: Authentication required or invalid token
     - **403**: An API key, or a session older than 10 minutes without `current_password`
     - **422**: Validation error (new password too short, etc.)
+    - **429**: Too many failed password checks for this account, the login's included
     """
     user = session.user
     if body.current_password is not None and user.password_hash is not None:
-        if not verify_password(body.current_password, user.password_hash):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Current password is incorrect",
-            )
+        _check_current_password(user, body.current_password, "/api/v1/auth/password")
     elif user.password_hash is not None and not user.has_google:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -378,11 +400,11 @@ def remove_password(
     response_model=APIKeyResponse,
     responses={
         200: {"description": "API key generated successfully"},
-        **get_responses(401),
+        **get_responses(401, 403),
     },
 )
 def generate_api_key(
-    current_user: User = Depends(get_current_user),
+    session: SignedInSession = Depends(get_signed_in_session),
     db: Session = Depends(get_db),
 ):
     """
@@ -390,11 +412,13 @@ def generate_api_key(
 
     Creates a new API key for programmatic access. This will replace any existing API key.
 
-    **Authentication:** Required (JWT Bearer token)
+    **Authentication:** A signed-in session (JWT Bearer token). An API key gets a 403: a
+    leaked key must not mint its own replacement, ending the owner's.
 
     **Responses:**
     - **200**: API key generated successfully - Returns the new API key
     - **401**: Authentication required or invalid token
+    - **403**: An API key
 
     **Note:** The API key is shown only this once: Shurly keeps a hash of it, not
     the key (Phase 6.3). Save it securely.
@@ -405,6 +429,7 @@ def generate_api_key(
     # scope values are reserved so we can roll out roles without a destructive migration.
     from server.core.models import ApiKeyScope
 
+    current_user = session.user
     current_user.set_api_key(api_key)
     current_user.api_key_scope = ApiKeyScope.FULL_ACCESS
     current_user.api_key_constraints = None

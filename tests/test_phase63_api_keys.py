@@ -50,6 +50,18 @@ class TestGenerate:
         assert _me(client, old).status_code == 401
         assert _me(client, new).status_code == 200
 
+    def test_an_api_key_cannot_make_a_new_one(self, client, auth_headers):
+        """A leaked key mustn't mint its own replacement, ending the owner's."""
+        key = _generate(client, auth_headers)
+
+        response = client.post(
+            "/api/v1/auth/api-key/generate", headers={"Authorization": f"Bearer {key}"}
+        )
+
+        assert response.status_code == 403
+        assert "API key" in response.json()["detail"]
+        assert _me(client, key).status_code == 200
+
     def test_revoking_ends_it(self, client, db_session, test_user, auth_headers):
         key = _generate(client, auth_headers)
 
