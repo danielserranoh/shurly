@@ -408,6 +408,18 @@ All analytics endpoints exclude bot and pixel hits by default. Pass
 - `GET /api/v1/analytics/urls/{short_code}/daily` — last 7 days
 - `GET /api/v1/analytics/urls/{short_code}/weekly` — last 8 weeks
 - `GET /api/v1/analytics/urls/{short_code}/geo` — by country
+
+Per-link analytics as on Shlink's link page (Phase 3.16, contract in ROADMAP 3.16.1):
+- They take a period, `?period=N` (the last N local days, default 30) or `?from=&to=` (at most 731 days), with
+  `tz` and `domain`.
+- Visits are clicks, email opens (pixel hits) or bots'. `type=clicks|opens|bots|all` picks the kind.
+- Opens overcount: Apple Mail Privacy Protection loads the pixel when a message arrives, read or not.
+
+- `GET /api/v1/analytics/urls/{short_code}/totals` — all time: clicks, opens, countries, the last click
+- `GET /api/v1/analytics/urls/{short_code}/timeseries` — clicks and opens by day, week or month, hour
+  of day and day of week
+- `GET /api/v1/analytics/urls/{short_code}/breakdown` — by OS, browser, device, referrer and country, with
+  shares
 - `GET /api/v1/analytics/campaigns/{campaign_id}/summary` — totals + top performers
 - `GET /api/v1/analytics/campaigns/{campaign_id}/users` — per-URL stats (CSV-friendly)
 - `GET /api/v1/analytics/orphan-visits` — typo'd / unknown codes (Phase 3.10.4)

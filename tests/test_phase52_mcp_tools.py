@@ -57,6 +57,10 @@ EXPECTED_TOOLS: set[str] = {
     "get_url_daily_stats",
     "get_url_weekly_stats",
     "get_url_geo_stats",
+    # Phase 3.16 — per-link analytics, as on Shlink's link page
+    "get_url_totals",
+    "get_url_timeseries",
+    "get_url_breakdown",
     "get_campaign_summary",
     "get_campaign_users",
     "get_orphan_visits",
