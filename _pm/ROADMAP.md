@@ -1412,8 +1412,9 @@ case-insensitively.
 
 ### 8.3 Finish multi-domain (3.10.1 shipped the model only)
 - [ ] `Domain` row for `go.griddo.io`
-- [ ] `build_short_url()` uses the link's own domain; today it always builds on the default one, so a migrated
-      link would be shown as `s.griddo.io/<code>`
+- [x] `build_short_url()` uses the link's own domain; today it always builds on the default one, so a migrated
+      link would be shown as `s.griddo.io/<code>` → `link_short_url` everywhere a link's short URL is shown:
+      responses, campaigns and their CSV, the overview, previews. BASE_URL still moves only the default domain's
 - [ ] Make `go.griddo.io` the default domain at the cutover. Changing `DEFAULT_DOMAIN` alone won't do it:
       `get_or_create_default_domain()` keeps the row already marked default (`s.griddo.io`), so new links would
       still be created there (and, until the previous item lands, shown on `go.griddo.io`). Demote `s.` and
@@ -1421,9 +1422,12 @@ case-insensitively.
 - [ ] No per-link domain choice needed: every new link goes on `go.griddo.io`
 - [x] A link's analytics count its own visits: keyed on `visits.url_id`, never on the code, which can name
       links on both domains while Shlink's are imported next to the test links (`tests/test_visits_per_link.py`)
-- [ ] The API finds a link by its code alone (`/urls/{code}`, its analytics, rules…): the first of the links
+- [x] The API finds a link by its code alone (`/urls/{code}`, its analytics, rules…): the first of the links
       the viewer sees. With one code on both domains, both visible, which one answers is arbitrary. Before the
-      import: a domain qualifier (`?domain=`), or a rule such as the default domain first
+      import: a domain qualifier (`?domain=`), or a rule such as the default domain first → both: `?domain=`
+      on every route and MCP tool that takes a code, read like a request's Host; without it, the default
+      domain's link, then by hostname (`find_url`). Bulk tagging takes `links`. The dashboard passes the
+      domain; a bookmark without one still works (`tests/test_phase83_link_domains.py`)
 
 ### 8.4 Export → clean → import
 Clean in the export, not in Shlink: Shlink stays intact as the rollback, every decision is written down, and

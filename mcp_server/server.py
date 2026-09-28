@@ -285,12 +285,14 @@ def _register_curated_tools(server: FastMCP) -> None:
         description=(
             "Create a redirect rule on a short URL using named condition "
             "args (device, language, browser, query_param/query_value, "
-            "before_date, after_date). At least one condition is required."
+            "before_date, after_date). At least one condition is required. "
+            "`domain` picks the link when its code exists on several domains."
         ),
     )
     def add_redirect_rule(
         short_code: str,
         target_url: str,
+        domain: str | None = None,
         priority: int = 0,
         device: str | None = None,
         language: str | None = None,
@@ -308,6 +310,7 @@ def _register_curated_tools(server: FastMCP) -> None:
                 resolve_current_user(db),
                 short_code=short_code,
                 target_url=target_url,
+                domain=domain,
                 priority=priority,
                 device=device,
                 language=language,
@@ -322,11 +325,13 @@ def _register_curated_tools(server: FastMCP) -> None:
         name="get_url_analytics_summary",
         description=(
             "One-shot analytics for a short URL: totals, daily series, and "
-            "top countries. Avoids three separate calls to overview/daily/geo."
+            "top countries. Avoids three separate calls to overview/daily/geo. "
+            "`domain` picks the link when its code exists on several domains."
         ),
     )
     def get_url_analytics_summary(
         short_code: str,
+        domain: str | None = None,
         days: int = 7,
         include_bots: bool = False,
     ) -> dict:
@@ -337,6 +342,7 @@ def _register_curated_tools(server: FastMCP) -> None:
                 db,
                 resolve_current_user(db),
                 short_code=short_code,
+                domain=domain,
                 days=days,
                 include_bots=include_bots,
             )

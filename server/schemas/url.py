@@ -159,8 +159,19 @@ class URLResponse(BaseModel):
     id: UUID
     short_code: str
     short_url: str | None = None  # Computed field, set after validation
+    # Phase 8.3 — the link's domain: one code can name links on several. `?domain=` on a
+    # link's routes takes it. From the Domain row; set after validation for a link from
+    # before domains (the default's).
+    domain: str | None = None
     original_url: str
     url_type: URLType
+
+    @field_validator("domain", mode="before")
+    @classmethod
+    def _hostname(cls, value: object) -> object:
+        """`URL.domain` is the Domain row: its hostname."""
+        return getattr(value, "hostname", value)
+
     title: str | None = None
     forward_parameters: bool = True
 

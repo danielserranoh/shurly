@@ -133,7 +133,7 @@ import ProBadge from '@/components/ui/ProBadge.astro';
               label: u.title || hostname(u.original_url) || u.short_code,
               sublabel: prettyUrl(u.short_url) || u.short_code,
               value: u.clicks,
-              href: linkHref(u.short_code),
+              href: linkHref(u.short_code, u.domain),
             })),
           )
         : html`<p class="rounded-xl bg-ink-50 p-4 text-sm text-ink-500">No clicks yet. Share a link and it’ll show up here.</p>`,

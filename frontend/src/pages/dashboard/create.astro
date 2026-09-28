@@ -382,7 +382,7 @@ import { site } from '@/config/site';
       const tagIds = tags.getIds();
       if (tagIds.length) {
         try {
-          const res = await setLinkTags(link.short_code, tagIds);
+          const res = await setLinkTags(link, tagIds);
           link = { ...link, tags: res.tags };
         } catch (err) {
           toast('Link created, but the tags didn’t stick', 'error', { description: errorMessage(err) });
@@ -411,7 +411,7 @@ import { site } from '@/config/site';
     const a = q<HTMLAnchorElement>('[data-success-link]');
     a.textContent = (link.short_url ?? link.short_code).replace(/^https?:\/\//, '');
     a.href = safeUrl(link.short_url);
-    q<HTMLAnchorElement>('[data-success-details]').href = linkHref(link.short_code);
+    q<HTMLAnchorElement>('[data-success-details]').href = linkHref(link.short_code, link.domain);
     q('[data-success-sub]').textContent = copied ? 'It’s already on your clipboard. Every click will show up in Shurly.' : 'Share it anywhere — every click shows up in Shurly.';
     const warn = q('[data-success-warning]');
     warn.hidden = !link.warning;
