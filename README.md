@@ -275,8 +275,7 @@ shurly/
 │   │   ├── urls.py                # URL CRUD + redirect + /robots.txt + tracking pixel
 │   │   ├── campaigns.py           # Campaign CRUD + CSV upload
 │   │   ├── analytics.py           # Stats endpoints (daily / weekly / geo / overview / orphans)
-│   │   ├── tags.py                # Tag CRUD + URL tagging
-│   │   └── statistics.py          # Legacy (deprecated)
+│   │   └── tags.py                # Tag CRUD + URL tagging
 │   ├── core/
 │   │   ├── auth.py                # JWT + bcrypt helpers (with 72-byte truncation shim)
 │   │   ├── config.py              # Settings: CORS, GDPR, redirect, multi-domain, …
@@ -356,10 +355,10 @@ full versioning policy.
   `api_key_prefix`: whether there's an API key and how it starts, never the key (Phase 6.3)
 - `PUT /api/v1/auth/password` · `DELETE /api/v1/auth/password` — set or remove the password
   (signed-in sessions only, Phase 3.13.3)
-- `POST /api/v1/auth/change-password`
+- `POST /api/v1/auth/change-password` — with the current password (signed-in sessions only)
 - `POST /api/v1/auth/register` — off unless `ALLOW_PASSWORD_SIGNUP` (local development only)
 - `POST /api/v1/auth/api-key/generate` — returns `{api_key, scope}` (Phase 3.9.6), the only time
-  the key is shown: Shurly keeps its SHA-256 hash (Phase 6.3)
+  the key is shown: Shurly keeps its SHA-256 hash (Phase 6.3). Signed-in sessions only
 - `DELETE /api/v1/auth/api-key`
 
 ### URL Shortening
@@ -491,12 +490,13 @@ Note: Update the Docker configuration with environment variables for production 
 
 ## Production Deployment
 
-See [DEPLOYMENT.md](DEPLOYMENT.md) for the full AWS Lambda + RDS guide. Pre-flight
+See [DEPLOYMENT.md](DEPLOYMENT.md) for the full ECS Express + RDS guide, and
+[docs/AWS_ECS_DEPLOYMENT.md](docs/AWS_ECS_DEPLOYMENT.md) for the operational playbook. Pre-flight
 checklist:
 
 1. Set a strong `JWT_SECRET_KEY` (`openssl rand -hex 32`)
 2. Configure CORS origins as a JSON array string
-3. **Configure `TRUSTED_PROXIES`** with your ALB / CloudFront / API Gateway source CIDRs — without it, `X-Forwarded-For` is ignored and visit IPs will be the proxy's
+3. **Configure `TRUSTED_PROXIES`** with your ALB / CloudFront source CIDRs — without it, `X-Forwarded-For` is ignored and visit IPs will be the proxy's
 4. Confirm `ANONYMIZE_REMOTE_ADDR=true` matches your privacy policy (default ON)
 5. Pick `REDIRECT_STATUS_CODE` (302 = analytics-friendly; 301 = SEO-friendly but cached)
 6. Pick `REDIRECT_CACHE_LIFETIME` (0 = every hit reaches backend; >0 = `Cache-Control: public, max-age=N`)

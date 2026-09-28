@@ -37,6 +37,13 @@ implementation lifecycle and is independent of the URL version segment.
 - Docs: in production the Google sign-in's code exchange is same-origin, so `CORS_ORIGINS` needs no entry for
   it (DEPLOYMENT.md § Settings, `docs/setup_google_app.md` step 7).
 
+### Removed — the legacy `/api/v1/stats/*` routes
+- **`GET /api/v1/stats/day/{surl}`, `…/week/{surl}`, `…/world/{surl}`, `…/main` and `…/next/{surl}` answer `404`.**
+  They were mounted without authentication, and broken since Phase 1.4: they queried columns that don't exist
+  (`urls.short_url`, `visits.created_at`), so every call was a `500`. No client can depend on them, since no call
+  ever succeeded. `/api/v1/analytics/*` serves these numbers, for the links the caller can see.
+- The MCP's rule that kept them out of its tools is gone with them.
+
 ### Fixed — the last `shurl.griddo.io` defaults, and the docs of rule 12
 - **The link previews' fetcher names a host that exists.** Its User-Agent pointed at `https://shurl.griddo.io`,
   which never existed. It's `https://shurly.griddo.io` now (`server/utils/opengraph.py`).
@@ -68,6 +75,26 @@ implementation lifecycle and is independent of the URL version segment.
 - **The link page shows country names**, from the browser (`Intl.DisplayNames`), with "Countries by DB-IP".
 - **The Shlink import stores country codes too** (`visitLocation.countryCode`), since providers name some countries
   differently. The geo CSV and the MCP's summary carry codes.
+
+### Security — an API key can't change the password
+- **`POST /api/v1/auth/change-password` took an API key.** So a leaked key was enough to guess the account's
+  password there, where the login's limit on failed attempts doesn't apply, and a right guess replaced it. It
+  takes a signed-in session now, like setting and removing a password (Phase 3.13.3): an API key gets a `403`,
+  even with the current password.
+
+### Security — every password check is limited, and an API key can't make a new one
+- **A wrong current password counts as a failed login.** `POST /api/v1/auth/change-password` and
+  `PUT /api/v1/auth/password` (with `current_password`) checked it without a limit. So a stolen session could guess
+  the password for as long as it lived, then set one that outlives it.
+  - A wrong one now counts with the login's failures for that account (`RATE_LIMIT_LOGIN_FAILURES_PER_ACCOUNT`,
+    10 per 15 minutes), so guesses on any of the three add up. Over the limit, each answers `429` with
+    `Retry-After`.
+  - The right password never counts. As with the login, over the limit it waits for the window too. Signing in
+    with Google stays open, and with it a new password without the old one.
+- **`POST /api/v1/auth/api-key/generate` takes a signed-in session.** An API key could call it, so a leaked key
+  could mint its own replacement, ending the owner's. It gets a `403` now. Revoking with a key still works: that
+  gives nothing away.
+- The API docs list the `429` of these endpoints, and the login's.
 
 ### Security — Trusted Types on every page (Phase 6.3)
 - **Every page's policy now includes `require-trusted-types-for 'script'` and `trusted-types shurly-html`.**
@@ -216,6 +243,8 @@ implementation lifecycle and is independent of the URL version segment.
 - **`… review <snapshot>`** writes a CSV to decide `keep`, `archive` or `drop` for each link, `keep` by default.
   It flags duplicates, codes that differ only in case, expired or capped links, and redirect-rule conditions
   Shurly has no equivalent for. Every cell is spreadsheet-safe.
+  - `capped` is Shlink's rule, every visit. `capped_in_shurly` is Shurly's, clicks only: whether the link
+    arrives capped from an import with `--visits`. A link with the first and not the second reopens.
 - **`--check-destinations`** fills in each destination's HTTP status. It goes through the link previews' SSRF
   guard, now also exposed as `guarded_request` (`HEAD` as well as `GET`): public http(s) addresses only, each
   redirect hop checked, 8 at a time.

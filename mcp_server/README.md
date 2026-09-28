@@ -201,8 +201,7 @@ Two filters live in `mcp_server/server.py`:
 
 - **`EXCLUDED_ROUTE_MAPS`** — drops public unversioned routes (`/`,
   `/{short_code}` redirect, `/{short_code}/track` pixel, `/robots.txt`),
-  health probes (`/api/v1/health`, `/api/v1/health/db`), the legacy
-  `/api/v1/stats/*` namespace superseded by `/api/v1/analytics/*`, and what
+  health probes (`/api/v1/health`, `/api/v1/health/db`), and what
   only the person should do: changing the organization, the password, the API key,
   and signing in with a password.
 - **`MCP_TOOL_NAMES`** — maps FastAPI's verbose auto-generated operationIds

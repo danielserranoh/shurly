@@ -8,8 +8,7 @@ schema.
 Phase 5.2 layers two filters on top of the bare auto-generation:
   * `EXCLUDED_ROUTE_MAPS` — routes that are auto-generated but useless (or
     actively harmful) as MCP tools: the public redirect path, the tracking
-    pixel, robots.txt, the bare landing, the readiness/liveness probes, the
-    legacy `/api/v1/stats/*` surface that was superseded by `/analytics/*`, and
+    pixel, robots.txt, the bare landing, the readiness/liveness probes, and
     what only the person should do (organization changes, passwords, API keys, signing
     in with a password).
   * `MCP_TOOL_NAMES` — strips the verbose `_api_v1_<path>_<method>` suffix
@@ -35,9 +34,7 @@ from server.utils.access import Visibility
 #
 # Public-facing infrastructure: an LLM driving the API has no business
 # fetching the redirect path or the email pixel — those are end-user surfaces.
-# Probes return health, not data the model can reason about. The legacy
-# `/api/v1/stats/*` namespace was superseded by `/api/v1/analytics/*` and is
-# kept only for backward compat with old clients.
+# Probes return health, not data the model can reason about.
 EXCLUDED_ROUTE_MAPS: list[RouteMap] = [
     # Public unversioned routes (Phase 3.10.x) — the redirect path, tracking
     # pixel, base landing, and robots.txt are user-facing, not API surfaces.
@@ -47,8 +44,6 @@ EXCLUDED_ROUTE_MAPS: list[RouteMap] = [
     RouteMap(pattern=r"^/\{short_code\}/track$", mcp_type=MCPType.EXCLUDE),
     # Health probes — orchestrator-only, not LLM-facing.
     RouteMap(pattern=r"^/api/v1/health(/.*)?$", mcp_type=MCPType.EXCLUDE),
-    # Legacy stats namespace — superseded by /api/v1/analytics/*.
-    RouteMap(pattern=r"^/api/v1/stats(/.*)?$", mcp_type=MCPType.EXCLUDE),
     # Phase 3.14.2 — role changes, removals and ownership handovers stay out of the
     # MCP: an assistant that reads untrusted text (link titles, fetched pages) could
     # be talked into "make X an owner". Reading the organization is fine.

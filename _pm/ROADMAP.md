@@ -1,11 +1,13 @@
 # Shurly - Project Roadmap
 
 ## Project Overview
-Modern URL shortener for B2B campaigns with analytics, built for AWS serverless deployment.
+Modern URL shortener for B2B campaigns with analytics, running on AWS.
 
-**Target Domain**: `shurl.griddo.io`
+**Hosts**: `shurly.griddo.io` for the web, the app, the API and the MCP; `go.griddo.io` for short links, once
+Shurly replaces Shlink there (Phase 8). Until then test links live on `s.griddo.io`, deleted at the cutover.
 **Expected Volume**: ~100-150 URLs/month (20-50 standard + 1 campaign of ~100 users)
-**Deployment**: AWS Lambda + API Gateway + RDS PostgreSQL + S3 + CloudFront
+**Deployment**: ECS Express (Fargate, behind the shared ALB) + RDS PostgreSQL for the API and the MCP;
+S3 + CloudFront for the frontend (4.10, pending).
 
 ---
 
@@ -13,20 +15,32 @@ Modern URL shortener for B2B campaigns with analytics, built for AWS serverless 
 
 Order agreed in the 2026-09-27 review; confirm each item before starting it.
 
-1. **MCP usage log** (5.6.0): without it the dogfood produces no numbers. Code done; retention and saved queries
-   are an AWS step.
+1. **MCP usage log** (5.6.0): without it the dogfood produces no numbers. Code done, and the log group keeps
+   60 days (set 2026-09-28). Left: saving the Logs Insights queries in CloudWatch, an AWS step.
 2. ✅ **Organization and roles** (3.14): links belong to the organization by default; owner, admin and member.
    Done: API, MCP and frontend (Settings → Organization, the personal toggle, who created each link, removed
    people). Left: two owners from day one, once people have signed up.
-3. **Frontend hosting** (4.10): S3 + CloudFront; AWS steps run with SSO.
+3. **Frontend hosting** (4.10): S3 + CloudFront; AWS steps run with SSO. The deploy workflow is ready and runs on
+   merges to `main` that touch the frontend, but skips until the AWS side exists (`FRONTEND_BUCKET` unset), as it
+   did for release #81.
 4. **Identity**: sign in with Google Workspace, for the web (3.13) and the MCP (5.8). One Google project covers
-   both. The code of both is done (3.13's backend and frontend, 5.8); left: the Google project, hosting the
-   frontend (4.10) and wiring `shurly.griddo.io` (chosen 2026-09-28 for the app, API and MCP).
+   both. The code of both is done (3.13's backend and frontend, 5.8), and in production since release #81
+   (2026-09-28) on `shurly.griddo.io`, which the deploy's smoke test checks. The MCP's Google sign-in is live.
+   Left: the web's sign-in, which needs the hosted frontend (the sign-in ends on its `/login/`, 4.10), and the
+   end-to-end checks (3.13.6, 5.8).
 5. ✅ **MCP install guide**, in the app and in the user manual (5.9): `/manual/install-mcp/` and Settings → API &
    MCP. Its address comes from the build: `https://shurly.griddo.io/mcp/` once 4.10's production build sets
    `PUBLIC_API_URL`.
 6. **Internal dogfood** with the frontend and the MCP (5.6).
-7. **Replace Shlink on `go.griddo.io`** (Phase 8): after the dogfood and error alerting (6.4).
+7. **Replace Shlink on `go.griddo.io`** (Phase 8): after the dogfood and error alerting (6.4). Done on `dev`: a
+   link is its code and its domain (8.3); exporting, reviewing and importing Shlink's links and visits, and a
+   visit's country (8.4). Left: how the import runs in production (8.4, decision B), the `go.griddo.io` domain
+   row and switching the default to it (8.3), error alerting (6.4), and the cutover (8.5).
+
+Also landed on 2026-09-28, outside this list: the account profile (3.12: name, country, time zone and a photo;
+people by name in Settings → Organization and "Created by"), analytics days in the viewer's time zone (3.12.8),
+and a Content-Security-Policy and Trusted Types on every page (6.3). Release #81 took #65–#80; everything merged
+since (#82 on) is on `dev`, for the next release.
 
 Tasks marked 🔎 were not in the original plan. Each one points to an entry in the
 [retro log](#retro-log--work-we-did-not-see-coming) at the end of this file.
@@ -62,24 +76,26 @@ System creates:
 - **FastAPI** - API framework
 - **PostgreSQL** - Database (RDS)
 - **SQLAlchemy 2.0** - ORM
+- **Alembic** - Schema migrations, run at startup (3.14.1)
 - **Pydantic v2** - Validation
 - **JWT** - Authentication
-- **Mangum** - Lambda adapter for FastAPI
+- **uvicorn** - ASGI server, in a container (`dockerfile`)
+- **fastmcp** - The MCP server, in the same container (Phase 5)
 - **uv** - Package management
 - **ruff** - Linting/formatting
 
 ### Frontend
-- **Astro** - Static site generator
-- **Tailwind CSS** - Styling
+- **Astro 7** - Static site generator (static output, no adapter)
+- **Tailwind CSS 4** - Styling
 - **TypeScript** - Type safety
-- **Chart.js / Recharts** - Analytics visualization
+- **SVG charts** - Analytics visualization, no chart library (`frontend/src/utils/charts.ts`)
 
 ### Infrastructure
-- **AWS Lambda** - Compute
-- **API Gateway (HTTP API)** - API routing
-- **RDS PostgreSQL (t4g.micro)** - Database
-- **S3** - Static frontend hosting
-- **CloudFront** - CDN
+- **ECS Express Mode (Fargate)** - Compute: the API, the redirects and the MCP (`griddo-main`, eu-south-2)
+- **Shared ALB** - Routing by host (rule 12), kept on the active target group by the `ecs-alb-rule-sync` Lambda
+- **ECR** - Container images
+- **RDS PostgreSQL (db.t4g.micro)** - Database
+- **S3 + CloudFront** - Static frontend hosting (4.10, pending)
 - **Route 53** - DNS
 
 ---
@@ -765,9 +781,10 @@ Not needed: production has no users and no frontend yet, and 3.13 locks sign-up 
 Until then `POST /auth/register` stays reachable through the public API and its `/docs` page.
 
 ### 3.13.2 Google sign-in
-- [ ] Google Cloud project inside the griddo.io organization, OAuth consent screen **Internal** (only Griddo
+- [x] Google Cloud project inside the griddo.io organization, OAuth consent screen **Internal** (only Griddo
       accounts can sign in), a web OAuth client with the redirect URIs of the web sign-in and of the MCP proxy
-      (5.8). Client secret in Secrets Manager (6.3). Done by whoever administers Workspace
+      (5.8). Done by whoever administers Workspace → created by the user; its redirect URIs (the web's, local
+      and the MCP's) verified 2026-09-28. Its client secret in Secrets Manager is an open line under 6.3
 - [x] `GET /api/v1/auth/google/start` → Google (OpenID Connect, `state` + PKCE, `hd=griddo.io` as a hint) →
       `GET /api/v1/auth/google/callback` → `server/app/google_auth.py`, whose docstring is the frontend's
       contract. The state is hashed, single use and 10 minutes, and bound to the browser by a cookie
@@ -1153,7 +1170,7 @@ for this.
 ### 5.2 Auto-generated tools from FastAPI
 - [x] Bootstrap: `FastMCP.from_fastapi(app)` (or equivalent) — generate the first cut of tools automatically. (47 raw tools)
 - [x] Audit the generated tool list: for each `/api/v1/...` endpoint, verify the tool name, description, schema, and return shape are LLM-friendly. → `MCP_TOOL_NAMES` strips the `_api_v1_<path>_<method>` suffix from operationIds; `tests/test_phase52_mcp_tools.py` pins the surface (40 tools today)
-- [x] Filter out endpoints that should NOT be MCP tools: legacy `statistics.py`, internal-only routes, anything that handles file uploads (campaign CSV — see 5.3). → `EXCLUDED_ROUTE_MAPS` drops `/api/v1/stats/*` and the health probes. No route takes a file upload: `create_campaign` takes the CSV as a string and stays a tool, with `create_campaign_from_rows` (5.3) as the LLM-friendly variant
+- [x] Filter out endpoints that should NOT be MCP tools: legacy `statistics.py`, internal-only routes, anything that handles file uploads (campaign CSV — see 5.3). → `EXCLUDED_ROUTE_MAPS` drops `/api/v1/stats/*` and the health probes (the legacy stats routes were removed on 2026-09-29, and their exclusion with them). No route takes a file upload: `create_campaign` takes the CSV as a string and stays a tool, with `create_campaign_from_rows` (5.3) as the LLM-friendly variant
 - [x] Verify the OG-preview, robots.txt, redirect path, and tracking pixel routes are excluded (they're public unversioned routes, not management API). → `/`, `/robots.txt`, `/{short_code}` and `/{short_code}/track` are excluded. The OG-preview routes (`/api/v1/urls/{code}/preview`, `…/refresh-preview`, `fetch-metadata`) are authenticated management API, so they **stay** as tools
 - [ ] Tests: each auto-generated tool round-trips through the MCP server and produces the same output as the underlying endpoint. → open: only `get_current_user_info` is called through the MCP layer (`tests/test_phase54_mcp_auth.py`); the other generated tools are covered by their REST tests, not through MCP
 
@@ -1244,8 +1261,9 @@ added there; Claude Code gets by with `--header`.
 - [x] **Authorization server: Google Workspace** (decided 2026-09-27), through fastmcp's OAuth proxy
       (`GoogleProvider`, in fastmcp 4.0.10), which also handles client registration (Dynamic Client Registration,
       Client ID Metadata Documents). Same Google project as the web sign-in (3.13.2)
-- [ ] Add the MCP proxy's redirect URI to the Google OAuth client of 3.13.2 → `{MCP_PUBLIC_URL}/auth/callback`,
-      → `https://shurly.griddo.io/mcp/auth/callback` (docs/setup_google_app.md, step 9)
+- [x] Add the MCP proxy's redirect URI to the Google OAuth client of 3.13.2 → `{MCP_PUBLIC_URL}/auth/callback`,
+      → `https://shurly.griddo.io/mcp/auth/callback` (docs/setup_google_app.md, step 9); verified in the
+      Google client 2026-09-28
 - [x] Protected-resource metadata (RFC 9728), and 401s carrying `WWW-Authenticate: Bearer resource_metadata="…"`
       (answers the open question at the end of this phase) → at `/.well-known/oauth-protected-resource/mcp/`,
       with the authorization server's metadata at `/.well-known/oauth-authorization-server/mcp`
@@ -1272,7 +1290,8 @@ added there; Claude Code gets by with `--header`.
       → `tests/test_phase58_mcp_oauth.py`, against a fake Google, including two app instances completing one
       sign-in
 - [ ] Check it end to end: Claude Code (`claude mcp add --transport http …`, sign-in in the browser) and a
-      claude.ai custom connector
+      claude.ai custom connector → in production (2026-09-28) the metadata documents and the 401 with
+      `resource_metadata` are verified; nobody has completed a sign-in from claude.ai or Claude Code yet
 
 ### 5.9 MCP install guide, in the app and in the user manual 🔎 R9
 **Decided (2026-09-27):** the app explains how to install the MCP, and the user manual carries the same instructions.
@@ -1343,9 +1362,11 @@ live in `mcp_server/README.md`, written for developers. There is no user manual 
 - [x] XSS prevention in frontend (dynamic HTML goes through the escaping `html` tag from `@/utils/html`; audit the remaining raw `innerHTML` uses) → audited: data goes through `html`/`setHTML`, URLs through `safeUrl`; two raw sinks left, documented; `frontend/tests/no-raw-html.test.mjs` fails on new ones
 - [x] CORS configuration review → no credentials, only the methods and headers the API uses, `Retry-After`
       and `X-Request-Id` exposed (`tests/test_cors.py`). Production needs no cross-origin entry once the
-      frontend shares the API's origin (4.10); its `CORS_ORIGINS` still lists `https://shurl.griddo.io`, a
-      host that doesn't exist, to be corrected at the release
+      frontend shares the API's origin (4.10). At release #81 (2026-09-28) its `CORS_ORIGINS` became
+      `["http://localhost:4232"]`: `https://shurl.griddo.io`, a host that doesn't exist, is gone, and
+      localhost stays for running the frontend locally against production until 4.10
 - [ ] Environment secrets audit (DB password and JWT secret are plain task env vars; Secrets Manager is the planned move)
+  - [ ] The Google OAuth client's secret (3.13.2, `GOOGLE_CLIENT_SECRET`) in Secrets Manager
 - [x] SSRF guard on the Open Graph fetcher (PR #21, see CHANGELOG § Security)
 - [x] Campaign-link takeover via custom codes (see CHANGELOG § Security)
 - [x] API keys stored as a hash → SHA-256 and the first 12 characters (migration `0007`), shown once when
@@ -1394,7 +1415,7 @@ live in `mcp_server/README.md`, written for developers. There is no user manual 
 
 ### 7.2 Operational Runbook
 - [ ] How to add new users → self-service sign-up for `@griddo.io`: signing in with Google makes the account
-      (3.13.2); left: the Google project, and writing it down here
+      (3.13.2); the Google project is done. Left: writing it down here
 - [x] How to investigate issues → troubleshooting catalog in `docs/AWS_ECS_DEPLOYMENT.md`
 - [x] How to scale if needed → "Scale up/down" in the same runbook
 - [ ] Backup and recovery procedures
