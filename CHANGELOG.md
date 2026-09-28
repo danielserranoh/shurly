@@ -49,6 +49,38 @@ implementation lifecycle and is independent of the URL version segment.
   - A test fails when they drift apart.
 - **Migration 0008** adds the `user_profiles` table. A row is made on the first save.
 
+### Security — the client IP behind CloudFront (Phase 6.3)
+- **Behind CloudFront, the client IP is the viewer's, not the edge's.** Once `shurly.griddo.io` goes through the
+  distribution (4.10), the ALB's peer is a CloudFront edge, and every per-IP rate limit would have counted
+  everyone behind the same edge as one. The app now takes the address from `CloudFront-Viewer-Address`.
+- **But only from a request that proves it came through the distribution:** one carrying a secret that the
+  distribution adds as a custom origin header (`CLOUDFRONT_ORIGIN_SECRETS`, compared in constant time; two values
+  while it rotates, each at least 32 characters). The ALB is shared and reachable directly, and anyone can send
+  `CloudFront-Viewer-Address`, but not the secret. Without the secret, or when the header is missing or doesn't
+  parse, the address comes from `X-Forwarded-For` as before. It's off until the secret is set.
+- **And only when it's the address CloudFront appended to `X-Forwarded-For`**, second from the right, before the
+  edge the ALB appends; compared in canonical form, so an IPv6 address written two ways still matches. That holds
+  if the origin request policy is wrong, or the ALB stops appending: either way the address comes from
+  `X-Forwarded-For`.
+- **One `client_ip`** (`server/utils/network.py`) decides the address for the rate limits and the visit log.
+- The secrets print as `**********` in the settings, and are never logged.
+- `DEPLOYMENT.md` § Frontend hosting sets up the distribution for this. Its API behaviours now use the origin
+  request policy that adds CloudFront's headers (AllViewerAndCloudFrontHeaders-2022-06, not AllViewer). The ALB rule
+  that refuses `shurly.griddo.io` without the secret is documented as optional defence in depth, per host.
+
+### Fixed — orphan visits store the client's address, anonymized, like visits
+- A visit to the bare short-link host (`/`) stored the socket's address: the ALB's in production, or the full,
+  unanonymized address without a proxy. An unknown short code with `ANONYMIZE_REMOTE_ADDR=false` stored the ALB's
+  address too. Both now store what a visit stores (`visit_ip`): the client IP, resolved first and then anonymized.
+
+### Security — the deploy masks the container's credentials again
+- **`deploy-backend.yml` reads the container from `service.activeConfigurations[0]`**: it read
+  `service.primaryContainer`, which is null for Express services, so the step that masks
+  credential-looking values (`DB_PASSWORD`, `*SECRET*`, `*KEY*`…) in the logs masked nothing. No value
+  was printed (the update's response goes to /dev/null), but the defence wasn't there. It takes the
+  newest active configuration (a rollout has two, in no promised order, and the old one would put
+  previous settings back), and stops if it finds no image and environment.
+
 ### Removed — `CI_CD_SETUP.md`, the Lambda-era deploy guide
 - It described access keys, SAM and API Gateway. The deploys it covered are in DEPLOYMENT.md:
   § CI/CD with OIDC (the backend, to ECS) and § Frontend hosting (the frontend, to S3 + CloudFront).

@@ -120,9 +120,23 @@ jobs:
           # Pull the existing primary container, mutate only the image, and
           # send it back. Avoids overwriting any env-var changes someone may
           # have applied via the console.
+          #
+          # It lives under activeConfigurations: `service.primaryContainer` is
+          # null for Express services. Until 28 Sep 2026 this read that null, so
+          # the masking below masked nothing and the update sent the image alone
+          # (Express kept the rest, which is why deploys still worked). During a
+          # rollout there are two active configurations, the old and the new, in
+          # no promised order: take the newest, or a deploy right after a settings
+          # change would put the old settings back. Stop rather than send a
+          # container without its settings.
           CURRENT_CONTAINER=$(aws ecs describe-express-gateway-service \
-            --service-arn "$SERVICE_ARN" \
-            --query "service.primaryContainer" --output json)
+            --service-arn "$SERVICE_ARN" --output json \
+            | jq '.service.activeConfigurations | max_by(.createdAt) | .primaryContainer')
+          if [ -z "$(echo "$CURRENT_CONTAINER" | jq -r '.image // empty')" ] \
+             || [ "$(echo "$CURRENT_CONTAINER" | jq '[.environment[]?] | length')" -eq 0 ]; then
+            echo "::error::No container config (image and environment) found for $SERVICE_ARN"
+            exit 1
+          fi
 
           # The container config carries plain env vars, credentials included
           # (DB_PASSWORD). GitHub only masks values registered as GitHub
