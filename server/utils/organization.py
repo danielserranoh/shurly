@@ -12,7 +12,8 @@ Roles rank member < admin < owner:
   once can't both pass it.
 - The first owner comes from `settings.bootstrap_owner_email`.
 - Once someone has been removed, an owner can move their personal links and
-  campaigns to the organization, so the team keeps them.
+  campaigns to the organization, so the team keeps them, then or later: the
+  removed people are listed with what they still own.
 
 These functions flush but don't commit: the caller owns the transaction.
 """
@@ -250,6 +251,38 @@ def remove_member(db: Session, actor: User, target_user_id: UUID) -> None:
     db.delete(theirs)
     db.flush()
     log_event("org.member_removed", actor_id=str(actor.id), user_id=str(user.id), role=role.value)
+
+
+def removed_members(db: Session, actor: User) -> list[tuple[User, int, int]]:
+    """
+    The people removed from the organization, each with how many personal links (a
+    campaign's included) and campaigns they still own: what `adopt_personal_links` would
+    move. Most first, then by email. Owners only, as the move is.
+
+    Removing someone closes their account (one organization at launch), so these are the
+    closed accounts on the organization's email domain. One off the domain was never in
+    it, whatever closed it, and its address isn't the owners' to see.
+    """
+    mine = get_membership(db, actor)
+    if mine is None or mine.role != OrgRole.OWNER:
+        raise NotAllowed("Only owners see who was removed.")
+    closed = db.query(User).filter(User.is_active.is_(False)).all()
+    people = [user for user in closed if on_organization_domain(user.email)]
+    if not people:
+        return []
+
+    ids = [user.id for user in people]
+    owned = {}
+    for model in (URL, Campaign):
+        owned[model] = dict(
+            db.query(model.created_by, func.count(model.id))
+            .filter(model.created_by.in_(ids), model.organization_id.is_(None))
+            .group_by(model.created_by)
+            .all()
+        )
+    rows = [(user, owned[URL].get(user.id, 0), owned[Campaign].get(user.id, 0)) for user in people]
+    rows.sort(key=lambda row: (-(row[1] + row[2]), row[0].email.lower(), row[0].email))
+    return rows
 
 
 def adopt_personal_links(db: Session, actor: User, target_user_id: UUID) -> tuple[int, int]:

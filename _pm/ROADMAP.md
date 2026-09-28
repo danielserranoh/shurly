@@ -819,8 +819,10 @@ own links. Tags are already global.
       account with personal links only, and each refused join logs `org.join_refused` (user id, no email) 🔎 R13
 
 ### 3.14.3 Behaviour
-- [ ] One organization at launch, "Griddo", with `google_domain = griddo.io`: whoever signs in with a Griddo
-      Google account joins as a member (3.13)
+- [x] One organization at launch, "Griddo", with `google_domain = griddo.io`: whoever signs in with a Griddo
+      Google account joins as a member (3.13) → the settings' defaults, seeded at startup
+      (`test_at_launch_it_is_griddo_on_griddo_io`), and the first Google sign-in joins it as a member
+      (`test_the_first_sign_in_makes_the_account_and_joins_the_organization`)
 - [x] New links and campaigns belong to the organization unless the request asks for `visibility: "personal"`:
       API field, MCP tool argument, and a UI toggle that starts off: the "Personal" switch on quick create, the
       full editor and the campaign wizard (`components/app/VisibilityToggle.astro`). An account outside any
@@ -839,8 +841,9 @@ own links. Tags are already global.
       there's a single organization; scope them per organization before a second one
 - [x] Settings → Organization: members, roles, remove, hand the role over. Each row offers only what the
       viewer's role allows; the API's 403/409 message is shown as is (`components/settings/OrganizationPanel.astro`)
-- [ ] Removed people list in Settings → Organization, so an owner who skipped the move at removal time can still
-      move someone's personal links later (needs `GET /api/v1/organization/removed-members`)
+- [x] Removed people list in Settings → Organization, so an owner who skipped the move at removal time can still
+      move someone's personal links later → `GET /api/v1/organization/removed-members` (owners only; closed
+      accounts on the organization's domain, with what they still own; not an MCP tool)
 
 ### 3.14.4 Verification
 - [x] Tests (TDD): visibility matrix (A sees B's organization links, not B's personal ones), organization by

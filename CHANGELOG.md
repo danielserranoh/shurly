@@ -26,6 +26,18 @@ implementation lifecycle and is independent of the URL version segment.
 
 ## [Unreleased]
 
+### Added — Removed people, in Settings → Organization (Phase 3.14.3)
+- **Owners can move someone's personal links later, not only right after removing them.**
+  `GET /api/v1/organization/removed-members` lists the people removed from the organization
+  (closed accounts on its email domain; one off the domain was never in it, so its address
+  isn't shown), with how many personal links (a campaign's included) and campaigns each still
+  owns: what `adopt-personal-links` would move. Most first, then by email. Owners only (403
+  otherwise), and kept out of the MCP like the move itself.
+- Settings → Organization shows them to owners under Members, each with "Move to …", or
+  "Nothing left to move". The section is left out when nobody was removed.
+- The organization's copy says "signs in" instead of "signs up": accounts come from signing in
+  with Google since 3.13.
+
 ### Security — after logging in, `?next=` can't send you to another site
 - **The login page's `next` is resolved the way the browser resolves it**, not judged by its
   first characters. Browsers drop tabs and line breaks from URLs, so
