@@ -75,6 +75,7 @@ import SettingsSection from './SettingsSection.astro';
   import { ApiError, apiDelete, apiGet, apiPatch, apiPost, errorMessage } from '@/utils/api';
   import { formatDate, pluralize } from '@/utils/format';
   import { html, setHTML, type RawHTML } from '@/utils/html';
+  import { accountLine, hasName, personName, type Person } from '@/utils/people';
   import { icon, type IconName } from '@/utils/icons';
   import { confirmDialog, toast, type ConfirmOptions } from '@/utils/ui';
   import { forgetOrganization, getMe, getMyOrganization, installLockedControls } from '@/utils/viewer';
@@ -166,9 +167,10 @@ import SettingsSection from './SettingsSection.astro';
     return html`<tr data-member="${m.user_id}">
       <td class="px-4 sm:px-5">
         <div class="flex min-w-0 items-center gap-2">
-          <span class="truncate font-medium text-ink-900" title="${m.email}">${m.email}</span>
+          <span class="truncate font-medium text-ink-900" title="${m.email}">${personName(m)}</span>
           ${m.user_id === me.id ? html`<span class="badge badge-outline shrink-0">You</span>` : ''}
         </div>
+        ${hasName(m) ? html`<p class="truncate text-xs text-ink-500">${m.email}</p>` : ''}
         <p class="mt-0.5 text-xs text-ink-500 sm:hidden">Joined ${formatDate(m.joined_at)}</p>
       </td>
       <td class="px-2 sm:px-4"><span class="badge ${role.badge}">${icon(role.icon, 'size-3')}${role.label}</span></td>
@@ -176,7 +178,7 @@ import SettingsSection from './SettingsSection.astro';
       <td class="py-2 pr-3 pl-1 sm:pr-4">
         <div class="flex justify-end">
           ${actions.length
-            ? html`<button type="button" class="btn btn-ghost btn-sm btn-icon" popovertarget="${menuId}" aria-label="Change ${m.email}’s role or membership" data-member-menu="${m.user_id}">${icon('more')}</button>
+            ? html`<button type="button" class="btn btn-ghost btn-sm btn-icon" popovertarget="${menuId}" aria-label="Change ${personName(m)}’s role or membership" data-member-menu="${m.user_id}">${icon('more')}</button>
                 <div id="${menuId}" popover class="menu" data-align="end">${actions.map((a) => menuItem(m, a))}</div>`
             : ''}
         </div>
@@ -220,11 +222,12 @@ import SettingsSection from './SettingsSection.astro';
     const any = p.links + p.campaigns > 0;
     return html`<li class="flex items-center gap-3 px-4 py-3 text-sm sm:px-5">
       <div class="min-w-0 flex-1">
-        <p class="truncate font-medium text-ink-900" title="${p.email}">${p.email}</p>
+        <p class="truncate font-medium text-ink-900" title="${p.email}">${personName(p)}</p>
+        ${hasName(p) ? html`<p class="truncate text-xs text-ink-500">${p.email}</p>` : ''}
         <p class="mt-0.5 text-xs text-ink-500">${owned(p)}</p>
       </div>
       ${any
-        ? html`<button type="button" class="btn btn-secondary btn-sm shrink-0" data-adopt="${p.user_id}" aria-label="Move ${p.email}’s personal links to ${org.name}">Move to ${org.name}</button>`
+        ? html`<button type="button" class="btn btn-secondary btn-sm shrink-0" data-adopt="${p.user_id}" aria-label="Move ${personName(p)}’s personal links to ${org.name}">Move to ${org.name}</button>`
         : ''}
     </li>`;
   }
@@ -328,8 +331,8 @@ import SettingsSection from './SettingsSection.astro';
               confirmLabel: 'Step down',
             }
           : {
-              title: `Make ${m.email} an owner?`,
-              body: 'Owners change roles and can hand the role over. You can’t take it back: owners step down themselves.',
+              title: `Make ${personName(m)} an owner?`,
+              body: `${accountLine(m)}Owners change roles and can hand the role over. You can’t take it back: owners step down themselves.`,
               confirmLabel: 'Make owner',
             },
         () => setRole(m.user_id, role),
@@ -345,30 +348,30 @@ import SettingsSection from './SettingsSection.astro';
         return;
       }
     }
-    toast(self ? `You’re now ${withArticle(role)}` : `${m.email} is now ${withArticle(role)}`, 'success');
+    toast(self ? `You’re now ${withArticle(role)}` : `${personName(m)} is now ${withArticle(role)}`, 'success');
     await reload(m.user_id);
   }
 
   async function transfer(m: OrgMember) {
     const ok = await confirmThen(
       {
-        title: `Hand ownership to ${m.email}?`,
-        body: 'They become an owner and you become an admin. Only an owner can make you owner again.',
+        title: `Hand ownership to ${personName(m)}?`,
+        body: `${accountLine(m)}They become an owner and you become an admin. Only an owner can make you owner again.`,
         confirmLabel: 'Hand over ownership',
       },
       () => apiPost('/api/v1/organization/transfer-ownership', { user_id: m.user_id }),
       m.user_id,
     );
     if (!ok) return;
-    toast(`${m.email} is now an owner`, 'success', { description: 'You’re an admin now.' });
+    toast(`${personName(m)} is now an owner`, 'success', { description: 'You’re an admin now.' });
     await reload(m.user_id);
   }
 
   async function remove(m: OrgMember) {
     const ok = await confirmThen(
       {
-        title: `Remove ${m.email}?`,
-        body: 'Their account is closed and they can’t sign in any more. Their links keep working.',
+        title: `Remove ${personName(m)}?`,
+        body: `${hasName(m) ? `Their account, ${m.email}, is closed` : 'Their account is closed'} and they can’t sign in any more. Their links keep working.`,
         confirmLabel: 'Remove from organization',
         danger: true,
       },
@@ -376,7 +379,7 @@ import SettingsSection from './SettingsSection.astro';
       m.user_id,
     );
     if (!ok) return;
-    toast(`${m.email} removed`, 'success');
+    toast(`${personName(m)} removed`, 'success');
     await reload();
     if (org.role === 'owner') await offerAdoption(m, 'right after removing');
   }
@@ -386,13 +389,13 @@ import SettingsSection from './SettingsSection.astro';
    * Offered right after the removal, where skipping is fine (the links keep redirecting
    * either way), and any time later from the Removed people list.
    */
-  async function offerAdoption(person: { user_id: string; email: string }, when: 'right after removing' | 'later') {
+  async function offerAdoption(person: Person & { user_id: string }, when: 'right after removing' | 'later') {
     const now = when === 'right after removing';
     let moved: AdoptedLinks | null = null;
     const ok = await confirmThen(
       {
-        title: `Move ${person.email}’s personal links to ${org.name}?`,
-        body: `Nobody else can see or change them now. Moved, everyone at ${org.name} sees them and admins manage them.${now ? ' Skipping is fine: they keep working either way.' : ''}`,
+        title: `Move ${personName(person)}’s personal links to ${org.name}?`,
+        body: `${accountLine(person)}Nobody else can see or change them now. Moved, everyone at ${org.name} sees them and admins manage them.${now ? ' Skipping is fine: they keep working either way.' : ''}`,
         confirmLabel: `Move to ${org.name}`,
         cancelLabel: now ? 'Skip' : 'Cancel',
       },
@@ -402,7 +405,7 @@ import SettingsSection from './SettingsSection.astro';
     );
     if (!ok || !moved) return;
     const { links, campaigns } = moved as AdoptedLinks;
-    if (!links && !campaigns) toast('Nothing to move', 'info', { description: `${person.email} had no personal links or campaigns.` });
+    if (!links && !campaigns) toast('Nothing to move', 'info', { description: `${personName(person)} had no personal links or campaigns.` });
     else {
       const what = [links && pluralize(links, 'link'), campaigns && pluralize(campaigns, 'campaign')].filter(Boolean).join(' and ');
       toast(`Moved to ${org.name}`, 'success', { description: `${what} now ${links + campaigns === 1 ? 'belongs' : 'belong'} to the organization.` });
