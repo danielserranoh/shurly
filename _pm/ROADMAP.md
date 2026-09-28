@@ -20,8 +20,8 @@ Order agreed in the 2026-09-27 review; confirm each item before starting it.
    frontend (Settings → Organization, the personal toggle, who created each link) is left.
 3. **Frontend hosting** (4.10): S3 + CloudFront; AWS steps run with SSO.
 4. **Identity**: sign in with Google Workspace, for the web (3.13) and the MCP (5.8). One Google project covers
-   both. The backends of 3.13 and 5.8 are done; the Google project, the frontend (3.13.5) and the MCP's host
-   are left.
+   both. The code of both is done (3.13's backend and frontend, 5.8); left: the Google project, hosting the
+   frontend (4.10) and choosing the MCP's host.
 5. **MCP install guide**, in the app and in the user manual (5.9): after 5.8, since OAuth changes the steps.
 6. **Internal dogfood** with the frontend and the MCP (5.6).
 7. **Replace Shlink on `go.griddo.io`** (Phase 8): after the dogfood and error alerting (6.4).
