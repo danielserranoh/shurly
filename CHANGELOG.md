@@ -39,6 +39,9 @@ implementation lifecycle and is independent of the URL version segment.
   The only sinks are ours; Astro and the libraries use none.
 - **The build now fails** without the two directives, or when the policy allows `default`, `*` or
   `'allow-duplicates'`. `frontend/tests/no-raw-html.test.mjs` fails on a `createPolicy` outside `html.ts`.
+- **It also fails unless exactly one built script chunk defines the policy.** None means the policy was
+  lost. Two mean `html.ts` was bundled twice, and a page loading both would throw at the second
+  `createPolicy`.
 
 ### Added — importing Shlink's links (Phase 8.4)
 - **`python -m server.tools.shlink import <snapshot> <review.csv> --as <owner>`** imports every link the review

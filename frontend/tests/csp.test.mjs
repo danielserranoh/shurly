@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import vm from 'node:vm';
 
-import { checkPage, parsePolicy, sha256 } from '../scripts/csp-rules.mjs';
+import { checkPage, checkPolicyChunks, parsePolicy, sha256 } from '../scripts/csp-rules.mjs';
 import { GUEST_GUARD, PROTECTED_GUARD } from '../src/inline-scripts.mjs';
 
 const TRUSTED_TYPES = "require-trusted-types-for 'script'; trusted-types shurly-html";
@@ -71,6 +71,33 @@ describe('checkPage', () => {
   test('Astro’s redirect pages are skipped', () => {
     const redirect = '<!doctype html><title>Redirecting to: /login/</title><meta http-equiv="refresh" content="0;url=/login/">';
     assert.equal(checkPage(redirect).skipped, true);
+  });
+});
+
+describe('the Trusted Types policy, in one built chunk', () => {
+  const chunk = (name, source) => ({ name, source });
+  const defining = chunk('_astro/icons.a1.js', 'const p=globalThis.trustedTypes?.createPolicy("shurly-html",{createHTML:e=>e});');
+
+  test('exactly one chunk defining it passes', () => {
+    assert.deepEqual(checkPolicyChunks([defining, chunk('_astro/links.b2.js', 'setHTML(el,x)')]), []);
+  });
+
+  test('none: the policy was lost', () => {
+    assert.deepEqual(checkPolicyChunks([chunk('_astro/links.b2.js', 'setHTML(el,x)')]), [
+      'the Trusted Types policy (shurly-html) is in 0 built chunks (none): expected exactly one',
+    ]);
+  });
+
+  test('two: html.ts was duplicated, and a page loading both would throw', () => {
+    const copy = chunk('_astro/qr.c3.js', 'const n="shurly-html";t.createPolicy(n,{createHTML:e=>e})'); // a hoisted name counts
+    assert.deepEqual(checkPolicyChunks([defining, copy]), [
+      'the Trusted Types policy (shurly-html) is in 2 built chunks (_astro/icons.a1.js, _astro/qr.c3.js): expected exactly one',
+    ]);
+  });
+
+  test('only scripts count: the name in a page’s CSP <meta> is not a definition', () => {
+    const page = chunk('dashboard/index.html', `<meta http-equiv="content-security-policy" content="trusted-types shurly-html">`);
+    assert.deepEqual(checkPolicyChunks([defining, page]), []);
   });
 });
 
