@@ -801,6 +801,9 @@ own links. Tags are already global.
 - [ ] Two owners from day one (yours to do after the first sign-ups; the break-glass is in place): if the only owner leaves Griddo and their Google account is suspended,
       nobody can manage roles. Break-glass: changing `BOOTSTRAP_OWNER_EMAIL` restores an owner
 - [x] Every role change writes an `org.role_changed` line to the event log (who, whom, from, to)
+- [x] Only accounts on `ORGANIZATION_DOMAIN` (default `griddo.io`) join: exact, case-insensitive match, so
+      `evilgriddo.io`, `griddo.io.evil.com` and `eu.griddo.io` stay out; empty = anyone. An outsider keeps an
+      account with personal links only, and each refused join logs `org.join_refused` (user id, no email) 🔎 R13
 
 ### 3.14.3 Behaviour
 - [ ] One organization at launch, "Griddo", with `google_domain = griddo.io`: whoever signs in with a Griddo
@@ -1386,6 +1389,9 @@ check earlier in the next project.
 - **Lesson:** before going public, list every unauthenticated endpoint and decide who may call it. Who can
   sign up is a product decision to make explicitly
 - **Decision:** the stopgap (3.13.1) was dropped on 2026-09-27, since production has no users and no frontend yet
+- **Later the same day:** 3.14.2 + 3.14.3 made the open sign-up worse — any new account joined the organization
+  and could read and export every campaign, recipients' names and emails included → closed by the domain gate
+  in 3.14.2 (R13). Sign-up itself stays open until 3.13
 
 ### R2 — No password reset · missed · found 2026-09-27
 - **What:** a user who forgets the password has no way back → 3.13.3 (sign in with Google and set a new one;
@@ -1480,3 +1486,15 @@ check earlier in the next project.
 - **Why it slipped:** the test built the state the migration expected, not the one a deploy starts from
 - **Lesson:** test a data migration from what a real deploy starts with: the last release's schema and data, and
   every pending revision in one run
+
+### R13 — Joining the organization didn't check the email domain · missed · found 2026-09-28
+- **What:** 3.14.2 put every new account in the organization, and 3.14.3 let every member see the organization's
+  links and campaigns, CSV exports included. With sign-up still open (R1), anyone could register with any
+  address and read the team's campaigns, recipients' personal data included → domain gate in 3.14.2
+- **How it surfaced:** reviewing #57 and #58 against each other, not one at a time; each was right on its own
+- **Why it slipped:** the domain setting existed (`ORGANIZATION_DOMAIN`, for Google sign-in in 3.13), so it read
+  as already enforced; 3.14 assumed 3.13 would land first, and the stopgap that would have covered the gap had
+  been dropped (3.13.1)
+- **Lesson:** when a change widens what a role can see, re-check who can get that role today, not after the
+  planned phases land. A setting that names a boundary isn't the boundary until something enforces it
+
