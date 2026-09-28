@@ -4,9 +4,9 @@ Guía para crear, en la cuenta de Google de Griddo, lo que necesita el login con
 (Phase 3.13). La sigue quien administra Google Workspace en `griddo.io`. Solo hay que hacerlo **una
 vez**, y al terminar tendrás dos valores para Shurly: un **client ID** y un **client secret**.
 
-> **Estado:** el backend del login con Google (3.13) está en desarrollo y todavía no ha llegado a
-> producción. Puedes crear el cliente ya: nada lo usa hasta que se despliegue. Los nombres de los
-> endpoints y de las variables de entorno son los acordados para esa PR.
+> **Estado:** el login con Google de la web (3.13) y del MCP (5.8) ya están en `dev`, pero todavía
+> no en producción: llegan con la próxima release. Puedes crear el cliente ya: hasta que las variables
+> del paso 7 estén configuradas, Shurly funciona como hasta ahora.
 
 ---
 
@@ -22,6 +22,7 @@ vez**, y al terminar tendrás dos valores para Shurly: un **client ID** y un **c
   | API (backend) | `https://s.griddo.io` |
   | Callback de Google | `https://s.griddo.io/api/v1/auth/google/callback` |
   | Callback para desarrollo local | `http://localhost:8000/api/v1/auth/google/callback` |
+  | Callback del MCP (paso 9) | `https://s.griddo.io/mcp/auth/callback` |
   | Frontend (`FRONTEND_URL`) | **pendiente**: depende del alojamiento del frontend (4.10) |
 
   El frontend todavía no tiene dirección pública. No afecta a Google: a Google solo se le registra
@@ -81,6 +82,7 @@ No añadas ninguno más. Ninguno de estos es sensible, así que no hace falta re
 5. **URIs de redirección autorizadas**, exactamente estas:
    - `https://s.griddo.io/api/v1/auth/google/callback`
    - `http://localhost:8000/api/v1/auth/google/callback` (desarrollo local; quítala si no se usa)
+   - `https://s.griddo.io/mcp/auth/callback` (el MCP; ver el paso 9)
 6. **Crear**.
 
 ### ⚠️ El client secret solo se muestra una vez
@@ -145,11 +147,26 @@ Cuando el backend de la 3.13 esté desplegado y las variables configuradas:
 
 Si ves `#error=google_unavailable`, falta alguna variable del paso 7.
 
-## 9. Más adelante: el MCP (5.8)
+## 9. El MCP (5.8): una URI de redirección más
 
-El login por OAuth del MCP (5.8) usará **este mismo proyecto y este mismo cliente**, pero
-necesitará una **URI de redirección más** en el paso 5. La URI exacta la dará la PR de la 5.8; ahora
-no hace falta añadir nada.
+El MCP (Claude conectado a Shurly) usa **este mismo proyecto y este mismo cliente**. Lo único que
+necesita en Google es una URI de redirección más en el cliente del paso 5:
+
+- `https://s.griddo.io/mcp/auth/callback`
+
+Es `{MCP_PUBLIC_URL}/auth/callback`. Si el MCP acaba en otro host (está pendiente decidir entre
+`s.griddo.io` y `go.griddo.io`), la URI cambia con él: la de Google y `MCP_PUBLIC_URL` tienen que
+coincidir.
+
+En Shurly hacen falta, además de las del paso 7:
+
+| Variable | Valor |
+|---|---|
+| `MCP_PUBLIC_URL` | `https://s.griddo.io/mcp` (sin barra final) |
+| `MCP_OAUTH_SIGNING_KEY` | una clave aleatoria larga, **propia**: no es el client secret de Google. La genero yo y va a ECS sin mostrarse, como el resto |
+
+No hay que tocar nada más en Google: ni permisos nuevos ni otra pantalla de consentimiento.
+Detalles en `DEPLOYMENT.md` (sección del MCP) y en `mcp_server/README.md`.
 
 ---
 
@@ -159,7 +176,7 @@ no hace falta añadir nada.
 - [ ] Branding: nombre, correo de asistencia, dominio autorizado `griddo.io`
 - [ ] Audience: **Interna**
 - [ ] Permisos: `openid` y `email` (más `profile`, opcional)
-- [ ] Cliente web con las dos URIs de redirección, y el JSON **descargado al crearlo**
+- [ ] Cliente web con las tres URIs de redirección (web, local y MCP), y el JSON **descargado al crearlo**
 - [ ] Workspace: las apps internas tienen acceso (o `Shurly` marcada como de confianza)
 - [ ] Client ID y secret entregados (opción A u opción B del paso 7)
 
