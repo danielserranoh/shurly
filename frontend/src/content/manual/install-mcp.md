@@ -38,7 +38,7 @@ Claude Desktop uses the connectors of your claude.ai account, so there’s nothi
 
 ## With an API key
 
-An API key works in Claude Code whether or not sign-in with Google is on. Get yours in [Settings → API & MCP](/dashboard/settings/#api), then add Shurly with it:
+An API key works in Claude Code whether or not sign-in with Google is on. Generate one in [Settings → API & MCP](/dashboard/settings/#api). It’s shown only once, when you generate it, so copy it right away. Then add Shurly with it:
 
 ```
 claude mcp add --transport http --scope user shurly {{MCP_URL}} --header "Authorization: Bearer <your API key>"
@@ -53,4 +53,5 @@ Anyone with the key can manage your links, so treat it like a password. claude.a
 - **Your Google account isn’t accepted.** Only accounts of your organization’s Google Workspace get in. Sign in with your work account.
 - **Shurly refuses your account.** Your Shurly account was closed, for example when someone removed you from the organization. Ask an owner of your organization.
 - **Sign-in with Google doesn’t start.** Check the address: it has to end with a slash, exactly as above.
-- **Claude says Shurly answered 401 (unauthorized) with your API key.** The key doesn’t work any more: it stops working when it’s regenerated or revoked, when you’re removed from the organization, and the first time an account made before Google signs in with Google. Get a new one in [Settings → API & MCP](/dashboard/settings/#api), remove Shurly from Claude Code (`claude mcp remove shurly`) and add it again with the new key.
+- **Claude says Shurly answered 401 (unauthorized) with your API key.** The key doesn’t work any more: it stops working when it’s regenerated or revoked, when you’re removed from the organization, and the first time an account made before Google signs in with Google. Generate a new one in [Settings → API & MCP](/dashboard/settings/#api) and copy it, then remove Shurly from Claude Code (`claude mcp remove shurly`) and add it again with the new key.
+- **You’ve lost your key.** Shurly can’t show it again. Regenerate it in [Settings → API & MCP](/dashboard/settings/#api): the old one stops working, so add Shurly again with the new one.

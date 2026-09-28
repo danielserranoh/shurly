@@ -26,6 +26,20 @@ implementation lifecycle and is independent of the URL version segment.
 
 ## [Unreleased]
 
+### Security — a Content-Security-Policy on every page (Phase 6.3)
+- **Every built page carries a Content-Security-Policy**, a `<meta>` written by Astro with the hashes of
+  the scripts it emits.
+  - Scripts run only from this site or by hash: no `'unsafe-inline'`, no `'unsafe-eval'`.
+  - The few inline scripts (the sign-in redirects, and Settings opening the tab its address names) live in
+    `frontend/src/inline-scripts.mjs`, and their hashes come from the same strings.
+  - Style attributes set from data are the only inline styles allowed (`style-src-attr`).
+  - Images may come from any https site (link previews); API calls go to the API's origin only.
+- **The sign-in redirects moved to the top of `<body>`.** A `<meta>` policy only governs what follows it,
+  and Astro writes it at the end of `<head>`. They still run before anything paints.
+- **`npm run build` fails on a page the policy doesn't cover:** no policy, a script or preload before it, an
+  inline script or `<style>` without its hash, an inline event handler, or a `javascript:` URL.
+- The user manual says an API key is shown only once, when it's generated, and what to do if it's lost.
+
 ### Security — API keys are stored as a hash and shown once (Phase 6.3)
 - **The database no longer holds API keys.** It keeps each key's SHA-256 hash and first
   12 characters (`users.api_key_hash`, `users.api_key_prefix`). Migration `0007` moves every
