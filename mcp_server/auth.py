@@ -2,7 +2,7 @@
 Phase 5.4 — MCP authentication.
 
 The MCP server is a public-facing surface (Phase 5.5 will deploy it next to
-the API on `s.griddo.io/mcp`). Without auth, every tool is anonymous, which
+the API on `shurly.griddo.io/mcp`). Without auth, every tool is anonymous, which
 is wrong for any non-trivial use. We piggyback on the existing `User.api_key`
 column rather than introducing OAuth: API keys already exist, are revocable
 via `DELETE /api/v1/auth/api-key`, and don't require an extra UI flow.

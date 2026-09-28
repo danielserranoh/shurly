@@ -27,6 +27,7 @@ from server.core.models import (  # noqa: E402, F401 - Import all models for SQL
     User,
     Visitor,
 )
+from server.utils import rate_limit  # noqa: E402
 
 # Use in-memory SQLite for testing with proper configuration
 SQLALCHEMY_DATABASE_URL = "sqlite:///:memory:"
@@ -59,6 +60,9 @@ TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engin
 
 # Create tables once when the module loads
 Base.metadata.create_all(bind=engine)
+
+# Phase 6.3 — the rate limits count in the test database too.
+rate_limit.session_factory = TestingSessionLocal
 
 
 def pytest_addoption(parser):

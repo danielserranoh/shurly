@@ -128,7 +128,7 @@ The MCP server is mounted on the main FastAPI app at `/mcp` and ships in
 the same Docker image / ECS task as the regular API. Production endpoint:
 
 ```
-https://s.griddo.io/mcp/
+https://shurly.griddo.io/mcp/
 ```
 
 Both `/mcp` and `/mcp/` work. The bare path is served by an explicit **308
@@ -169,19 +169,18 @@ async with Client("http://localhost:9000/mcp") as client:
 #### Registering the deployed endpoint with Claude Desktop / Claude Code
 
 Two ways in: sign in with Google (Phase 5.8, below), or an API key. With Google,
-add `https://s.griddo.io/mcp/` (the slash matters) as a claude.ai custom connector,
-or run `claude mcp add --transport http shurly https://s.griddo.io/mcp/` without a
+add `https://shurly.griddo.io/mcp/` (the slash matters) as a claude.ai custom connector,
+or run `claude mcp add --transport http shurly https://shurly.griddo.io/mcp/` without a
 header: the client finds the metadata and opens the browser. With an API key:
 
 ```bash
 # 1. Mint an API key (one-time):
-curl -X POST https://s.griddo.io/api/v1/auth/api-key/generate \
+curl -X POST https://shurly.griddo.io/api/v1/auth/api-key/generate \
     -H "Authorization: Bearer <jwt>"
 # → {"api_key": "<32-byte url-safe>", "scope": "full_access"}
 
 # 2. Register the deployed MCP:
-claude mcp add shurly --transport http \
-    --url https://s.griddo.io/mcp/ \
+claude mcp add --transport http shurly https://shurly.griddo.io/mcp/ \
     --header "Authorization: Bearer <api_key>"
 ```
 
@@ -288,12 +287,11 @@ Curated tools (Phase 5.3 wrappers) read the AccessToken via
 ```bash
 # 1. Get a JWT: sign in to the dashboard (with Google), or /auth/login with a password.
 # 2. Mint an API key:
-curl -X POST https://s.griddo.io/api/v1/auth/api-key/generate \
+curl -X POST https://shurly.griddo.io/api/v1/auth/api-key/generate \
   -H "Authorization: Bearer <jwt>"
 # → {"api_key": "<32-byte url-safe>", "scope": "full_access"}
 # 3. Use it in the MCP client config:
-claude mcp add shurly --transport http \
-    --url https://s.griddo.io/mcp/ \
+claude mcp add --transport http shurly https://shurly.griddo.io/mcp/ \
     --header "Authorization: Bearer <api_key>"
 ```
 
@@ -308,7 +306,7 @@ before. It's on once `MCP_PUBLIC_URL`, `MCP_OAUTH_SIGNING_KEY`, the Google clien
 (`GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`) and `ORGANIZATION_DOMAIN` are set
 (DEPLOYMENT.md § Sign in with Google); until then nothing changes.
 
-**For people:** add `{MCP_PUBLIC_URL}/`, e.g. `https://s.griddo.io/mcp/` with the
+**For people:** add `{MCP_PUBLIC_URL}/`, e.g. `https://shurly.griddo.io/mcp/` with the
 slash, as a custom connector in claude.ai, or with `claude mcp add` and no header.
 The client registers itself, the browser shows Shurly's consent page (it names the
 client and where it sends you back), then Google. Only accounts of the
