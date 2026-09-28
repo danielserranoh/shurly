@@ -8,7 +8,7 @@ import asyncio
 import json
 import os
 import sys
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 import httpx
@@ -52,7 +52,7 @@ def _export(args: argparse.Namespace) -> int:
     if missing:
         print(f"Set {' and '.join(missing)} in the environment.", file=sys.stderr)
         return 2
-    now = datetime.now(UTC)
+    now = datetime.now(timezone.utc)
     try:
         with shlink_client(url, api_key) as client:
             snapshot = export_snapshot(client, visits=args.visits, now=now)

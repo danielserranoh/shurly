@@ -13,7 +13,7 @@ import csv
 import os
 from collections import defaultdict
 from collections.abc import Iterable
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -47,7 +47,7 @@ COLUMNS = [
 def review_rows(
     snapshot: dict, *, statuses: dict[str, str] | None = None, now: datetime | None = None
 ) -> list[dict]:
-    now = now or datetime.now(UTC)
+    now = now or datetime.now(timezone.utc)
     statuses = statuses or {}
     links = [entry["short_url"] for entry in snapshot["links"]]
     duplicate_of = _duplicates(links)
@@ -116,7 +116,7 @@ async def _status(url: str, timeout: float) -> str:
             response = await guarded_request("GET", url, timeout)
     except FetchRefusedError as refused:
         return f"refused: {refused}"
-    except (httpx.TimeoutException, TimeoutError):
+    except (httpx.TimeoutException, asyncio.TimeoutError):  # not TimeoutError before 3.11
         return "timeout"
     except (httpx.HTTPError, httpx.InvalidURL, OSError) as error:
         return f"error: {type(error).__name__}"
@@ -132,10 +132,11 @@ def _parse(value: str | None) -> datetime | None:
     if not value:
         return None
     try:
-        parsed = datetime.fromisoformat(value)
+        # Python 3.10's fromisoformat doesn't read a "Z" suffix.
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
     except ValueError:
         return None
-    return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
 
 
 def _is_before(value: str | None, now: datetime) -> bool:
@@ -163,7 +164,7 @@ def _duplicates(links: list[dict]) -> dict[tuple[str, str], str]:
     same_destination = defaultdict(list)
     for link in links:
         same_destination[(_key(link)[0], link["longUrl"])].append(link)
-    never = datetime.max.replace(tzinfo=UTC)
+    never = datetime.max.replace(tzinfo=timezone.utc)
     duplicate_of = {}
     for group in same_destination.values():
         oldest, *others = sorted(

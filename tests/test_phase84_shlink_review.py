@@ -8,6 +8,7 @@ import asyncio
 import csv
 import json
 import socket
+import time
 
 import httpx
 import pytest
@@ -102,7 +103,7 @@ class TestRows:
                         "past",
                         meta={
                             "validSince": None,
-                            "validUntil": "2025-01-01T00:00:00+00:00",
+                            "validUntil": "2025-01-01T00:00:00Z",  # 3.10 can't parse Z itself
                             "maxVisits": None,
                         },
                     )
@@ -310,6 +311,20 @@ class TestDestinations:
             "https://slow.test/": "timeout",
             "https://nowhere.test/": "error: gaierror",
         }
+
+    def test_a_slow_dns_lookup_is_a_timeout(self, dns, web, monkeypatch):
+        """The lookup runs under asyncio.wait_for, which raises asyncio.TimeoutError: not the
+        builtin TimeoutError before Python 3.11."""
+
+        def slow_lookup(host, port, *args, **kwargs):
+            time.sleep(0.3)
+            return dns.getaddrinfo(host, port, *args, **kwargs)
+
+        monkeypatch.setattr(socket, "getaddrinfo", slow_lookup)
+        dns.records["slow.test"] = [PUBLIC_IP]
+
+        assert statuses("https://slow.test/", timeout=0.05) == {"https://slow.test/": "timeout"}
+        assert web.requests == []
 
     def test_each_destination_once(self, dns, web):
         dns.records["ok.test"] = [PUBLIC_IP]

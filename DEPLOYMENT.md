@@ -875,8 +875,11 @@ sends the email. None of it is set up yet (ROADMAP 6.4).
 ### View logs
 
 ```bash
-aws logs tail /ecs/shurly-api --follow --region eu-south-2 --profile griddo-main
+aws logs tail /aws/ecs/default/shurly-api-5fdb --follow --region eu-south-2 --profile griddo-main
 ```
+
+The log group's retention is "never expire" today. 5.6.0's 90 days is still an AWS step to run
+(`mcp_server/README.md` § Usage log).
 
 ### Force a redeploy (e.g. after Lambda rule-sync change)
 

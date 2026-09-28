@@ -11,7 +11,7 @@ snapshot, put in its name, or printed.
 import json
 import os
 from collections.abc import Iterator
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import quote, urlsplit
 
@@ -61,7 +61,7 @@ def export_snapshot(
         links.append(entry)
     return {
         "format": FORMAT,
-        "exported_at": (now or datetime.now(UTC)).isoformat(),
+        "exported_at": (now or datetime.now(timezone.utc)).isoformat(),
         "shlink": {"url": str(client.base_url).rstrip("/"), "version": health.get("version")},
         "links": links,
     }
@@ -73,7 +73,7 @@ def write_snapshot(snapshot: dict, out_dir: Path, now: datetime | None = None) -
     and never over an existing one.
     """
     host = urlsplit(snapshot["shlink"]["url"]).hostname
-    stamp = (now or datetime.now(UTC)).strftime("%Y%m%dT%H%M%SZ")
+    stamp = (now or datetime.now(timezone.utc)).strftime("%Y%m%dT%H%M%SZ")
     path = Path(out_dir) / f"shlink-{host}-{stamp}.snapshot.json"
     path.parent.mkdir(parents=True, exist_ok=True)
     descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)

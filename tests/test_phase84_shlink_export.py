@@ -9,7 +9,7 @@ A fake Shlink stands in for the real one, answering as Shlink's API spec says.
 import json
 import re
 import stat
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from urllib.parse import unquote
 
 import httpx
@@ -20,7 +20,7 @@ from server.tools.shlink.export import export_snapshot, shlink_client, write_sna
 
 KEY = "shlink-key-0123456789abcdef"
 URL = "https://go.shlink.test"
-NOW = datetime(2026, 9, 28, 10, 15, 0, tzinfo=UTC)
+NOW = datetime(2026, 9, 28, 10, 15, 0, tzinfo=timezone.utc)
 
 
 def short_url(code: str, long_url: str = "https://example.com/", **fields) -> dict:
