@@ -965,147 +965,156 @@ without Workspace behind them a forgotten password can only be recovered by emai
 
 ## Phase 3.16: Per-link analytics, as on Shlink's link page
 
-**Goal:** a link's page answers what Shlink's did, for any period:
-- when: a chart grouped by hour, day, week or month;
-- from what: OS, browser, device, referrer;
+**Goal:** a link's page answers what Shlink's did, for a period:
+- when: a chart by day, week or month, and the counts by hour of day and day of week;
+- from what: OS, browser, device and referrer;
 - from where: countries;
-- which visits: a searchable list and its CSV.
+- which visits: a list and its CSV.
 
-The page today has 7 days, 8 weeks and top countries. Shlink's screens are `design/shlink-*.png` (local only,
-not in git: they show a real link's visits).
+Clicks and email opens are shown separately. The page today has 7 days, 8 weeks and top countries. Shlink's
+screens are `design/shlink-*.png` (local only, not in git: they show a real link's visits).
 
-**Split (2026-09-29):** the API is Agent 1's, the page Agent 2's, built in parallel against the contract below.
-Cities wait for the user's decision and aren't designed here.
+**Split (2026-09-29):** the API is Agent 1's, the page Agent 2's, built in parallel against the contract below,
+which follows Agent 2's approved layout. Cities wait for the user's decision and aren't designed here.
 
 ### 3.16.1 The contract
+
+**Kinds of visit.** Every visit is exactly one kind:
+
+| Kind | Which visits |
+|---|---|
+| `click` | Not a pixel hit, not a bot: what every other count calls a click (`_exclude_bots`) |
+| `open` | A hit on the email pixel (`/{code}/track`), not a bot |
+| `bot` | Any visit whose user agent was a bot's, pixel hits included |
+
+`/breakdown`, `/visits` and `/visits.csv` filter by kind with `type=clicks|opens|bots|all`. `/timeseries` gives
+clicks and opens side by side.
 
 Every route below:
 - is under `/api/v1/analytics/urls/{short_code}/`, takes `?domain=` like the others (8.3), and a JWT or an API key;
 - answers only for a link the caller can see (`find_url`, `viewer`), and 404 otherwise;
-- counts clicks as everything else does (`_exclude_bots`): never pixel opens, and bots only with `include_bots=true`;
-- takes one period:
+- except `/totals`, takes one period:
 
 | Param | Meaning |
 |---|---|
-| `period` | `<N>d`: the last N local days, today included (N from 1 to 3660, e.g. 7d, 30d, 90d). Or `all`: from the day the link was created. Default `30d` |
-| `from`, `to` | A custom range: local dates, `YYYY-MM-DD`, both inclusive. Give both or neither, and not with `period`. A `to` after today counts up to today |
-| `tz` | As now: an IANA zone, else the profile's, else UTC. Its rules set the hours, days, weeks and months |
-| `include_bots` | As now: `false` by default |
+| `period` | The last N local days, today included: an integer from 1 to 731 (the page uses 7, 30 and 90). Default 30 |
+| `from`, `to` | A custom range: local dates, `YYYY-MM-DD`, both inclusive. Give both or neither, and not with `period`. At most 731 days. A `to` after today counts up to today |
+| `tz` | As now: an IANA zone, else the profile's, else UTC. Its rules set the days, the weeks and the hours |
 
 Each of these answers 422:
-- a `period` that isn't `<N>d` or `all`;
-- `from` after `to`;
+- a `period` outside 1 to 731;
+- `from` after `to`, or a range longer than 731 days;
 - a range that starts after today;
-- `period` together with `from`/`to`;
-- `from` or `to` alone;
-- an unknown `tz`.
-
-There's no maximum range: the series' cap on buckets bounds the work, and an aggregate costs at most the link's
-visits.
+- `period` together with `from`/`to`, or `from` or `to` alone;
+- an unknown `tz`, `type` or `group_by`.
 
 Every response starts with the same fields. `from` and `to` are the range counted, after `period` or clipping,
 for the page to show:
 
 ```json
 {"short_code": "ia-bcn-griddo", "domain": "go.griddo.io", "from": "2026-07-01", "to": "2026-09-28",
- "timezone": "Europe/Madrid", "include_bots": false}
+ "timezone": "Europe/Madrid"}
 ```
 
-**`GET …/timeseries?group_by=hour|day|week|month`** (default `day`)
-- Clicks per local hour, day, week (ISO, from Monday) or month, oldest first, with zeros.
-- The first and last buckets are clipped to the range.
-- At most 2,500 buckets. Hours reach 104 days, so a 90-day period works. More is a 422 that says to group by a
-  longer unit.
-- `format=csv` gives `start,end,clicks`.
+Missing values have labels, not nulls: `"Unknown"` (a country, OS, browser or device), and `"Direct"` (no referrer).
+Dates are local: dates as `YYYY-MM-DD`, and moments as ISO 8601 with the zone's offset.
+
+**`GET …/totals`**: the header's all-time numbers. Takes only `domain` and `tz`.
 
 ```json
-{...the common fields..., "group_by": "day", "total_clicks": 34,
- "stats": [{"start": "2026-09-20T00:00:00+02:00", "end": "2026-09-21T00:00:00+02:00", "clicks": 0}, …]}
+{"short_code": "ia-bcn-griddo", "domain": "go.griddo.io", "timezone": "Europe/Madrid",
+ "clicks": 34, "opens": 12, "countries": 5, "last_click_at": "2026-09-27T23:54:12+02:00"}
 ```
 
-- `start` and `end` are ISO 8601 with the zone's offset, and `end` is exclusive.
-- DST: the day it starts has 23 hourly buckets and the day it ends 25, the repeated hour twice with two offsets.
-  A day bucket lasts 23 or 25 hours. So never derive hours or days from the count of buckets.
-- The page picks the default grouping (a rule for the page, not the API's): hour up to 2 days, day up to 180,
-  week up to 2 years, month beyond.
+- `clicks` is the link's `click_count`.
+- `countries` is how many distinct countries its clicks came from; "Unknown" isn't one.
+- `last_click_at` is the latest click, or null. It isn't `URL.last_click_at`, which bots and crawler previews
+  also update.
 
-**`GET …/context?limit=10`**
+**`GET …/timeseries?group_by=day|week|month`** (default `day`)
 
 ```json
-{...the common fields..., "total_clicks": 34,
- "os":        {"items": [{"name": "Windows", "clicks": 14}, {"name": "iOS", "clicks": 8}], "other": 0},
- "browsers":  {"items": [{"name": "Chrome", "clicks": 20}, {"name": "Safari", "clicks": 9}], "other": 0},
- "devices":   {"items": [{"name": "desktop", "clicks": 25}, {"name": "mobile", "clicks": 9}], "other": 0},
- "referrers": {"items": [{"name": "www.linkedin.com", "clicks": 18}, {"name": null, "clicks": 15}], "other": 1}}
+{...the common fields..., "group_by": "week", "clicks": 34, "opens": 12,
+ "stats": [{"start": "2026-07-01", "end": "2026-07-05", "clicks": 2, "opens": 0},
+           {"start": "2026-07-06", "end": "2026-07-12", "clicks": 0, "opens": 1}, …],
+ "hour_of_day": [{"hour": 0, "clicks": 1, "opens": 0}, …, {"hour": 23, "clicks": 3, "opens": 1}],
+ "day_of_week": [{"day": 1, "clicks": 6, "opens": 2}, …, {"day": 7, "clicks": 1, "opens": 0}]}
 ```
 
-- Each dimension lists its top `limit` (1 to 50, default 10), by clicks and then name. `other` sums the rest.
-- `"name": null` means no value: the OS, browser or device isn't known, or there's no referrer (the page says
-  "Direct").
+- Clicks and opens are both in every bucket, so the page switches between them without asking again.
+- `stats` covers the local days, ISO weeks (from Monday) or months of the range, oldest first, with zeros. `end`
+  is inclusive, and the first and last buckets are clipped to the range, like the first week above.
+- `hour_of_day` has 24 entries (0 to 23) and `day_of_week` 7 (1 is Monday), counted on local time over the range.
+  On the day DST ends, both 02:00s count in hour 2.
+
+**`GET …/breakdown?type=clicks`** (`clicks`, `opens`, `bots` or `all`)
+
+```json
+{...the common fields..., "type": "clicks", "total": 34,
+ "os":        [{"name": "Windows", "count": 14, "share": 0.4118}, …, {"name": "Unknown", "count": 1, "share": 0.0294}],
+ "browsers":  [{"name": "Chrome", "count": 20, "share": 0.5882}, …],
+ "devices":   [{"name": "desktop", "count": 25, "share": 0.7353}, …],
+ "referrers": [{"name": "www.linkedin.com", "count": 18, "share": 0.5294}, {"name": "Direct", "count": 15, "share": 0.4412}, …],
+ "countries": [{"name": "ES", "count": 25, "share": 0.7353}, …, {"name": "Unknown", "count": 2, "share": 0.0588}]}
+```
+
+- Every value is listed, by count and then name. `share` is the count over `total`, from 0 to 1 with 4 decimals,
+  so each dimension adds up to 1, give or take the rounding.
 - OS and browser are families, parsed from the user agent at query time (`server/utils/user_agent.py`):
   - OS: Windows, macOS, iOS, Android, Linux, Chrome OS;
-  - browser: Chrome, Safari, Firefox, Edge, Opera, Internet Explorer, and Bot (with `include_bots`);
-  - device: desktop, mobile, tablet, bot.
+  - browser: Chrome, Safari, Firefox, Edge, Opera, Internet Explorer, Bot.
 
   New names can appear, so the page shows any string it gets.
-- A referrer is its host, lowercased, e.g. `www.linkedin.com`, or `com.linkedin.android` for the app
+- Device is `desktop`, `mobile`, `tablet` or `other` (a bot's), from the parser's `device_type`. The redirect
+  rules read the same parser, but their `device` condition gives OS families (ios, android…), not a device class.
+- A referrer is its host, lowercased: `www.linkedin.com`, or `com.linkedin.android` for the app
   (`android-app://…`). Never its path or query.
+- A country is an ISO code, as elsewhere; the page shows its name.
 
-**`GET …/visits?page=1&page_size=20&q=`**
+**`GET …/visits?type=clicks&page=1&page_size=20`**
 
 ```json
-{...the common fields..., "total": 34, "page": 1, "page_size": 20, "pages": 2,
- "visits": [{"visited_at": "2026-09-27T23:54:12+02:00", "country": "ES", "browser": "Chrome", "os": "Windows",
-             "device": "desktop", "referrer": "www.linkedin.com", "is_bot": false}, …]}
+{...the common fields..., "type": "clicks", "total": 34, "page": 1, "page_size": 20, "pages": 2,
+ "visits": [{"visited_at": "2026-09-27T23:54:12+02:00", "kind": "click", "country": "ES", "browser": "Chrome",
+             "os": "Windows", "device": "desktop", "referrer": "www.linkedin.com"}, …]}
 ```
 
-- Newest first. `page_size` is 1 to 100, default 20. A page past the last is an empty list, not an error.
-- `q` (1 to 100 characters, any case) keeps the visits whose browser, OS, device or referrer contains it, or whose
-  country does: its code, or its English name ("spa" finds ES). "direct" finds the visits without a referrer.
-  `total` and `pages` count the visits that match.
-- **No IP, anonymized or not, no user agent and no full referrer.** Fields are `null` when unknown, like
-  `/context`'s names. The country is a code, as elsewhere; the page shows its name.
+- Newest first. `page_size` is 1 to 100, default 20. `total` is for "1–20 of N". A page past the last is an empty
+  list, not an error.
+- **No IP, anonymized or not, no user agent and no full referrer.**
 
-**`GET …/visits.csv`**, with the list's params except `page` and `page_size`
-- Every visit that matches, streamed: `visited_at,country,browser,os,device,referrer,is_bot`, each cell
-  spreadsheet-safe (`stream_csv`).
+**`GET …/visits.csv?type=all`**: every visit of the period, streamed, with no pages.
+- The columns are the list's, plus the raw user agent: `visited_at,kind,country,browser,os,device,referrer,user_agent`.
+  Still no IP.
+- `type` defaults to `all` here. Pass the list's `type` to export only what it shows.
+- Every cell is spreadsheet-safe (`stream_csv`): a user agent or a referrer comes from anyone.
 - A route of its own, not `?format=csv`, so the MCP can list visits a page at a time but can't pull the whole file
   into an assistant's context.
 
-**`GET …/geo`** gains the period params
-- `days=N` stays for existing clients and the MCP, and now means `period=Nd`: N local days, where it was
-  N × 24 hours. That's a behaviour change, like `recent_clicks_7d`'s in 3.12.8.
-- New fields: `from`, `to`, `timezone`, and `unknown_clicks`, the clicks without a country (visits from before
-  8.4 have none).
-- `stats` and `total_clicks` still count only the clicks with a country, so `total_clicks + unknown_clicks` is
-  the period's clicks.
+**Unchanged:** `/daily`, `/weekly` and `/geo`, with `include_bots`, for existing clients and the MCP
+(`get_url_daily_stats`, `get_url_weekly_stats`, `get_url_geo_stats`, and the curated `get_url_analytics_summary`).
+The page moves to the routes above. The link response (`URLResponse`) doesn't grow: the list endpoint shares it,
+and every link on it would pay for the header's numbers.
 
-**Unchanged:** `/daily` and `/weekly`, for existing clients and the MCP (`get_url_daily_stats`,
-`get_url_weekly_stats`, and the curated `get_url_analytics_summary`). The page moves to `/timeseries`.
-
-**MCP:** the new routes become tools (`get_url_timeseries`, `get_url_context`, `list_url_visits`). `/visits.csv`
-is excluded.
+**MCP:** the new routes become tools (`get_url_totals`, `get_url_timeseries`, `get_url_breakdown`,
+`list_url_visits`). `/visits.csv` is excluded.
 
 ### 3.16.2 API (Agent 1)
 - [ ] The period params, one dependency for every route: `period`, `from`/`to`, clipping, the 422s, `tz`
-- [ ] `/timeseries`
-  - [ ] Buckets from the zone's rules (DST, half-hour zones such as Asia/Kolkata), clipped and capped
-  - [ ] Counted over the range's `visited_at` in one query and bucketed in Python. Not one `SUM(CASE)` per
-        bucket, which would be up to 2,500 cases per row
-- [ ] `/context`: grouped by user agent and by referrer in SQL, each distinct value parsed once
-- [ ] `/visits` and `/visits.csv`
-  - [ ] Without `q`, SQL pages the list
-  - [ ] With `q`, the match runs in Python over the range's visits, since browser and OS aren't stored. That's
-        fine for thousands of visits per link
-  - [ ] English country names for `q`, from a small static table
-- [ ] `/geo`: the period params and `unknown_clicks`
+- [ ] The kinds (`click`, `open`, `bot`) as one filter, next to `_exclude_bots`, which stays what a click is
+- [ ] `/totals`
+- [ ] `/timeseries`: the range's visits read once (`visited_at` and the kind), then bucketed in Python on local
+      time: the days, weeks, months, hours and weekdays
+- [ ] `/breakdown`: grouped in SQL by user agent, referrer and country, each distinct user agent parsed once
+- [ ] `/visits`: paged in SQL, each page's user agents parsed. `/visits.csv`, streamed
 - [ ] MCP: the tool names, `/visits.csv` excluded, `EXPECTED_TOOLS`
 - [ ] README endpoints, CHANGELOG
 - [ ] Only if a link's volume makes parsing at query time slow: store the parsed fields on `visits` (browser,
       OS, device, referrer host), with a migration and a backfill. The contract stays the same
 
 ### 3.16.3 Page (Agent 2)
-- [ ] Period selector, tabs By time / By context / By location / List, and the CSV export: Agent 2 breaks it down
+- [ ] Agent 2's approved layout: the period, the header's numbers, By time, By context, By location, the list and
+      its export. Agent 2 breaks it down
 
 ---
 
