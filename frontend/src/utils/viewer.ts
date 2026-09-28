@@ -21,10 +21,21 @@ export function getMe(): Promise<User> {
   return me;
 }
 
-/** Fetch /auth/me again, e.g. after the password was set or removed. */
-export function refreshMe(): Promise<User> {
+/**
+ * Fetch /auth/me again, e.g. after the password or the profile changed. The app header
+ * repaints from it (`shurly:me`).
+ */
+export async function refreshMe(): Promise<User> {
   me = null;
-  return getMe();
+  const user = await getMe();
+  window.dispatchEvent(new CustomEvent<User>('shurly:me', { detail: user }));
+  return user;
+}
+
+/** The letter in the avatar circle: the first name's, or the email's without one. */
+export function initialOf(email: string, firstName?: string | null): string {
+  const [first] = [...(firstName?.trim() || email)];
+  return (first ?? '?').toUpperCase();
 }
 
 /** The viewer's organization, or null when they don't belong to one (a 404). Fetched once per page. */

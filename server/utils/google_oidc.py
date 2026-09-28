@@ -60,6 +60,10 @@ class GoogleAccount:
 
     subject: str  # Google's `sub`: stays when the address changes
     email: str  # lowercase
+    # Phase 3.12 — with the `profile` scope, for an empty profile. The MCP's sign-in
+    # asks for `openid email` only, so it gets none.
+    given_name: str | None = None
+    family_name: str | None = None
 
 
 def new_code_verifier() -> str:
@@ -179,7 +183,8 @@ class GoogleOIDC:
                 "response_type": "code",
                 "client_id": self._client_id,
                 "redirect_uri": self._redirect_uri,
-                "scope": "openid email",
+                # Phase 3.12: `profile` puts the names in the ID token, for the profile.
+                "scope": "openid email profile",
                 "state": state,
                 "code_challenge": code_challenge(code_verifier),
                 "code_challenge_method": "S256",
@@ -260,7 +265,16 @@ def verify_id_token(
     subject, email = claims.get("sub"), claims.get("email")
     if not isinstance(subject, str) or not subject or not isinstance(email, str) or not email:
         raise GoogleSignInError("invalid_token")
-    return GoogleAccount(subject=subject, email=email.lower())
+    return GoogleAccount(
+        subject=subject,
+        email=email.lower(),
+        given_name=_text(claims.get("given_name")),
+        family_name=_text(claims.get("family_name")),
+    )
+
+
+def _text(value: object) -> str | None:
+    return value if isinstance(value, str) else None
 
 
 def _google_error(response: httpx.Response) -> str:

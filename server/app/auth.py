@@ -15,7 +15,7 @@ from server.core.auth import (
     verify_password,
 )
 from server.core.config import settings
-from server.core.models import User
+from server.core.models import User, UserProfile
 from server.schemas.auth import (
     APIKeyResponse,
     ChangePasswordRequest,
@@ -25,6 +25,7 @@ from server.schemas.auth import (
     UserRegister,
     UserResponse,
 )
+from server.schemas.profile import ProfileResponse, ProfileUpdate
 from server.schemas.responses import MessageResponse, get_responses
 from server.utils import rate_limit
 from server.utils.event_log import log_event
@@ -173,6 +174,48 @@ def get_current_user_info(current_user: User = Depends(get_current_user)):
     - **401**: Authentication required or invalid token
     """
     return current_user
+
+
+@auth_router.patch(
+    "/me/profile",
+    response_model=ProfileResponse,
+    responses={
+        200: {"description": "The profile, as saved"},
+        **get_responses(401, 422),
+    },
+)
+def update_my_profile(
+    body: ProfileUpdate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Update your profile: first name, last name, country and time zone (Phase 3.12).
+
+    Only the fields sent change; `null` (or a blank name) clears one. `GET /auth/me`
+    returns the profile under `profile`.
+
+    - **country**: ISO 3166-1 alpha-2 code, e.g. `ES`
+    - **timezone**: IANA name, e.g. `Europe/Madrid` or `Atlantic/Canary`, never an offset.
+      A legacy name is stored as the current one (`Asia/Calcutta` → `Asia/Kolkata`)
+
+    **Responses:**
+    - **200**: The profile, as saved
+    - **401**: Authentication required or invalid token
+    - **422**: A field it can't take, e.g. an unknown country code or time zone
+    """
+    changes = body.model_dump(exclude_unset=True)
+    profile = current_user.profile
+    if not changes:
+        return profile or ProfileResponse()
+    if profile is None:
+        profile = UserProfile(user=current_user)
+        db.add(profile)
+    for field, value in changes.items():
+        setattr(profile, field, value)
+    db.commit()
+    db.refresh(profile)
+    return profile
 
 
 @auth_router.post(

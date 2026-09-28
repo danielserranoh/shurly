@@ -3,7 +3,9 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, field_validator
+
+from server.schemas.profile import ProfileResponse
 
 
 class UserRegister(BaseModel):
@@ -42,6 +44,13 @@ class UserResponse(BaseModel):
     # Phase 3.13.3 — how this account signs in, for Settings → Account.
     has_password: bool = False
     has_google: bool = False
+    # Phase 3.12 — always there; an account that never saved one reads as empty.
+    profile: ProfileResponse = Field(default_factory=ProfileResponse)
+
+    @field_validator("profile", mode="before")
+    @classmethod
+    def _no_profile_is_an_empty_one(cls, value):
+        return ProfileResponse() if value is None else value
 
     class Config:
         from_attributes = True  # Pydantic v2 (was orm_mode in v1)

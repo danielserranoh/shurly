@@ -112,15 +112,21 @@ const maxWidth = { default: 'max-w-6xl', narrow: 'max-w-3xl', wide: 'max-w-7xl' 
 
 <script>
   import { logout } from '@/utils/auth';
-  import { getMe } from '@/utils/viewer';
+  import { getMe, initialOf } from '@/utils/viewer';
   import type { User } from '@/utils/types';
 
   const CACHE_KEY = 'shurly_me';
 
-  function paint(user: Pick<User, 'email'>) {
+  /** What the header shows, and all it keeps in sessionStorage. */
+  interface Shown {
+    email: string;
+    first_name?: string | null;
+  }
+
+  function paint(user: Shown) {
     document.querySelectorAll('[data-user-email]').forEach((el) => (el.textContent = user.email));
     document.querySelectorAll<HTMLElement>('[data-user-initial]').forEach((el) => {
-      el.textContent = (user.email[0] ?? '?').toUpperCase();
+      el.textContent = initialOf(user.email, user.first_name);
       el.title = user.email;
     });
   }
@@ -133,15 +139,20 @@ const maxWidth = { default: 'max-w-6xl', narrow: 'max-w-3xl', wide: 'max-w-7xl' 
       sessionStorage.removeItem(CACHE_KEY);
     }
   }
+  function remember(user: User) {
+    const shown: Shown = { email: user.email, first_name: user.profile?.first_name ?? null };
+    sessionStorage.setItem(CACHE_KEY, JSON.stringify(shown));
+    paint(shown);
+  }
+
   // Shared with the page's own scripts, so /auth/me is fetched once per page.
   getMe()
-    .then((user) => {
-      sessionStorage.setItem(CACHE_KEY, JSON.stringify({ email: user.email }));
-      paint(user);
-    })
+    .then(remember)
     .catch(() => {
       /* 401 is handled by the API client; other errors leave the cached name */
     });
+  // Phase 3.12 — the account was read again (refreshMe), e.g. after the profile was saved.
+  window.addEventListener('shurly:me', (e) => remember((e as CustomEvent<User>).detail));
 
   document.addEventListener('click', (e) => {
     if ((e.target as HTMLElement).closest('[data-logout]')) {
