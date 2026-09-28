@@ -47,6 +47,12 @@ implementation lifecycle and is independent of the URL version segment.
 - **The Shlink import stores country codes too** (`visitLocation.countryCode`), since providers name some countries
   differently. The geo CSV and the MCP's summary carry codes.
 
+### Security — an API key can't change the password
+- **`POST /api/v1/auth/change-password` took an API key.** So a leaked key was enough to guess the account's
+  password there, where the login's limit on failed attempts doesn't apply, and a right guess replaced it. It
+  takes a signed-in session now, like setting and removing a password (Phase 3.13.3): an API key gets a `403`,
+  even with the current password.
+
 ### Security — Trusted Types on every page (Phase 6.3)
 - **Every page's policy now includes `require-trusted-types-for 'script'` and `trusted-types shurly-html`.**
   The DOM's HTML sinks (`innerHTML` and the like) take TrustedHTML only, from one policy.

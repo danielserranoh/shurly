@@ -197,6 +197,23 @@ class TestChangePassword:
         assert response.status_code == 409
         assert "PUT /api/v1/auth/password" in response.json()["detail"]
 
+    def test_an_api_key_cannot_change_it(self, client, db_session):
+        """Not even with the current password: a leaked key must not become a password."""
+        user = _person(db_session)
+        key = "k" * 43
+        user.set_api_key(key)
+        db_session.commit()
+
+        response = client.post(
+            "/api/v1/auth/change-password",
+            json={"current_password": _PASSWORD, "new_password": "new-password-1"},
+            headers=_bearer(key),
+        )
+
+        assert response.status_code == 403
+        assert "API key" in response.json()["detail"]
+        assert _login(client, "ana@griddo.io", _PASSWORD).status_code == 200
+
 
 class TestSetPassword:
     def test_a_google_account_sets_its_first_password(self, client, db_session, capsys):
