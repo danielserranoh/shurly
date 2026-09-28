@@ -2,6 +2,9 @@
 
 export type URLType = 'standard' | 'custom' | 'campaign';
 
+/** Phase 3.14: an organization link or campaign, or a personal one only its creator sees. */
+export type Visibility = 'organization' | 'personal';
+
 export interface User {
   id: string;
   email: string;
@@ -54,6 +57,8 @@ export interface ShortLink {
   created_at: string;
   updated_at: string;
   warning?: string | null;
+  visibility: Visibility;
+  created_by_email: string | null;
 }
 
 export interface LinkListResponse {
@@ -73,6 +78,7 @@ export interface CreateLinkRequest {
   max_visits?: number | null;
   crawlable?: boolean;
   custom_code?: string;
+  visibility?: Visibility;
 }
 
 export type UpdateLinkRequest = Partial<
@@ -122,6 +128,8 @@ export interface Campaign {
   created_at: string;
   tags: Tag[];
   urls?: CampaignLink[] | null;
+  visibility: Visibility;
+  created_by_email: string | null;
 }
 
 export interface CampaignListResponse {
@@ -133,6 +141,7 @@ export interface CreateCampaignRequest {
   name: string;
   original_url: string;
   csv_data: string;
+  visibility?: Visibility;
 }
 
 // Analytics
@@ -265,4 +274,29 @@ export interface ApiKeyResponse {
 
 export interface MessageResponse {
   message: string;
+}
+
+// Organization (Phase 3.14)
+
+export type OrgRole = 'owner' | 'admin' | 'member';
+
+/** GET /api/v1/organization: the caller's organization, and their role in it. */
+export interface Organization {
+  id: string;
+  name: string;
+  google_domain: string | null;
+  role: OrgRole;
+}
+
+export interface OrgMember {
+  user_id: string;
+  email: string;
+  role: OrgRole;
+  joined_at: string;
+}
+
+/** POST /api/v1/organization/adopt-personal-links: links (a campaign's included) and campaigns moved. */
+export interface AdoptedLinks {
+  links: number;
+  campaigns: number;
 }

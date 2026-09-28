@@ -6,6 +6,7 @@ import { html, raw, safeUrl, type RawHTML } from './html';
 import { icon } from './icons';
 import { tagPill } from './tags';
 import { openDialog } from './ui';
+import { canChange, creatorName, lockedMenuAttrs, personalBadge, type Viewer } from './viewer';
 import type { CreateLinkRequest, LinkListResponse, LinkMetadata, ShortLink, Tag, UpdateLinkRequest, URLType } from './types';
 
 export const linkHref = (code: string) => `/dashboard/link/?code=${encodeURIComponent(code)}`;
@@ -58,7 +59,7 @@ export const setLinkTags = (code: string, tagIds: string[]) =>
   apiPatch<{ short_code: string; tags: Tag[] }>(`/api/v1/urls/${encodeURIComponent(code)}/tags`, { tag_ids: tagIds });
 
 export const bulkTagLinks = (codes: string[], tagIds: string[]) =>
-  apiPost<{ updated: number; failed: unknown[] }>('/api/v1/urls/bulk/tags', { short_codes: codes, tag_ids: tagIds });
+  apiPost<{ updated: number; failed: { short_code: string; error: string }[] }>('/api/v1/urls/bulk/tags', { short_codes: codes, tag_ids: tagIds });
 
 export const deleteLink = (code: string) => apiDelete(`/api/v1/urls/${encodeURIComponent(code)}`);
 
@@ -105,6 +106,7 @@ export function linkBadges(link: ShortLink, { withType = true } = {}): RawHTML {
         ? html`<a class="badge badge-info hover:border-sky-400" href="${campaignHref(link.campaign_id)}">${icon('megaphone', 'size-3')}Campaign</a>`
         : html`<span class="badge badge-info">${icon('megaphone', 'size-3')}Campaign</span>`,
     );
+  out.push(html`${personalBadge(link)}`);
   const status = linkStatus(link);
   if (status === 'scheduled') out.push(html`<span class="badge badge-info" title="Goes live ${formatDate(link.valid_since)}">${icon('calendar-clock', 'size-3')}Scheduled</span>`);
   if (status === 'expired') out.push(html`<span class="badge badge-danger" title="Expired ${formatDate(link.valid_until)}">${icon('ban', 'size-3')}Expired</span>`);
@@ -122,6 +124,8 @@ export function linkBadges(link: ShortLink, { withType = true } = {}): RawHTML {
 export interface CardOptions {
   selected?: boolean;
   fresh?: boolean;
+  /** Who's looking: names the creator "you" and locks what they can't change. */
+  viewer?: Viewer | null;
 }
 
 export function renderLinkCard(link: ShortLink, opts: CardOptions = {}): RawHTML {
@@ -130,6 +134,8 @@ export function renderLinkCard(link: ShortLink, opts: CardOptions = {}): RawHTML
   const menuId = `menu-${link.id}`;
   const canDelete = link.url_type !== 'campaign';
   const shortUrl = link.short_url ?? '';
+  const creator = creatorName(link, opts.viewer ?? null);
+  const locked = canChange(link, opts.viewer ?? null) ? '' : lockedMenuAttrs('link');
 
   return html`<li class="card card-interactive group relative flex gap-3 p-4 sm:gap-4 sm:p-5 ${opts.fresh ? 'animate-flash' : ''}" data-link="${link.short_code}">
     <label class="absolute top-5 -left-3 hidden size-6 place-items-center rounded-md bg-white shadow-sm ring-1 ring-ink-200 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 sm:grid ${opts.selected ? 'opacity-100' : 'opacity-0 [.selecting_&]:opacity-100'}">
@@ -150,6 +156,7 @@ export function renderLinkCard(link: ShortLink, opts: CardOptions = {}): RawHTML
         ${icon('corner-down-right', 'size-3.5 shrink-0')}
         <a href="${safeUrl(link.original_url)}" target="_blank" rel="noopener noreferrer" class="truncate hover:text-ink-800" title="${link.original_url}">${prettyUrl(link.original_url)}</a>
       </p>
+      ${creator ? html`<p class="mt-1 flex min-w-0 items-center gap-1.5 text-[13px] text-ink-500">${icon('user', 'size-3.5 shrink-0')}<span class="truncate">Created by ${creator}</span></p>` : ''}
       ${link.tags.length ? html`<div class="mt-2.5 flex flex-wrap gap-1.5">${link.tags.map((t) => tagPill(t, { href: `/dashboard/?tags=${t.id}` }))}</div>` : ''}
       <p class="mt-3 flex items-center gap-3 text-[13px] text-ink-500 sm:hidden">
         <span><b class="font-semibold text-ink-900">${formatNumber(link.click_count)}</b> ${link.click_count === 1 ? 'click' : 'clicks'}</span>
@@ -172,13 +179,13 @@ export function renderLinkCard(link: ShortLink, opts: CardOptions = {}): RawHTML
       <div id="${menuId}" popover class="menu" data-align="end">
         <a class="menu-item" href="${linkHref(link.short_code)}">${icon('chart')}View details</a>
         ${canDelete
-          ? html`<button type="button" class="menu-item" data-action="edit" data-code="${link.short_code}">${icon('pencil')}Edit</button>`
+          ? html`<button type="button" class="menu-item" data-action="edit" data-code="${link.short_code}" ${locked}>${icon('pencil')}Edit</button>`
           : html`<a class="menu-item" href="${link.campaign_id ? campaignHref(link.campaign_id) : '/dashboard/campaigns/'}">${icon('megaphone')}Open campaign</a>`}
         <button type="button" class="menu-item" data-action="qr" data-code="${link.short_code}">${icon('qr')}QR code</button>
         <a class="menu-item" href="${safeUrl(shortUrl)}" target="_blank" rel="noopener">${icon('external-link')}Open short link</a>
         <div class="menu-sep"></div>
         ${canDelete
-          ? html`<button type="button" class="menu-item" data-danger data-action="delete" data-code="${link.short_code}">${icon('trash')}Delete</button>`
+          ? html`<button type="button" class="menu-item" data-danger data-action="delete" data-code="${link.short_code}" ${locked}>${icon('trash')}Delete</button>`
           : html`<span class="menu-item" aria-disabled="true" title="Campaign links are deleted together with their campaign">${icon('lock')}Delete via campaign</span>`}
       </div>
     </div>

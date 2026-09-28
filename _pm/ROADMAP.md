@@ -98,7 +98,7 @@ System creates:
 - [x] Create User model (authentication)
   - [x] id, email, password_hash, api_key, created_at, is_active
 - [x] Update URL model
-  - [x] Add: short_code (indexed), url_type (enum), campaign_id, user_data (JSONB), created_by
+  - [x] Add: short_code (indexed), url_type (enum), campaign_id, user_data (JSON — planned as JSONB; PostgreSQL can't GROUP BY `json`, see the 2026-09-28 campaign-summary fix), created_by
   - [x] Remove: old short_url field if needed
 - [x] Create Campaign model
   - [x] id, name, original_url, csv_columns, created_by, created_at
@@ -523,7 +523,7 @@ System creates:
 - [x] Tests verifying same code can exist on different domains (`tests/test_phase310_multidomain.py`)
 
 ### 3.10.2 Dynamic Redirect Rules ✅
-- [x] Create RedirectRule model (id, url_id, priority, conditions JSONB, target_url, created_at)
+- [x] Create RedirectRule model (id, url_id, priority, conditions JSON, target_url, created_at)
 - [x] Condition types: `device` (ios/android/desktop/linux/windows/macos), `language`, `query_param`, `before_date`, `after_date`, `browser`
 - [x] Ordered evaluation by priority (first match wins)
 - [x] Endpoints: GET/POST/PATCH/DELETE `/api/v1/urls/{code}/rules`
@@ -819,19 +819,26 @@ own links. Tags are already global.
 ### 3.14.3 Behaviour
 - [ ] One organization at launch, "Griddo", with `google_domain = griddo.io`: whoever signs in with a Griddo
       Google account joins as a member (3.13)
-- [ ] New links and campaigns belong to the organization unless the request asks for `visibility: "personal"`:
-      API field, MCP tool argument, and a UI toggle that starts off. API and MCP done; the toggle is in the frontend
-      work, with Settings → Organization
+- [x] New links and campaigns belong to the organization unless the request asks for `visibility: "personal"`:
+      API field, MCP tool argument, and a UI toggle that starts off: the "Personal" switch on quick create, the
+      full editor and the campaign wizard (`components/app/VisibilityToggle.astro`). An account outside any
+      organization gets a note instead, since everything it creates is personal
 - [x] Every read scoped to "my organization's links + my personal links", and every write checked against the
       role: link CRUD, bulk tags, redirect rules, campaigns, analytics (overview, per link, per campaign, CSV) and
       the curated MCP tools. An API key acts with its user's role. `server/utils/access.py`: a link you can't see
       is a 404, one you can see but not change is a 403
-- [x] `created_by` stays, so lists can show who created each link (`created_by_email` in the responses)
+- [x] `created_by` stays, so lists can show who created each link (`created_by_email` in the responses). The
+      frontend shows "Created by …" ("you" for your own) and a "Personal" badge on link and campaign lists and
+      pages, and locks edit/delete where the viewer's role can't change the item (`utils/viewer.ts`)
 - [x] Someone leaves: their personal links keep redirecting, and an owner can move them to the
-      organization so someone can still manage them (`POST /api/v1/organization/adopt-personal-links`)
+      organization so someone can still manage them (`POST /api/v1/organization/adopt-personal-links`). The UI
+      offers it to an owner right after they remove someone in Settings → Organization; skipping is safe
 - [x] One organization per user at launch (the membership table allows more later). Tags stay global while
       there's a single organization; scope them per organization before a second one
-- [ ] Settings → Organization: members, roles, remove, hand the role over (the API is done, 3.14.2)
+- [x] Settings → Organization: members, roles, remove, hand the role over. Each row offers only what the
+      viewer's role allows; the API's 403/409 message is shown as is (`components/settings/OrganizationPanel.astro`)
+- [ ] Removed people list in Settings → Organization, so an owner who skipped the move at removal time can still
+      move someone's personal links later (needs `GET /api/v1/organization/removed-members`)
 
 ### 3.14.4 Verification
 - [x] Tests (TDD): visibility matrix (A sees B's organization links, not B's personal ones), organization by
@@ -1362,7 +1369,7 @@ To maximize velocity, we'll use specialized agents:
 ## Notes & Decisions
 
 ### Database Choice: PostgreSQL ✅
-- JSONB for flexible campaign user data
+- JSON for flexible campaign user data (planned as JSONB; the columns are `json`)
 - Better AWS integration
 - Native UUID support
 - Superior analytics query performance
@@ -1378,7 +1385,7 @@ To maximize velocity, we'll use specialized agents:
   pay cold starts, and the RDS pool stays warm. See Phase 4 and the decision log in `docs/AWS_ECS_DEPLOYMENT.md`.
 
 ### Campaign URL Approach: Lookup Token ✅
-- Short code maps to JSONB user_data
+- Short code maps to JSON user_data
 - Privacy-friendly (no PII in URLs)
 - Flexible (any CSV columns)
 - Server-side parameter injection on redirect

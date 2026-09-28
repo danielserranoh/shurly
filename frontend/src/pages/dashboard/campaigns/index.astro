@@ -6,7 +6,7 @@ import Icon from '@/components/ui/Icon.astro';
 ---
 
 <AppLayout title="Campaigns" section="campaigns">
-  <PageHeader title="Campaigns" description="One personal link per recipient, straight from a spreadsheet. See exactly who opened it.">
+  <PageHeader title="Campaigns" description="One personalized link per recipient, straight from a spreadsheet. See exactly who opened it.">
     <Fragment slot="actions">
       <a href="/dashboard/campaigns/create/" class="btn btn-primary"><Icon name="plus" />New campaign</a>
     </Fragment>
@@ -30,7 +30,7 @@ import Icon from '@/components/ui/Icon.astro';
     }
   </ul>
 
-  <EmptyState id="empty" hidden illustration="campaigns" title="Send one link per person" body="Upload a CSV of recipients — names, companies, anything — and get a personal, trackable link for each one. You’ll see who opened it, not just how many.">
+  <EmptyState id="empty" hidden illustration="campaigns" title="Send one link per person" body="Upload a CSV of recipients — names, companies, anything — and get a personalized, trackable link for each one. You’ll see who opened it, not just how many.">
     <a href="/dashboard/campaigns/create/" class="btn btn-primary"><Icon name="plus" />Create your first campaign</a>
     <button type="button" class="btn btn-secondary" data-sample><Icon name="download" />Sample CSV</button>
   </EmptyState>
@@ -48,6 +48,7 @@ import Icon from '@/components/ui/Icon.astro';
   import { formatNumber, pluralize } from '@/utils/format';
   import { html, setHTML } from '@/utils/html';
   import { confirmDialog, toast } from '@/utils/ui';
+  import { getViewer, installLockedControls, onForbidden, type Viewer } from '@/utils/viewer';
   import type { Campaign, CampaignSummary } from '@/utils/types';
 
   const list = document.getElementById('campaign-list')!;
@@ -55,12 +56,20 @@ import Icon from '@/components/ui/Icon.astro';
   const errorState = document.getElementById('load-error')!;
   let campaigns: Campaign[] = [];
   const summaries = new Map<string, CampaignSummary | null>();
+  // Who's looking: cards name the creator "you" and lock what the viewer can't delete.
+  let viewer: Viewer | null = null;
+  const viewerReady = getViewer().then((v) => (viewer = v));
+  installLockedControls();
+  onForbidden(async () => {
+    viewer = await getViewer();
+    render();
+  });
 
   async function load() {
     errorState.hidden = true;
     list.setAttribute('aria-busy', 'true');
     try {
-      campaigns = (await listCampaigns()).campaigns;
+      campaigns = (await Promise.all([listCampaigns(), viewerReady]))[0].campaigns;
     } catch (err) {
       list.innerHTML = '';
       errorState.hidden = false;
@@ -92,7 +101,7 @@ import Icon from '@/components/ui/Icon.astro';
 
   function render() {
     empty.hidden = campaigns.length > 0;
-    setHTML(list, html`${campaigns.map(renderCampaignCard)}`);
+    setHTML(list, html`${campaigns.map((c) => renderCampaignCard(c, viewer))}`);
     // Stats per card are fetched lazily (and cached) so the list shows up immediately.
     campaigns.forEach((c) => {
       if (summaries.has(c.id)) return applyStats(c);
@@ -114,7 +123,7 @@ import Icon from '@/components/ui/Icon.astro';
     } else if (btn.dataset.action === 'delete') {
       const ok = await confirmDialog({
         title: `Delete “${c.name}”?`,
-        body: `All ${pluralize(c.url_count, 'personal link')} will stop working and their click history will be deleted. This can’t be undone.`,
+        body: `All ${pluralize(c.url_count, 'personalized link')} will stop working and their click history will be deleted. This can’t be undone.`,
         confirmLabel: 'Delete campaign',
         danger: true,
         onConfirm: () => deleteCampaign(c.id),

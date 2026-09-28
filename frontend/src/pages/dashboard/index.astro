@@ -7,10 +7,11 @@ import Icon from '@/components/ui/Icon.astro';
 import Modal from '@/components/ui/Modal.astro';
 import EditLinkModal from '@/components/app/EditLinkModal.astro';
 import QrModal from '@/components/app/QrModal.astro';
+import VisibilityToggle from '@/components/app/VisibilityToggle.astro';
 ---
 
 <AppLayout title="Links" section="links">
-  <PageHeader title="Links" description="Every short link you’ve made — and who’s clicking." />
+  <PageHeader title="Links" description="Every short link you and your team made — and who’s clicking." />
 
   <div id="welcome" hidden class="mb-5 flex animate-fade-up items-start gap-4 rounded-2xl bg-ink-950 p-5 text-white">
     <span class="grid size-10 shrink-0 place-items-center rounded-xl bg-brand-400 text-white"><Icon name="rocket" class="size-5" /></span>
@@ -46,11 +47,14 @@ import QrModal from '@/components/app/QrModal.astro';
         <button type="button" class="btn btn-ghost btn-sm btn-icon" data-result-close aria-label="Dismiss"><Icon name="x" /></button>
       </div>
     </div>
-    <p class="hint flex flex-wrap items-center gap-x-1 px-3 pt-1 pb-1.5">
-      Want a custom back-half, tags or a social preview?
-      <a class="link" href="/dashboard/create/">Use the full editor</a>
-      <span class="hidden sm:inline">· or press <span class="kbd">N</span></span>
-    </p>
+    <div class="flex flex-col gap-x-6 gap-y-2 px-3 pt-1.5 pb-1.5 sm:flex-row sm:items-center sm:justify-between">
+      <VisibilityToggle noun="link" variant="inline" />
+      <p class="hint flex flex-wrap items-center gap-x-1">
+        Want a custom back-half, tags or a social preview?
+        <a class="link" href="/dashboard/create/">Use the full editor</a>
+        <span class="hidden sm:inline">· or press <span class="kbd">N</span></span>
+      </p>
+    </div>
   </section>
 
   <!-- KPIs -->
@@ -64,7 +68,7 @@ import QrModal from '@/components/app/QrModal.astro';
   <!-- Toolbar -->
   <section class="mt-10" aria-labelledby="list-title">
     <div class="flex flex-col gap-3 lg:flex-row lg:items-center">
-      <h2 id="list-title" class="text-lg font-semibold text-ink-950">Your links <span class="font-normal text-ink-500" data-count></span></h2>
+      <h2 id="list-title" class="text-lg font-semibold text-ink-950">All links <span class="font-normal text-ink-500" data-count></span></h2>
       <div class="flex flex-col gap-2 sm:flex-row lg:ml-auto">
         <div class="relative">
           <span class="pointer-events-none absolute inset-y-0 left-3 flex items-center text-ink-400"><Icon name="search" /></span>
@@ -147,6 +151,7 @@ import QrModal from '@/components/app/QrModal.astro';
   import { loadTags, tagPill } from '@/utils/tags';
   import { closeDialog, confirmDialog, copyWithFeedback, hydrateTimes, openDialog, setLoading, toast, writeClipboard } from '@/utils/ui';
   import { apiGet } from '@/utils/api';
+  import { getViewer, installLockedControls, onForbidden, visibilityOf, type Viewer } from '@/utils/viewer';
   import type { OverviewStats, ShortLink, Tag, URLType } from '@/utils/types';
 
   const PAGE_SIZE = 20;
@@ -170,6 +175,14 @@ import QrModal from '@/components/app/QrModal.astro';
   let allTags: Tag[] = [];
   const selected = new Set<string>();
   let requestId = 0;
+  // Who's looking: cards name the creator "you" and lock what the viewer can't change.
+  let viewer: Viewer | null = null;
+  const viewerReady = getViewer().then((v) => (viewer = v));
+  installLockedControls();
+  onForbidden(async () => {
+    viewer = await getViewer();
+    render();
+  });
 
   // ---------------------------------------------------------------- URL state
   function syncUrl() {
@@ -194,14 +207,17 @@ import QrModal from '@/components/app/QrModal.astro';
     ['#empty-first', '#empty-filtered', '#load-error'].forEach((s) => ($(s).hidden = true));
 
     try {
-      const res = await listLinks({
-        q: state.q,
-        types: TYPES[state.type],
-        tags: state.tags,
-        match: state.match,
-        skip: (state.page - 1) * PAGE_SIZE,
-        limit: PAGE_SIZE,
-      });
+      const [res] = await Promise.all([
+        listLinks({
+          q: state.q,
+          types: TYPES[state.type],
+          tags: state.tags,
+          match: state.match,
+          skip: (state.page - 1) * PAGE_SIZE,
+          limit: PAGE_SIZE,
+        }),
+        viewerReady,
+      ]);
       if (id !== requestId) return;
       if (res.urls.length === 0 && state.page > 1) {
         state.page = 1;
@@ -228,7 +244,7 @@ import QrModal from '@/components/app/QrModal.astro';
 
   function render(freshCode?: string) {
     const items = [...links.values()];
-    setHTML(list, html`${items.map((l) => renderLinkCard(l, { selected: selected.has(l.short_code), fresh: l.short_code === freshCode }))}`);
+    setHTML(list, html`${items.map((l) => renderLinkCard(l, { selected: selected.has(l.short_code), fresh: l.short_code === freshCode, viewer }))}`);
     list.classList.toggle('selecting', selected.size > 0);
     hydrateTimes(list);
     renderTagChips();
@@ -453,7 +469,11 @@ import QrModal from '@/components/app/QrModal.astro';
     try {
       const res = await bulkTagLinks([...selected], ids);
       closeDialog(document.getElementById('bulk-tag') as HTMLDialogElement);
-      toast(`Tags added to ${pluralize(res.updated, 'link')}`, 'success');
+      // The API skips the links the viewer can't change and lists them in `failed`.
+      const skipped = res.failed.length;
+      const note = skipped ? { description: `${pluralize(skipped, 'link')} skipped: only its creator, or an admin or owner, can change a link.` } : {};
+      if (res.updated) toast(`Tags added to ${pluralize(res.updated, 'link')}`, skipped ? 'info' : 'success', note);
+      else toast('No tags added', 'error', note);
       selected.clear();
       updateBulkBar();
       await Promise.all([load(), loadTags(true).then((t) => ((allTags = t), renderTagChips()))]);
@@ -489,7 +509,7 @@ import QrModal from '@/components/app/QrModal.astro';
     }
     setLoading(quickSubmit, true, 'Shortening…');
     try {
-      const link = await createLink({ url });
+      const link = await createLink({ url, visibility: visibilityOf(quickForm.closest('section')!) });
       lastCreated = link;
       const copied = await writeClipboard(link.short_url ?? '');
       quickInput.value = '';

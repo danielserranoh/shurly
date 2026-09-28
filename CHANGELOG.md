@@ -77,6 +77,47 @@ implementation lifecycle and is independent of the URL version segment.
   come from signing in with Google. A deliberate break of the versioning policy above: anyone could
   make an account on a Griddo domain (retro R1).
 
+### Added — move a removed person's personal links from Settings (Phase 3.14)
+- **When an owner removes someone** in Settings → Organization, a follow-up asks whether
+  to move that person's personal links and campaigns to the organization, so the team
+  can manage them. Skipping is fine: the links keep redirecting either way. A toast says
+  what moved, and a 403, 404 or 409 shows the API's message in the dialog. Admins, who
+  can remove members but not move their links, aren't asked.
+
+### Added — the organization in the frontend (Phase 3.14)
+- **Settings → Organization**: the members, with their role and the date they joined.
+  Each row offers only what your role allows (the table in 3.14.2): owners change
+  roles, make other owners, hand the role over and remove people below them; admins
+  remove members; anyone can step down except the last owner. Removing someone and
+  handing the role over ask first, and so do making an owner and stepping down, which
+  you can't undo yourself. The API's 403/409 message is shown as it comes, and the list
+  reloads after a refusal. An account outside any organization gets a note instead.
+- **A "Personal" switch on every create flow** (quick create, the full editor and the
+  campaign wizard), off by default: new links and campaigns belong to the organization
+  unless it's on. Its hint names who will see them.
+- **Who created what**: link and campaign lists and pages say "Created by you" or the
+  creator's email, and personal ones carry a "Personal" badge.
+- **Locked controls**: editing, deleting, redirect rules and preview refreshes of an
+  organization link or campaign you can't change (someone else's, when you're a
+  member) are dimmed, say why on hover and explain on click. A 403 that still gets
+  through is shown like any other error, and the page checks your role again. Bulk
+  tagging says how many links it skipped.
+
+### Changed — copy that assumed every link was yours
+- A campaign's per-recipient links are "personalized links": "personal" now means only
+  you can see it.
+- The title hint says visitors never see it (it said "only you see this"), the links
+  page describes the team's links, and a link or campaign that isn't found may be
+  someone else's personal one.
+
+### Fixed — campaign summary returned 500 on PostgreSQL
+- **`GET /api/v1/analytics/campaigns/{id}/summary` failed for every campaign on PostgreSQL**
+  ("could not identify an equality operator for type json"). Its top-performers query
+  grouped by `urls.user_data`, a `json` column PostgreSQL can't GROUP BY; the SQLite test
+  suite allows it, so it never showed. It now groups by `urls.id`, on which the other
+  selected columns depend. Regression test against PostgreSQL:
+  `tests/test_analytics_postgres.py`. Found in the 3.14 frontend's manual pass.
+
 ### Fixed — random test failure on UUIDs that look like numbers
 - **The test suite no longer fails at random with `'float' object has no attribute
   'replace'`.** Its in-memory SQLite created the models' UUID columns as `UUID`, a
