@@ -13,6 +13,7 @@ from server.app.urls import redirect_router
 from server.core import get_db
 from server.core.config import settings
 from server.utils.event_log import log_event
+from server.utils.rate_limit import RateLimitMiddleware
 
 
 class RequestIdMiddleware(BaseHTTPMiddleware):
@@ -171,6 +172,11 @@ def create_app(mcp_auth=None) -> FastAPI:
         description=settings.api_description,
         lifespan=lifespan,
     )
+
+    # Phase 6.3 — rate limits (server/utils/rate_limit.py). Added first, so it runs
+    # inside CORS (which answers preflights itself, and adds its headers to a 429)
+    # and inside RequestIdMiddleware (which logs the 429 like any response).
+    app.add_middleware(RateLimitMiddleware)
 
     app.add_middleware(
         CORSMiddleware,

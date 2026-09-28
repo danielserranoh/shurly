@@ -1238,7 +1238,7 @@ live in `mcp_server/README.md`, written for developers. There is no user manual 
 - [ ] ~~Lambda cold start optimization~~ — not applicable on ECS; containers have no cold start
 
 ### 6.3 Security Hardening
-- [ ] Rate limiting — no API Gateway on this stack, so it needs app-level limiting or AWS WAF on the shared ALB (first slice: invitations and resets in 3.15, since each one sends an email)
+- [x] Rate limiting — no API Gateway on this stack, so it needs app-level limiting or AWS WAF on the shared ALB (first slice: invitations and resets in 3.15, since each one sends an email) → app-level, in the database so both tasks share the counts (`server/utils/rate_limit.py`, migration `0006`): the password login per IP and failed logins per address, the Google and MCP sign-in per IP. Invitations and resets (3.15) take a limit of their own when they arrive; WAF stays an AWS option
 - [ ] Input validation review
   - [x] CSV formula injection: the exports quote cells that start like a formula, and the CSV import unquotes them
         (`spreadsheet_safe`, `server/utils/csv_export.py`)

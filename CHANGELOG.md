@@ -35,6 +35,34 @@ implementation lifecycle and is independent of the URL version segment.
   `s.griddo.io` stays for tests until then and is deleted at the cutover.
 - `mcp_server/README.md`: `claude mcp add` takes the URL as a positional argument, not `--url`.
 
+### Security — rate limits on the login and the sign-in endpoints (Phase 6.3)
+- **What anyone can call is limited per client IP**, counted in the database so both
+  tasks share the counts (the new `rate_limits` table, migration `0006`): the password
+  login, whose every attempt runs a bcrypt check on the tasks that also serve
+  redirects, and the Google and MCP sign-in endpoints, each of which writes a row.
+  `/mcp/register` and `/mcp/token` get their own, generous count, since claude.ai calls
+  them from Anthropic's addresses. Redirects, anything signed in and CORS preflights
+  aren't limited.
+- **Failed password logins are also limited per address** (10 per 15 minutes by
+  default), wherever they come from. Only failures count, so the right password isn't
+  counted with a guesser's. Anyone can lock an address's password login for the window,
+  but signing in with Google stays open, and an address without an account locks the
+  same way, so a 429 tells nothing about who has one.
+- Over a limit: `429` with `Retry-After`. Google's sign-in goes back to the login page
+  with `#error=rate_limited`, which the frontend now explains. The event log records
+  `http.rate_limited {path, limit}`, without the IP or the address. If the database
+  can't count, requests go through and `rate_limit.store_failed` is logged.
+- New settings: `RATE_LIMIT_LOGIN_PER_IP`, `RATE_LIMIT_LOGIN_FAILURES_PER_ACCOUNT`,
+  `RATE_LIMIT_SIGN_IN_PER_IP`, `RATE_LIMIT_MCP_CLIENTS_PER_IP` (0 turns one off).
+  They key on the client IP, so `TRUSTED_PROXIES` must name the ALB.
+
+### Security — a client can't choose the IP it's recorded under
+- **`X-Forwarded-For` is read from the right**, skipping the proxies in
+  `TRUSTED_PROXIES`. The ALB appends the address it saw to whatever the client sent,
+  and the resolver took the leftmost entry, the client's own claim: anyone could choose
+  the address a visit was recorded under, and would have reset a per-IP rate limit
+  with every request.
+
 ### Security — CSV exports can't carry spreadsheet formulas
 - **The campaign export and the campaign recipients CSV neutralize cells that start
   like a formula** (`=`, `+`, `-`, `@`, a tab or a carriage return) with a leading
