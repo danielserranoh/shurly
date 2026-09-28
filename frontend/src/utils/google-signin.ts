@@ -27,6 +27,7 @@ const MESSAGES = new Map<string, string>([
   ['inactive', 'That account has been closed. Ask an owner of your organization if you need it back.'],
   ['google_unavailable', 'Google sign-in isn’t available right now. Try again later, or log in with your password if you have one.'],
   ['try_again', 'Another sign-in to that account was finishing at the same moment. Try again.'],
+  ['rate_limited', 'Too many sign-in attempts from your network. Wait a minute and try again.'],
 ]);
 
 /** Human copy for the error codes the API sends back; an unknown code gets a general line. */
