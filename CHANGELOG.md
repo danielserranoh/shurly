@@ -26,6 +26,33 @@ implementation lifecycle and is independent of the URL version segment.
 
 ## [Unreleased]
 
+### Added — MCP clients sign in with Google (Phase 5.8)
+- **The MCP takes Google sign-ins as well as API keys and JWTs**, so Shurly can be
+  added as a claude.ai custom connector, whose only way to authenticate is OAuth.
+  Existing setups with `--header "Authorization: Bearer <api key>"` don't change.
+  fastmcp's OAuth proxy runs the flow: client registration (DCR and Client ID
+  Metadata Documents), a consent page, then Google. Its endpoints are under `/mcp/`,
+  and the discovery documents (RFC 9728, RFC 8414) are at `/.well-known/…/mcp` at the
+  root. A request without a token now gets a 401 pointing at them.
+- **The same account, by the same rules, as on the web.** Google's ID token is
+  checked like the web's, and the account comes from the web sign-in's rules: the
+  organization's Workspace only, a verified address, the domain gate and
+  membership, `account_conflict`, and the pre-hijack lockout. A refused sign-in gets
+  no token (`invalid_grant`). Closing an account in Shurly refuses its MCP sign-ins
+  at once, requests and refreshes alike; a suspension at Google takes up to a minute
+  (a successful check with Google is kept 60 seconds).
+- **Survives two tasks and every deploy.** What the proxy keeps (registrations,
+  sign-ins in progress, codes, Google's tokens) lives in the new `mcp_oauth_store`
+  table (migration `0005`), encrypted; its tokens are signed with a key of its own,
+  never the Google client secret.
+- **Only the clients we target can register:** claude.ai's (and claude.com's)
+  callback and loopback on any port for Claude Code. Any other app is refused, so it
+  can't ask a Griddo person to consent (consent phishing).
+- **New settings:** `MCP_PUBLIC_URL`, `MCP_OAUTH_SIGNING_KEY` and
+  `MCP_OAUTH_ALLOWED_REDIRECT_URIS`. Until the first two are set, with the Google
+  client, the MCP works as before. The Google client needs the extra redirect URI
+  `{MCP_PUBLIC_URL}/auth/callback`. DEPLOYMENT.md § The MCP.
+
 ### Added — Removed people, in Settings → Organization (Phase 3.14.3)
 - **Owners can move someone's personal links later, not only right after removing them.**
   `GET /api/v1/organization/removed-members` lists the people removed from the organization

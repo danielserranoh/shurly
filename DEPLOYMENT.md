@@ -476,6 +476,33 @@ the password endpoints' `reauth_required` answer are specified in the docstring 
 
 None of them carries an email address, a token or a code.
 
+### The MCP (Phase 5.8)
+
+MCP clients (claude.ai custom connectors, Claude Code) can sign in with Google too, through fastmcp's
+OAuth proxy, alongside API keys, which keep working unchanged. It's on once these are set, besides the
+Google client and `ORGANIZATION_DOMAIN` above:
+
+| Variable | Example | Notes |
+|---|---|---|
+| `MCP_PUBLIC_URL` | `https://s.griddo.io/mcp` | The MCP endpoint as clients reach it, without the slash. People connect to `{MCP_PUBLIC_URL}/`, with it: the metadata's `resource` has to match what they enter. `s.griddo.io` or `go.griddo.io` is still to be chosen |
+| `MCP_OAUTH_SIGNING_KEY` | `openssl rand -hex 32` | Signs the MCP's tokens and, derived, encrypts what the proxy stores. High entropy (it goes through HKDF, not a password hash), the same on every task, never the Google secret. Changing it signs every MCP client out. Masked in the deploy logs like any `*KEY*` |
+| `MCP_OAUTH_ALLOWED_REDIRECT_URIS` | the default | Who may register as an MCP client. Default: `https://claude.ai/api/mcp/auth_callback`, `https://claude.com/api/mcp/auth_callback` (where Anthropic says it may move) and loopback on any port (`http://localhost:*`, `http://127.0.0.1:*`, Claude Code). A JSON array to change it; any other client is refused |
+
+- **Google:** add `{MCP_PUBLIC_URL}/auth/callback` (e.g. `https://s.griddo.io/mcp/auth/callback`) as a
+  second authorized redirect URI of the same OAuth client ([docs/setup_google_app.md](docs/setup_google_app.md),
+  step 9).
+- **State:** client registrations, sign-ins in progress, codes and Google's tokens (refresh tokens
+  included) live in the `mcp_oauth_store` table (migration `0005`), encrypted, so both tasks and every
+  deploy share them.
+- **Offboarding:** closing an account in Shurly refuses its MCP sign-ins at once, on the next request
+  and on any refresh. A suspension at Google takes up to 60 seconds to bite, because a successful check
+  with Google is kept that long. The Google tokens stored for a closed account stay, encrypted, until
+  they expire, and can't be used.
+- **Discovery:** `/.well-known/oauth-protected-resource/mcp/` and
+  `/.well-known/oauth-authorization-server/mcp` at the root, and a 401 pointing at the former; the
+  OAuth endpoints are under `/mcp/`. The event log's `auth.login` and `auth.google_refused` carry
+  `surface: "mcp"` for these sign-ins.
+
 ---
 
 ## Routine operations

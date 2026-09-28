@@ -223,26 +223,44 @@ class GoogleOIDC:
         return id_token
 
     def _verify(self, id_token: str) -> GoogleAccount:
-        try:
-            claims = google_id_token.verify_oauth2_token(
-                id_token,
-                _GoogleAuthRequest(self._http),
-                audience=self._client_id,
-                clock_skew_in_seconds=_CLOCK_SKEW,
-            )
-        except google_exceptions.TransportError:
-            raise GoogleSignInError("google_unavailable") from None
-        except (google_exceptions.GoogleAuthError, ValueError, KeyError):
-            raise GoogleSignInError("invalid_token") from None
+        return verify_id_token(
+            id_token, client_id=self._client_id, hosted_domain=self._hosted_domain, http=self._http
+        )
 
-        if claims.get("email_verified") is not True:
-            raise GoogleSignInError("unverified")
-        if str(claims.get("hd") or "").lower() != self._hosted_domain:
-            raise GoogleSignInError("domain")
-        subject, email = claims.get("sub"), claims.get("email")
-        if not isinstance(subject, str) or not subject or not isinstance(email, str) or not email:
-            raise GoogleSignInError("invalid_token")
-        return GoogleAccount(subject=subject, email=email.lower())
+
+def verify_id_token(
+    id_token: str, *, client_id: str, hosted_domain: str, http: GoogleHttp
+) -> GoogleAccount:
+    """
+    The account behind a Google ID token, if it checks out: signature against
+    Google's certs, `aud` (our client id), `iss` and `exp` (google-auth), then a
+    verified address and `hd` equal to `hosted_domain`. Also used by the MCP's
+    sign-in (mcp_server/google_oauth.py), so both apply the same checks.
+    """
+    # Without a client id google-auth skips the `aud` check; without a domain, any
+    # Google account (Gmail included) would pass the `hd` one.
+    if not client_id or not hosted_domain:
+        raise ValueError("Checking an ID token needs a client id and the organization's domain")
+    try:
+        claims = google_id_token.verify_oauth2_token(
+            id_token,
+            _GoogleAuthRequest(http),
+            audience=client_id,
+            clock_skew_in_seconds=_CLOCK_SKEW,
+        )
+    except google_exceptions.TransportError:
+        raise GoogleSignInError("google_unavailable") from None
+    except (google_exceptions.GoogleAuthError, ValueError, KeyError):
+        raise GoogleSignInError("invalid_token") from None
+
+    if claims.get("email_verified") is not True:
+        raise GoogleSignInError("unverified")
+    if str(claims.get("hd") or "").lower() != hosted_domain.lower():
+        raise GoogleSignInError("domain")
+    subject, email = claims.get("sub"), claims.get("email")
+    if not isinstance(subject, str) or not subject or not isinstance(email, str) or not email:
+        raise GoogleSignInError("invalid_token")
+    return GoogleAccount(subject=subject, email=email.lower())
 
 
 def _google_error(response: httpx.Response) -> str:
