@@ -26,6 +26,15 @@ implementation lifecycle and is independent of the URL version segment.
 
 ## [Unreleased]
 
+### Security — the MCP can't generate or revoke API keys (Phase 6.3)
+- **The `generate_api_key` and `revoke_api_key` tools are gone.** An assistant reads
+  untrusted text, such as link titles and fetched pages, which could talk it into "generate a
+  new API key". The new key would then land in its context, the leak that taking the key out of
+  `/auth/me` closed, and the key the person uses would stop working. Like changing the
+  organization or the password, this is left to the person: Settings → API & MCP, or
+  `POST /api/v1/auth/api-key/generate` and `DELETE /api/v1/auth/api-key`, which are unchanged.
+- The MCP now has 41 tools (37 generated from the API, 4 curated).
+
 ### Security — API keys are stored as a hash and shown once (Phase 6.3)
 - **The database no longer holds API keys.** It keeps each key's SHA-256 hash and first
   12 characters (`users.api_key_hash`, `users.api_key_prefix`). Migration `0007` moves every
