@@ -22,7 +22,13 @@ from server.core.models import User, UserProfile
 from server.utils import timezones
 
 PROFILE = "/api/v1/auth/me/profile"
-EMPTY = {"first_name": None, "last_name": None, "country": None, "timezone": None}
+EMPTY = {
+    "first_name": None,
+    "last_name": None,
+    "country": None,
+    "timezone": None,
+    "avatar_version": None,
+}
 
 
 def _profile(client, headers) -> dict:
@@ -75,8 +81,8 @@ class TestUpdating:
         response = _patch(client, auth_headers, **saved)
 
         assert response.status_code == 200
-        assert response.json() == saved
-        assert _profile(client, auth_headers) == saved
+        assert response.json() == {**saved, "avatar_version": None}
+        assert _profile(client, auth_headers) == {**saved, "avatar_version": None}
 
     def test_changes_only_the_fields_sent(self, client, auth_headers):
         _patch(client, auth_headers, first_name="Ana", country="ES")
@@ -87,6 +93,7 @@ class TestUpdating:
             "last_name": None,
             "country": "ES",
             "timezone": "Europe/Madrid",
+            "avatar_version": None,
         }
 
     def test_null_or_blank_clears_a_field(self, client, auth_headers):
@@ -249,6 +256,7 @@ class TestThroughTheMcp:
             "last_name": None,
             "country": "IN",
             "timezone": "Asia/Kolkata",
+            "avatar_version": None,
         }
 
 

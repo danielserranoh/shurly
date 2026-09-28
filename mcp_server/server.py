@@ -67,6 +67,9 @@ EXCLUDED_ROUTE_MAPS: list[RouteMap] = [
     # and only the signed-in person sets or removes a password: the same untrusted
     # text could talk an assistant into it.
     RouteMap(pattern=r"^/api/v1/auth/google/.*$", mcp_type=MCPType.EXCLUDE),
+    # Phase 3.12 — the avatar is an image upload and an image back (PUT, GET, DELETE):
+    # of no use to an assistant, and someone's picture is theirs to change.
+    RouteMap(pattern=r"^/api/v1/auth/me/avatar$", mcp_type=MCPType.EXCLUDE),
     RouteMap(
         methods=["PUT", "DELETE"],
         pattern=r"^/api/v1/auth/password$",

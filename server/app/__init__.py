@@ -2,6 +2,7 @@ from fastapi import APIRouter
 
 from server.app.analytics import analytics_router
 from server.app.auth import auth_router
+from server.app.avatar import avatar_router
 from server.app.campaigns import campaigns_router
 from server.app.google_auth import google_router
 from server.app.health import health_router
@@ -15,6 +16,7 @@ api_router = APIRouter()
 # Health check first so it's near the top of the OpenAPI docs.
 api_router.include_router(health_router, tags=["health"])
 api_router.include_router(auth_router, prefix="/auth", tags=["authentication"])
+api_router.include_router(avatar_router, prefix="/auth", tags=["authentication"])
 api_router.include_router(google_router, prefix="/auth/google", tags=["authentication"])
 api_router.include_router(organization_router, prefix="/organization", tags=["organization"])
 api_router.include_router(urls_router, prefix="/urls", tags=["urls"])

@@ -111,6 +111,12 @@ def test_public_routes_are_excluded():
     assert not leaked, f"Public routes leaked into MCP tools: {sorted(leaked)}"
 
 
+def test_the_avatar_is_not_a_tool():
+    """Phase 3.12 — an image upload, and an image back: of no use to an assistant."""
+    names = _list_tool_names()
+    assert not {name for name in names if "avatar" in name}
+
+
 def test_legacy_stats_excluded():
     """Legacy /api/v1/stats/* routes must never be MCP tools."""
     names = _list_tool_names()

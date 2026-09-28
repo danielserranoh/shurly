@@ -30,6 +30,10 @@ dependencies = [
     # (server/utils/timezones.py): one list everywhere, where the system's varies
     # (Debian's lacks the legacy names browsers still report). A floor, not a pin.
     "tzdata>=2025.2",
+    # Phase 3.12 — decodes an uploaded avatar and re-encodes it without metadata
+    # (server/utils/avatar.py). It parses untrusted input: watch its CVEs, and keep
+    # the floor above the last fixed one (11.3.0, CVE-2025-48379).
+    "pillow>=11.3",
 ]
 
 [project.optional-dependencies]
