@@ -90,11 +90,35 @@ def _active_owners(db: Session, organization_id: UUID, lock: bool = False):
     return query.all()
 
 
-def join_default_organization(db: Session, user: User) -> OrganizationMember:
-    """A new account joins as member, or as owner if it's the configured first owner and none is left."""
+def on_organization_domain(email: str) -> bool:
+    """
+    Whether `email` is on `settings.organization_domain`: an exact, case-insensitive
+    match of the part after the last "@". An empty setting lets any address in.
+
+    Exact on purpose: `evilgriddo.io`, `griddo.io.evil.com` and even `eu.griddo.io`
+    are other domains. Sign-up is still open to anyone (retro R1, until 3.13), and
+    members see every organization link and campaign — campaigns carry their
+    recipients' names and emails — so this is what keeps a stranger out.
+    """
+    domain = settings.organization_domain.strip().lower()
+    if not domain:
+        return True
+    return email.rsplit("@", 1)[-1].strip().lower() == domain
+
+
+def join_default_organization(db: Session, user: User) -> OrganizationMember | None:
+    """
+    A new account joins as member, or as owner if it's the configured first owner
+    and none is left. An account off the organization's email domain doesn't join
+    (None): it keeps working, with only its own personal links.
+    """
     existing = get_membership(db, user)
     if existing is not None:
         return existing
+    if not on_organization_domain(user.email):
+        # user_id only: the address itself is personal data.
+        log_event("org.join_refused", user_id=str(user.id), reason="email_domain")
+        return None
     organization = get_or_create_default_organization(db)
     role = OrgRole.MEMBER
     if _is_bootstrap_owner(user) and not _active_owners(db, organization.id):

@@ -26,6 +26,15 @@ implementation lifecycle and is independent of the URL version segment.
 
 ## [Unreleased]
 
+### Security — only accounts on the organization's email domain join it
+- **A new account joins the organization only if its email is on `ORGANIZATION_DOMAIN`**
+  (default `griddo.io`; exact, case-insensitive; empty lets anyone join). Sign-up is
+  still open to anyone until Google sign-in (3.13), and since 3.14.3 every member sees
+  all of the organization's links and campaigns, recipients' names and emails included.
+  So anyone could register and read or export the team's campaigns. An account off the
+  domain now keeps working with personal links only. The startup sync applies the same
+  rule, and each refused join logs `org.join_refused` with the user id, not the email.
+
 ### Security — link previews log the destination's origin, not the URL
 - **A failed link preview no longer writes the destination URL to the log.** The
   Open Graph fetcher logged the whole URL when a fetch was refused, timed out,
