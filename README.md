@@ -420,6 +420,10 @@ Per-link analytics as on Shlink's link page (Phase 3.16, contract in ROADMAP 3.1
   of day and day of week
 - `GET /api/v1/analytics/urls/{short_code}/breakdown` — by OS, browser, device, referrer and country, with
   shares
+- `GET /api/v1/analytics/urls/{short_code}/visits` — the visits, newest first, 20 a page: never an IP, a user
+  agent or a full referrer
+- `GET /api/v1/analytics/urls/{short_code}/visits.csv` — every visit of the period, with its user agent, never
+  an IP. Not an MCP tool
 - `GET /api/v1/analytics/campaigns/{campaign_id}/summary` — totals + top performers
 - `GET /api/v1/analytics/campaigns/{campaign_id}/users` — per-URL stats (CSV-friendly)
 - `GET /api/v1/analytics/orphan-visits` — typo'd / unknown codes (Phase 3.10.4)
