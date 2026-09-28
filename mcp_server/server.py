@@ -135,6 +135,10 @@ MCP_TOOL_NAMES: dict[str, str] = {
     "get_url_daily_stats_api_v1_analytics_urls__short_code__daily_get": "get_url_daily_stats",
     "get_url_weekly_stats_api_v1_analytics_urls__short_code__weekly_get": "get_url_weekly_stats",
     "get_url_geo_stats_api_v1_analytics_urls__short_code__geo_get": "get_url_geo_stats",
+    # Phase 3.16 — per-link analytics, as on Shlink's link page.
+    "get_url_totals_api_v1_analytics_urls__short_code__totals_get": "get_url_totals",
+    "get_url_timeseries_api_v1_analytics_urls__short_code__timeseries_get": "get_url_timeseries",
+    "get_url_breakdown_api_v1_analytics_urls__short_code__breakdown_get": "get_url_breakdown",
     "get_campaign_summary_api_v1_analytics_campaigns__campaign_id__summary_get": "get_campaign_summary",
     "get_campaign_users_api_v1_analytics_campaigns__campaign_id__users_get": "get_campaign_users",
     "get_orphan_visits_api_v1_analytics_orphan_visits_get": "get_orphan_visits",

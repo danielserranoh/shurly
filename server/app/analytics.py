@@ -1,7 +1,9 @@
 """Analytics endpoints for URLs and campaigns."""
 
-from datetime import datetime, timedelta
-from typing import Annotated
+from bisect import bisect_right
+from collections import Counter
+from datetime import date, datetime, timedelta
+from typing import Annotated, Literal
 from uuid import UUID as UUIDType
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -15,6 +17,8 @@ from server.core.auth import get_current_user
 from server.core.config import settings
 from server.core.models import URL, Campaign, Domain, OrphanVisit, User, Visitor
 from server.schemas.analytics import (
+    BreakdownItem,
+    BreakdownResponse,
     CampaignSummary,
     CampaignUsersResponse,
     CampaignUserStat,
@@ -22,7 +26,12 @@ from server.schemas.analytics import (
     DailyStatsResponse,
     GeoStats,
     GeoStatsResponse,
+    HourCounts,
+    LinkTotalsResponse,
     OverviewStats,
+    TimeseriesBucket,
+    TimeseriesResponse,
+    WeekdayCounts,
     WeeklyStats,
     WeeklyStatsResponse,
 )
@@ -30,9 +39,17 @@ from server.schemas.responses import get_responses
 from server.utils.access import LinkDomain, find_url, viewer
 from server.utils.csv_export import stream_csv
 from server.utils.domain import normalize_hostname
-from server.utils.local_days import LocalDays, count_per_period, last_days
+from server.utils.local_days import (
+    MAX_PERIOD_DAYS,
+    LocalDays,
+    Period,
+    PeriodError,
+    count_per_period,
+    last_days,
+)
 from server.utils.profile import clean_timezone
-from server.utils.url import build_short_url
+from server.utils.url import build_short_url, link_hostname
+from server.utils.visit_facets import country_label, families, kind_of, referrer_host
 
 
 def _visible_url_or_404(db: Session, user: User, short_code: str, domain: str | None) -> URL:
@@ -66,6 +83,72 @@ TimeZoneParam = Annotated[
         ),
     ),
 ]
+
+# Phase 3.16 — the kinds of visit (ROADMAP 3.16.1): every visit is exactly one.
+VisitType = Literal["clicks", "opens", "bots", "all"]
+
+
+def _of_type(query: SAQuery, visit_type: str) -> SAQuery:
+    """
+    Phase 3.16 — the visits of a kind, drawing the lines `visit_facets.kind_of` draws.
+    A click is what `_exclude_bots` keeps; an open, a pixel hit that isn't a bot's; a bot's,
+    any visit whose user agent was one, pixel hits included.
+    """
+    if visit_type == "clicks":
+        return _exclude_bots(query, include_bots=False)
+    if visit_type == "opens":
+        return query.filter(Visitor.is_pixel.is_(True), Visitor.is_bot.is_(False))
+    if visit_type == "bots":
+        return query.filter(Visitor.is_bot.is_(True))
+    return query
+
+
+def _period(
+    period: int | None = Query(
+        None,
+        ge=1,
+        le=MAX_PERIOD_DAYS,
+        description="The last N local days, today included. Default 30",
+    ),
+    first: date | None = Query(
+        None, alias="from", description="A custom range's first local day, with `to`"
+    ),
+    last: date | None = Query(
+        None,
+        alias="to",
+        description="A custom range's last local day, inclusive: after today counts to today",
+    ),
+    tz: TimeZoneParam = None,
+    current_user: User = Depends(get_current_user),
+) -> Period:
+    """Phase 3.16 — the local days a per-link route counts: `period`, or `from` and `to`."""
+    try:
+        return Period.resolve(LocalDays.of(current_user, tz), period, first, last)
+    except PeriodError as error:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(error)
+        ) from None
+
+
+def _period_fields(url: URL, period: Period) -> dict:
+    """What every per-link response over a period starts with."""
+    return {
+        "short_code": url.short_code,
+        "domain": link_hostname(url),
+        "from": period.first,
+        "to": period.last,
+        "timezone": period.days.name,
+    }
+
+
+def _breakdown(counts: Counter, total: int) -> list[BreakdownItem]:
+    """By count, then name; each with its share of `total`."""
+    ordered = sorted(counts.items(), key=lambda item: (-item[1], item[0].casefold(), item[0]))
+    return [
+        BreakdownItem(name=name, count=count, share=round(count / total, 4) if total else 0.0)
+        for name, count in ordered
+    ]
+
 
 analytics_router = APIRouter()
 
@@ -266,6 +349,204 @@ def get_url_geo_stats(
         stats=stats,
         total_clicks=total_clicks,
         period_days=days,
+    )
+
+
+@analytics_router.get(
+    "/urls/{short_code}/totals",
+    response_model=LinkTotalsResponse,
+    responses={
+        200: {"description": "The link's all-time numbers"},
+        **get_responses(401, 404, 422),
+    },
+)
+def get_url_totals(
+    short_code: str,
+    domain: LinkDomain = None,
+    tz: TimeZoneParam = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    A link's all-time numbers, for the header of its page (Phase 3.16).
+
+    - **clicks**: its clicks, as `click_count`: bots and email opens aside
+    - **opens**: hits on its email tracking pixel that aren't a bot's. They overcount: Apple
+      Mail Privacy Protection loads the pixel, like every image, when a message arrives, read
+      or not
+    - **countries**: how many distinct countries its clicks came from
+    - **last_click_at**: its latest click, in `tz`, else your profile's zone, else UTC; null
+      without one. Unlike the link's `last_click_at`, bots and crawler previews don't count
+    """
+    url = _visible_url_or_404(db, current_user, short_code, domain)
+    days = LocalDays.of(current_user, tz)
+    visits = db.query(Visitor).filter(Visitor.url_id == url.id)
+    clicks, countries, last = (
+        _of_type(visits, "clicks")
+        .with_entities(
+            func.count(Visitor.id),
+            func.count(func.distinct(Visitor.country)),
+            func.max(Visitor.visited_at),
+        )
+        .one()
+    )
+    opens = _of_type(visits, "opens").with_entities(func.count(Visitor.id)).scalar()
+    return LinkTotalsResponse(
+        short_code=url.short_code,
+        domain=link_hostname(url),
+        timezone=days.name,
+        clicks=clicks,
+        opens=opens,
+        countries=countries,
+        last_click_at=days.local(last).replace(microsecond=0) if last else None,
+    )
+
+
+@analytics_router.get(
+    "/urls/{short_code}/timeseries",
+    response_model=TimeseriesResponse,
+    responses={
+        200: {"description": "Clicks and opens over the period"},
+        **get_responses(401, 404, 422),
+    },
+)
+def get_url_timeseries(
+    short_code: str,
+    domain: LinkDomain = None,
+    group_by: Literal["day", "week", "month"] = Query(
+        "day", description="Local days, ISO weeks (from Monday) or months"
+    ),
+    period: Period = Depends(_period),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    A link's clicks and email opens over a period, side by side (Phase 3.16).
+
+    - **stats**: per local day, ISO week or month of the period, oldest first, with zeros; the
+      first and last buckets are clipped to it, and `end` is inclusive
+    - **hour_of_day**: per local hour, 0 to 23. On the day DST ends, the hour that happens
+      twice counts both times
+    - **day_of_week**: per local weekday, 1 (Monday) to 7
+
+    The period is `period` (the last N local days, today included, default 30) or `from` and
+    `to`, at most 731 days. Bots count in neither. Opens overcount: Apple Mail Privacy Protection loads the pixel, like
+    every image, when a message arrives, read or not.
+    """
+    url = _visible_url_or_404(db, current_user, short_code, domain)
+    start, end = period.bounds()
+    # Clicks and opens are the visits that aren't a bot's (`_of_type`, `kind_of`).
+    rows = (
+        db.query(Visitor.visited_at, Visitor.is_pixel)
+        .filter(
+            Visitor.url_id == url.id,
+            Visitor.visited_at >= start,
+            Visitor.visited_at < end,
+            Visitor.is_bot.is_(False),
+        )
+        .all()
+    )
+
+    buckets = period.buckets(group_by)
+    starts = [first for first, _ in buckets]
+    kinds = ("click", "open")
+    per_bucket = [[0, 0] for _ in buckets]
+    per_hour = [[0, 0] for _ in range(24)]
+    per_weekday = [[0, 0] for _ in range(7)]
+    for visited_at, is_pixel in rows:
+        local = period.days.local(visited_at)
+        kind = kinds.index(kind_of(is_pixel, is_bot=False))
+        per_bucket[bisect_right(starts, local.date()) - 1][kind] += 1
+        per_hour[local.hour][kind] += 1
+        per_weekday[local.isoweekday() - 1][kind] += 1
+
+    return TimeseriesResponse(
+        **_period_fields(url, period),
+        group_by=group_by,
+        clicks=sum(clicks for clicks, _ in per_bucket),
+        opens=sum(opens for _, opens in per_bucket),
+        stats=[
+            TimeseriesBucket(start=first, end=last, clicks=clicks, opens=opens)
+            for (first, last), (clicks, opens) in zip(buckets, per_bucket, strict=True)
+        ],
+        hour_of_day=[
+            HourCounts(hour=hour, clicks=clicks, opens=opens)
+            for hour, (clicks, opens) in enumerate(per_hour)
+        ],
+        day_of_week=[
+            WeekdayCounts(day=day, clicks=clicks, opens=opens)
+            for day, (clicks, opens) in enumerate(per_weekday, start=1)
+        ],
+    )
+
+
+@analytics_router.get(
+    "/urls/{short_code}/breakdown",
+    response_model=BreakdownResponse,
+    responses={
+        200: {"description": "The period's visits by OS, browser, device, referrer and country"},
+        **get_responses(401, 404, 422),
+    },
+)
+def get_url_breakdown(
+    short_code: str,
+    domain: LinkDomain = None,
+    visit_type: VisitType = Query(
+        "clicks",
+        alias="type",
+        description="clicks; opens (email pixel hits, not a bot's); bots; or all",
+    ),
+    period: Period = Depends(_period),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    A link's visits of a kind over a period, by OS, browser, device, referrer and country
+    (Phase 3.16).
+
+    Every value is listed, by count and then name, with its share of `total`. OS and browser
+    are families, parsed from the user agent. Device is desktop, mobile, tablet, or other (a
+    bot's). A referrer is its host, "Direct" without one; a missing value is "Unknown". A
+    country is an ISO code.
+
+    The period is `period` (the last N local days, today included, default 30) or `from` and
+    `to`, at most 731 days. Opens overcount: Apple Mail Privacy Protection loads the pixel, like
+    every image, when a message arrives, read or not.
+    """
+    url = _visible_url_or_404(db, current_user, short_code, domain)
+    start, end = period.bounds()
+    visits = _of_type(
+        db.query(Visitor).filter(
+            Visitor.url_id == url.id, Visitor.visited_at >= start, Visitor.visited_at < end
+        ),
+        visit_type,
+    )
+
+    def grouped(column):
+        # The period's rows, grouped in SQL: each distinct value is worked out once.
+        return visits.with_entities(column, func.count(Visitor.id)).group_by(column).all()
+
+    os_names, browsers, devices, referrers, countries = (Counter() for _ in range(5))
+    for user_agent, count in grouped(Visitor.user_agent):
+        found = families(user_agent)
+        os_names[found.os] += count
+        browsers[found.browser] += count
+        devices[found.device] += count
+    for referer, count in grouped(Visitor.referer):
+        referrers[referrer_host(referer)] += count
+    for country, count in grouped(Visitor.country):
+        countries[country_label(country)] += count
+    total = sum(countries.values())
+
+    return BreakdownResponse(
+        **_period_fields(url, period),
+        type=visit_type,
+        total=total,
+        os=_breakdown(os_names, total),
+        browsers=_breakdown(browsers, total),
+        devices=_breakdown(devices, total),
+        referrers=_breakdown(referrers, total),
+        countries=_breakdown(countries, total),
     )
 
 
