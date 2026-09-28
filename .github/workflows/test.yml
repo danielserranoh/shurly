@@ -84,12 +84,22 @@ jobs:
       uses: actions/setup-node@v4
       with:
         node-version: '22'
+        cache: npm
+        cache-dependency-path: frontend/package-lock.json
+
+    - name: Install frontend dependencies
+      working-directory: frontend
+      run: npm ci
 
     - name: Frontend unit tests
-      # node --test runs the TypeScript modules as they are (Node 22.18+), and the
-      # tests import nothing from node_modules, so there's no npm ci.
+      # node --test runs the TypeScript modules as they are (Node 22.18+).
       working-directory: frontend
       run: npm test
+
+    - name: Type-check and build the frontend
+      # astro check + astro build: what the deploy runs, so a PR can't break it unseen.
+      working-directory: frontend
+      run: npm run build
 
   test-summary:
     runs-on: ubuntu-latest

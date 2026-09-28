@@ -1039,20 +1039,27 @@ for this.
 - [ ] S3 bucket (Block Public Access on) + CloudFront distribution with OAC
 - [ ] ACM certificate in **us-east-1**: CloudFront only takes certificates from N. Virginia (the ALB's is in
       eu-south-2). DNS validation in `griddo-production`
-- [ ] CloudFront Function rewriting `/dashboard/` → `/dashboard/index.html`: a private bucket is reached through
+- [x] CloudFront Function rewriting `/dashboard/` → `/dashboard/index.html`: a private bucket is reached through
       the S3 REST endpoint, which doesn't resolve directory indexes. The comment in `astro.config.mjs` saying no
-      CDN rewrites are needed only holds for the public website endpoint
-- [ ] Error response: 404 → `/404.html`
+      CDN rewrites are needed only holds for the public website endpoint → `infra/cloudfront/static-paths.js`, with tests;
+      attach it to the default behaviour when the distribution is created
+- [ ] Error response: 404 → `/404.html` → an open decision now that the API shares the distribution: custom error
+      responses apply to the whole distribution and would replace the API's own 403/404 (DEPLOYMENT.md § Frontend
+      hosting, "Error pages")
 - [ ] Route 53 alias record, from `griddo-production`
-- [ ] Rewrite `deploy-frontend.yml`: OIDC role as in 4.8 (it still uses access keys), the real bucket, the
+- [x] Rewrite `deploy-frontend.yml`: OIDC role as in 4.8 (it still uses access keys), the real bucket, the
       production build values below, `PUBLIC_SITE_URL`; re-enable `push` on `frontend/**`. Its header still
       points at the Lambda-era "Phase 4.5/4.6"
-- [ ] Production build values: `PUBLIC_API_URL=https://shurly.griddo.io` and `PUBLIC_SHORT_DOMAIN=s.griddo.io`
+- [x] Production build values: `PUBLIC_API_URL=https://shurly.griddo.io` and `PUBLIC_SHORT_DOMAIN=s.griddo.io`
       (`go.griddo.io` from Phase 8). Without `PUBLIC_SHORT_DOMAIN` the app shows short links on the API's host
       (`shurly.griddo.io/abc`). The MCP address in the manual and Settings then derives as
       `https://shurly.griddo.io/mcp/` (`PUBLIC_MCP_URL` only to override it)
 - [ ] `CORS_ORIGINS` in the task matches the chosen hostname (`deploy_ecs.sh` defaults to `https://shurl.griddo.io`)
-- [ ] Update the hostnames table in `DEPLOYMENT.md` (it still says "Future frontend | 7")
+- [x] Update the hostnames table in `DEPLOYMENT.md` (it still says "Future frontend | 7") → done in #74
+- [x] CI builds the frontend (`npm ci`, `npm test`, `npm run build` in the Tests workflow), so a PR can't break the
+      deploy unseen
+- [ ] Client IPs through CloudFront: decide how the API gets the viewer's address once `shurly.griddo.io` goes
+      through the distribution (DEPLOYMENT.md § Frontend hosting, open decision; backend and AWS work)
 
 ---
 

@@ -1,5 +1,9 @@
 # CI/CD Setup Guide
 
+> **Out of date:** this guide describes the Lambda-era setup (access keys, API Gateway). The current
+> deploys are in DEPLOYMENT.md: § CI/CD with OIDC (the backend, to ECS) and § Frontend hosting (the
+> frontend, to S3 + CloudFront). Follow those.
+
 This guide explains how to set up automated deployment with GitHub Actions for Shurly.
 
 ## Overview

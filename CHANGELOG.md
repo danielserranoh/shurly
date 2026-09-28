@@ -26,6 +26,23 @@ implementation lifecycle and is independent of the URL version segment.
 
 ## [Unreleased]
 
+### Changed — the frontend deploy, ready for S3 + CloudFront (Phase 4.10)
+- **`deploy-frontend.yml` rewritten for the chosen setup:**
+  - OIDC with its own least-privilege role (`AWS_FRONTEND_DEPLOY_ROLE_ARN`), no access keys.
+  - The production values: `PUBLIC_API_URL=https://shurly.griddo.io`, `PUBLIC_SHORT_DOMAIN=s.griddo.io`.
+  - Tests and the build before any upload.
+  - Only the hashed `_astro/` files are cached for good. Pages, favicons, `og-image.png` and the manifest
+    revalidate, where before every non-HTML file was cached for a year.
+  - A CloudFront invalidation after each deploy.
+  - It runs on merges to `main` that touch the frontend, and while `FRONTEND_BUCKET` is unset it says
+    it skipped instead of failing.
+- **CI builds the frontend:** `npm ci`, `npm test` and `npm run build` (astro check) on every PR.
+- **A CloudFront Function** (`infra/cloudfront/static-paths.js`, with tests) gives a private bucket its
+  directory indexes and adds the missing trailing slash, and it can't redirect off the site.
+- **DEPLOYMENT.md § Frontend hosting** covers the distribution's behaviours for the app, the API and the MCP,
+  the us-east-1 certificate, the bucket, the deploy role's policies, cutover and rollback, and two open
+  decisions: error pages, and client IPs behind CloudFront.
+
 ### Fixed — a long value from outside a schema no longer fails with a 500
 - **A link to a page with a long title is created.** The title fetched for the preview
   went into `og_title` (255 characters) as it was, and PostgreSQL refused a longer one:
