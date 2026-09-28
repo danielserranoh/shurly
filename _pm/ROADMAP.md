@@ -1140,6 +1140,121 @@ and every link on it would pay for the header's numbers.
 
 ---
 
+## Phase 3.17: Per-campaign analytics
+
+**Goal:** since 3.16, a link's page answers when, from what and from where its visits came, for a period. A
+campaign's page should answer the same over all its recipients' links, plus the numbers an email campaign is judged
+by: how many recipients opened, and how many clicked. Today it has:
+- all-time totals;
+- a 7-day timeline;
+- the top 5;
+- each recipient's all-time clicks.
+
+It has no opens and no period.
+
+**Split (2026-09-29):** the API is Agent 1's, the page Agent 2's, both built against the contract below, as in 3.16.
+
+### 3.17.1 The contract
+
+A campaign has one link per recipient: a row of its CSV, kept as the link's `user_data`. Everything below counts the
+visits of those links, with 3.16.1's definitions:
+- the kinds: click, open, bot;
+- the period params: `period`, or `from` and `to`, with `tz`;
+- the labels: "Unknown" and "Direct";
+- the caveat on opens: Apple Mail loads the pixel on its own, so opens overcount, and so does the open rate.
+
+Every route below:
+- is under `/api/v1/analytics/campaigns/{campaign_id}/`, and takes a JWT or an API key;
+- answers for exactly the campaigns `/users` answers for today (`viewer().sees(Campaign)`):
+  - the viewer's organization's campaigns, whatever their role;
+  - the viewer's own personal ones;
+  - otherwise 404, or 400 for an id that isn't a UUID.
+
+  `/recipients` shows each recipient's `user_data`, names and emails included, as `/users` does: to the same people,
+  and no one else;
+- takes a period, as in 3.16.1, except `/totals`.
+
+Every response starts with the same fields. `/totals` has no `from` or `to`:
+
+```json
+{"campaign_id": "3f2c…", "campaign_name": "Q4 webinar", "from": "2026-07-01", "to": "2026-09-28",
+ "timezone": "Europe/Madrid"}
+```
+
+**`GET …/totals`**: the header's all-time numbers. Takes only `tz`.
+
+```json
+{"campaign_id": "3f2c…", "campaign_name": "Q4 webinar", "timezone": "Europe/Madrid",
+ "recipients": 250, "clicks": 180, "opens": 410, "clicked": 96, "opened": 170,
+ "click_rate": 0.384, "open_rate": 0.68, "countries": 7, "last_click_at": "2026-09-27T23:54:12+02:00"}
+```
+
+- `recipients` is the number of links.
+- `clicked` and `opened` count the recipients with at least one click, or at least one open.
+- `click_rate` is clicked ÷ recipients, and `open_rate` opened ÷ recipients: 0 to 1, with 4 decimals, and 0 when the
+  campaign has no recipients.
+- `countries` and `last_click_at` are as for a link.
+
+**`GET …/timeseries?group_by=day|week|month`** and **`GET …/breakdown?type=…`** have a link's shapes (3.16.1), over
+all the campaign's links.
+
+**`GET …/recipients?page=1&page_size=20&sort=clicks`**
+
+```json
+{...the common fields..., "total": 250, "page": 1, "page_size": 20, "pages": 13, "sort": "clicks",
+ "recipients": [{"user_data": {"name": "Ana", "email": "ana@example.com"}, "short_code": "q4-ana",
+                 "domain": "shurl.griddo.io", "clicks": 3, "opens": 5,
+                 "first_click_at": "2026-09-20T10:02:11+02:00", "last_click_at": "2026-09-27T23:54:12+02:00"}, …]}
+```
+
+- Every recipient is listed, with zeros if need be. Each shows their clicks and opens in the period, and their first
+  and last click in it (null without one). Bots don't count.
+- `sort`, with the short code breaking ties:
+  - `clicks`: the default, most first, then most opens;
+  - `opens`;
+  - `last`: latest click first, recipients without one last;
+  - `code`.
+- `page_size` is 1 to 100, default 20.
+
+**`GET …/recipients.csv`**: every recipient for the period, streamed.
+- The columns are the recipient's `user_data`, flattened as in `/users`' CSV, then
+  `short_code,clicks,opens,first_click_at,last_click_at`.
+- Every cell is spreadsheet-safe.
+- Not an MCP tool, like `/visits.csv`.
+
+**No list of visits at campaign level, on purpose: privacy.** A campaign's visits tied to its recipients' rows would
+be a timeline of what each named person did, when, and from where (country and device). Per-recipient totals answer
+what a campaign is judged by, and that's all `/users` gives today.
+
+**Open, for the user to decide:** a campaign's link is still a link, so 3.16's `/visits` already lists one recipient's
+visits, on that link's page. If the line is "no per-visit data tied to a person", then `/visits` and `/visits.csv`
+should refuse campaign links, and the link page should hide its Visits tab for them. Until the user decides, 3.16 stays
+as it is.
+
+**Unchanged:** `/summary` and `/users`, for existing clients and the MCP (`get_campaign_summary`, `get_campaign_users`).
+Their `click_through_rate` stays a percentage, 0 to 100.
+
+**MCP:** the new routes become the tools `get_campaign_totals`, `get_campaign_timeseries`, `get_campaign_breakdown` and
+`list_campaign_recipients`. `/recipients.csv` is excluded.
+
+### 3.17.2 API (Agent 1)
+- [ ] 3.16's routes become functions over a query of visits: a link's, or a campaign's links', joined on
+      `urls.campaign_id` rather than a list of ids
+- [ ] PR 1: `/totals`, `/timeseries` and `/breakdown`
+- [ ] PR 2: `/recipients` and `/recipients.csv`. One grouped query per period: each link's clicks, opens, and first
+      and last click. Every recipient is kept with zeros, then sorted and paged
+- [ ] MCP: the tool names, `/recipients.csv` excluded, `EXPECTED_TOOLS`. README endpoints and CHANGELOG
+- [ ] Timings on PostgreSQL: a campaign of 2,000 recipients with 20k visits
+
+### 3.17.3 Page (Agent 2)
+- [ ] Agent 2 breaks it down:
+  - the period;
+  - the header: recipients, open rate, click rate…;
+  - the charts, as a link's;
+  - the recipients table and its export.
+
+---
+
 ## Phase 4: AWS Deployment (ECS Express on griddo-main) — backend ✅ · frontend pending (4.10)
 
 **Status:** live at `https://s.griddo.io` since **2026-04-27** (first deploy, PRs #7–#11). `main` is
