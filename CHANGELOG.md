@@ -26,6 +26,15 @@ implementation lifecycle and is independent of the URL version segment.
 
 ## [Unreleased]
 
+### Changed — `users.api_key` is no longer mapped, ahead of its drop (Phase 6.3)
+- The plaintext column, empty since `0007`, stayed mapped as `_legacy_api_key`, so the ORM still named it in every
+  SELECT and INSERT of a user. Dropping it in the next release would have failed every user query on the task still
+  running this one, mid-rollout: signing in, every authenticated call, the MCP.
+- This release doesn't map it. A PostgreSQL test drops the column by hand and runs this release against the result:
+  signing in, generating an API key, `/me`, an MCP tool call with the key, revoking.
+- The release after drops it, in migration `0009`. Until then the migration drift test ignores exactly that column
+  and its index, and a guard fails once they're gone.
+
 ### Security — the client IP behind CloudFront (Phase 6.3)
 - **Behind CloudFront, the client IP is the viewer's, not the edge's.** Once `shurly.griddo.io` goes through the
   distribution (4.10), the ALB's peer is a CloudFront edge, and every per-IP rate limit would have counted
