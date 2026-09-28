@@ -37,7 +37,11 @@ implementation lifecycle and is independent of the URL version segment.
 - **An export uploaded back as a campaign keeps its data:** the CSV import drops that
   quote again. A phone number like `+34 600…` also gets the quote in an export; that's
   the usual trade-off.
-- The campaign export's filename is now quoted and its response isn't cached
+- **Any campaign name exports.** The download's filename came from the campaign's name
+  as it was: a name outside latin-1 (`Q4 🚀`, `东京`) made the export fail with a 500,
+  and quotes, CR/LF or slashes went into the `Content-Disposition` header. Every CSV now
+  sends a plain ASCII `filename` and the real name in `filename*` (RFC 6266/5987,
+  `content_disposition`), which browsers prefer. The response isn't cached
   (`Cache-Control: no-store`), like the other CSVs.
 
 ### Security — the frontend's markup, audited (Phase 6.3)

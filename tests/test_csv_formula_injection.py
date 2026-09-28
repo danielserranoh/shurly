@@ -10,6 +10,8 @@ CSV import drops it again, so an export uploaded back keeps its data.
 
 import csv
 import io
+import re
+from urllib.parse import unquote
 
 import pytest
 
@@ -129,3 +131,37 @@ class TestSpreadsheetSafe:
     @pytest.mark.parametrize("value", ["Ana", "", "1=1", "a@b.c", "2026-09-28", 5, -5, None])
     def test_anything_else_is_left_alone(self, value):
         assert spreadsheet_safe(value) == value
+
+
+class TestFilename:
+    """The export's filename comes from the campaign's name, which is user input."""
+
+    @pytest.mark.parametrize(
+        ("name", "real_name"),
+        [
+            ("Plain Name", "campaign_Plain Name.csv"),
+            ("Q4 🚀", "campaign_Q4 🚀.csv"),
+            ("东京", "campaign_东京.csv"),
+            ('a"; filename="evil.exe', 'campaign_a"; filename="evil.exe.csv'),
+            ("x\r\nSet-Cookie: a=b", "campaign_xSet-Cookie: a=b.csv"),
+            ("../../etc/passwd", "campaign_../../etc/passwd.csv"),
+        ],
+    )
+    def test_any_name_exports_with_a_safe_header(
+        self, client, db_session, test_user, auth_headers, name, real_name
+    ):
+        campaign = _campaign(db_session, test_user, {"plain": "x"})
+        campaign.name = name
+        db_session.commit()
+
+        response = client.get(f"/api/v1/campaigns/{campaign.id}/export", headers=auth_headers)
+
+        assert response.status_code == 200
+        header = response.headers["content-disposition"]
+        header.encode("latin-1")  # sendable at all
+        assert "\r" not in header and "\n" not in header
+        fallback = re.search(r'filename="([^"]*)"', header)[1]
+        assert re.fullmatch(r"[A-Za-z0-9._ -]+", fallback)
+        assert header.count("filename=") == 1  # nothing smuggled in a second one
+        encoded = re.search(r"filename\*=UTF-8''(\S+)", header)[1]
+        assert unquote(encoded) == real_name

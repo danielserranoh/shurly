@@ -2,7 +2,9 @@
 
 import csv
 import io
+import re
 from collections.abc import Iterable, Iterator, Sequence
+from urllib.parse import quote
 
 from fastapi.responses import StreamingResponse
 
@@ -30,6 +32,27 @@ def unquote_spreadsheet_text(value: str) -> str:
     if value.startswith("'") and value[1:].startswith(_FORMULA_START):
         return value[1:]
     return value
+
+
+_NOT_PLAIN = re.compile(r"[^A-Za-z0-9._ -]")
+
+
+def content_disposition(filename: str) -> str:
+    """
+    `attachment`, with the filename twice (RFC 6266): a plain ASCII fallback in
+    `filename`, and the real name, percent-encoded UTF-8, in `filename*` (RFC 5987),
+    which browsers prefer. Phase 6.3: the name can come from a campaign's, i.e. user
+    input. Without this, a name outside latin-1 ("Q4 🚀", "东京") made the export
+    fail, and quotes, CR/LF or slashes went into the header as they were.
+    """
+    printable = "".join(char for char in filename if char.isprintable())[:120]
+    stem, dot, extension = printable.rpartition(".")
+    if not dot:
+        stem, extension = printable, ""
+    fallback = _NOT_PLAIN.sub("_", stem).strip() or "export"
+    if extension:
+        fallback = f"{fallback}.{_NOT_PLAIN.sub('_', extension)}"
+    return f"attachment; filename=\"{fallback}\"; filename*=UTF-8''{quote(printable, safe='')}"
 
 
 def stream_csv(
@@ -63,7 +86,7 @@ def stream_csv(
         _generate(),
         media_type="text/csv",
         headers={
-            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Content-Disposition": content_disposition(filename),
             "Cache-Control": "no-store",
         },
     )
