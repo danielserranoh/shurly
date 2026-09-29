@@ -14,17 +14,9 @@ on:
     branches: [main]
   schedule:
     - cron: '0 5 * * 1'
+  # By hand, for a rollback or a redeploy: from main only. The `production` environment
+  # allows the main branch alone, and the deploy role trusts that environment alone.
   workflow_dispatch:
-    inputs:
-      environment:
-        description: 'Environment to deploy to'
-        required: true
-        default: 'prod'
-        type: choice
-        options:
-          - dev
-          - staging
-          - prod
 
 # OIDC needs id-token: write so the runner can assume the IAM role in AWS
 # without long-lived access keys. We use SSO locally and OIDC in CI; access
@@ -49,8 +41,12 @@ env:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    # The GitHub environment `production` (Settings → Environments) deploys from `main` only,
+    # and the AWS role trusts `repo:danielserranoh/shurly:environment:production` alone, so no
+    # other branch's workflow can assume it. Until 2026-09-29 this was `dev` (a leftover of the
+    # dev/staging/prod choice), with no rules, and the role trusted any ref of the repo.
     environment:
-      name: ${{ github.event.inputs.environment || 'dev' }}
+      name: production
 
     steps:
       - name: Checkout code
