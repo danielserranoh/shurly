@@ -472,6 +472,10 @@ System creates:
 - [x] Tests for expiry edge cases (9 new tests covering boundary, nullable, validity window, quota consumption)
 - [x] Only clicks use up the cap, as `click_count` counts them: crawler previews aren't logged, and bot hits
   and pixel opens are logged but don't count (2026-09-28: the cap had counted every Visitor row)
+- [x] A page, not JSON, for the people who open one (2026-09-29, Phase 8 parity with Shlink): a browser gets
+  `server/templates/link_unavailable.html` with the same 404 or 410; everything else the JSON. Not yet active is
+  the no-such-link page, as its 404 always was. A strict CSP allows the page's one style block by hash, taken
+  from the page as served (`tests/test_unavailable_link.py`)
 - [ ] Future CLI / scheduled Lambda for `delete-expired` (deferred to Phase 6 — bundled with the post-launch optimization sweep)
 
 ### 3.9.3 Bot Detection in Analytics ✅
@@ -591,6 +595,8 @@ System creates:
 - [x] `REDIRECT_CACHE_LIFETIME` config + `Cache-Control` header (default `private, max-age=0`)
 - [x] Tradeoff documented in `server/core/config.py` comment block
 - [x] Tests for each status code + cache header (`tests/test_phase3106_redirect_config.py`)
+- [x] `INVALID_SHORT_URL_REDIRECT` (2026-09-29), Shlink's: where a link that doesn't lead anywhere sends everyone,
+  as a 302 that isn't cached. Off by default; an absolute http(s) URL or the app won't start
 
 ### 3.10.7 Verification ✅
 - [x] All existing tests still pass — **285 passing**
@@ -1820,6 +1826,8 @@ with one ALB change, and rolling back restores it. Shurly resolves links by (Hos
 - [x] Shared or personal links 🔎 R7: **the organization's by default, personal only on purpose** (decided
       2026-09-27) → 3.14
 - [x] Owner of the migrated links: the Griddo organization (3.14)
+- [ ] Check `go.griddo.io`'s current not-found redirects in Shlink before the cutover: invalid short URL, base URL,
+      regular 404. Set `INVALID_SHORT_URL_REDIRECT` to match the first (3.10.6); Shurly has no setting for the others
 - [x] Visit history: import it as `Visitor` rows (no schema change, but Shlink exposes no IPs, so unique-visitor
       counts won't cover it) or archive Shlink's export and start counting at the cutover → **decided
       2026-09-28: imported**, with the import's `--visits`: ip "unknown" (which tells imported visits apart), the

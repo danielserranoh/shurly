@@ -1,5 +1,6 @@
 import json
 from typing import Any
+from urllib.parse import urlsplit
 
 from pydantic import SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -195,6 +196,20 @@ class Settings(BaseSettings):
     def _validate_redirect_status(cls, v: int) -> int:
         if v not in (301, 302, 307, 308):
             raise ValueError("redirect_status_code must be one of 301, 302, 307, 308")
+        return v
+
+    # Shlink's "invalid short URL" redirect: where a short link that doesn't lead anywhere (no
+    # such code, not live yet, expired or used up) sends everyone, as a 302 that isn't cached.
+    # Empty (default): people get a page, anything else the JSON, with its 404 or 410.
+    invalid_short_url_redirect: str = ""
+
+    @field_validator("invalid_short_url_redirect")
+    @classmethod
+    def _validate_invalid_short_url_redirect(cls, v: str) -> str:
+        if v:
+            parts = urlsplit(v)
+            if parts.scheme not in ("http", "https") or not parts.netloc:
+                raise ValueError("invalid_short_url_redirect must be an absolute http(s) URL")
         return v
 
     # SSRF guard for the Open Graph fetcher. Destination URLs are user-supplied, so link

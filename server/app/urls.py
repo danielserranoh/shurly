@@ -1,6 +1,9 @@
 """URL shortening endpoints."""
 
+import base64
+import hashlib
 import logging
+import re
 from datetime import datetime, timezone
 from urllib.parse import urlencode
 from uuid import UUID
@@ -45,6 +48,7 @@ from server.utils.bounds import MAX_SKIP
 from server.utils.columns import fit
 from server.utils.domain import get_or_create_default_domain, resolve_domain_for_host
 from server.utils.geo import country_of
+from server.utils.negotiation import prefers_html
 from server.utils.network import UNKNOWN_IP, visit_ip
 from server.utils.opengraph import fetch_opengraph_metadata, is_social_media_crawler
 from server.utils.redirect_rules import pick_target
@@ -68,6 +72,55 @@ redirect_router = APIRouter()  # Separate router for redirect endpoint
 
 # Initialize Jinja2 templates for preview page
 templates = Jinja2Templates(directory="server/templates")
+
+# ROADMAP 3.9.2 — what a person's browser gets for a short link that doesn't lead anywhere. The
+# page's one <style> block is allowed by its hash, taken from the page as it's served, so an edit
+# to the CSS can't leave it unstyled. The block has no Jinja: every `reason` gives the same one.
+UNAVAILABLE_PAGE = "link_unavailable.html"
+
+
+def _style_hash(template: str) -> str:
+    served = templates.env.get_template(template).render(reason="unknown")
+    style = re.search(r"<style>(.*?)</style>", served, re.S).group(1)
+    return "sha256-" + base64.b64encode(hashlib.sha256(style.encode()).digest()).decode()
+
+
+UNAVAILABLE_HEADERS = {
+    "Content-Security-Policy": (
+        f"default-src 'none'; style-src '{_style_hash(UNAVAILABLE_PAGE)}'; img-src data:; "
+        "base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+    ),
+    # A link fixed later shouldn't stay cached as a 404 or a 410.
+    "Cache-Control": "no-store",
+    "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "no-referrer",
+    "X-Robots-Tag": "noindex",
+    "Vary": "Accept",
+}
+
+
+def _unavailable(request: Request, status_code: int, reason: str, detail: str) -> Response:
+    """
+    A short link that doesn't lead anywhere: with INVALID_SHORT_URL_REDIRECT, a 302 there for
+    everyone (Shlink's setting), never cached; otherwise the status code, as a page for a person's
+    browser (`reason`: unknown, expired or used_up) and as the JSON it always was for everything
+    else. `Vary: Accept`, since the body depends on it.
+    """
+    if settings.invalid_short_url_redirect:
+        return RedirectResponse(
+            url=settings.invalid_short_url_redirect,
+            status_code=status.HTTP_302_FOUND,
+            headers={"Cache-Control": "private, max-age=0"},
+        )
+    if not prefers_html(request.headers.get("accept")):
+        raise HTTPException(status_code=status_code, detail=detail, headers={"Vary": "Accept"})
+    return templates.TemplateResponse(
+        request,
+        UNAVAILABLE_PAGE,
+        {"reason": reason},
+        status_code=status_code,
+        headers=UNAVAILABLE_HEADERS,
+    )
 
 
 # Phase 3.11 — URLResponse computed fields (`short_url`, `click_count`).
@@ -1156,7 +1209,10 @@ def _with_query(destination: str, params: dict) -> str:
 @redirect_router.get(
     "/{short_code}",
     responses={
-        302: {"description": "Redirect to original URL"},
+        302: {
+            "description": "Redirect to original URL; or, with INVALID_SHORT_URL_REDIRECT, "
+            "where a link that doesn't lead anywhere sends everyone"
+        },
         **get_responses(404),
         410: {"description": "Short URL is expired or has reached its visit cap"},
     },
@@ -1176,6 +1232,10 @@ def redirect_short_url(short_code: str, request: Request, db: Session = Depends(
     - **302**: Temporary redirect to original URL for regular browsers
     - **404**: Short URL not found, or URL is not yet active (`valid_since` in the future)
     - **410**: URL is expired (`valid_until` passed) or has reached its `max_visits` cap
+
+    A 404 or 410 is a page for a person's browser (its Accept prefers text/html), and the JSON
+    `{"detail": …}` for everything else. Not yet active answers exactly as not found does. With
+    INVALID_SHORT_URL_REDIRECT set, all four send everyone there instead, with a 302.
 
     **Note:**
     - Campaign user data is ALWAYS appended as query parameters (for personalization)
@@ -1210,35 +1270,26 @@ def redirect_short_url(short_code: str, request: Request, db: Session = Depends(
             )
         )
         db.commit()
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Short URL '{short_code}' not found",
-        )
+        return _unavailable(request, 404, "unknown", f"Short URL '{short_code}' not found")
 
     # Phase 3.9.2 — validity window and visit cap enforcement.
-    # Order matters: not-yet-valid returns 404 (don't reveal premature URLs);
-    # expired and quota-exhausted return 410 (the URL existed and is no longer active).
+    # Order matters: not-yet-valid returns 404 (don't reveal premature URLs): it answers,
+    # page included, exactly as no such code does. Expired and quota-exhausted return 410
+    # (the URL existed and is no longer active).
     now = datetime.now(timezone.utc)
 
     if url.valid_since is not None and now < _as_utc(url.valid_since):
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Short URL '{short_code}' not found",
-        )
+        return _unavailable(request, 404, "unknown", f"Short URL '{short_code}' not found")
 
     if url.valid_until is not None and now >= _as_utc(url.valid_until):
-        raise HTTPException(
-            status_code=status.HTTP_410_GONE,
-            detail="This short URL has expired",
-        )
+        return _unavailable(request, 410, "expired", "This short URL has expired")
 
     # The cap counts clicks, the `click_count` the API reports: bot hits and email opens don't
     # use it up. One definition, so the link page's "N of max" can't disagree with the 410.
     if url.max_visits is not None:
         if _click_count(db, url) >= url.max_visits:
-            raise HTTPException(
-                status_code=status.HTTP_410_GONE,
-                detail="This short URL has reached its visit limit",
+            return _unavailable(
+                request, 410, "used_up", "This short URL has reached its visit limit"
             )
 
     # Phase 3.10.2 — let conditional rules override the destination before we
