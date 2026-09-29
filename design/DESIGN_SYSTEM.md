@@ -75,6 +75,8 @@ toasts, confirm dialogs and copy feedback (`ui.ts`), who's looking and locked co
   in place. The spinner is a pinging brand-blue dot.
 - **Empty.** Illustration, one sentence on what goes here, and the action that fills it.
   "No results" is a different state from "nothing yet" and offers a way to clear the filters.
+- **First run.** A new member's list already shows the team's links, so the empty state isn't where they start:
+  for an account's first 14 days, the dashboard opens with a welcome card and where to start, until it's dismissed.
 - **Errors, by severity.** Field problems appear inline under the field (focus moves to the first one, and
   collapsed sections open). Form-level API errors go in an alert inside the form. Background or
   async failures show a toast. A page that fails to load gets an error state with **Try again**.

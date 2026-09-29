@@ -26,6 +26,14 @@ implementation lifecycle and is independent of the URL version segment.
 
 ## [Unreleased]
 
+### Added — a welcome for new members (the dogfood, 5.6)
+- **For an account's first 14 days, the dashboard opens with a welcome card**, until it's dismissed on that browser:
+  - links belong to the organization, by its name, so the team sees them; personal ones on purpose;
+  - where to start: paste a link below; track a campaign from a CSV; connect Claude.
+- **Why:** links are the organization's (3.14), so a new member's list shows the team's links and the "first link"
+  empty state never greets them. The old card needed a `?welcome=` that nothing set since the register page went
+  (3.13).
+
 ### Fixed — the short-link host's icon, and a strict CSP on the crawler preview
 - **`/favicon.ico` answers with a 204,** cached a week. Browsers ask every host for its icon. On the short-link host
   the request reached `/{short_code}`, and was an orphan visit in "Typos & broken links" each time. `robots.txt`
