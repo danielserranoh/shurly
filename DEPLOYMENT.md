@@ -865,6 +865,70 @@ Google client and `ORGANIZATION_DOMAIN` above:
 
 ---
 
+## People: joining, roles and leaving (Phase 3.14)
+
+For the rollout to the team (ROADMAP 5.6.1). People join by themselves, and an owner manages roles and removals in the
+app, in Settings → Organization. Only bringing back someone who was removed needs the database.
+
+### Before anyone joins
+
+- **Sign in with Google is set up** (§ Sign in with Google): `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`,
+  `GOOGLE_REDIRECT_URI`, `FRONTEND_URL` and `ORGANIZATION_DOMAIN`.
+- **`ORGANIZATION_DOMAIN`** is the Google Workspace domain whose accounts get in (`griddo.io`), and
+  **`ORGANIZATION_NAME`** is what the app calls the organization (`Griddo`).
+- **`BOOTSTRAP_OWNER_EMAIL`** names the first owner. That account becomes owner when it joins an organization without
+  one, and at every start of the app, if no owner is left, it's made owner again (break-glass). Set it to whoever runs
+  the rollout, and have them sign in first.
+- **`ALLOW_PASSWORD_SIGNUP` stays off**: accounts come from Google.
+
+### Joining
+
+There's no invitation list: anyone with an account on the domain who has the address can sign in. Send people the
+app's `/login/` page, and they choose Sign in with Google with their work account.
+
+- **Google vouches for them:** the address has to be verified, and the account's Workspace domain (`hd`) has to be
+  `ORGANIZATION_DOMAIN`. Otherwise the login page says only the organization's accounts can sign in, or that Google
+  hasn't verified the address.
+- **The first sign-in makes the account** and adds it to the organization as a **member**, with the names Google has
+  for them as their profile.
+- **An account made before sign-in with Google** (with a password) is linked the first time its owner signs in with
+  Google, and loses its password, its API key and its other sessions: nobody had verified that address.
+- For their first 14 days, the dashboard opens with a welcome: where to start, and connecting Claude.
+
+### Roles
+
+| Role | Can |
+|---|---|
+| member | Make links and campaigns, see the organization's, and change what they made |
+| admin | Also change and delete anyone's organization links and campaigns, and remove members |
+| owner | Also change roles, hand the role over, see who was removed and move their personal links to the organization |
+
+- **Owners change roles**, in Settings → Organization: anyone's but another owner's, to member, admin or owner. Nobody
+  raises their own role; anyone can lower it. Owners step down themselves.
+- **Hand over ownership** makes someone owner and the person handing it over an admin, in one change.
+- **There's always an owner:** the last one can't step down, and owners can't be removed. Make a second owner early
+  (ROADMAP: two owners from day one).
+- **Personal links and campaigns** stay their maker's: nobody else sees them, admins and owners included.
+
+### Leaving
+
+- **An admin or an owner removes someone below their role**: Settings → Organization, then Remove from organization.
+  Nobody removes themselves.
+- **Removing closes the account.** They can't sign in again, their API key is gone, and their sessions and the MCP's
+  sign-ins stop working at their next request. Their links keep working for whoever has them.
+- **What they made:** their organization links and campaigns stay the organization's. Their personal ones stay theirs,
+  seen by nobody, until an owner moves them to the organization from Removed people (Move to Griddo), then or later.
+- **Bringing someone back isn't in the app.** It's a database change, `users.is_active` back to true. The app's next
+  start makes them a member again: their role and their API key don't come back.
+
+### The rollout, step by step
+
+1. The first owner (`BOOTSTRAP_OWNER_EMAIL`) signs in, and Settings → Organization shows them as owner.
+2. Send each person the app's address, the manual (`/manual/`) and, for Claude, `/manual/install-mcp/`.
+3. As they sign in, they appear in Settings → Organization as members. Make a second owner.
+4. Watch the signal: § What the web app is used for, `client.error` in § Error alerting, and the MCP's `mcp.tool_call`
+   queries (`mcp_server/README.md` § Usage log).
+
 ## Error alerting (Phase 6.4)
 
 The app writes one JSON line per request (`http.request`, with its `status`) to the task's log group,
