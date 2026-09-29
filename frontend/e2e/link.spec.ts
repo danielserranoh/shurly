@@ -1,28 +1,16 @@
-// Phase 6.1 — a link from start to numbers: shortened on the dashboard, clicked and opened, then its page (3.16):
-// the all-time numbers, the tabs, the periods (a custom range refused, then applied) and the CSV of its visits.
+// Phase 6.1 — a link from start to numbers: shortened on the dashboard, found in the list, clicked and opened, then
+// its page (3.16): the all-time numbers, the tabs, the periods (a custom range refused, then applied) and the CSV
+// of its visits.
 
-import { readFile } from 'node:fs/promises';
-
-import type { Locator } from '@playwright/test';
-
-import { API_URL, BROWSER_UA } from './env';
 import { expect, test } from './fixtures';
-
-/** A YYYY-MM-DD date `days` after `date` (before, when negative). */
-const shift = (date: string, days: number) => new Date(Date.parse(`${date}T00:00:00Z`) + days * 86_400_000).toISOString().slice(0, 10);
-
-/** Picks an option of a segmented control as a person does, on its label: the radio itself sits under it. */
-async function pick(radio: Locator) {
-  await radio.locator('xpath=..').click();
-  await expect(radio).toBeChecked();
-}
+import { clickLink, csvLines, openEmail, pick, shift } from './helpers';
 
 // One link for the whole file, made by the first test: the others read its numbers.
 test.describe.configure({ mode: 'serial' });
 let code = '';
 const destination = `https://example.com/e2e/${Date.now()}`;
 
-test('the dashboard shortens a link, which then redirects and counts', async ({ page, request }) => {
+test('the dashboard shortens a link and lists it, and its page starts at zero', async ({ page }) => {
   await page.goto('/dashboard/');
   await page.getByLabel('Long link').fill(destination);
   await page.getByRole('button', { name: 'Shorten' }).click();
@@ -31,15 +19,19 @@ test('the dashboard shortens a link, which then redirects and counts', async ({ 
   code = (await shortLink.textContent())?.split('/').pop() ?? '';
   expect(code).toMatch(/^[\w-]+$/);
 
-  // Someone clicks it, and their email client loads its pixel: straight to the API, as a browser would.
-  const click = await request.get(`${API_URL}/${code}`, { headers: { 'User-Agent': BROWSER_UA }, maxRedirects: 0 });
-  expect(click.status()).toBe(302);
-  expect(click.headers().location).toBe(destination);
-  const pixel = await request.get(`${API_URL}/${code}/track`, { headers: { 'User-Agent': BROWSER_UA } });
-  expect(pixel.headers()['content-type']).toBe('image/gif');
+  const card = page.locator('li[data-link]', { hasText: `/${code}` });
+  await expect(card).toBeVisible();
+  await card.getByRole('link', { name: 'example.com', exact: true }).click(); // its title: the destination's host
+  await expect(page).toHaveURL(new RegExp(`/dashboard/link/\\?code=${code}\\b`));
+  await expect(page.locator('[data-stat="clicks"]')).toHaveText('0');
+  await expect(page.locator('[data-stat="opens"]')).toHaveText('0');
 });
 
-test('its page counts the click and the open, all time', async ({ page }) => {
+test('a click and an email open count, all time', async ({ page, request }) => {
+  // Someone clicks it, and their email client loads its pixel.
+  expect(await clickLink(request, code)).toBe(destination);
+  await openEmail(request, code);
+
   await page.goto(`/dashboard/link/?code=${code}`);
   await expect(page.locator('[data-stat="clicks"]')).toHaveText('1');
   await expect(page.locator('[data-stat="opens"]')).toHaveText('1');
@@ -107,10 +99,7 @@ test("Export CSV downloads the period's visits", async ({ page }) => {
   const [download] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: 'Export CSV' }).click()]);
   expect(download.suggestedFilename()).toMatch(new RegExp(`^${code}-visits-\\d{4}-\\d{2}-\\d{2}-\\d{4}-\\d{2}-\\d{2}\\.csv$`));
 
-  const [header, ...rows] = (await readFile(await download.path(), 'utf8'))
-    .replace(/^\uFEFF/, '')
-    .split(/\r?\n/)
-    .filter(Boolean);
+  const [header, ...rows] = await csvLines(download);
   expect(header).toBe('visited_at,kind,country,browser,os,device,referrer,user_agent');
   expect(rows.map((row) => row.split(',')[1]).sort()).toEqual(['click', 'open']);
 });
