@@ -68,6 +68,7 @@ EXPECTED_TOOLS: set[str] = {
     "get_campaign_totals",
     "get_campaign_timeseries",
     "get_campaign_breakdown",
+    "list_campaign_recipients",  # its CSV (`/recipients.csv`) is not a tool
     "get_orphan_visits",
     # Tags
     "list_tags",

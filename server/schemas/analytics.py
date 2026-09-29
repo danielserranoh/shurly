@@ -244,3 +244,42 @@ class CampaignTimeseriesResponse(CampaignPeriodResponse, SeriesFields):
 
 class CampaignBreakdownResponse(CampaignPeriodResponse, BreakdownFields):
     pass
+
+
+class RecipientRow(BaseModel):
+    """A campaign's recipient, all time: their link, their CSV row, and what they did."""
+
+    short_code: str
+    short_url: str
+    domain: str
+    user_data: dict = Field(description="The recipient's row of the campaign's CSV")
+    clicks: int
+    opens: int
+    first_click_at: datetime | None
+    last_click_at: datetime | None
+    last_open_at: datetime | None
+
+
+class RecipientCounts(BaseModel):
+    """How many recipients each filter gives for the search: Clicked and Opened can overlap."""
+
+    all: int
+    clicked: int = Field(description="Clicked: at least one click")
+    opened: int = Field(description="Opened: at least one pixel open")
+    none: int = Field(description="Neither clicked nor opened")
+
+
+class RecipientsResponse(BaseModel):
+    campaign_id: str
+    campaign_name: str
+    timezone: str = Field(description="The IANA time zone the times are given in")
+    filter: str
+    q: str
+    sort: str
+    order: str
+    total: int = Field(description="How many match the filter and the search, on every page")
+    page: int
+    page_size: int
+    pages: int
+    counts: RecipientCounts
+    recipients: list[RecipientRow]

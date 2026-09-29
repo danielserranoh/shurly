@@ -186,3 +186,59 @@ def test_a_campaigns_analytics_on_postgresql(pg_client, pg_session):
     assert (totals["clicks"], totals["opens"], totals["click_rate"]) == (3, 3, 0.6667)
     for route in ("timeseries?group_by=month", "breakdown?type=all"):
         assert pg_client.get(f"{base}/{route}", headers=headers).status_code == 200, route
+
+
+def test_a_campaigns_recipients_on_postgresql(pg_client, pg_session):
+    """
+    Phase 3.17 — the search runs on `json_each_text`: `user_data`'s values, not its keys, with
+    PostgreSQL's case folding beyond ASCII, and a JSON null that isn't an object doesn't break it.
+    Never-clicked recipients sort last, as NULLS LAST says.
+    """
+    user = User(email="owner@example.com", password_hash=hash_password("secret123"), is_active=True)
+    pg_session.add(user)
+    pg_session.flush()
+    campaign = Campaign(
+        name="Q4", original_url="https://example.org", csv_columns=["name"], created_by=user.id
+    )
+    pg_session.add(campaign)
+    pg_session.flush()
+    domain = get_or_create_default_domain(pg_session)
+    for code, user_data, clicks in [
+        ("pgr-ana", {"name": "Ana Muñoz", "email": "ana@example.com"}, 2),
+        ("pgr-luis", {"name": "Luis", "email": "luis@example.com"}, 0),
+        ("pgr-none", None, 1),  # stored as a JSON null
+    ]:
+        url = URL(
+            short_code=code,
+            original_url="https://example.org",
+            url_type=URLType.CAMPAIGN,
+            campaign_id=campaign.id,
+            user_data=user_data,
+            created_by=user.id,
+            domain_id=domain.id,
+        )
+        pg_session.add(url)
+        pg_session.flush()
+        for _ in range(clicks):
+            pg_session.add(
+                Visitor(
+                    url_id=url.id, short_code=code, ip="203.0.113.0", visited_at=datetime.utcnow()
+                )
+            )
+    pg_session.commit()
+    headers = {"Authorization": f"Bearer {create_access_token(data={'sub': user.email})}"}
+    base = f"/api/v1/analytics/campaigns/{campaign.id}/recipients"
+
+    def codes(**params) -> list[str]:
+        response = pg_client.get(base, params=params, headers=headers)
+        assert response.status_code == 200, response.text
+        return [r["short_code"] for r in response.json()["recipients"]]
+
+    assert codes(q="MUÑOZ") == ["pgr-ana"]
+    assert codes(q="email") == []
+    assert codes(q="pgr-") == ["pgr-ana", "pgr-none", "pgr-luis"]
+    assert codes(sort="last_click", order="asc")[-1] == "pgr-luis"
+    counts = pg_client.get(base, headers=headers).json()["counts"]
+    assert counts == {"all": 3, "clicked": 2, "opened": 0, "none": 1}
+    response = pg_client.get(f"{base}.csv", params={"q": "example"}, headers=headers)
+    assert response.status_code == 200 and "Ana Muñoz" in response.text

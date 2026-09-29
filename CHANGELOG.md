@@ -27,19 +27,28 @@ implementation lifecycle and is independent of the URL version segment.
 ## [Unreleased]
 
 ### Added — the API for a campaign's analytics (Phase 3.17)
-- **Three routes under `/api/v1/analytics/campaigns/{campaign_id}/`, for the campaign's page.** The contract is in
+- **Five routes under `/api/v1/analytics/campaigns/{campaign_id}/`, for the campaign's page.** The contract is in
   ROADMAP 3.17.1:
   - **`/totals`**: the header's all-time numbers: recipients, clicks, email opens, **Clicked** and **Opened**
     (the recipients with at least one click, or at least one pixel open; one can be both), the click and open
     rates, countries, and the last click.
   - **`/timeseries`** and **`/breakdown`**: a link's (Phase 3.16), over all the campaign's links, with the same
     period, kinds and labels.
+  - **`/recipients`**: all time, for following up with people. Each recipient has their link, CSV row, clicks,
+    opens, first and last click and last open.
+    - A filter: all, Clicked, Opened or none.
+    - A search over their CSV values and code.
+    - A sort, and 50 a page.
+    - `counts`: how many each filter gives for the search.
+
+    Searching, filtering, sorting and paging all happen in the database.
+  - **`/recipients.csv`**: the same, every row, spreadsheet-safe. It isn't an MCP tool.
 - **They answer for exactly the campaigns `/users` answers for:** the organization's, whatever the role, and your
   own. `/summary`, `/users` and the new routes now decide with one function.
 - **The open rate overcounts, as opens do:** Apple Mail Privacy Protection loads the pixel when a message arrives,
   read or not.
-- **The MCP gains `get_campaign_totals`, `get_campaign_timeseries` and `get_campaign_breakdown`.** `/summary` and
-  `/users` are unchanged.
+- **The MCP gains `get_campaign_totals`, `get_campaign_timeseries`, `get_campaign_breakdown` and
+  `list_campaign_recipients`.** `/summary` and `/users` are unchanged.
 
 ### Added — a campaign's recipients table (styleguide, Phase 3.17)
 - **`recipientsView()`** (`frontend/src/utils/recipients.ts`), for the campaign page's Recipients: a table on

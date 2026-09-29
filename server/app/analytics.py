@@ -9,7 +9,7 @@ from uuid import UUID as UUIDType
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
 from pydantic import BeforeValidator
-from sqlalchemy import func, select
+from sqlalchemy import JSON, and_, case, cast, func, literal, or_, select
 from sqlalchemy.orm import Query as SAQuery
 from sqlalchemy.orm import Session
 
@@ -33,6 +33,9 @@ from server.schemas.analytics import (
     HourCounts,
     LinkTotalsResponse,
     OverviewStats,
+    RecipientCounts,
+    RecipientRow,
+    RecipientsResponse,
     TimeseriesBucket,
     TimeseriesResponse,
     VisitRow,
@@ -55,7 +58,7 @@ from server.utils.local_days import (
 )
 from server.utils.network import UNKNOWN_IP
 from server.utils.profile import clean_timezone
-from server.utils.url import build_short_url, link_hostname
+from server.utils.url import build_short_url, link_hostname, link_short_url
 from server.utils.visit_facets import country_label, families, kind_of, referrer_host
 
 
@@ -229,7 +232,7 @@ def _click_totals(visits: SAQuery, days: LocalDays) -> dict:
         "clicked": clicked,
         "opened": opened,
         "countries": countries,
-        "last_click_at": days.local(last).replace(microsecond=0) if last else None,
+        "last_click_at": _moment(days, last),
     }
 
 
@@ -348,6 +351,142 @@ def _campaign_period_fields(campaign: Campaign, period: Period) -> dict:
 
 def _rate(part: int, whole: int) -> float:
     return round(part / whole, 4) if whole else 0.0
+
+
+def _moment(days: LocalDays, at: datetime | None) -> datetime | None:
+    """A naive-UTC time as the zone's, to the second; None stays None."""
+    return days.local(at).replace(microsecond=0) if at else None
+
+
+RecipientFilter = Literal["all", "clicked", "opened", "none"]
+RecipientSort = Literal["clicks", "opens", "last_click", "code"]
+
+
+def _recipient_numbers(campaign: Campaign):
+    """
+    Phase 3.17 — each of a campaign's links' all-time clicks and opens, first and last click
+    and last open: one aggregate over its visits that aren't a bot's, where a pixel hit is an
+    open and anything else a click (as in `_series`).
+    """
+    click, opened = Visitor.is_pixel.is_(False), Visitor.is_pixel.is_(True)
+    return (
+        select(
+            Visitor.url_id.label("url_id"),
+            func.sum(case((click, 1), else_=0)).label("clicks"),
+            func.sum(case((opened, 1), else_=0)).label("opens"),
+            func.min(case((click, Visitor.visited_at))).label("first_click"),
+            func.max(case((click, Visitor.visited_at))).label("last_click"),
+            func.max(case((opened, Visitor.visited_at))).label("last_open"),
+        )
+        .where(
+            Visitor.url_id.in_(select(URL.id).where(URL.campaign_id == campaign.id)),
+            Visitor.is_bot.is_(False),
+        )
+        .group_by(Visitor.url_id)
+        .subquery()
+    )
+
+
+def _search_recipients(db: Session, q: str):
+    """
+    `q`, ignoring case, over `user_data`'s values (never its keys) and the short code. Escaped
+    (`autoescape`): `%` and `_` in it are characters, not LIKE's wildcards.
+    """
+    if db.get_bind().dialect.name == "postgresql":
+        # json_each_text refuses anything but an object (a JSON null, say): an empty one then.
+        data = case(
+            (func.json_typeof(URL.user_data) == "object", URL.user_data),
+            else_=cast(literal("{}"), JSON),
+        )
+        fields = func.json_each_text(data).table_valued("value")
+    else:  # SQLite, in the tests
+        fields = func.json_each(URL.user_data).table_valued("value")
+    in_values = (
+        select(literal(1)).select_from(fields).where(fields.c.value.icontains(q, autoescape=True))
+    ).exists()
+    return or_(URL.short_code.icontains(q, autoescape=True), in_values)
+
+
+def _recipients(
+    db: Session,
+    campaign: Campaign,
+    q: str,
+    recipient_filter: str,
+    sort: str,
+    order: str,
+):
+    """
+    A campaign's recipients with their numbers, searched, filtered and sorted in SQL, and the
+    counts each filter gives for the search. Returns (the sorted query, the counts): its rows
+    are (URL, clicks, opens, first click, last click, last open).
+    """
+    numbers = _recipient_numbers(campaign)
+    clicks = func.coalesce(numbers.c.clicks, 0)
+    opens = func.coalesce(numbers.c.opens, 0)
+    last_click = numbers.c.last_click
+    recipients = (
+        db.query(URL)
+        .outerjoin(numbers, numbers.c.url_id == URL.id)
+        .filter(URL.campaign_id == campaign.id)
+    )
+    if q:
+        recipients = recipients.filter(_search_recipients(db, q))
+
+    everyone, clicked, opened, neither = recipients.with_entities(
+        func.count(URL.id),
+        func.sum(case((clicks > 0, 1), else_=0)),
+        func.sum(case((opens > 0, 1), else_=0)),
+        func.sum(case((and_(clicks == 0, opens == 0), 1), else_=0)),
+    ).one()
+    counts = RecipientCounts(
+        all=everyone, clicked=clicked or 0, opened=opened or 0, none=neither or 0
+    )
+
+    if recipient_filter == "clicked":
+        recipients = recipients.filter(clicks > 0)
+    elif recipient_filter == "opened":
+        recipients = recipients.filter(opens > 0)
+    elif recipient_filter == "none":
+        recipients = recipients.filter(clicks == 0, opens == 0)
+
+    def directed(expression):
+        return expression.desc() if order == "desc" else expression.asc()
+
+    # Ties: the latest click, most recent first (never clicked last), then the code.
+    ties = (last_click.desc().nulls_last(), URL.short_code.asc(), URL.id.asc())
+    if sort == "clicks":
+        ordering = (directed(clicks), *ties)
+    elif sort == "opens":
+        ordering = (directed(opens), *ties)
+    elif sort == "last_click":
+        ordering = (directed(last_click).nulls_last(), URL.short_code.asc(), URL.id.asc())
+    else:
+        ordering = (directed(URL.short_code), URL.id.asc())
+
+    rows = recipients.with_entities(
+        URL,
+        clicks,
+        opens,
+        numbers.c.first_click,
+        last_click,
+        numbers.c.last_open,
+    ).order_by(*ordering)
+    return rows, counts
+
+
+def _recipient_row(row, days: LocalDays) -> RecipientRow:
+    url, clicks, opens, first_click, last_click, last_open = row
+    return RecipientRow(
+        short_code=url.short_code,
+        short_url=link_short_url(url),
+        domain=link_hostname(url),
+        user_data=url.user_data or {},
+        clicks=clicks,
+        opens=opens,
+        first_click_at=_moment(days, first_click),
+        last_click_at=_moment(days, last_click),
+        last_open_at=_moment(days, last_open),
+    )
 
 
 def _breakdown(counts: Counter, total: int) -> list[BreakdownItem]:
@@ -1112,6 +1251,139 @@ def get_campaign_breakdown(
     return CampaignBreakdownResponse(
         **_campaign_period_fields(campaign, period),
         **_breakdown_fields(_campaign_visits(db, campaign), period, visit_type),
+    )
+
+
+_RECIPIENT_FILTER = Query(
+    "all", alias="filter", description="all; clicked; opened; or none (neither clicked nor opened)"
+)
+_RECIPIENT_SEARCH = Query(
+    "", max_length=200, description="Ignoring case, over user_data's values and the short code"
+)
+_RECIPIENT_SORT = Query("clicks", description="clicks, opens, last_click or code")
+_RECIPIENT_ORDER = Query("desc", description="desc or asc")
+
+
+@analytics_router.get(
+    "/campaigns/{campaign_id}/recipients",
+    response_model=RecipientsResponse,
+    responses={
+        200: {"description": "The campaign's recipients, a page at a time"},
+        **get_responses(400, 401, 404, 422),
+    },
+)
+def list_campaign_recipients(
+    campaign_id: str,
+    recipient_filter: RecipientFilter = _RECIPIENT_FILTER,
+    q: str = _RECIPIENT_SEARCH,
+    sort: RecipientSort = _RECIPIENT_SORT,
+    order: Literal["desc", "asc"] = _RECIPIENT_ORDER,
+    page: int = Query(1, ge=1, description="From 1; a page past the last is empty"),
+    page_size: int = Query(50, ge=1, le=200),
+    tz: TimeZoneParam = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    A campaign's recipients, all time, for following up with people: who clicked, who hasn't
+    (Phase 3.17). Each shows their link, their CSV row (`user_data`), their clicks and opens,
+    their first and last click and their last open. Bots don't count.
+
+    - **filter**: all; clicked (Clicked, at least one click); opened (Opened, at least one
+      pixel open); or none (neither)
+    - **q**: ignoring case, over `user_data`'s values (not its keys) and the short code
+    - **sort** and **order**: clicks (the default, most first), opens, last_click or code;
+      ties go to the latest click, then the code
+    - **counts**: how many each filter gives for `q`, whatever `filter`. Clicked and Opened
+      can overlap
+
+    The same campaigns, and so the same names and emails, as `/users`: the organization's,
+    whatever your role, and your own.
+    """
+    campaign = _visible_campaign_or_404(db, current_user, campaign_id)
+    days = LocalDays.of(current_user, tz)
+    rows, counts = _recipients(db, campaign, q, recipient_filter, sort, order)
+    total = rows.order_by(None).with_entities(func.count(URL.id)).scalar()
+    page_rows = rows.offset((page - 1) * page_size).limit(page_size).all()
+    return RecipientsResponse(
+        campaign_id=str(campaign.id),
+        campaign_name=campaign.name,
+        timezone=days.name,
+        filter=recipient_filter,
+        q=q,
+        sort=sort,
+        order=order,
+        total=total,
+        page=page,
+        page_size=page_size,
+        pages=-(-total // page_size),
+        counts=counts,
+        recipients=[_recipient_row(row, days) for row in page_rows],
+    )
+
+
+@analytics_router.get(
+    "/campaigns/{campaign_id}/recipients.csv",
+    response_class=StreamingResponse,
+    responses={
+        200: {"description": "Every recipient that matches", "content": {"text/csv": {}}},
+        **get_responses(400, 401, 404, 422),
+    },
+)
+def export_campaign_recipients(
+    campaign_id: str,
+    recipient_filter: RecipientFilter = _RECIPIENT_FILTER,
+    q: str = _RECIPIENT_SEARCH,
+    sort: RecipientSort = _RECIPIENT_SORT,
+    order: Literal["desc", "asc"] = _RECIPIENT_ORDER,
+    tz: TimeZoneParam = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Every recipient of a campaign that matches `filter` and `q`, sorted as the list, as a CSV
+    (Phase 3.17): their `user_data` columns, flattened as in `/users`' CSV, then their code,
+    short URL, clicks, opens, first and last click and last open. Every cell is
+    spreadsheet-safe: `user_data` comes from people's CSVs. Not an MCP tool.
+    """
+    campaign = _visible_campaign_or_404(db, current_user, campaign_id)
+    days = LocalDays.of(current_user, tz)
+    # Read before the response streams: the session is the request's.
+    rows, _ = _recipients(db, campaign, q, recipient_filter, sort, order)
+    recipients = [_recipient_row(row, days) for row in rows.all()]
+    columns: list[str] = []
+    for recipient in recipients:
+        columns += [key for key in recipient.user_data if key not in columns]
+
+    def moment(at: datetime | None) -> str:
+        return at.isoformat() if at else ""
+
+    lines = (
+        [
+            *(recipient.user_data.get(key, "") for key in columns),
+            recipient.short_code,
+            recipient.short_url,
+            recipient.clicks,
+            recipient.opens,
+            moment(recipient.first_click_at),
+            moment(recipient.last_click_at),
+            moment(recipient.last_open_at),
+        ]
+        for recipient in recipients
+    )
+    return stream_csv(
+        headers=[
+            *columns,
+            "short_code",
+            "short_url",
+            "clicks",
+            "opens",
+            "first_click_at",
+            "last_click_at",
+            "last_open_at",
+        ],
+        rows=lines,
+        filename=f"campaign-{campaign.id}-recipients.csv",
     )
 
 
