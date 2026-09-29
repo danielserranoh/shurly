@@ -236,8 +236,8 @@ implementation lifecycle and is independent of the URL version segment.
   - Settings: the profile saved and the header's initial following it, and the tabs by keyboard;
   - a phone (390 px): a link's tabs, and a campaign's recipients sorted from "Sort by";
   - the public pages, and the 404 page for an unknown address.
-- **Accessibility:** axe checks the landing, login, dashboard, link, campaign and Settings pages. A moderate,
-  serious or critical issue fails the test.
+- **Accessibility:** axe checks the landing, login, dashboard, link, campaign and Settings pages and the manual, on a
+  desktop and on a phone (390 px, the menu dialog included). A moderate, serious or critical issue fails the test.
 
 ### Fixed — a long search, and the landing and login pages' contrast and landmarks
 - **The recipients' search takes up to 200 characters**, as the API does. A longer paste got an error instead of

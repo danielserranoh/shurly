@@ -1698,10 +1698,12 @@ live in `mcp_server/README.md`, written for developers. There is no user manual 
         Settings: the profile, the tabs by keyboard; a phone (390 px): a link's tabs, a campaign's recipients;
         the public pages and the 404
 - [x] Accessibility checks (axe) in the end-to-end tests (`e2e/a11y.spec.ts`): the landing, login, dashboard, link,
-      campaign and Settings pages, with their content in. A moderate, serious or critical issue fails the test; one
-      that can't be fixed at once is allowed with a reason and its issue, never by turning a rule off. axe found no serious issue; checking by hand what it left undecided (text
-      over a gradient, SVG), the login page's example feed was about 3:1 (fixed). The moderate ones, fixed: the
-      landing had no `main` landmark, and the login page's logo and small print sat outside its landmarks
+      campaign and Settings pages and the manual, with their content in, on a desktop and on a phone (390 px, the
+      menu dialog included). A moderate, serious or critical issue fails the test; one that can't be fixed at once is
+      allowed with a reason and its issue, never by turning a rule off. axe found no serious issue; checking by hand
+      what it left undecided (text over a gradient, SVG), the login page's example feed was about 3:1 (fixed). The
+      moderate ones, fixed: the landing had no `main` landmark, and the login page's logo and small print sat outside
+      its landmarks. On a phone it found nothing; what it left undecided there measures 4.8:1 or more
 
 ### 6.2 Performance Optimization
 - [ ] Database indexes review
