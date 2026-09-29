@@ -19,19 +19,40 @@ EMAIL = "jane.doe@acme.example"
 
 @pytest.fixture
 def users_insert_fails(db_session):
-    """Every INSERT INTO users fails in the database, as on a lost connection."""
-    db_session.execute(
-        text(
-            "CREATE TRIGGER reject_users BEFORE INSERT ON users "
-            "BEGIN SELECT RAISE(ABORT, 'rejected'); END"
+    """Every INSERT INTO users fails in the database, as on a lost connection. A trigger in each
+    dialect the suite runs on (tests/conftest.py): SQLite's, or PostgreSQL's, a function's."""
+    postgres = db_session.get_bind().dialect.name == "postgresql"
+    if postgres:
+        db_session.execute(
+            text(
+                "CREATE FUNCTION reject_users() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN "
+                "RAISE EXCEPTION 'rejected' USING ERRCODE = 'integrity_constraint_violation'; "
+                "END $$"
+            )
         )
-    )
+        db_session.execute(
+            text(
+                "CREATE TRIGGER reject_users BEFORE INSERT ON users "
+                "FOR EACH ROW EXECUTE FUNCTION reject_users()"
+            )
+        )
+    else:
+        db_session.execute(
+            text(
+                "CREATE TRIGGER reject_users BEFORE INSERT ON users "
+                "BEGIN SELECT RAISE(ABORT, 'rejected'); END"
+            )
+        )
     db_session.commit()
     try:
         yield
     finally:
         db_session.rollback()
-        db_session.execute(text("DROP TRIGGER reject_users"))
+        if postgres:
+            db_session.execute(text("DROP TRIGGER reject_users ON users"))
+            db_session.execute(text("DROP FUNCTION reject_users()"))
+        else:
+            db_session.execute(text("DROP TRIGGER reject_users"))
         db_session.commit()
 
 

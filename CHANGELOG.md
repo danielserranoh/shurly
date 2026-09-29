@@ -26,6 +26,20 @@ implementation lifecycle and is independent of the URL version segment.
 
 ## [Unreleased]
 
+### Added — CI runs the whole suite on PostgreSQL too
+- **The suite ran on in-memory SQLite,** which takes what PostgreSQL refuses. The recent 500s only production could
+  give hid there: a `GROUP BY` on a `json` column, a NUL character in text. CI's PostgreSQL service ran only the
+  migration and PostgreSQL tests.
+- **A new job, `test-postgres`, runs all of it on PostgreSQL,** in parallel with the SQLite one, and the summary
+  waits for both.
+  - `TEST_SUITE_ON_POSTGRES=1`, with `TEST_DATABASE_URL`, gives the run a database of its own, one per process.
+  - That database is dropped when the run ends, however it ended.
+  - SQLite stays the default locally: it's faster.
+- **A trial run found nothing else hiding:** every test passed on PostgreSQL. The test that makes an insert fail now
+  does it with a trigger in each dialect.
+- `tests/test_suite_database.py` checks the suite runs on the database it was asked for, so the job can't quietly
+  run on SQLite.
+
 ### Added — how people join, get their roles and leave (a runbook, 7.2)
 - **`DEPLOYMENT.md` § People: joining, roles and leaving**, for the rollout to the team (5.6.1): what to set before
   anyone joins; that anyone on the Workspace domain who has the address can sign in, and what Google has to vouch

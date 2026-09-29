@@ -5,12 +5,13 @@ This guide provides comprehensive instructions for testing the Shurly URL shorte
 ## Table of Contents
 
 1. [Local Setup](#local-setup)
-2. [End-to-end tests](#end-to-end-tests)
-3. [Functional Testing Checklist](#functional-testing-checklist)
-4. [UX Testing Scenarios](#ux-testing-scenarios)
-5. [API Testing](#api-testing)
-6. [Edge Cases & Error Handling](#edge-cases--error-handling)
-7. [Performance Testing](#performance-testing)
+2. [The backend's tests](#the-backends-tests)
+3. [End-to-end tests](#end-to-end-tests)
+4. [Functional Testing Checklist](#functional-testing-checklist)
+5. [UX Testing Scenarios](#ux-testing-scenarios)
+6. [API Testing](#api-testing)
+7. [Edge Cases & Error Handling](#edge-cases--error-handling)
+8. [Performance Testing](#performance-testing)
 
 ---
 
@@ -110,6 +111,24 @@ npm run dev
 
 - Backend: http://localhost:8000/docs (should show Swagger UI)
 - Frontend: http://localhost:4232 (should show landing page)
+
+---
+
+## The backend's tests
+
+`uv run pytest` runs the suite on an in-memory SQLite database: fast, and the default. PostgreSQL, which
+production runs, refuses things SQLite takes (a `GROUP BY` on a `json` column, a NUL character in text), so CI
+runs the suite on it too. Locally, on any PostgreSQL server (`docker compose up -d db`):
+
+```bash
+# The migration and PostgreSQL tests, which skip without a server
+TEST_DATABASE_URL=postgresql+psycopg2://postgres:postgres@localhost:5432/postgres uv run pytest
+
+# The whole suite on PostgreSQL (CI's `test-postgres` job): a database made for the run, dropped at its end
+TEST_DATABASE_URL=postgresql+psycopg2://postgres:postgres@localhost:5432/postgres TEST_SUITE_ON_POSTGRES=1 uv run pytest
+```
+
+A run that's killed rather than ended leaves its `shurly_suite_…` database behind: drop it by hand.
 
 ---
 

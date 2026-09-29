@@ -141,6 +141,7 @@ Each is a count per window, and `0` turns it off. The per-IP ones need `TRUSTED_
 | Variable | Default | What it does |
 |---|---|---|
 | `TEST_DATABASE_URL` | (unset) | A PostgreSQL server for the migration and PostgreSQL tests, which skip without it (fail, with `--require-postgres`) |
+| `TEST_SUITE_ON_POSTGRES` | (unset) | `1` runs the whole suite on PostgreSQL instead of in-memory SQLite, as production runs: on a database made for the run on `TEST_DATABASE_URL`'s server, and dropped when it ends. CI's `test-postgres` job |
 | `E2E` | (unset) | `1` lets the end-to-end tests' API start (`tests/e2e/app.py`; Playwright sets it). It signs anyone in through a fake Google, so it also needs `DB_HOST` to be `localhost`, `127.0.0.1` or `::1` |
 | `E2E_API_URL` | `http://127.0.0.1:18000` | Where an end-to-end run serves that API (`tests/e2e/app.py`, `frontend/e2e/env.ts`) |
 | `E2E_WEB_URL` | `http://127.0.0.1:14321` | Where it serves the pages, built for that API |
