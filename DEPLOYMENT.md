@@ -375,6 +375,13 @@ That's the only secret needed. No `AWS_ACCESS_KEY_ID`, no `AWS_SECRET_ACCESS_KEY
 
 ## Frontend hosting (Phase 4.10)
 
+**Live since 2026-09-29.** Distribution `EJDA8EMBWVGDG` (`d1e7o4qkz3x60l.cloudfront.net`), bucket
+`shurly-frontend-686255983646` (eu-south-2), OAC `shurly-frontend-oac`, response-headers policy
+`shurly-security-headers`, function `shurly-static-paths`, certificate in us-east-1 for `shurly.griddo.io`, deploy role
+`github-actions-shurly-frontend-deploy` (repo secret `AWS_FRONTEND_DEPLOY_ROLE_ARN`, variables `FRONTEND_BUCKET` and
+`CLOUDFRONT_DISTRIBUTION_ID`). The task has `CLOUDFRONT_ORIGIN_SECRETS`, `FRONTEND_URL=https://shurly.griddo.io` and
+`CORS_ORIGINS='[]'`. No custom error responses. The secret origin header's value is in `_exchange/credentials.md`.
+
 The static build (`frontend/dist/`) lives in a private S3 bucket behind **one CloudFront distribution for
 `shurly.griddo.io`**, which also carries the API and the MCP to the ALB. The app and the API then share one
 origin, so the browser makes no cross-origin calls. Prepared in the repo: the deploy workflow, the CloudFront
