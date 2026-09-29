@@ -757,6 +757,8 @@ The resolver (`server/utils/network.py::resolve_client_ip`) checks the request's
 
 Behind CloudFront (`shurly.griddo.io`, Phase 4.10) the client IP comes from `CloudFront-Viewer-Address` instead, on requests that prove they came through the distribution: § Frontend hosting, "Client IPs behind CloudFront". Don't add CloudFront's ranges here.
 
+**uvicorn's proxy headers stay off** (`--no-proxy-headers` in the dockerfile's CMD). They're on by default, and they replace the connection's address before the app sees the request. Until 2026-09-29 the image ran them with `--forwarded-allow-ips "*"`, which takes the leftmost `X-Forwarded-For` entry, the one the client writes. So on `s.griddo.io` anyone could choose their address: the per-IP rate limits counted it, and visits stored it, with its country and city. Never turn them back on, and don't add `--forwarded-allow-ips`. The app reads `X-Forwarded-Proto` itself, from `TRUSTED_PROXIES` only (`ForwardedProtoMiddleware`), so what Starlette builds from the scheme, like a trailing-slash redirect, stays `https` behind the ALB. `tests/test_phase63_forwarded_headers.py` runs the real uvicorn with the CMD's flags.
+
 ## Rate limits (Phase 6.3)
 
 What anyone can call is limited per client IP, counted in the database (`rate_limits`) so both tasks share the counts: the password login (every attempt runs a bcrypt check, on the tasks that also serve redirects) and the Google and MCP sign-in endpoints (each request writes a row). Redirects, anything signed in and CORS preflights are never limited.

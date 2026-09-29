@@ -186,6 +186,14 @@ These were questions for the user. On 2026-09-29 both were kept as they are, to 
    - Now the preview's refresh target is the destination the rules pick, with only what the shared address itself
      forwards. People still get their personalized redirect, unchanged
      (`tests/test_campaign_link_preview.py`).
-2. **`PATCH /api/v1/campaigns/{campaign_id}/tags` answers a malformed id with another 400 message**
+2. **A client could choose the address its visits were stored under, on `s.griddo.io`. Fixed on 2026-09-29.**
+   - uvicorn ran with `--forwarded-allow-ips "*"`, and replaced the connection's address with the leftmost
+     `X-Forwarded-For` entry, which the client writes, before the app's own resolution ran.
+   - So on the path straight to the ALB, a visit's and an orphan visit's IP, and so their country and city, were
+     whatever the client sent. A visitor behind a corporate proxy that adds the header was stored under their
+     internal address. The per-IP rate limits could be dodged the same way.
+   - Now the app alone reads the header, from the right, and only from `TRUSTED_PROXIES` (DEPLOYMENT.md §
+     Trusted-Proxy Configuration). Visits stored before keep what they have.
+3. **`PATCH /api/v1/campaigns/{campaign_id}/tags` answers a malformed id with another 400 message**
    (`Invalid campaign ID: …`, where the others say `Invalid campaign ID format`). It's left as it is: this audit
    changes no behaviour.
