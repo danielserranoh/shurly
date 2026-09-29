@@ -12,6 +12,7 @@ import EmptyState from '@/components/ui/EmptyState.astro';
 import Modal from '@/components/ui/Modal.astro';
 import ProBadge from '@/components/ui/ProBadge.astro';
 import PasswordField from '@/components/ui/PasswordField.astro';
+import Pager from '@/components/ui/Pager.astro';
 import AvatarCropper from '@/components/ui/AvatarCropper.astro';
 import Illustration from '@/components/illustrations/Illustration.astro';
 import Section from '@/components/styleguide/Section.astro';
@@ -1197,6 +1198,9 @@ const colorCount = allColors.length;
             <div id="sg-panel-api" role="tabpanel" aria-labelledby="sg-tab-api" class="pt-4 text-sm text-ink-600" hidden>Your API key, and how to connect an AI assistant.</div>
           </div>
         </Specimen>
+        <Specimen title="Pager" description="Previous and Next under a paged list, the links or the campaigns, with the rows it shows. Hidden while the list fits on one page; one per page, and ?page= keeps the place. Here, 57 links, 20 a page." code={['<Pager />', 'renderPager()', 'pageFromQuery()']} stage="white" class="pt-0!">
+          <div data-sg-pager><Pager /></div>
+        </Specimen>
       </Section>
 
       <!-- 07 Forms ======================================================= -->
@@ -2030,6 +2034,7 @@ const colorCount = allColors.length;
   import { DEFAULT_SORT, nextSort, type RecipientSort, type SortState } from '@/utils/recipients-view';
   import { html, setHTML } from '@/utils/html';
   import { renderLinkCard, renderLinkSkeleton } from '@/utils/links';
+  import { renderPager } from '@/utils/paging';
   import { closeDialog, confirmDialog, hydrateTimes, setLoading, toast } from '@/utils/ui';
   import { cropAvatar } from '@/utils/avatar-cropper';
   import type { ShortLink, Tag } from '@/utils/types';
@@ -2163,6 +2168,20 @@ const colorCount = allColors.length;
       selectTab(tabs[(next + tabs.length) % tabs.length]);
     });
   });
+
+  // The Pager: 57 links, 20 a page, brought to each page by renderPager as the lists do.
+  const pager = $('[data-sg-pager] nav')!;
+  let pagerPage = 1;
+  const showPagerPage = () => renderPager(pager, pagerPage, 20, 57, Math.min(20, 57 - (pagerPage - 1) * 20));
+  $('[data-prev]', pager)!.addEventListener('click', () => {
+    pagerPage -= 1;
+    showPagerPage();
+  });
+  $('[data-next]', pager)!.addEventListener('click', () => {
+    pagerPage += 1;
+    showPagerPage();
+  });
+  showPagerPage();
 
   // ------------------------------------------------------------ Tags
   $$<HTMLButtonElement>('[data-sg-chips] button.tag').forEach((chip) =>

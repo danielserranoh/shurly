@@ -59,7 +59,7 @@ CSS classes (in `global.css`): `btn` (+ `btn-primary | accent | secondary | ghos
 
 Astro components (`frontend/src/components/`): `brand/Logo`, `ui/Icon` (Lucide), `ui/PageHeader`,
 `ui/StatCard`, `ui/EmptyState`, `ui/Modal`, `ui/ProBadge`, `ui/PasswordField`, `ui/GoogleLogo`,
-`ui/AvatarCropper` (the photo's crop dialog),
+`ui/AvatarCropper` (the photo's crop dialog), `ui/Pager` (Previous and Next under a paged list),
 `illustrations/Illustration` (11 line illustrations), `app/EditLinkModal`, `app/QrModal`,
 `app/VisibilityToggle` (the "Personal" switch of the create flows).
 
@@ -94,6 +94,9 @@ toasts, confirm dialogs and copy feedback (`ui.ts`), who's looking and locked co
   slider or + and − to zoom. The circle is always covered: zooming out stops when the photo's short side
   fills it, and it can't be dragged off. It's saved as a 512 px square from the dialog, which stays open
   to show an error.
+- **Paging.** The links and the campaigns come 20 at a time, with the pager under the list: "Showing 21–40 of 57",
+  Previous and Next, and `?page=` in the address so a reload or a shared link keeps the place. It hides while
+  the list fits on one page.
 - **Keyboard.** `N` opens a new link and `/` focuses search. Every control has a visible focus ring
   (ink ring + blue halo).
 - **Responsive.** Desktop-first, checked at 1440 and 390 px. Under `md` the nav moves into a menu dialog.
