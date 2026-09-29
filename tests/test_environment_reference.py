@@ -24,6 +24,7 @@ BACKEND_SOURCES = [
     *sorted((ROOT / "scripts").rglob("*.py")),
     ROOT / "main.py",
     ROOT / "tests" / "conftest.py",
+    *sorted((ROOT / "tests" / "e2e").rglob("*.py")),
 ]
 FRONTEND_SOURCES = [
     *(path for path in sorted((ROOT / "frontend" / "src").rglob("*")) if path.is_file()),
@@ -31,6 +32,12 @@ FRONTEND_SOURCES = [
     ROOT / "frontend" / "astro.config.mjs",
 ]
 FRONTEND_READ = re.compile(r"\b(?:import\.meta\.env|process\.env|env)\.(PUBLIC_[A-Z0-9_]+)")
+# Phase 6.1 — the end-to-end tests' Playwright side: any variable it reads, public or not.
+E2E_SOURCES = [
+    *sorted((ROOT / "frontend" / "e2e").glob("*.ts")),
+    ROOT / "frontend" / "playwright.config.ts",
+]
+E2E_READ = re.compile(r"\bprocess\.env\.([A-Z][A-Z0-9_]*)")
 
 
 def _rows() -> dict[str, dict[str, str]]:
@@ -84,7 +91,7 @@ def _read_by_the_frontend() -> set[str]:
         name
         for path in FRONTEND_SOURCES
         for name in FRONTEND_READ.findall(path.read_text(errors="ignore"))
-    }
+    } | {name for path in E2E_SOURCES for name in E2E_READ.findall(path.read_text())}
 
 
 def test_every_setting_has_its_row_and_default():
@@ -117,3 +124,6 @@ def test_the_scans_find_what_they_should():
         "TEST_DATABASE_URL",
     } <= _read_by_the_backend()
     assert {"PUBLIC_API_URL", "PUBLIC_MCP_URL", "PUBLIC_SITE_URL"} <= _read_by_the_frontend()
+    # Phase 6.1 — the end-to-end tests: their API's guard and addresses, and Playwright's side.
+    assert {"E2E", "E2E_API_URL", "E2E_WEB_URL"} <= _read_by_the_backend()
+    assert {"E2E_API_URL", "E2E_WEB_URL", "E2E_CHANNEL", "CI"} <= _read_by_the_frontend()
