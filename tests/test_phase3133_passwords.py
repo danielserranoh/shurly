@@ -16,7 +16,8 @@ from datetime import datetime, timedelta
 import pytest
 from jose import jwt
 
-from server.core.auth import create_access_token, hash_password, pwd_context
+from server.core import auth
+from server.core.auth import create_access_token, hash_password
 from server.core.config import settings
 from server.core.models import User, UserIdentity
 
@@ -131,8 +132,8 @@ class TestLoginTiming:
     @pytest.fixture
     def dummy_checks(self, monkeypatch) -> list[None]:
         calls = []
-        real = pwd_context.dummy_verify
-        monkeypatch.setattr(pwd_context, "dummy_verify", lambda: calls.append(None) or real())
+        real = auth.dummy_verify
+        monkeypatch.setattr(auth, "dummy_verify", lambda: calls.append(None) or real())
         return calls
 
     def test_an_unknown_address_runs_the_dummy_check(self, client, dummy_checks):

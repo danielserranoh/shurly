@@ -188,9 +188,9 @@ The `ecs-alb-rule-sync` Lambda (created during the Shlink deploy, see Shlink Pha
 ```python
 # In the Lambda code (deployed in griddo-main):
 RULE_SYNC_MAP = {
-    "1": "10",   # shlink-api  → go.griddo.io
-    "3": "11",   # shlink-web  → links.griddo.io
-    "<N>": "12", # shurly-api  → s.griddo.io   ← NEW (use the priority printed by setup_custom_domain.sh)
+    "1": "10",  # shlink-api  → go.griddo.io
+    "3": "11",  # shlink-web  → links.griddo.io
+    "<N>": "12",  # shurly-api  → s.griddo.io   ← NEW (use the priority printed by setup_custom_domain.sh)
 }
 ```
 
@@ -293,10 +293,8 @@ cat > trust-policy.json <<'EOF'
     "Action": "sts:AssumeRoleWithWebIdentity",
     "Condition": {
       "StringEquals": {
-        "token.actions.githubusercontent.com:aud": "sts.amazonaws.com"
-      },
-      "StringLike": {
-        "token.actions.githubusercontent.com:sub": "repo:danielserranoh/shurly:*"
+        "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
+        "token.actions.githubusercontent.com:sub": "repo:danielserranoh/shurly:environment:production"
       }
     }
   }]
@@ -307,6 +305,10 @@ aws iam create-role --profile griddo-main \
     --role-name github-actions-shurly-deploy \
     --assume-role-policy-document file://trust-policy.json
 ```
+
+The subject is the GitHub environment, not a branch: the deploy job runs in `production` (Settings →
+Environments), whose deployment branch policy allows `main` only. Together, only a workflow on `main` can
+assume the role. Until 2026-09-29 the trust was `repo:danielserranoh/shurly:*` (any branch, any environment).
 
 ### Permissions policy
 
@@ -377,6 +379,20 @@ That's the only secret needed. No `AWS_ACCESS_KEY_ID`, no `AWS_SECRET_ACCESS_KEY
 - The Monday rebuild (§ Geolocation data) changes no Python dependency, and a rollback rebuilds what shipped.
 - New versions arrive only through Dependabot's weekly PR against `dev` (`.github/dependabot.yml`: uv and the
   workflows' actions, minor and patch grouped), which is QA'd and released like any other.
+
+**So is what builds them.**
+- The dockerfile pins `python:3.11-slim` by digest. Dependabot's docker PR moves the digest weekly, but never
+  to a new Python.
+- `astral-sh/setup-uv` is pinned by commit in the workflows, and Dependabot bumps it with the other actions.
+- uv itself is one version, the one that reads `uv.lock`: `UV_VERSION` in both workflows, and the dockerfile's
+  `ghcr.io/astral-sh/uv:<version>@<digest>`. `tests/test_dependency_lock.py` checks they agree. Dependabot
+  leaves uv alone.
+- **To bump uv:**
+  1. Update your own (`uv self update <version>`) and run `uv lock`.
+  2. Change the dockerfile's uv image, both its tag and its digest (`docker buildx imagetools inspect
+     ghcr.io/astral-sh/uv:<version>`).
+  3. Change `UV_VERSION` in `test.yml` and `deploy-backend.yml`.
+  4. Put all of it in one PR.
 
 ---
 

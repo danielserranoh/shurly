@@ -1424,7 +1424,7 @@ ECS Express does blue/green deploys by alternating target group weights. Manual 
 Replaces the SAM-based GitHub Actions workflow.
 - [x] **One-time setup in `griddo-main`** (documented in DEPLOYMENT.md, executed manually with SSO):
   - GitHub OIDC provider (`token.actions.githubusercontent.com`)
-  - IAM role `github-actions-shurly-deploy` with trust policy scoped to `repo:danielserranoh/shurly:*`
+  - IAM role `github-actions-shurly-deploy` with trust policy scoped to `repo:danielserranoh/shurly:environment:production` (was `…:*` until 2026-09-29; the `production` environment allows `main` only)
   - Permissions: ECR push (scoped to the `shurly-api` repo), ECS update-express-gateway-service (scoped to the Shurly service ARN), CloudWatch Logs read for verification
 - [x] Rewrite `.github/workflows/deploy-backend.yml`:
   - `permissions: id-token: write` for OIDC
@@ -1519,7 +1519,9 @@ for this.
         `client_ip_source` (`cloudfront`, `xff` or `socket`), with its `host`, and CloudWatch counts them by host
         (DEPLOYMENT.md § Client IPs behind CloudFront; `tests/test_client_ip_source.py`). A clean `429` from one
         client can't show it: CloudFront reuses its connections, so its edge's address holds still too
-  - [ ] Once it's deployed, check that `shurly.griddo.io` reads `cloudfront` only
+  - [x] Once it's deployed, check that `shurly.griddo.io` reads `cloudfront` only → verified 2026-09-29:
+        `shurly.griddo.io` reads `cloudfront`, and `s.griddo.io` reads `xff` since uvicorn's proxy headers went
+        off (#172, hotfix #174), where it had read `socket`
 
 ---
 
@@ -1826,7 +1828,10 @@ live in `mcp_server/README.md`, written for developers. There is no user manual 
       deploy run `uv sync --locked`, the image `--frozen`. New versions come from Dependabot's weekly PR against
       `dev` (uv and the workflows' actions, minor and patch grouped). The caps stay, as a safety net
       (`tests/test_dependency_lock.py`)
-  - [ ] Pin the base image and the uv binary by digest, with Dependabot's docker ecosystem to bump them
+  - [x] Pin the base image and the uv binary by digest, with Dependabot's docker ecosystem to bump them →
+        `python:3.11-slim` and uv 0.11.1 by digest; `astral-sh/setup-uv` by commit in place of `curl … | sh`;
+        one uv version in CI and the image (`UV_VERSION`); Dependabot moves the base image's digest weekly,
+        never to a new Python, and leaves uv to a deliberate bump
 
 ### 6.4 Monitoring & Logging
 - [x] CloudWatch Logs setup → `/aws/ecs/default/shurly-api-5fdb`; `X-Request-Id` correlates requests
@@ -1967,7 +1972,7 @@ the import can be re-run.
       looked up in process from the stored, anonymized address (`server/utils/geo.py`). The image build fetches
       the file, and the deploy job warns without it. The Shlink import stores codes too; the page shows names.
       Since GeoLite2 City (below), the country comes from it, with DB-IP as the fallback
-- [ ] A visit's city, from MaxMind's GeoLite2 City (the user's decision, 2026-09-29; free account, licence key)
+- [x] A visit's city, from MaxMind's GeoLite2 City (the user's decision, 2026-09-29; free account, licence key)
   - [x] The data: GeoLite2 City in the image, fetched with MaxMind's credentials as BuildKit secrets, next to
         DB-IP's countries, which stay as the fallback. MaxMind's EULA wants a copy replaced within 30 days of an
         update → the deploy runs every Monday too, one deploy at a time; the job fails when the key is set but
@@ -1985,8 +1990,10 @@ the import can be re-run.
         campaign link's (its `cities` is null). "Valencia, Spain", since two Valencias are two; Other cities, then
         Unknown, last. The credit is MaxMind's alone (DB-IP has no cities), and a campaign's says what Other cities
         is. Checked on seeded cities at 1440 and 390 px; `e2e/cities.spec.ts`, and axe on the tab
-  - [ ] In production: the release that brings GeoLite2 City, then the backfill (DEPLOYMENT.md § Geolocation
-        data, a dry run first)
+  - [x] In production: the release that brings GeoLite2 City, then the backfill (DEPLOYMENT.md § Geolocation
+        data, a dry run first) → 2026-09-29: release #168 brought GeoLite2 City, built 2026-09-25. The backfill,
+        a dry run then `--for-real`, filled 3 countries and 3 cities, 0 unplaced, once #171 made the one-off tasks
+        find the task definition on ECS Express
 
 ### 8.5 Cutover
 - [ ] Freeze link creation in Shlink; final delta export + import

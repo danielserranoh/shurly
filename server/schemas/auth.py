@@ -4,15 +4,36 @@ from datetime import datetime
 from uuid import UUID
 
 from pydantic import BaseModel, EmailStr, Field, field_validator
+from pydantic_core import PydanticCustomError
 
+from server.core.auth import BCRYPT_MAX_BYTES
 from server.schemas.profile import ProfileResponse
+
+
+def check_password_length(password: str) -> str:
+    """A new password fits what bcrypt reads, 72 bytes: past them, its end would be ignored.
+    Signing in has no such check, so a password set longer before still works."""
+    if len(password.encode("utf-8")) > BCRYPT_MAX_BYTES:
+        # Its own error type, so the message is read as it is, without "Value error, " before it.
+        raise PydanticCustomError(
+            "password_too_long",
+            "Too long: a password can be at most 72 bytes. That's 72 characters of plain text, "
+            "and fewer with accented letters or emoji, which take more than one byte each.",
+        )
+    return password
 
 
 class UserRegister(BaseModel):
     """Schema for user registration."""
 
     email: EmailStr
-    password: str = Field(..., min_length=8, description="Password must be at least 8 characters")
+    password: str = Field(
+        ...,
+        min_length=8,
+        description="Password must be at least 8 characters, and at most 72 bytes",
+    )
+
+    _fits_bcrypt = field_validator("password")(check_password_length)
 
 
 class UserLogin(BaseModel):
@@ -61,15 +82,21 @@ class ChangePasswordRequest(BaseModel):
 
     current_password: str
     new_password: str = Field(
-        ..., min_length=8, description="Password must be at least 8 characters"
+        ...,
+        min_length=8,
+        description="Password must be at least 8 characters, and at most 72 bytes",
     )
+
+    _fits_bcrypt = field_validator("new_password")(check_password_length)
 
 
 class SetPasswordRequest(BaseModel):
     """Phase 3.13.3 — set or replace the password (PUT /auth/password)."""
 
     new_password: str = Field(
-        ..., min_length=8, description="Password must be at least 8 characters"
+        ...,
+        min_length=8,
+        description="Password must be at least 8 characters, and at most 72 bytes",
     )
     current_password: str | None = Field(
         None,
@@ -78,6 +105,8 @@ class SetPasswordRequest(BaseModel):
             "without it, the session must be at most 10 minutes old."
         ),
     )
+
+    _fits_bcrypt = field_validator("new_password")(check_password_length)
 
 
 class GoogleCodeExchange(BaseModel):

@@ -6,6 +6,10 @@ on:
   pull_request:
     branches: [main, dev]
 
+env:
+  # The uv that reads uv.lock, here and in the image (the dockerfile's uv, which must match).
+  UV_VERSION: "0.11.1"
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -30,17 +34,18 @@ jobs:
 
     steps:
     - name: Checkout code
-      uses: actions/checkout@v4
+      uses: actions/checkout@v7
 
     - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v5
+      uses: actions/setup-python@v7
       with:
         python-version: ${{ matrix.python-version }}
 
     - name: Install uv
-      run: |
-        curl -LsSf https://astral.sh/uv/install.sh | sh
-        echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+      # Pinned by commit, bumped by Dependabot; the uv version is the image's (dockerfile).
+      uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+      with:
+        version: ${{ env.UV_VERSION }}
 
     - name: Install dependencies (dev + mcp extras)
       # ruff and pytest live in the [dev] optional-dependencies group; without
@@ -69,10 +74,11 @@ jobs:
         uv run pytest --require-mcp --require-postgres --cov=server --cov-report=xml --cov-report=term
 
     - name: Upload coverage to Codecov
-      uses: codecov/codecov-action@v4
+      uses: codecov/codecov-action@v7
       if: matrix.python-version == '3.10'
       with:
-        file: ./coverage.xml
+        # `files` since codecov-action v5: v7 no longer reads `file`.
+        files: ./coverage.xml
         fail_ci_if_error: false
 
   # The whole suite on PostgreSQL, as production runs. The job above runs it on SQLite, which takes
@@ -95,17 +101,18 @@ jobs:
 
     steps:
     - name: Checkout code
-      uses: actions/checkout@v4
+      uses: actions/checkout@v7
 
     - name: Set up Python
-      uses: actions/setup-python@v5
+      uses: actions/setup-python@v7
       with:
         python-version: "3.10"
 
     - name: Install uv
-      run: |
-        curl -LsSf https://astral.sh/uv/install.sh | sh
-        echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+      # Pinned by commit, bumped by Dependabot; the uv version is the image's (dockerfile).
+      uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+      with:
+        version: ${{ env.UV_VERSION }}
 
     - name: Install dependencies (dev + mcp extras)
       run: |
@@ -122,10 +129,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: Checkout code
-      uses: actions/checkout@v4
+      uses: actions/checkout@v7
 
     - name: Set up Node.js
-      uses: actions/setup-node@v4
+      uses: actions/setup-node@v7
       with:
         node-version: '22'
         cache: npm
@@ -176,25 +183,26 @@ jobs:
 
     steps:
     - name: Checkout code
-      uses: actions/checkout@v4
+      uses: actions/checkout@v7
 
     - name: Set up Python
       # The production image's version (dockerfile).
-      uses: actions/setup-python@v5
+      uses: actions/setup-python@v7
       with:
         python-version: "3.11"
 
     - name: Install uv
-      run: |
-        curl -LsSf https://astral.sh/uv/install.sh | sh
-        echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+      # Pinned by commit, bumped by Dependabot; the uv version is the image's (dockerfile).
+      uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+      with:
+        version: ${{ env.UV_VERSION }}
 
     - name: Install the API's dependencies
       # The app's own, as the image has them: the wrapper and the fake Google need no extra.
       run: uv sync --locked
 
     - name: Set up Node.js
-      uses: actions/setup-node@v4
+      uses: actions/setup-node@v7
       with:
         node-version: '22'
         cache: npm
@@ -206,7 +214,7 @@ jobs:
 
     - name: Cache Playwright's Chromium
       id: playwright-cache
-      uses: actions/cache@v4
+      uses: actions/cache@v6
       with:
         path: ~/.cache/ms-playwright
         key: playwright-${{ runner.os }}-${{ hashFiles('frontend/package-lock.json') }}

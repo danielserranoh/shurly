@@ -4,11 +4,12 @@ import calendar
 import secrets
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from functools import cache
 
+import bcrypt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
-from passlib.context import CryptContext
 from sqlalchemy.orm import Session
 
 from server.core import get_db
@@ -16,35 +17,48 @@ from server.core.config import settings
 from server.core.models import User
 from server.core.models.user import hash_api_key
 
-# Password hashing
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-
 # HTTP Bearer token scheme
 security = HTTPBearer()
 # For routes anyone may call that still want to know who's calling, when someone is.
 optional_security = HTTPBearer(auto_error=False)
 
-# bcrypt has a hard 72-byte input limit. bcrypt 5+ refuses longer inputs instead
-# of silently truncating, so we truncate explicitly. Truncating at byte boundary
-# (encode → slice → decode with errors="ignore") avoids splitting multibyte UTF-8.
-_BCRYPT_MAX_BYTES = 72
+# Passwords are bcrypt hashes, `$2b$`, 12 rounds: what passlib made, so every stored one checks.
+# bcrypt reads at most 72 bytes, and bcrypt 5 refuses more. A password set longer is refused
+# (`check_password_length`, in the schemas); one checked is cut to its first 72 bytes, as the old
+# code hashed it, so a password set longer before still signs in.
+BCRYPT_MAX_BYTES = 72
+_ROUNDS = 12
 
 
-def _truncate_for_bcrypt(password: str) -> str:
+def _bcrypt_input(password: str) -> bytes:
+    """The password's first 72 bytes, without cutting a character in half."""
     encoded = password.encode("utf-8")
-    if len(encoded) <= _BCRYPT_MAX_BYTES:
-        return password
-    return encoded[:_BCRYPT_MAX_BYTES].decode("utf-8", errors="ignore")
+    if len(encoded) <= BCRYPT_MAX_BYTES:
+        return encoded
+    return encoded[:BCRYPT_MAX_BYTES].decode("utf-8", errors="ignore").encode("utf-8")
 
 
 def hash_password(password: str) -> str:
     """Hash a password using bcrypt."""
-    return pwd_context.hash(_truncate_for_bcrypt(password))
+    return bcrypt.hashpw(_bcrypt_input(password), bcrypt.gensalt(rounds=_ROUNDS)).decode("ascii")
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    """Verify a password against a hash."""
-    return pwd_context.verify(_truncate_for_bcrypt(plain_password), hashed_password)
+    """Whether the password matches the hash. Something that isn't a bcrypt hash matches nothing."""
+    try:
+        return bcrypt.checkpw(_bcrypt_input(plain_password), hashed_password.encode("ascii"))
+    except (ValueError, UnicodeEncodeError):
+        return False
+
+
+@cache
+def _dummy_hash() -> bytes:
+    return bcrypt.hashpw(b"not a password", bcrypt.gensalt(rounds=_ROUNDS))
+
+
+def dummy_verify() -> None:
+    """Spend the time a check takes, when there's no hash to check against."""
+    bcrypt.checkpw(b"not the password", _dummy_hash())
 
 
 def create_access_token(data: dict, expires_delta: timedelta | None = None) -> str:
@@ -263,7 +277,7 @@ def authenticate_user(db: Session, email: str, password: str) -> User | None:
     # check, but spend the time a check takes. Answering faster would tell anyone
     # which addresses have an account.
     if user is None or user.password_hash is None:
-        pwd_context.dummy_verify()
+        dummy_verify()
         return None
 
     if not verify_password(password, user.password_hash):

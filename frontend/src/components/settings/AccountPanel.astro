@@ -94,7 +94,7 @@ import SettingsSection from './SettingsSection.astro';
               <span slot="label-end" class="text-xs text-ink-500" data-current-optional hidden>Optional</span>
             </PasswordField>
           </div>
-          <PasswordField id="new-password" name="new_password" label="New password" autocomplete="new-password" minlength={8} hint="At least 8 characters" />
+          <PasswordField id="new-password" name="new_password" label="New password" autocomplete="new-password" minlength={8} hint="At least 8 characters · at most 72, fewer with accents or emoji" />
         </div>
       </div>
       <div class="flex flex-wrap items-center justify-end gap-2 border-t border-line bg-ink-50/60 px-5 py-3 sm:px-6">
@@ -383,14 +383,17 @@ import SettingsSection from './SettingsSection.astro';
     renderPasswordState();
   });
 
-  // Live length check: the hint earns a brand check once the rule is met.
+  // Live length check: the hint earns a brand check once the rule is met. The upper limit is
+  // bcrypt's 72 bytes, which the API checks (a 422 under the field): said, not checked here.
+  // The text is one span, so on a phone it wraps as a line of text, not as two columns.
+  const upperLimit = ' · at most 72, fewer with accents or emoji';
   const renderHint = () => {
     const ok = next.value.length >= 8;
     setHTML(
       hint,
       ok
-        ? html`<span class="grid size-4 place-items-center rounded-full bg-brand-400 text-white">${icon('check', 'size-3', 3)}</span><span class="text-ink-700">At least 8 characters</span>`
-        : html`<span class="size-4 rounded-full border-2 border-ink-300"></span><span>At least 8 characters</span>`,
+        ? html`<span class="grid size-4 shrink-0 place-items-center rounded-full bg-brand-400 text-white">${icon('check', 'size-3', 3)}</span><span><span class="text-ink-700">At least 8 characters</span>${upperLimit}</span>`
+        : html`<span class="size-4 shrink-0 rounded-full border-2 border-ink-300"></span><span>At least 8 characters${upperLimit}</span>`,
     );
   };
   renderHint();

@@ -26,6 +26,50 @@ implementation lifecycle and is independent of the URL version segment.
 
 ## [Unreleased]
 
+### Security — only `main` can deploy to production
+- **The backend deploy runs in the GitHub environment `production`**, which allows the `main` branch only,
+  and the AWS deploy role (`github-actions-shurly-deploy`) trusts that environment alone. Until now the job's
+  environment was `dev`, with no rules, and the role trusted `repo:danielserranoh/shurly:*`: a workflow on any
+  branch of the repo could assume it. The manual run's dev/staging/prod input is gone.
+
+### Changed — passwords: bcrypt 5, without passlib
+- **Passwords are hashed and checked by bcrypt 5 directly.** passlib, unmaintained since 2020, broke on bcrypt 5:
+  its bcrypt self-test hashes a 255-byte secret, which bcrypt 5 refuses, so every hash failed (Dependabot's #182,
+  which this replaces). The hashes are the same, `$2b$` with 12 rounds, so every stored password still checks.
+  Hashes made by the old code are pinned in the tests.
+- **A new password can be at most 72 bytes,** what bcrypt reads. Register, set and change answer a 422: "Too long:
+  a password can be at most 72 bytes. That's 72 characters of plain text, and fewer with accented letters or
+  emoji, which take more than one byte each." Until now the end of a longer password was silently ignored.
+- **Settings' new-password hint says it too:** "At least 8 characters · at most 72, fewer with accents or emoji".
+  It checks the 8 as you type; the 72 is the API's to check.
+- **Signing in still reads a password's first 72 bytes,** as the old code hashed it, so one set longer before
+  still works.
+
+### Changed — ruff 0.16
+- **ruff 0.16.9,** with its cap raised to `<0.17`. `ruff check` finds nothing new.
+- **It also formats the Python code blocks in Markdown files.** That reformatted one block in DEPLOYMENT.md, which
+  lost its aligned comments, and the examples in `_pm/IMPLEMENTATION_TAGS.md` and `_pm/IMPLEMENTATION_TASKS.md`. No
+  `.py` file changed. It replaces Dependabot's #181, which was red for those three files.
+
+### Changed — CI's actions, a major each, in one PR (Dependabot's first run)
+- **checkout v7, setup-python v7, setup-node v7, cache v6, codecov-action v7 and configure-aws-credentials v6.**
+  They're mostly the move to the Node 24 runtime, which GitHub's runners have. None of the inputs we pass changed,
+  and configure-aws-credentials keeps its OIDC inputs and its `sts.amazonaws.com` audience.
+- **codecov's input is `files`:** v7 no longer reads `file` ("Unexpected input(s) 'file'").
+- **Dependabot now opens one weekly PR for the actions, majors included,** where its first run opened six
+  (#175–#180). Python's majors still come one per PR.
+
+### Changed — what builds the image is pinned too (6.3)
+- **The base image and uv are pinned by digest.** The dockerfile names `python:3.11-slim@sha256:…`, which is the
+  digest production already runs, and `ghcr.io/astral-sh/uv:0.11.1@sha256:…` in place of `:latest`.
+- **The workflows install uv with `astral-sh/setup-uv`, pinned by commit,** in place of piping `astral.sh`'s
+  install script into `sh`.
+- **One uv reads the lock:** 0.11.1, which wrote it, in CI (`UV_VERSION`) and in the image.
+  `tests/test_dependency_lock.py` fails if they part.
+- **Dependabot adds the docker ecosystem.** The base image's digest moves weekly, never to a new Python. uv's
+  version is left to a deliberate bump, in the dockerfile and both workflows together (DEPLOYMENT.md § Workflow
+  trigger).
+
 ### Fixed — the one-off tasks find the live task definition on ECS Express
 - **`scripts/run_backfill_places.sh` failed in production** at its first dry run: "Unable to describe task
   definition". On an ECS Express service, `describe-services` gives the service's own `taskDefinition` as null,
