@@ -152,6 +152,11 @@ apply. Make what the spec tests the way a person would; make what it only needs 
 browser's user agent), picking an option of a segmented control, and a downloaded CSV's lines. Wait on what the
 page shows, never on time, and give each spec data of its own: a run shares one database.
 
+Accessibility: `e2e/a11y.spec.ts` runs axe on the landing, login, dashboard, link, campaign and Settings pages,
+once their content is in. A serious or critical issue fails the test. Fix it, or add it to the spec's `ALLOWED`
+list with a reason and the issue that will fix it; never turn a rule off. axe leaves some contrast undecided (text
+over a gradient or a translucent panel, SVG text): check those by hand against the design system's inks.
+
 ---
 
 ## Functional Testing Checklist
