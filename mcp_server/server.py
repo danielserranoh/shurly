@@ -148,6 +148,14 @@ MCP_TOOL_NAMES: dict[str, str] = {
     "list_url_visits_api_v1_analytics_urls__short_code__visits_get": "list_url_visits",
     "get_campaign_summary_api_v1_analytics_campaigns__campaign_id__summary_get": "get_campaign_summary",
     "get_campaign_users_api_v1_analytics_campaigns__campaign_id__users_get": "get_campaign_users",
+    # Phase 3.17 — per-campaign analytics.
+    "get_campaign_totals_api_v1_analytics_campaigns__campaign_id__totals_get": "get_campaign_totals",
+    "get_campaign_timeseries_api_v1_analytics_campaigns__campaign_id__timeseries_get": (
+        "get_campaign_timeseries"
+    ),
+    "get_campaign_breakdown_api_v1_analytics_campaigns__campaign_id__breakdown_get": (
+        "get_campaign_breakdown"
+    ),
     "get_orphan_visits_api_v1_analytics_orphan_visits_get": "get_orphan_visits",
     # Tags
     "list_tags_api_v1_tags_get": "list_tags",

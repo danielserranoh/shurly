@@ -64,6 +64,10 @@ EXPECTED_TOOLS: set[str] = {
     "list_url_visits",  # its CSV (`/visits.csv`) is not a tool
     "get_campaign_summary",
     "get_campaign_users",
+    # Phase 3.17 — per-campaign analytics
+    "get_campaign_totals",
+    "get_campaign_timeseries",
+    "get_campaign_breakdown",
     "get_orphan_visits",
     # Tags
     "list_tags",
