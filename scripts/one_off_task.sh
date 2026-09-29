@@ -3,8 +3,10 @@
 # environment and network, run once, its output shown from CloudWatch, and its task definition
 # deleted at the end, whatever happens. Sourced by them; never run on its own.
 #
-# The live task definition carries the service's environment, secrets included: it goes to AWS,
-# and into a private temporary directory, never to the terminal.
+# The live task definition is the service's PRIMARY deployment's: ECS Express leaves the service's
+# own taskDefinition null. During a rollout there are two deployments, and the task doesn't run.
+# It carries the service's environment, secrets included: it goes to AWS, and into a private
+# temporary directory, never to the terminal.
 #
 # AWS_PROFILE (griddo-main), AWS_REGION (eu-south-2), CLUSTER (default) and SERVICE (shurly-api)
 # can be set in the environment.
@@ -36,9 +38,17 @@ read_live_service() {
 
     aws ecs describe-services --cluster "$CLUSTER" --services "$SERVICE_ARN" \
         --query 'services[0]' --output json >"$WORK/service.json"
-    local live_td
-    live_td=$(jq -r '.taskDefinition' "$WORK/service.json")
-    NETWORK=$(jq -c '.networkConfiguration // .deployments[0].networkConfiguration' "$WORK/service.json")
+    # ECS Express leaves the service's own taskDefinition null: the one serving is its PRIMARY
+    # deployment's. Mid-rollout there are two, and which one ends up serving isn't settled yet:
+    # stop, rather than run with the wrong one.
+    local deployments live_td
+    deployments=$(jq '.deployments | length' "$WORK/service.json")
+    [[ "$deployments" == 1 ]] ||
+        die "The service has ${deployments} deployments, not 1: a rollout is in progress, or none ran. Try again once it's done."
+    live_td=$(jq -r '.deployments[] | select(.status == "PRIMARY") | .taskDefinition // empty' "$WORK/service.json")
+    [[ "$live_td" == arn:* ]] || die "The service's deployment isn't PRIMARY, or names no task definition."
+    NETWORK=$(jq -c '.networkConfiguration // (.deployments[] | select(.status == "PRIMARY") | .networkConfiguration)' \
+        "$WORK/service.json")
     [[ "$NETWORK" != null ]] || die "The service has no network configuration to run the task in."
 
     aws ecs describe-task-definition --task-definition "$live_td" \
