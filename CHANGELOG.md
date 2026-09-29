@@ -26,6 +26,23 @@ implementation lifecycle and is independent of the URL version segment.
 
 ## [Unreleased]
 
+### Changed — the MCP's sign-in pages are Shurly's, not FastMCP's (5.8)
+- **The consent page and every error the MCP sign-in can show are Shurly's.** No FastMCP name or logo, and
+  nothing loaded from gofastmcp.com. They come from `server/templates/mcp_consent.html` and `mcp_error.html`.
+  - fastmcp still runs the flow: the CSRF token, the cookies and the redirect checks.
+  - `mcp_server/pages.py` points its four page renderers at ours, when the Google provider is built.
+- **An error page shows a reason from a fixed set, never text from the request.** fastmcp's callback page put
+  the URL's `error_description` on screen, so a crafted link could show anyone's words under our domain.
+- **An exception from the token exchange with Google isn't shown any more.** The page gives a generic reason,
+  and `mcp.sign_in_error` logs a scrubbed line. Every error page logs its `page` and `reason`.
+- **Every HTML page under `/mcp` gets headers.** A CSP allowing only the templates' styles, by hash;
+  `X-Frame-Options: DENY`, `no-store`, `no-referrer`, `nosniff` and `noindex`.
+  - Before, the callback's errors had no `X-Frame-Options`, and no page had a cache or referrer policy.
+  - No `form-action`, on purpose: it would break the redirects that end at Claude.
+- **A fastmcp upgrade can't bring FastMCP's pages back unnoticed.** `tests/test_phase58_mcp_pages.py` pins
+  what the pages must keep: the client's name, the verified domain, the exact callback, the form and its
+  fields, Allow and Deny, consent every time. The app refuses to start if a renderer moved.
+
 ### Added — each request's log line says how its client IP was found (6.3)
 - **`http.request` lines carry `client_ip_source` and `host`.** The source is `cloudfront` (the viewer address, on a
   request with the distribution's secret), `xff` (`X-Forwarded-For`, from a trusted proxy) or `socket` (the

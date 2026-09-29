@@ -890,6 +890,43 @@ Google client and `ORGANIZATION_DOMAIN` above:
   OAuth endpoints are under `/mcp/`. The event log's `auth.login` and `auth.google_refused` carry
   `surface: "mcp"` for these sign-ins.
 
+#### The MCP's sign-in pages
+
+fastmcp's OAuth proxy renders its own pages, as FastMCP's, with its logo loaded from `gofastmcp.com`,
+and has no supported way to change them: the consent page, its errors, the errors after Google and
+"not registered". `mcp_server/pages.py` points its four renderers at Shurly's
+(`server/templates/mcp_consent.html` and `mcp_error.html`), once, when the Google provider is built.
+fastmcp keeps the flow: the CSRF token, the cookies and the redirect checks.
+
+- **Upgrades.** The deploy job installs the newest fastmcp 4.x (`uv.lock` isn't committed). The pages
+  were checked against 4.0.6 to 4.0.10.
+  - If a later version renames or moves a renderer, `tests/test_phase58_mcp_pages.py` fails in the
+    same job, before the image is built.
+  - If it gets past that, the app refuses to start (`check_fastmcp`), rather than show FastMCP's pages.
+  - Either way, update `pages.py` for that version.
+- **Consent every time.** `require_authorization_consent` keeps fastmcp's default, so no answer is
+  remembered.
+- **An error page shows a reason from a fixed set, never text from the request.** fastmcp's put the
+  URL's `error_description` on screen, so anyone could make a link that shows their words under our
+  domain.
+- **Headers,** on every HTML page under `/mcp/` (`PageHeaders`). JSON and event streams are left alone.
+  - A CSP that allows only the two templates' `<style>` blocks, by hash, and images as `data:`, with
+    `frame-ancestors 'none'`.
+  - `X-Frame-Options: DENY`, `Cache-Control: no-store` (the consent page carries a CSRF token),
+    `Referrer-Policy: no-referrer` (its address carries the sign-in's id), `nosniff` and `noindex`.
+- **No `form-action` in the CSP, on purpose. Don't add it.** Chrome applies it to every redirect after
+  the consent form: Google, `/mcp/auth/callback`, then the client's callback, which can be
+  `http://localhost:…` or a `claude://` app link. A `form-action` would break the sign-in. fastmcp
+  leaves it out for the same reason, and a test fails if it's added.
+- **What went wrong** is logged as `mcp.sign_in_error`, with the `page` and the `reason`. It also
+  carries Google's error code (`google_error`) or, when the exchange with Google failed, a scrubbed
+  `detail`: never a token or a code.
+  ```
+  filter event = "mcp.sign_in_error"
+  | stats count(*) as times by page, reason
+  | sort times desc
+  ```
+
 ---
 
 ## People: joining, roles and leaving (Phase 3.14)

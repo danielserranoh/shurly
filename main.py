@@ -245,7 +245,11 @@ def create_app(mcp_auth=None) -> FastAPI:
                 target = f"{target}?{request.url.query}"
             return RedirectResponse(target, status_code=308)
 
-        app.mount("/mcp", mcp_app)
+        # Phase 5.8 — the sign-in's HTML pages get their headers (CSP, no-store, …) on the way
+        # out; the MCP's JSON goes through untouched (mcp_server/pages.py).
+        from mcp_server.pages import PageHeaders
+
+        app.mount("/mcp", PageHeaders(mcp_app))
         # Late-bind the lifespan so the MCP session manager starts/stops
         # with the host. We can't read `mcp_app` from the lifespan closure
         # at app-construction time (it's built right above), so we attach a
