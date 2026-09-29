@@ -13,10 +13,9 @@ dependencies = [
     "psycopg2-binary>=2.9.9",
     "python-multipart>=0.0.6",
     "python-jose[cryptography]>=3.3.0",
-    "passlib[bcrypt]>=1.7.4",
-    # bcrypt 5.0 removes the silent 72-byte truncation passlib relied on; pin to 4.x
-    # until passlib ships an upstream fix.
-    "bcrypt<5",
+    # Password hashes (server/core/auth.py), used directly: passlib, unmaintained since 2020,
+    # breaks on bcrypt 5, which refuses more than 72 bytes where 4 cut them silently.
+    "bcrypt>=5,<6",
     "httpx>=0.26.0",
     "beautifulsoup4>=4.12.0",
     "jinja2>=3.1.0",

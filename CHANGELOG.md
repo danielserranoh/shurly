@@ -26,6 +26,19 @@ implementation lifecycle and is independent of the URL version segment.
 
 ## [Unreleased]
 
+### Changed — passwords: bcrypt 5, without passlib
+- **Passwords are hashed and checked by bcrypt 5 directly.** passlib, unmaintained since 2020, broke on bcrypt 5:
+  its bcrypt self-test hashes a 255-byte secret, which bcrypt 5 refuses, so every hash failed (Dependabot's #182,
+  which this replaces). The hashes are the same, `$2b$` with 12 rounds, so every stored password still checks.
+  Hashes made by the old code are pinned in the tests.
+- **A new password can be at most 72 bytes,** what bcrypt reads. Register, set and change answer a 422: "Too long:
+  a password can be at most 72 bytes. That's 72 characters of plain text, and fewer with accented letters or
+  emoji, which take more than one byte each." Until now the end of a longer password was silently ignored.
+- **Settings' new-password hint says it too:** "At least 8 characters · at most 72, fewer with accents or emoji".
+  It checks the 8 as you type; the 72 is the API's to check.
+- **Signing in still reads a password's first 72 bytes,** as the old code hashed it, so one set longer before
+  still works.
+
 ### Changed — ruff 0.16
 - **ruff 0.16.9,** with its cap raised to `<0.17`. `ruff check` finds nothing new.
 - **It also formats the Python code blocks in Markdown files.** That reformatted one block in DEPLOYMENT.md, which
