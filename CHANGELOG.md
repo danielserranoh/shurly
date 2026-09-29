@@ -26,6 +26,17 @@ implementation lifecycle and is independent of the URL version segment.
 
 ## [Unreleased]
 
+### Added — the manual: making a campaign, and reading your analytics (7.1)
+- **"Make a campaign from a CSV"**: what the CSV needs; that each person's row reaches the destination as
+  parameters, so keep to what you'd share that way; the wizard's steps; exporting the links for a mail merge, with
+  each person's tracking image; and what to do when a row doesn't fit.
+- **"Read your analytics"**: what counts as a click and as an email open; a link's page, tab by tab, with its CSV;
+  a campaign's page, with its people-first numbers and its recipients.
+- **Where to find them:** Help in the account menu; "How to read this" in a link's and a campaign's Analytics, to
+  that page's section; "How campaigns work" in the wizard's CSV step, in a new tab so the wizard keeps what's typed.
+- `tests/manual-links.test.mjs` fails on a link inside the manual that goes nowhere, heading included, and the
+  manual joins the end-to-end render and axe checks.
+
 ### Added — a welcome for new members (the dogfood, 5.6)
 - **For an account's first 14 days, the dashboard opens with a welcome card**, until it's dismissed on that browser:
   - links belong to the organization, by its name, so the team sees them; personal ones on purpose;

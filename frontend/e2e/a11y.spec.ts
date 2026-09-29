@@ -46,6 +46,15 @@ test.describe('signed out', () => {
     await expect(page.getByRole('button', { name: 'Sign in with Google' })).toBeVisible();
     await expectNoIssues(page, 'login');
   });
+
+  test('the manual', async ({ page }) => {
+    await page.goto('/manual/');
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('User manual');
+    await expectNoIssues(page, 'manual');
+    await page.goto('/manual/read-your-analytics/');
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Read your analytics');
+    await expectNoIssues(page, 'manual page');
+  });
 });
 
 test.describe('signed in', () => {
