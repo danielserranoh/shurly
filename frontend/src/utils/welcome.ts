@@ -15,3 +15,10 @@ export function shouldWelcome(createdAt: string | null | undefined, dismissed: b
 
 /** Where the dismissal is kept (localStorage), per account: someone else on this browser is still welcomed. */
 export const welcomeDismissedKey = (userId: string) => `shurly_welcome_dismissed:${userId}`;
+
+/** Whose links are whose: the organization's, by its name, for a member; an account outside one keeps its own. */
+export function sharingLine(organization: { name: string } | null): string {
+  return organization
+    ? `Links you make belong to ${organization.name}, so your team sees them and you see theirs. Make one personal when it’s just for you.`
+    : 'Your links are personal to you.';
+}

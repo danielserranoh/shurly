@@ -4,7 +4,7 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
-import { shouldWelcome, WELCOME_DAYS, welcomeDismissedKey } from '../src/utils/welcome.ts';
+import { sharingLine, shouldWelcome, WELCOME_DAYS, welcomeDismissedKey } from '../src/utils/welcome.ts';
 
 const now = Date.parse('2026-09-29T12:00:00Z');
 const daysAgo = (days) => new Date(now - days * 86_400_000).toISOString();
@@ -39,4 +39,17 @@ describe('shouldWelcome', () => {
 test('the dismissal is kept per account, so someone else on this browser is still welcomed', () => {
   assert.notEqual(welcomeDismissedKey('a1'), welcomeDismissedKey('b2'));
   assert.match(welcomeDismissedKey('a1'), /^shurly_/);
+});
+
+describe('sharingLine', () => {
+  test("a member's links are the organization's, by its name", () => {
+    assert.equal(
+      sharingLine({ name: 'Griddo' }),
+      'Links you make belong to Griddo, so your team sees them and you see theirs. Make one personal when it’s just for you.',
+    );
+  });
+
+  test('without an organization, their links are personal', () => {
+    assert.equal(sharingLine(null), 'Your links are personal to you.');
+  });
 });

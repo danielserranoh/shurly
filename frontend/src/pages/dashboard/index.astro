@@ -19,7 +19,7 @@ import VisibilityToggle from '@/components/app/VisibilityToggle.astro';
     <span class="grid size-10 shrink-0 place-items-center rounded-xl bg-brand-400 text-white"><Icon name="rocket" class="size-5" /></span>
     <div class="min-w-0 flex-1">
       <h2 id="welcome-title" class="font-semibold">Welcome to Shurly. Here’s where to start.</h2>
-      <p class="mt-1 text-sm text-ink-300">Links you make belong to <span data-welcome-org>your organization</span>, so your team sees them and you see theirs. Make one personal when it’s just for you.</p>
+      <p class="mt-1 text-sm text-ink-300" data-welcome-sharing></p>
       <ol class="mt-3 grid list-decimal gap-1 pl-5 text-sm text-ink-200 marker:text-brand-300">
         <li>Paste a long link below and press Enter. We’ll copy the short one for you.</li>
         <li><a class="font-medium text-brand-300 underline underline-offset-4 hover:text-white" href="/dashboard/campaigns/create/">Track a campaign</a>: a personal link for everyone on a CSV list.</li>
@@ -154,7 +154,7 @@ import VisibilityToggle from '@/components/app/VisibilityToggle.astro';
   import { apiGet } from '@/utils/api';
   import { pageFromQuery, renderPager } from '@/utils/paging';
   import { getMe, getViewer, installLockedControls, onForbidden, visibilityOf, type Viewer } from '@/utils/viewer';
-  import { shouldWelcome, welcomeDismissedKey } from '@/utils/welcome';
+  import { sharingLine, shouldWelcome, welcomeDismissedKey } from '@/utils/welcome';
   import type { OverviewStats, ShortLink, Tag, URLType } from '@/utils/types';
 
   const PAGE_SIZE = 20;
@@ -551,8 +551,12 @@ import VisibilityToggle from '@/components/app/VisibilityToggle.astro';
   // ---------------------------------------------------------------- Welcome
   // A new member's first 14 days, until they dismiss it on this browser (src/utils/welcome.ts).
   const welcome = $('#welcome');
-  void getMe()
-    .then((me) => {
+  void Promise.all([getMe(), viewerReady])
+    .then(([me, v]) => {
+      // Whose links are whose, only once it's known: unsaid if the organization couldn't be loaded.
+      const sharing = $('[data-welcome-sharing]');
+      sharing.textContent = v ? sharingLine(v.organization) : '';
+      sharing.hidden = !v;
       let dismissed = false;
       try {
         dismissed = localStorage.getItem(welcomeDismissedKey(me.id)) !== null;
@@ -571,9 +575,6 @@ import VisibilityToggle from '@/components/app/VisibilityToggle.astro';
       });
     })
     .catch(() => {});
-  void viewerReady.then((v) => {
-    if (v?.organization) $('[data-welcome-org]').textContent = v.organization.name;
-  });
 
   load();
   loadStats();
