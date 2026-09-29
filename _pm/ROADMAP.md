@@ -1510,6 +1510,11 @@ for this.
   - [x] AWS, with the distribution (2026-09-29): the custom origin header, HTTPS to the origin, the origin request policy
         AllViewerAndCloudFrontHeaders-2022-06 and the task's `CLOUDFRONT_ORIGIN_SECRETS` (DEPLOYMENT.md § Frontend
         hosting); optionally the per-host ALB rules
+  - [x] Provable in production without logging an IP: each `http.request` line says how its client IP was found,
+        `client_ip_source` (`cloudfront`, `xff` or `socket`), with its `host`, and CloudWatch counts them by host
+        (DEPLOYMENT.md § Client IPs behind CloudFront; `tests/test_client_ip_source.py`). A clean `429` from one
+        client can't show it: CloudFront reuses its connections, so its edge's address holds still too
+  - [ ] Once it's deployed, check that `shurly.griddo.io` reads `cloudfront` only
 
 ---
 

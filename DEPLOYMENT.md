@@ -628,6 +628,21 @@ differ only when one isn't CloudFront's: an origin request policy that doesn't a
 that no longer appends. Then `X-Forwarded-For` decides, as without the secret. It would take both of those going
 wrong at once to believe a forged address.
 
+**How each request's IP was found** is on its `http.request` line, as `client_ip_source`, next to its `host`. The IP
+itself never is. `cloudfront` is the viewer address; `xff` is `X-Forwarded-For`, from a trusted proxy; `socket` is
+the connection's peer (`client_ip_and_source`). In Logs Insights:
+```
+filter event = "http.request" and path != "/api/v1/health"
+| stats count(*) as requests by host, client_ip_source
+| sort requests desc
+```
+- **`shurly.griddo.io` should read `cloudfront` only.** `xff` there means the viewer address isn't used, and the rate
+  limits count CloudFront's edges. The origin request policy doesn't add `CloudFront-Viewer-Address`, the task's
+  secret isn't the distribution's, or the ALB stopped appending.
+- **`s.griddo.io`, and later `go.griddo.io`, should read `xff`.** `socket` there means `TRUSTED_PROXIES` doesn't name
+  the ALB, so every client looks like the ALB.
+- The health checks, left out above, read `socket`: the ALB asks them itself.
+
 **The distribution:**
 
 - On the ALB origin, the custom origin header `X-Origin-Verify` with a random value of at least 32 characters
@@ -670,10 +685,13 @@ condition on priority 12 nor a security group limited to CloudFront's origin-fac
 - `/login` answers `301` to `/login/`.
 - `/api/v1/health` answers with JSON, through CloudFront.
 - `/mcp/` answers `401` with `WWW-Authenticate`.
-- The client IP is yours, not the edge's, and a forged one is ignored: 21 failed `POST /api/v1/auth/login`
-  through CloudFront, each with another email and another `CloudFront-Viewer-Address: 6.6.6.N:1`, and the 21st
-  answers `429` (`RATE_LIMIT_LOGIN_PER_IP` is 20). A request straight to the ALB for `shurly.griddo.io` without the
-  secret gets `403` if the ALB rule is in place.
+- A forged client IP is ignored: 21 failed `POST /api/v1/auth/login` through CloudFront, each with another email
+  and another `CloudFront-Viewer-Address: 6.6.6.N:1`, and the 21st answers `429` (`RATE_LIMIT_LOGIN_PER_IP` is 20).
+  From one client that can't tell your IP from the edge's, since CloudFront reuses its connections to the ALB.
+  The next check can. A request straight to the ALB for `shurly.griddo.io` without the secret gets `403` if the
+  ALB rule is in place.
+- The client IP is yours, not the edge's: `shurly.griddo.io`'s `http.request` lines read `client_ip_source`
+  `cloudfront` (§ Client IPs behind CloudFront has the query).
 - An `_astro/` file's `Cache-Control` is `immutable`, and a page's is `max-age=0`.
 
 ## Cost estimation (eu-south-2, monthly)
@@ -941,7 +959,8 @@ app's `/login/` page, and they choose Sign in with Google with their work accoun
 
 ## Error alerting (Phase 6.4)
 
-The app writes one JSON line per request (`http.request`, with its `status`) to the task's log group,
+The app writes one JSON line per request (`http.request`: its `method`, `host`, `path`, `status`, `duration_ms`
+and `client_ip_source`) to the task's log group,
 `/aws/ecs/default/shurly-api-5fdb`. A generated MCP tool calls the API in-process, so its failures get a line too.
 Alerting therefore needs no code: a CloudWatch metric filter counts the errors, an alarm watches the count, and SNS
 sends the email. None of it is set up yet (ROADMAP 6.4).
