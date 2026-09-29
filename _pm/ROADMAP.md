@@ -1208,6 +1208,7 @@ people (who clicked, who hasn't). It takes no period: the period scopes the char
 ```json
 {"campaign_id": "3f2c…", "campaign_name": "Q4 webinar", "timezone": "Europe/Madrid",
  "filter": "all", "q": "", "sort": "clicks", "order": "desc", "total": 250, "page": 1, "page_size": 50, "pages": 5,
+ "counts": {"all": 250, "clicked": 96, "opened": 170, "none": 60},
  "recipients": [{"short_code": "q4-ana", "short_url": "https://shurl.griddo.io/q4-ana", "domain": "shurl.griddo.io",
                  "user_data": {"name": "Ana", "email": "ana@example.com"}, "clicks": 3, "opens": 5,
                  "first_click_at": "2026-09-20T10:02:11+02:00", "last_click_at": "2026-09-27T23:54:12+02:00",
@@ -1221,8 +1222,11 @@ people (who clicked, who hasn't). It takes no period: the period scopes the char
   - `clicked`: Clicked, at least one click;
   - `opened`: Opened, at least one pixel open;
   - `none`: neither clicked nor opened.
-- `q` searches, ignoring case, the values of `user_data` (not its keys) and the short code.
-  - It's done in SQL: `json_each_text` on PostgreSQL, SQLite's `json_each` in the tests.
+- `counts` is how many recipients each filter gives for `q`, whatever `filter` is: the filters' chips. Clicked and
+  Opened can overlap, so the four don't add up to `all`. One more aggregate, over the same search.
+- `q` (up to 200 characters) searches, ignoring case, the values of `user_data` (not its keys) and the short code.
+  - It's done in SQL: `json_each_text` on PostgreSQL, SQLite's `json_each` in the tests. A `user_data` that isn't
+    an object, a JSON null say, is searched as an empty one.
   - The search text is escaped (`autoescape=True`, as #84's guard requires), so `%` and `_` match themselves.
 - `sort` is `clicks` (the default), `opens`, `last_click` or `code`, and `order` is `desc` (the default) or `asc`.
   - Ties go to the latest click, most recent first, then the code, A to Z.
@@ -1256,14 +1260,16 @@ Their `click_through_rate` stays a percentage, 0 to 100.
       `urls.campaign_id` rather than a list of ids. A subquery, `url_id IN (SELECT id FROM urls WHERE campaign_id = …)`
 - [x] PR 1: `/totals`, `/timeseries` and `/breakdown`. `/summary`, `/users` and the new routes decide who sees a
       campaign with one function (`_visible_campaign_or_404`)
-- [ ] PR 2: `/recipients` and `/recipients.csv`, all time. Each link is joined to its visits' totals (clicks, opens,
+- [x] PR 2: `/recipients` and `/recipients.csv`, all time. Each link is joined to its visits' totals (clicks, opens,
       first and last click, last open), and every recipient is kept with zeros. Then `filter`, `q`, `sort` and the
-      page are all done in SQL
-- [ ] MCP: the tool names, `/recipients.csv` excluded, `EXPECTED_TOOLS`. README endpoints and CHANGELOG
-- [ ] Timings on PostgreSQL: a campaign of 2,000 recipients with 20k visits
+      page are all done in SQL, and `counts` is one more aggregate over the search
+- [x] MCP: the tool names, `/recipients.csv` excluded, `EXPECTED_TOOLS`. README endpoints and CHANGELOG
+- [x] Timings on PostgreSQL: a campaign of 2,000 recipients with 20k visits
       - PR 1 (2026-09-29), among 1,600 other recipients with 80k visits: `/totals` in 16 ms, `/timeseries` in 28,
         a 90-day `/breakdown` in 28 (33 for every kind); the legacy `/summary` in 87. No index on
         `urls.campaign_id` needed at that size
+      - PR 2, same data: `/recipients` in 27 ms, searched 30, filtered and sorted by last click 32, page 40 in 27;
+        the 2,000 rows of `/recipients.csv` in 60 (the legacy `/users`, all at once, in 36)
 
 ### 3.17.3 Page (Agent 2)
 - [x] Agent 2 breaks it down:

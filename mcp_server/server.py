@@ -50,6 +50,12 @@ EXCLUDED_ROUTE_MAPS: list[RouteMap] = [
         pattern=r"^/api/v1/analytics/urls/\{short_code\}/visits\.csv$",
         mcp_type=MCPType.EXCLUDE,
     ),
+    # Phase 3.17 — a campaign's recipients as a file, the same way: `list_campaign_recipients`
+    # pages through them.
+    RouteMap(
+        pattern=r"^/api/v1/analytics/campaigns/\{campaign_id\}/recipients\.csv$",
+        mcp_type=MCPType.EXCLUDE,
+    ),
     # Phase 3.14.2 — role changes, removals and ownership handovers stay out of the
     # MCP: an assistant that reads untrusted text (link titles, fetched pages) could
     # be talked into "make X an owner". Reading the organization is fine.
@@ -155,6 +161,9 @@ MCP_TOOL_NAMES: dict[str, str] = {
     ),
     "get_campaign_breakdown_api_v1_analytics_campaigns__campaign_id__breakdown_get": (
         "get_campaign_breakdown"
+    ),
+    "list_campaign_recipients_api_v1_analytics_campaigns__campaign_id__recipients_get": (
+        "list_campaign_recipients"
     ),
     "get_orphan_visits_api_v1_analytics_orphan_visits_get": "get_orphan_visits",
     # Tags
