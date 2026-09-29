@@ -68,7 +68,8 @@ def _is_rfc3339_date_time(value: object) -> bool:
         return True
     if not _RFC3339.match(value):
         return False
-    datetime.fromisoformat(value.replace("z", "Z").replace("t", "T"))
+    # Python 3.10's fromisoformat takes no "Z" (3.11+ does): spell UTC as +00:00 to check the rest.
+    datetime.fromisoformat(re.sub(r"[zZ]$", "+00:00", value.replace("t", "T")))
     return True
 
 
