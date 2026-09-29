@@ -45,7 +45,7 @@ dev = [
     # Pinned to one minor series: CI fails on lint/format, and a new ruff minor
     # can add rules or change formatting. The cap keeps the weekly bump within it.
     # Bump deliberately (and re-run `ruff format .` in the same PR).
-    "ruff>=0.15.12,<0.16",
+    "ruff>=0.15.12,<0.17",
     "pytest>=8.0.0",
     "pytest-asyncio>=0.23.0",
     "pytest-cov>=4.0.0",
