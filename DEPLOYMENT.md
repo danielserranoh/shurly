@@ -378,6 +378,20 @@ That's the only secret needed. No `AWS_ACCESS_KEY_ID`, no `AWS_SECRET_ACCESS_KEY
 - New versions arrive only through Dependabot's weekly PR against `dev` (`.github/dependabot.yml`: uv and the
   workflows' actions, minor and patch grouped), which is QA'd and released like any other.
 
+**So is what builds them.**
+- The dockerfile pins `python:3.11-slim` by digest. Dependabot's docker PR moves the digest weekly, but never
+  to a new Python.
+- `astral-sh/setup-uv` is pinned by commit in the workflows, and Dependabot bumps it with the other actions.
+- uv itself is one version, the one that reads `uv.lock`: `UV_VERSION` in both workflows, and the dockerfile's
+  `ghcr.io/astral-sh/uv:<version>@<digest>`. `tests/test_dependency_lock.py` checks they agree. Dependabot
+  leaves uv alone.
+- **To bump uv:**
+  1. Update your own (`uv self update <version>`) and run `uv lock`.
+  2. Change the dockerfile's uv image, both its tag and its digest (`docker buildx imagetools inspect
+     ghcr.io/astral-sh/uv:<version>`).
+  3. Change `UV_VERSION` in `test.yml` and `deploy-backend.yml`.
+  4. Put all of it in one PR.
+
 ---
 
 ## Frontend hosting (Phase 4.10)

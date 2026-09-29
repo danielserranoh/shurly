@@ -100,6 +100,8 @@ the MCP's (`mcp`) included. `uv.lock` is committed: CI, the deploy and the image
 - **Every week** Dependabot opens a PR against `dev` with the minor and patch bumps, grouped
   (`.github/dependabot.yml`). A major is a PR of its own.
 - CI runs `uv sync --locked`, which fails when `pyproject.toml` changed without `uv.lock`: run `uv lock`.
+- CI and the image run uv 0.11.1 (`UV_VERSION` in the workflows). Use that version to re-lock, since another
+  can rewrite the lock's format. Bumping uv is a change of its own (DEPLOYMENT.md § Workflow trigger).
 
 #### Configure Environment
 

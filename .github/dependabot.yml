@@ -1,6 +1,8 @@
 # The weekly bump (DEPLOYMENT.md § Workflow trigger): uv.lock is committed, so new versions arrive only here,
 # as PRs against dev that CI runs and the coordinator QAs. Minor and patch updates come grouped, one PR per
 # ecosystem; a major is a PR of its own. pyproject.toml's caps keep a bump below the majors they name.
+# The dockerfile's images are pinned by digest: the base image's digest moves weekly, but a new Python or a
+# new uv is a change of its own (uv's version is in the workflows too: bump them together, and re-lock).
 version: 2
 updates:
   - package-ecosystem: "uv"
@@ -23,3 +25,13 @@ updates:
       actions-minor-and-patch:
         patterns: ["*"]
         update-types: ["minor", "patch"]
+  - package-ecosystem: "docker"
+    directory: "/"
+    target-branch: "dev"
+    schedule:
+      interval: "weekly"
+      day: "tuesday"
+    ignore:
+      - dependency-name: "ghcr.io/astral-sh/uv"
+      - dependency-name: "python"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]

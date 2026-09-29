@@ -26,6 +26,17 @@ implementation lifecycle and is independent of the URL version segment.
 
 ## [Unreleased]
 
+### Changed — what builds the image is pinned too (6.3)
+- **The base image and uv are pinned by digest.** The dockerfile names `python:3.11-slim@sha256:…`, which is the
+  digest production already runs, and `ghcr.io/astral-sh/uv:0.11.1@sha256:…` in place of `:latest`.
+- **The workflows install uv with `astral-sh/setup-uv`, pinned by commit,** in place of piping `astral.sh`'s
+  install script into `sh`.
+- **One uv reads the lock:** 0.11.1, which wrote it, in CI (`UV_VERSION`) and in the image.
+  `tests/test_dependency_lock.py` fails if they part.
+- **Dependabot adds the docker ecosystem.** The base image's digest moves weekly, never to a new Python. uv's
+  version is left to a deliberate bump, in the dockerfile and both workflows together (DEPLOYMENT.md § Workflow
+  trigger).
+
 ### Changed — dependencies are pinned by a committed uv.lock (6.3)
 - **`uv.lock` is committed.** It was gitignored, so every CI run, deploy and Monday rebuild resolved the newest
   versions of 121 packages. A release could ship versions its PR's CI never ran, and the weekly rebuild changed

@@ -1822,7 +1822,10 @@ live in `mcp_server/README.md`, written for developers. There is no user manual 
       deploy run `uv sync --locked`, the image `--frozen`. New versions come from Dependabot's weekly PR against
       `dev` (uv and the workflows' actions, minor and patch grouped). The caps stay, as a safety net
       (`tests/test_dependency_lock.py`)
-  - [ ] Pin the base image and the uv binary by digest, with Dependabot's docker ecosystem to bump them
+  - [x] Pin the base image and the uv binary by digest, with Dependabot's docker ecosystem to bump them →
+        `python:3.11-slim` and uv 0.11.1 by digest; `astral-sh/setup-uv` by commit in place of `curl … | sh`;
+        one uv version in CI and the image (`UV_VERSION`); Dependabot moves the base image's digest weekly,
+        never to a new Python, and leaves uv to a deliberate bump
 
 ### 6.4 Monitoring & Logging
 - [x] CloudWatch Logs setup → `/aws/ecs/default/shurly-api-5fdb`; `X-Request-Id` correlates requests
