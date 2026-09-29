@@ -50,6 +50,7 @@ from server.utils.access import (
     visible_campaign_or_404,
     visible_url_or_404,
 )
+from server.utils.bounds import MAX_PAGE, MAX_SKIP
 from server.utils.csv_export import stream_csv
 from server.utils.domain import normalize_hostname
 from server.utils.local_days import (
@@ -604,7 +605,7 @@ def get_url_weekly_stats(
 def get_url_geo_stats(
     short_code: str,
     domain: LinkDomain = None,
-    days: int = 30,
+    days: int = Query(30, ge=1, le=3660, description="Days to look back, up to ten years"),
     include_bots: bool = Query(False, description="Include bot/crawler visits in counts"),
     format: str = Query("json", pattern="^(json|csv)$", description="Response format"),
     db: Session = Depends(get_db),
@@ -621,7 +622,7 @@ def get_url_geo_stats(
     - **short_code**: The short code to get statistics for
 
     **Query Parameters:**
-    - **days**: Number of days to look back (default: 30)
+    - **days**: Number of days to look back (default: 30, from 1 to 3660)
 
     **Responses:**
     - **200**: Geographic statistics retrieved successfully - Returns clicks by country
@@ -803,7 +804,7 @@ def list_url_visits(
         alias="type",
         description="clicks; opens (email pixel hits, not a bot's); bots; or all",
     ),
-    page: int = Query(1, ge=1, description="From 1; a page past the last is empty"),
+    page: int = Query(1, ge=1, le=MAX_PAGE, description="From 1; a page past the last is empty"),
     page_size: int = Query(20, ge=1, le=100),
     period: Period = Depends(_period),
     db: Session = Depends(get_db),
@@ -1248,7 +1249,7 @@ def list_campaign_recipients(
     q: str = _RECIPIENT_SEARCH,
     sort: RecipientSort = _RECIPIENT_SORT,
     order: Literal["desc", "asc"] = _RECIPIENT_ORDER,
-    page: int = Query(1, ge=1, description="From 1; a page past the last is empty"),
+    page: int = Query(1, ge=1, le=MAX_PAGE, description="From 1; a page past the last is empty"),
     page_size: int = Query(50, ge=1, le=200),
     tz: TimeZoneParam = None,
     db: Session = Depends(get_db),
@@ -1492,7 +1493,7 @@ def get_overview_stats(
 )
 def get_orphan_visits(
     limit: int = Query(100, ge=1, le=500, description="Max number of rows"),
-    skip: int = Query(0, ge=0),
+    skip: int = Query(0, ge=0, le=MAX_SKIP),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):

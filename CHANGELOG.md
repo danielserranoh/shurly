@@ -26,6 +26,30 @@ implementation lifecycle and is independent of the URL version segment.
 
 ## [Unreleased]
 
+### Fixed — an absurd number in a request is a 422, not a 500
+- **Six query parameters and two body fields took any integer.** A value past what the database or the date
+  arithmetic holds answered 500, on PostgreSQL too:
+  - `?skip=` on `/urls`, `/campaigns` and `/analytics/orphan-visits`, past 2^63;
+  - `?page=` on a link's visits and a campaign's recipients, once the page times its size passes 2^63;
+  - `?days=` on `/analytics/urls/{short_code}/geo`, at a billion. It also took 0 or a negative, for an empty answer;
+  - `max_visits` on a link, and a redirect rule's `priority`, past 2^31.
+- **Each now has bounds far past anything real** (`server/utils/bounds.py`). A value past them is a 422:
+  - `skip` up to 1,000,000,000;
+  - `page` up to 1,000,000;
+  - `days` from 1 to 3660, ten years;
+  - `max_visits` and `priority` up to what their column holds, 2^31 − 1. A priority may still be negative: a lower
+    one runs first.
+- **The MCP's curated tools advertise their bounds.** Their numbers were checked only once the tool ran. Now the
+  tool's schema says so, and a value outside it is refused before the tool runs:
+  - `get_url_analytics_summary`'s `days` (1–90);
+  - `list_orphan_visits_grouped`'s `since_days` (1–365) and `limit_groups` (1–200);
+  - `add_redirect_rule`'s `priority`.
+- **`tests/test_bounded_numbers.py` keeps it so.** It reads the OpenAPI document and the MCP's tools, and fails on an
+  integer with no maximum or no minimum. That's a parameter, a body field or a tool argument. It also fails on one
+  that may be negative without a reason in its allowlist.
+- **The links page's `?page=` stays within the API's bounds.** A fraction, or a page past a billion rows, was sent
+  as is, and the list failed to load. Now it's page 1, as a page past the last already was.
+
 ### Added — end-to-end tests (Phase 6.1)
 - **Playwright drives the production build of the frontend in Chromium**, against the real API on its own
   PostgreSQL, on every push and pull request (the `e2e` job of `test.yml`). Locally: `npm run e2e` in

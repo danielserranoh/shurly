@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field, field_validator
 
 from server.core.models.url import URLType
 from server.utils.access import Visibility
+from server.utils.bounds import INT4_MAX
 from server.utils.url import is_valid_url
 
 if TYPE_CHECKING:
@@ -37,7 +38,10 @@ class URLCreate(BaseModel):
         None, description="URL stops being active at this UTC timestamp"
     )
     max_visits: int | None = Field(
-        None, ge=1, description="Hard cap on clicks (click_count) before returning 410 Gone"
+        None,
+        ge=1,
+        le=INT4_MAX,
+        description="Hard cap on clicks (click_count) before returning 410 Gone",
     )
 
     # Phase 3.9.4 — default-deny crawlability
@@ -85,7 +89,10 @@ class URLCustomCreate(BaseModel):
         None, description="URL stops being active at this UTC timestamp"
     )
     max_visits: int | None = Field(
-        None, ge=1, description="Hard cap on clicks (click_count) before returning 410 Gone"
+        None,
+        ge=1,
+        le=INT4_MAX,
+        description="Hard cap on clicks (click_count) before returning 410 Gone",
     )
 
     # Phase 3.9.4 — default-deny crawlability
@@ -131,7 +138,9 @@ class URLUpdate(BaseModel):
     valid_until: datetime | None = Field(
         None, description="Update expiration timestamp (null clears)"
     )
-    max_visits: int | None = Field(None, ge=1, description="Update visit cap (null clears)")
+    max_visits: int | None = Field(
+        None, ge=1, le=INT4_MAX, description="Update visit cap (null clears)"
+    )
 
     # Phase 3.9.4 — toggle crawlability
     crawlable: bool | None = Field(None, description="Allow this short URL in robots.txt")

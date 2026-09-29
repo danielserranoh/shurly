@@ -151,6 +151,7 @@ import VisibilityToggle from '@/components/app/VisibilityToggle.astro';
   import { loadTags, tagPill } from '@/utils/tags';
   import { closeDialog, confirmDialog, copyWithFeedback, hydrateTimes, openDialog, setLoading, toast, writeClipboard } from '@/utils/ui';
   import { apiGet } from '@/utils/api';
+  import { pageFromQuery } from '@/utils/paging';
   import { getViewer, installLockedControls, onForbidden, visibilityOf, type Viewer } from '@/utils/viewer';
   import type { OverviewStats, ShortLink, Tag, URLType } from '@/utils/types';
 
@@ -165,7 +166,7 @@ import VisibilityToggle from '@/components/app/VisibilityToggle.astro';
     type: (params.get('type') as keyof typeof TYPES) ?? 'links',
     tags: (params.get('tags') ?? '').split(',').filter(Boolean),
     match: (params.get('match') === 'all' ? 'all' : 'any') as 'any' | 'all',
-    page: Math.max(1, Number(params.get('page')) || 1),
+    page: pageFromQuery(params.get('page'), PAGE_SIZE),
   };
   if (!(state.type in TYPES)) state.type = 'links';
 
