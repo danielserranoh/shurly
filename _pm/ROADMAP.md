@@ -1704,8 +1704,8 @@ live in `mcp_server/README.md`, written for developers. There is no user manual 
   - [x] (b) At runtime, for every route that returns recipients' rows or activity, or visits: an outsider gets a 404
         and an organization member a 200 (`tests/test_personal_data_access.py`, 20 routes, read from the table). A
         personal campaign stays its creator's
-  - [ ] Finding 1: a crawler's preview of a campaign link carries its recipient's `user_data` in its refresh URL.
-        Proposed: leave it out of the preview
+  - [x] Finding 1: a crawler's preview of a campaign link carried its recipient's `user_data` in its refresh URL.
+        Now it never does; people's redirect is unchanged (2026-09-29)
   - Decisions pending, with the user: a campaign link's visits one by one; orphan visits' IPs
 - [ ] Environment secrets audit (DB password and JWT secret are plain task env vars; Secrets Manager is the planned move)
   - [ ] The Google OAuth client's secret (3.13.2, `GOOGLE_CLIENT_SECRET`) in Secrets Manager
