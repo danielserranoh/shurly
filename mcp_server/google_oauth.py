@@ -39,6 +39,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import sessionmaker
 
 from mcp_server.oauth_store import encrypted_database_store
+from mcp_server.pages import brand_fastmcp_pages
 from server.core.config import settings
 from server.core.models import UserIdentity
 from server.utils.event_log import log_event
@@ -236,6 +237,10 @@ def build_google_provider(
     """
     if session_factory is None:
         from server.core import SessionLocal as session_factory
+    # The sign-in's pages are Shurly's (mcp_server/pages.py): fastmcp's page renderers point at
+    # ours, here and nowhere else. Checked against fastmcp 4.0.6 to 4.0.10; importing pages.py
+    # fails if a later one renamed a renderer.
+    brand_fastmcp_pages()
     signing_key = settings.mcp_oauth_signing_key.get_secret_value()
     return provider_class(
         client_id=settings.google_client_id,

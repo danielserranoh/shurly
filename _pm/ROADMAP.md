@@ -1667,6 +1667,12 @@ added there; Claude Code gets by with `--header`.
 - [x] Tests: metadata documents, the 401 header, both token types, user mapping, non-griddo identities refused
       → `tests/test_phase58_mcp_oauth.py`, against a fake Google, including two app instances completing one
       sign-in
+- [x] The sign-in's pages in Shurly's brand, not FastMCP's (the user, 2026-09-29: FastMCP's page "doesn't
+      inspire trust") → fastmcp's four page renderers point at Shurly's (`mcp_server/pages.py`), and fastmcp
+      keeps the flow. An error page shows a reason, never the URL's text; every HTML page gets its headers
+      (no `form-action`, on purpose); `tests/test_phase58_mcp_pages.py` pins them through a fastmcp upgrade
+  - [x] The renderers, the headers and the tests
+  - [x] The templates in the brand: `server/templates/mcp_consent.html` and `mcp_error.html`
 - [ ] Check it end to end: Claude Code (`claude mcp add --transport http …`, sign-in in the browser) and a
       claude.ai custom connector → in production (2026-09-28) the metadata documents and the 401 with
       `resource_metadata` are verified; nobody has completed a sign-in from claude.ai or Claude Code yet
