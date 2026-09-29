@@ -121,27 +121,62 @@ def _of_type(query: SAQuery, visit_type: str) -> SAQuery:
     return query
 
 
+_PERIOD = Query(
+    None,
+    ge=1,
+    le=MAX_PERIOD_DAYS,
+    description="The last N local days, today included. Default 30",
+)
+_FROM = Query(None, alias="from", description="A custom range's first local day, with `to`")
+_TO = Query(
+    None,
+    alias="to",
+    description="A custom range's last local day, inclusive: after today counts to today",
+)
+
+
 def _period(
-    period: int | None = Query(
-        None,
-        ge=1,
-        le=MAX_PERIOD_DAYS,
-        description="The last N local days, today included. Default 30",
-    ),
-    first: date | None = Query(
-        None, alias="from", description="A custom range's first local day, with `to`"
-    ),
-    last: date | None = Query(
-        None,
-        alias="to",
-        description="A custom range's last local day, inclusive: after today counts to today",
-    ),
+    period: int | None = _PERIOD,
+    first: date | None = _FROM,
+    last: date | None = _TO,
     tz: TimeZoneParam = None,
     current_user: User = Depends(get_current_user),
 ) -> Period:
     """Phase 3.16 — the local days a per-link route counts: `period`, or `from` and `to`."""
+    return _resolved(current_user, tz, period, first, last)
+
+
+def _geo_period(
+    days: int | None = Query(
+        None,
+        ge=1,
+        le=3660,
+        deprecated=True,
+        description="Before `period`, and the same: the last N days. Past 731, the last 731",
+    ),
+    period: int | None = _PERIOD,
+    first: date | None = _FROM,
+    last: date | None = _TO,
+    tz: TimeZoneParam = None,
+    current_user: User = Depends(get_current_user),
+) -> Period:
+    """`/geo`'s period: `_period`'s, or its old `days`, which is `period` up to the longest a
+    period is (MAX_PERIOD_DAYS, 731): the cap wins."""
+    if days is not None:
+        if period is not None or first is not None or last is not None:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Give days, or a period or from and to, not both: days is the old period.",
+            )
+        period = min(days, MAX_PERIOD_DAYS)
+    return _resolved(current_user, tz, period, first, last)
+
+
+def _resolved(
+    user: User, tz: str | None, period: int | None, first: date | None, last: date | None
+) -> Period:
     try:
-        return Period.resolve(LocalDays.of(current_user, tz), period, first, last)
+        return Period.resolve(LocalDays.of(user, tz), period, first, last)
     except PeriodError as error:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(error)
@@ -607,16 +642,15 @@ def get_url_weekly_stats(
 def get_url_geo_stats(
     short_code: str,
     domain: LinkDomain = None,
-    days: int = Query(30, ge=1, le=3660, description="Days to look back, up to ten years"),
+    period: Period = Depends(_geo_period),
     include_bots: bool = Query(False, description="Include bot/crawler visits in counts"),
     format: str = Query("json", pattern="^(json|csv)$", description="Response format"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """
-    Get geographic distribution of clicks for a URL.
-
-    Returns click counts grouped by country for the specified time period.
+    A link's clicks by country, over a period's local days: as its breakdown counts them
+    (`/breakdown`'s countries, the same total), in this older shape.
 
     **Authentication:** Required (JWT Bearer token)
 
@@ -624,39 +658,39 @@ def get_url_geo_stats(
     - **short_code**: The short code to get statistics for
 
     **Query Parameters:**
-    - **days**: Number of days to look back (default: 30, from 1 to 3660)
+    - **period**, or **from** and **to**, and **tz**: the local days, as on the other routes.
+      Default: the last 30
+    - **days**: the old `period`, still taken. Past 731 it counts the last 731, the longest a
+      period is: the cap wins. With `period` or `from`/`to` too, a 422
+    - **include_bots**: count bots' clicks too. Email opens never count: they aren't clicks
+
+    A click with no country counts as "Unknown". `period_days` is the days counted.
 
     **Responses:**
-    - **200**: Geographic statistics retrieved successfully - Returns clicks by country
+    - **200**: Clicks by country, the most first
     - **401**: Authentication required or invalid token
     - **404**: URL not found, or someone else's personal link
+    - **422**: `days` out of range, or with a period
     """
     # Verify the user can see the URL (Phase 3.14.3 — the organization's, or their own)
     url = visible_url_or_404(db, current_user, short_code, domain)
 
-    cutoff_date = datetime.utcnow() - timedelta(days=days)
-
-    # Query visits grouped by country
-    geo_q = db.query(
-        Visitor.country,
-        func.count(Visitor.id).label("click_count"),
-    ).filter(
-        Visitor.url_id == url.id,
-        Visitor.visited_at >= cutoff_date,
-        Visitor.country.isnot(None),
-    )
-    geo_stats = (
-        _exclude_bots(geo_q, include_bots)
+    start, end = period.bounds()
+    in_period = _link_visits(db, url).filter(Visitor.visited_at >= start, Visitor.visited_at < end)
+    countries: Counter = Counter()
+    for country, clicks in (
+        _exclude_bots(in_period, include_bots)
+        .with_entities(Visitor.country, func.count(Visitor.id))
         .group_by(Visitor.country)
-        .order_by(func.count(Visitor.id).desc())
         .all()
-    )
-
+    ):
+        countries[country_label(country)] += clicks
+    total_clicks = sum(countries.values())
+    # The breakdown's order: the most clicks first, then by name.
     stats = [
-        GeoStats(country=geo.country or "Unknown", clicks=geo.click_count) for geo in geo_stats
+        GeoStats(country=item.name, clicks=item.count)
+        for item in _breakdown(countries, total_clicks)
     ]
-
-    total_clicks = sum(stat.clicks for stat in stats)
 
     if format == "csv":
         return stream_csv(
@@ -669,7 +703,7 @@ def get_url_geo_stats(
         short_code=short_code,
         stats=stats,
         total_clicks=total_clicks,
-        period_days=days,
+        period_days=(period.last - period.first).days + 1,
     )
 
 

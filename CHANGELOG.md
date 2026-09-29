@@ -26,6 +26,18 @@ implementation lifecycle and is independent of the URL version segment.
 
 ## [Unreleased]
 
+### Fixed — a link's clicks by country count the same clicks as its breakdown
+- **`GET /api/v1/analytics/urls/{short_code}/geo`,** the MCP's `get_url_geo_stats`, left out every click with no
+  country. It also counted the last N × 24 hours in UTC, where the rest of the analytics count the viewer's local
+  days. So its total could differ from the link's breakdown for the same days.
+- **Now it counts as the breakdown does:** the period's local days, with "Unknown" for a click with no country. Its
+  total is the breakdown's. The response keeps its shape, `period_days` is the days counted, and the CSV counts
+  "Unknown" too.
+- **It takes a period like the other routes:** `period`, or `from` and `to`, and `tz`. `days` still works, as the
+  old `period`:
+  - past 731 days, the longest a period is, it counts the last 731, since the cap wins;
+  - with `period` or `from`/`to` too, it's a 422.
+
 ### Fixed — the Analytics page's Pro card, and its typos' window
 - **"Go deeper" no longer says a link's own views are coming with Pro.** Each link's page already has the last 30
   or 90 days, dates you pick, and its visits as a CSV, free (paywall rule 1). The card says so, and points to Top
