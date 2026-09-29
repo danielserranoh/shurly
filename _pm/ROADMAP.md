@@ -1472,17 +1472,22 @@ for this.
 
 - [x] Choose the hostname → **`shurly.griddo.io`** (decided 2026-09-28), for the web, the app, the API and the
       MCP, split by path; `go.griddo.io` is for short links only. `links.griddo.io` retires with Shlink (Phase 8)
-- [ ] S3 bucket (Block Public Access on) + CloudFront distribution with OAC
-- [ ] ACM certificate in **us-east-1**: CloudFront only takes certificates from N. Virginia (the ALB's is in
-      eu-south-2). DNS validation in `griddo-production`
+- [x] S3 bucket (Block Public Access on) + CloudFront distribution with OAC → `shurly-frontend-686255983646`
+      (eu-south-2), distribution `EJDA8EMBWVGDG` (`d1e7o4qkz3x60l.cloudfront.net`), OAC `shurly-frontend-oac`, the
+      `shurly-security-headers` response-headers policy (2026-09-29)
+- [x] ACM certificate in **us-east-1**: CloudFront only takes certificates from N. Virginia (the ALB's is in
+      eu-south-2). DNS validation in `griddo-production` → issued 2026-09-29 (same validation record as the ALB's)
 - [x] CloudFront Function rewriting `/dashboard/` → `/dashboard/index.html`: a private bucket is reached through
       the S3 REST endpoint, which doesn't resolve directory indexes. The comment in `astro.config.mjs` saying no
       CDN rewrites are needed only holds for the public website endpoint → `infra/cloudfront/static-paths.js`, with tests;
       attach it to the default behaviour when the distribution is created
-- [ ] Error response: 404 → `/404.html` → an open decision now that the API shares the distribution: custom error
+- [x] Error response: 404 → `/404.html` → **no custom error responses** (decided 2026-09-29): an unknown page shows
+      S3's XML 403; the API's own 403/404 stay intact. Revisit with a Lambda@Edge origin-response if it matters. Was: custom error
       responses apply to the whole distribution and would replace the API's own 403/404 (DEPLOYMENT.md § Frontend
       hosting, "Error pages")
-- [ ] Route 53 alias record, from `griddo-production`
+- [x] Route 53 alias record, from `griddo-production` → `shurly.griddo.io` A + AAAA aliases to the distribution
+      (2026-09-29). Rollback: point the A alias back to the ALB (`ecs-express-gateway-alb-d37ca364-…`), whose host rule
+      and certificate stay in place
 - [x] Rewrite `deploy-frontend.yml`: OIDC role as in 4.8 (it still uses access keys), the real bucket, the
       production build values below, `PUBLIC_SITE_URL`; re-enable `push` on `frontend/**`. Its header still
       points at the Lambda-era "Phase 4.5/4.6"
@@ -1490,7 +1495,7 @@ for this.
       (`go.griddo.io` from Phase 8). Without `PUBLIC_SHORT_DOMAIN` the app shows short links on the API's host
       (`shurly.griddo.io/abc`). The MCP address in the manual and Settings then derives as
       `https://shurly.griddo.io/mcp/` (`PUBLIC_MCP_URL` only to override it)
-- [ ] `CORS_ORIGINS` in the task → `'[]'` once the frontend is hosted, as it shares the API's host (DEPLOYMENT.md
+- [x] `CORS_ORIGINS` in the task → `'[]'` (set 2026-09-29, with `FRONTEND_URL=https://shurly.griddo.io`) once the frontend is hosted, as it shares the API's host (DEPLOYMENT.md
       § CORS). `deploy_ecs.sh` and `.env.production.example` default to it; production keeps
       `["http://localhost:4232"]` until then (6.3)
 - [x] Update the hostnames table in `DEPLOYMENT.md` (it still says "Future frontend | 7") → done in #74
@@ -1502,7 +1507,7 @@ for this.
       address CloudFront appended to X-Forwarded-For; otherwise X-Forwarded-For as before. One `client_ip` for the
       rate limits and the visit log
       (`tests/test_phase63_cloudfront_client_ip.py`)
-  - [ ] AWS, with the distribution: the custom origin header, HTTPS to the origin, the origin request policy
+  - [x] AWS, with the distribution (2026-09-29): the custom origin header, HTTPS to the origin, the origin request policy
         AllViewerAndCloudFrontHeaders-2022-06 and the task's `CLOUDFRONT_ORIGIN_SECRETS` (DEPLOYMENT.md § Frontend
         hosting); optionally the per-host ALB rules
 

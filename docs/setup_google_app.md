@@ -177,7 +177,7 @@ Detalles en `DEPLOYMENT.md` (sección del MCP) y en `mcp_server/README.md`.
 - [x] Audience: **Interna**
 - [x] Permisos: `openid` y `email` (más `profile`, opcional)
 - [x] Cliente web con las tres URIs de redirección (web, local y MCP), y el JSON **descargado al crearlo**
-- [ ] Workspace: las apps internas tienen acceso (o `Shurly` marcada como de confianza)
+- [x] Workspace: las apps internas tienen acceso (o `Shurly` marcada como de confianza)
 - [x] Client ID y secret entregados (opción A u opción B del paso 7)
 
 Referencias: [Gestionar clientes OAuth](https://support.google.com/cloud/answer/15549257) ·
