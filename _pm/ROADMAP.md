@@ -1285,7 +1285,10 @@ Their `click_through_rate` stays a percentage, 0 to 100.
       filter's options), searches, sorts and pages; ticks survive a page change; Export CSV (`/recipients.csv`)
 - [x] A development-only mock (`&mock`, `src/utils/campaign-analytics-mock.ts`), which the build's dev-only check
       keeps out of production
-- [ ] Check it against the real routes once Agent 1's two PRs land, at 1440 and 390 px, empty campaigns included
+- [x] Check it against the real routes once Agent 1's two PRs land, at 1440 and 390 px, empty campaigns included
+      → on seeded data (60 recipients: 25 clicked, 36 opened): the header, the section by week, context, the filter's
+      counts, search, the four sorts both ways, paging, ticks across pages; a campaign with formula-like CSV values,
+      shown as text and quoted in the CSV downloaded from the page
 
 ---
 
