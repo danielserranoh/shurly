@@ -45,7 +45,7 @@ from server.schemas.url import (
 )
 from server.utils.access import LinkDomain, find_urls, viewer, visible_url_or_404
 from server.utils.bounds import MAX_SKIP
-from server.utils.columns import fit
+from server.utils.columns import fit, stored_referer, stored_user_agent
 from server.utils.domain import get_or_create_default_domain, resolve_domain_for_host
 from server.utils.geo import country_of
 from server.utils.negotiation import prefers_html
@@ -1126,8 +1126,8 @@ def base_url_landing(request: Request, db: Session = Depends(get_db)):
             type=OrphanVisitType.BASE_URL,
             attempted_path="/",
             ip=fit(visit_ip(request), OrphanVisit.ip),
-            user_agent=request.headers.get("user-agent"),
-            referer=request.headers.get("referer"),
+            user_agent=stored_user_agent(request.headers.get("user-agent")),
+            referer=stored_referer(request.headers.get("referer")),
         )
     )
     db.commit()
@@ -1173,9 +1173,9 @@ def tracking_pixel(short_code: str, request: Request, db: Session = Depends(get_
             ip=fit(stored_ip or UNKNOWN_IP, Visitor.ip),
             # Phase 8.4 — from the stored address: anonymized, when that's on.
             country=country_of(stored_ip),
-            user_agent=visit_user_agent,
-            referer=request.headers.get("referer"),
-            is_bot=ua_is_bot(visit_user_agent),
+            user_agent=stored_user_agent(visit_user_agent),
+            referer=stored_referer(request.headers.get("referer")),
+            is_bot=ua_is_bot(visit_user_agent),  # from the whole user agent
             is_pixel=True,
         )
     )
@@ -1291,8 +1291,8 @@ def redirect_short_url(short_code: str, request: Request, db: Session = Depends(
                 type=OrphanVisitType.INVALID_SHORT_URL,
                 attempted_path=str(request.url.path)[:2048],
                 ip=fit(orphan_ip, OrphanVisit.ip),
-                user_agent=request.headers.get("user-agent"),
-                referer=request.headers.get("referer"),
+                user_agent=stored_user_agent(request.headers.get("user-agent")),
+                referer=stored_referer(request.headers.get("referer")),
             )
         )
         db.commit()
@@ -1384,9 +1384,9 @@ def redirect_short_url(short_code: str, request: Request, db: Session = Depends(
         short_code=short_code,
         ip=fit(stored_ip or UNKNOWN_IP, Visitor.ip),
         country=country_of(stored_ip),  # Phase 8.4 — from the stored address
-        user_agent=visit_user_agent,
-        referer=request.headers.get("referer"),
-        is_bot=ua_is_bot(visit_user_agent),
+        user_agent=stored_user_agent(visit_user_agent),
+        referer=stored_referer(request.headers.get("referer")),
+        is_bot=ua_is_bot(visit_user_agent),  # from the whole user agent
         visited_at=now.replace(tzinfo=None),  # naive UTC, like the column's default
     )
 

@@ -31,7 +31,7 @@ from server.core import SessionLocal
 from server.core.config import settings
 from server.core.models import URL, Domain, OrgRole, RedirectRule, Tag, URLType, User, Visitor
 from server.tools.shlink.mapping import is_bot, is_pixel, map_condition
-from server.utils.columns import fit
+from server.utils.columns import fit, stored_referer, stored_user_agent
 from server.utils.csv_export import unquote_spreadsheet_text
 from server.utils.domain import normalize_hostname
 from server.utils.network import UNKNOWN_IP
@@ -353,8 +353,8 @@ def _visits(db, report, url: URL, visits: list[dict]) -> None:
                 ip=IMPORTED_IP,
                 # Phase 8.4 — an ISO code, as Shurly stores a country: names differ by provider.
                 country=fit(location.get("countryCode") or None, Visitor.country),
-                user_agent=visit.get("userAgent"),
-                referer=visit.get("referer"),
+                user_agent=stored_user_agent(visit.get("userAgent")),
+                referer=stored_referer(visit.get("referer")),
                 is_bot=is_bot(visit),
                 is_pixel=is_pixel(visit),
                 visited_at=moment,
