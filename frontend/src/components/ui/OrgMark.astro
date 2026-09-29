@@ -1,0 +1,25 @@
+---
+/**
+ * Phase 3.14.4 — an organization mark: the name's initial on navy until the logo loads, then the
+ * logo on white, its shape kept (`object-contain`). Painted by `paintOrgMark` (src/utils/org-logo.ts).
+ * Size and radius come from `class`.
+ */
+interface Props {
+  class?: string;
+  /** The logo's alt text: empty (the default) where the name is next to it. */
+  alt?: string;
+}
+
+const { class: className, alt = '' } = Astro.props;
+---
+
+<span
+  class:list={[
+    'grid shrink-0 place-items-center overflow-hidden bg-ink-950 font-semibold text-brand-300 data-has-logo:bg-white data-has-logo:ring-1 data-has-logo:ring-line',
+    className,
+  ]}
+  data-org-mark
+>
+  <span data-org-initial aria-hidden="true"></span>
+  <img class="size-full object-contain p-[8%]" alt={alt} data-org-logo hidden />
+</span>

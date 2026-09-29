@@ -11,6 +11,7 @@ Roles rank member < admin < owner:
   least one. That check locks the owner rows, so two owners stepping down at
   once can't both pass it.
 - The first owner comes from `settings.bootstrap_owner_email`.
+- Owners and admins change the organization's logo (3.14.4); every member sees it.
 - Once someone has been removed, an owner can move their personal links and
   campaigns to the organization, so the team keeps them, then or later: the
   removed people are listed with what they still own.
@@ -69,6 +70,19 @@ def get_or_create_default_organization(db: Session) -> Organization:
 
 def get_membership(db: Session, user: User) -> OrganizationMember | None:
     return db.query(OrganizationMember).filter(OrganizationMember.user_id == user.id).first()
+
+
+def editable_organization(db: Session, actor: User) -> Organization:
+    """
+    The actor's organization, for changing how it looks (its logo, 3.14.4): owners and
+    admins. Someone outside any organization is NotAMember, a member NotAllowed.
+    """
+    mine = get_membership(db, actor)
+    if mine is None:
+        raise NotAMember("You don't belong to an organization.")
+    if _RANK[mine.role] < _RANK[OrgRole.ADMIN]:
+        raise NotAllowed("Only owners and admins change the organization's logo.")
+    return db.get(Organization, mine.organization_id)
 
 
 def _is_bootstrap_owner(user: User) -> bool:

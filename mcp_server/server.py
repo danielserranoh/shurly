@@ -86,6 +86,9 @@ EXCLUDED_ROUTE_MAPS: list[RouteMap] = [
     # Phase 3.12 — the avatar is an image upload and an image back (PUT, GET, DELETE):
     # of no use to an assistant, and someone's picture is theirs to change.
     RouteMap(pattern=r"^/api/v1/auth/me/avatar$", mcp_type=MCPType.EXCLUDE),
+    # Phase 3.14.4 — so is the organization's logo (PUT, GET, DELETE): an image, of no use to
+    # an assistant, and how the organization looks is for its owners and admins to change.
+    RouteMap(pattern=r"^/api/v1/organization/logo$", mcp_type=MCPType.EXCLUDE),
     # Phase 6.4 — a browser's error report: for the web app's own use, never an assistant's.
     RouteMap(pattern=r"^/api/v1/client-errors$", mcp_type=MCPType.EXCLUDE),
     RouteMap(

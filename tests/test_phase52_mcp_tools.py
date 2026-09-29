@@ -127,6 +127,12 @@ def test_the_avatar_is_not_a_tool():
     assert not {name for name in names if "avatar" in name}
 
 
+def test_the_organization_logo_is_not_a_tool():
+    """Phase 3.14.4 — the same for the organization's logo: upload, image and removal."""
+    names = _list_tool_names()
+    assert not {name for name in names if "logo" in name}
+
+
 def test_health_probes_excluded():
     """Health probes are orchestrator-only, not LLM-facing."""
     names = _list_tool_names()
