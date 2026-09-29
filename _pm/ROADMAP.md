@@ -1601,6 +1601,8 @@ records which tools get used, how often, or how they fail.
   - [x] The web app's side: its errors as `client.error` lines (6.4), and what it's used for from the API's
         `http.request` lines: queries in `DEPLOYMENT.md` § What the web app is used for
 - [ ] Capture qualitatively: which workflows feel smooth in chat, which feel awkward (e.g. CSV import, charts).
+  - [x] Send feedback, in the account menu and the phone's menu: an email to support@griddo.io from the person's own
+        mail app, with the page's path (never its query)
 - [ ] Output: a "frontend feature priority" list backed by real signal, fed into the frontend backlog.
 
 ### 5.7 Verification

@@ -927,7 +927,8 @@ app's `/login/` page, and they choose Sign in with Google with their work accoun
 2. Send each person the app's address, the manual (`/manual/`) and, for Claude, `/manual/install-mcp/`.
 3. As they sign in, they appear in Settings → Organization as members. Make a second owner.
 4. Watch the signal: § What the web app is used for, `client.error` in § Error alerting, and the MCP's `mcp.tool_call`
-   queries (`mcp_server/README.md` § Usage log).
+   queries (`mcp_server/README.md` § Usage log). What people say arrives at support@griddo.io: Send feedback, in the
+   account menu, writes there from their own mail app, with the page they were on.
 
 ## Error alerting (Phase 6.4)
 

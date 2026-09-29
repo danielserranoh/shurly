@@ -26,6 +26,8 @@ export const site = {
   /** Optional links for the open-source / sponsor strip on the landing page. Hidden when empty. */
   sourceUrl: (import.meta.env.PUBLIC_SOURCE_URL as string | undefined) || '',
   sponsorUrl: (import.meta.env.PUBLIC_SPONSOR_URL as string | undefined) || '',
+  /** Where "Send feedback" writes (the dogfood, 5.6.1): the team's inbox. */
+  supportEmail: 'support@griddo.io',
 };
 
 export interface Plan {

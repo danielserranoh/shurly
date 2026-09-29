@@ -42,6 +42,11 @@ implementation lifecycle and is independent of the URL version segment.
 - **A campaign link's visits one by one, and orphan visits' IPs,** are both kept as they are (2026-09-29), to revisit
   after the dogfood. `docs/PERSONAL_DATA.md` says so where it said "decision pending".
 
+### Added — Send feedback (the dogfood, 5.6.1)
+- **Send feedback, in the account menu and the phone's menu**, opens an email to support@griddo.io in the person's
+  own mail app, with the subject "Shurly feedback" and, below room to write, the page they were on: its path, built
+  when the page is, so never its query (a link's code or a campaign's id).
+
 ### Added — CI runs the whole suite on PostgreSQL too
 - **The suite ran on in-memory SQLite,** which takes what PostgreSQL refuses. The recent 500s only production could
   give hid there: a `GROUP BY` on a `json` column, a NUL character in text. CI's PostgreSQL service ran only the
