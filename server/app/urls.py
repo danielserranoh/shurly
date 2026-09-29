@@ -1140,6 +1140,14 @@ def robots_txt(db: Session = Depends(get_db)) -> str:
     return "\n".join(lines) + "\n"
 
 
+def _with_query(destination: str, params: dict) -> str:
+    """`destination`, with `params` appended to its query."""
+    if not params:
+        return destination
+    separator = "&" if "?" in destination else "?"
+    return f"{destination}{separator}{urlencode(params)}"
+
+
 @redirect_router.get(
     "/{short_code}",
     responses={
@@ -1231,34 +1239,27 @@ def redirect_short_url(short_code: str, request: Request, db: Session = Depends(
     # Phase 3.10.2 — let conditional rules override the destination before we
     # append campaign params or forwarded query params. First-match wins by
     # priority; if no rule matches, fall through to the URL's original_url.
-    redirect_url = pick_target(
+    destination = pick_target(
         list(url.redirect_rules),
         url.original_url,
         user_agent=request.headers.get("user-agent"),
         accept_language=request.headers.get("accept-language"),
         query_params=dict(request.query_params),
     )
-    query_params = {}
-
     # For campaign URLs, ALWAYS append user data (personalization)
-    if url.url_type == URLType.CAMPAIGN and url.user_data:
-        query_params.update(url.user_data)
-
+    personal = url.user_data if url.url_type == URLType.CAMPAIGN and url.user_data else {}
     # For regular query params, respect forward_parameters flag (attribution tracking)
-    if url.forward_parameters and request.query_params:
-        query_params.update(dict(request.query_params))
-
-    # Append query params if any
-    if query_params:
-        query_string = urlencode(query_params)
-        separator = "&" if "?" in redirect_url else "?"
-        redirect_url = f"{redirect_url}{separator}{query_string}"
+    forwarded = dict(request.query_params) if url.forward_parameters else {}
+    redirect_url = _with_query(destination, {**personal, **forwarded})
 
     # Check User-Agent for social media crawlers
     user_agent = request.headers.get("user-agent", "")
 
     if is_social_media_crawler(user_agent):
-        # Serve preview page with Open Graph tags for social media
+        # Serve preview page with Open Graph tags for social media. Never with the recipient's
+        # data: when a recipient shares their campaign link, the social network's crawler is who
+        # asks (docs/PERSONAL_DATA.md). Its refresh target is the destination as the rules pick
+        # it, with what the shared address itself forwards; people get the personalized redirect.
         return templates.TemplateResponse(
             request,
             "preview.html",
@@ -1268,7 +1269,7 @@ def redirect_short_url(short_code: str, request: Request, db: Session = Depends(
                 "og_image_url": url.og_image_url,
                 # Phase 8.3 — the domain it was asked on.
                 "short_url": build_short_url(short_code, domain.hostname),
-                "destination_url": redirect_url,
+                "destination_url": _with_query(destination, forwarded),
             },
             headers={"Cache-Control": "public, max-age=300"},  # Cache for 5 min
         )

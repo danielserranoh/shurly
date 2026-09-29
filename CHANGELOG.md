@@ -35,6 +35,16 @@ implementation lifecycle and is independent of the URL version segment.
   - a variable read anywhere (`os.getenv`, `os.environ`, or `PUBLIC_*` in the frontend) has no row;
   - a row names nothing.
 
+### Security — a crawler's preview of a campaign link no longer carries its recipient's data
+- **When a recipient shared their campaign link, the social network's crawler got their data.** The preview page
+  that `GET /{short_code}` gives crawlers (LinkedIn, WhatsApp, Slack…) sent them on to the personalized destination,
+  whose query holds the recipient's CSV row (`user_data`), their name or email included.
+- **The preview's refresh target is now the destination without that row.** It's the target the redirect rules
+  pick, plus what the shared address itself forwards, which is already public. No meta tag ever carried the row.
+- **People still get their personalized redirect, unchanged.** A forwarded parameter still wins a clash with the
+  row, as before.
+- Found by the personal-data audit (`docs/PERSONAL_DATA.md`, finding 1).
+
 ### Security — who sees people's data, route by route
 - **`docs/PERSONAL_DATA.md`** lists every route and MCP tool: what people's data it returns (recipients' CSV rows and
   activity, visits, addresses, accounts), who sees it, and the guard in the code that decides.
