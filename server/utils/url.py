@@ -44,7 +44,7 @@ def build_short_url(short_code: str, hostname: str | None = None) -> str:
         return f"https://{normalize_hostname(hostname)}/{short_code}"
     if getattr(settings, "base_url", "") and settings.base_url:
         base_url = settings.base_url.rstrip("/")
-    elif settings.is_lambda or settings.default_domain not in ("", "localhost"):
+    elif settings.default_domain not in ("", "localhost"):
         # Production-shaped: default_domain is set to the public hostname.
         base_url = f"https://{settings.default_domain}"
     else:

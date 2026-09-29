@@ -788,8 +788,20 @@ class TestBuildShortURL:
     def test_localhost_fallback_for_local_dev(self, monkeypatch: pytest.MonkeyPatch):
         monkeypatch.setattr(settings, "base_url", "")
         monkeypatch.setattr(settings, "default_domain", "localhost")
-        monkeypatch.setattr(settings, "is_lambda", False)
 
+        assert build_short_url("abc123") == "http://localhost:8000/abc123"
+
+    def test_is_lambda_no_longer_counts(self, monkeypatch: pytest.MonkeyPatch):
+        """A Lambda-era setting, gone: IS_LAMBDA in the environment changes nothing."""
+        import server.utils.url as url_utils
+
+        monkeypatch.setenv("IS_LAMBDA", "true")
+        monkeypatch.setenv("DEFAULT_DOMAIN", "localhost")
+        monkeypatch.setenv("BASE_URL", "")
+        fresh = Settings(_env_file=None)
+        monkeypatch.setattr(url_utils, "settings", fresh)
+
+        assert not hasattr(fresh, "is_lambda")
         assert build_short_url("abc123") == "http://localhost:8000/abc123"
 
 

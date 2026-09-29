@@ -72,7 +72,6 @@ Reviewed on 2026-09-29. **Update this reference in the same PR as any new or cha
 |---|---|---|
 | `DEFAULT_DOMAIN` | `shurl.griddo.io` | The default short-link host, seeded at startup |
 | `BASE_URL` | (empty) | The base of every short URL the API writes, when the short-link host isn't the one `DEFAULT_DOMAIN` gives. Rare |
-| `IS_LAMBDA` | `false` | Short URLs on `https://DEFAULT_DOMAIN` even when it's `localhost`. A leftover of the Lambda deploy, which a non-local `DEFAULT_DOMAIN` makes unneeded |
 | `SHORT_URL_MODE` | `loose` | `loose` lowercases generated codes and custom slugs; `strict` keeps their case |
 | `DISABLE_TRACK_PARAM` | `nostat` | A query parameter that makes a redirect log no visit: for QA |
 | `REDIRECT_STATUS_CODE` | `302` | `301`, `302`, `307` or `308`. `301` is cached by browsers, so visits go uncounted |
