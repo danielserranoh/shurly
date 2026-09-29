@@ -26,6 +26,20 @@ implementation lifecycle and is independent of the URL version segment.
 
 ## [Unreleased]
 
+### Removed — the `IS_LAMBDA` setting
+- **A leftover of the Lambda deploy**, which the ECS deploy never sets. It made short URLs `https://DEFAULT_DOMAIN`
+  even with `DEFAULT_DOMAIN=localhost`. A non-local `DEFAULT_DOMAIN` already does that, so short URLs don't change.
+  An `IS_LAMBDA` left in an environment is now ignored.
+
+### Added — every environment variable, in one reference (ROADMAP 7.1)
+- **`docs/ENVIRONMENT.md`** lists every variable Shurly reads, with its default and what it does. That's the
+  backend's settings, what the backend, its tools and its tests read directly, and what the frontend's build reads.
+  It has defaults only, never a production value.
+- **`tests/test_environment_reference.py` keeps it true.** It fails when:
+  - a setting has no row, or another default than its row;
+  - a variable read anywhere (`os.getenv`, `os.environ`, or `PUBLIC_*` in the frontend) has no row;
+  - a row names nothing.
+
 ### Security — a crawler's preview of a campaign link no longer carries its recipient's data
 - **When a recipient shared their campaign link, the social network's crawler got their data.** The preview page
   that `GET /{short_code}` gives crawlers (LinkedIn, WhatsApp, Slack…) sent them on to the personalized destination,

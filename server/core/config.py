@@ -203,10 +203,9 @@ class Settings(BaseSettings):
     # preview pages served from localhost — never in production.
     og_fetch_allow_private: bool = False
 
-    # Lambda/AWS settings
-    is_lambda: bool = False  # Set to True when running in Lambda
-    db_pool_size: int = 10  # Smaller for Lambda (2-5), larger for local (10)
-    db_max_overflow: int = 20  # Smaller for Lambda (5), larger for local (20)
+    # Database connections, per task
+    db_pool_size: int = 10  # Connections kept open
+    db_max_overflow: int = 20  # Opened beyond the pool, under load
     db_pool_recycle: int = 3600  # Recycle connections after 1 hour
     db_ssl_mode: str = "prefer"  # Use "require" for RDS SSL
 
