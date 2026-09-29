@@ -26,6 +26,13 @@ implementation lifecycle and is independent of the URL version segment.
 
 ## [Unreleased]
 
+### Added — the pager's specimen (styleguide)
+- **The pager under the links' and the campaigns' lists** (`components/ui/Pager.astro`, from #134) has a live
+  specimen: 57 links, 20 a page, brought to each page by `renderPager`, as the lists do. In `/styleguide/` →
+  Buttons, after Navigation. `design/DESIGN_SYSTEM.md` lists the component, and paging among its patterns.
+- **The styleguide runs under the end-to-end tests' rules** (`e2e/styleguide.spec.ts`, which pages through the
+  specimen): no CSP or Trusted Types violation, no uncaught error, nothing from another host.
+
 ### Fixed — the campaigns page shows every campaign, 20 at a time
 - **It showed only the newest 100.** It asked for one page of 100, the most a page holds, and had no pager, so the
   101st campaign and older never showed. Their pages and links still worked, by address.
