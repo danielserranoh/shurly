@@ -6,6 +6,8 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
 import {
+  cityLabel,
+  orderCities,
   DEFAULT_PERIOD,
   bucketRows,
   dayOfWeekRows,
@@ -152,5 +154,32 @@ describe('a visit', () => {
   test("reads at the time the API gives, in the viewer's zone, not the browser's", () => {
     assert.deepEqual(visitTime('2026-09-27T23:54:12+02:00'), { short: 'Sep 27, 11:54 PM', long: 'Sunday, Sep 27, 2026, 11:54 PM' });
     assert.deepEqual(visitTime('2026-01-05T00:07:00-05:00'), { short: 'Jan 5, 12:07 AM', long: 'Monday, Jan 5, 2026, 12:07 AM' });
+  });
+});
+
+describe('cities (8.4)', () => {
+  const nameOf = (code) => ({ ES: 'Spain', VE: 'Venezuela' })[code] ?? code;
+
+  test('named cities first, as the API ordered them; then Other cities; then Unknown, which is no place', () => {
+    const ordered = orderCities([
+      { name: 'Unknown', country: null, count: 50, share: 0.5 },
+      { name: 'Madrid', country: 'ES', count: 30, share: 0.3 },
+      { name: 'Other cities', country: null, count: 15, share: 0.15 },
+      { name: 'Valencia', country: 'VE', count: 5, share: 0.05 },
+    ]);
+    assert.deepEqual(
+      ordered.map((c) => `${c.name}/${c.country}`),
+      ['Madrid/ES', 'Valencia/VE', 'Other cities/null', 'Unknown/null'],
+    );
+  });
+
+  test('a city with its country: two Valencias are two places', () => {
+    assert.equal(cityLabel({ name: 'Valencia', country: 'ES' }, nameOf), 'Valencia, Spain');
+    assert.equal(cityLabel({ name: 'Valencia', country: 'VE' }, nameOf), 'Valencia, Venezuela');
+  });
+
+  test('Unknown and Other cities as they are', () => {
+    assert.equal(cityLabel({ name: 'Unknown', country: null }, nameOf), 'Unknown');
+    assert.equal(cityLabel({ name: 'Other cities', country: null }, nameOf), 'Other cities');
   });
 });

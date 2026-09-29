@@ -90,6 +90,10 @@ for (const { device, options } of DEVICES) {
         await page.goto(`/dashboard/link/?code=${code}`);
         await expect(page.locator('[data-range]')).toContainText('1 click');
         await expectNoIssues(page, 'link');
+        // The Location tab too: its countries and cities (8.4) are only there once it's chosen.
+        await page.getByRole('tab', { name: 'By location' }).click();
+        await expect(page.getByRole('region', { name: 'Cities' })).toContainText('Unknown');
+        await expectNoIssues(page, 'link, by location');
       });
 
       test("a campaign's page", async ({ page, ownerApi, request }) => {
@@ -105,6 +109,9 @@ for (const { device, options } of DEVICES) {
         await expect(page.locator('[data-recipients] tbody tr')).toHaveCount(2);
         await expect(page.locator('[data-stat="clicks"]')).toHaveText('1');
         await expectNoIssues(page, 'campaign');
+        await page.getByRole('tab', { name: 'By location' }).click();
+        await expect(page.getByRole('region', { name: 'Cities' })).toContainText('Unknown');
+        await expectNoIssues(page, 'campaign, by location');
       });
 
       test('Settings', async ({ page }) => {

@@ -7,10 +7,12 @@ import { errorMessage } from './api';
 import { barList, bindChartTableToggle, bindShowNumbers, columnChart, dataTable, donutChart, donutTable } from './charts';
 import {
   bucketRows,
+  cityLabel,
   dayOfWeekRows,
   defaultGroupBy,
   deviceLabel,
   hourRows,
+  orderCities,
   PERIOD_CHOICES,
   periodFromParams,
   periodLabel,
@@ -174,7 +176,7 @@ export function initAnalytics(source: AnalyticsSource): AnalyticsControls {
       if (key === 'context') {
         ['os', 'browsers', 'devices'].forEach((k) => setHTML(chartEl(k), skeleton('h-36')));
         setHTML(chartEl('referrers'), skeleton('h-40'));
-      } else setHTML(chartEl('countries'), skeleton('h-56'));
+      } else ['countries', 'cities'].forEach((k) => setHTML(chartEl(k), skeleton('h-56')));
     } else busy(key, true);
     try {
       const b = await request;
@@ -209,6 +211,14 @@ export function initAnalytics(source: AnalyticsSource): AnalyticsControls {
     const items = entries(places, (name) => (name === 'Unknown' ? 'Unknown' : countryName(name)));
     setHTML(chartEl('countries'), items.length ? barList(items, CLICKS, { limit: 10 }) : nothing('No clicks in this period.'));
     setHTML(tableEl('countries'), dataTable(items, ['Country', 'Clicks'], { share: true }));
+
+    // Cities (8.4): none for a campaign link, whose visits are one recipient's. "Valencia, Spain", as two Valencias are
+    // two places; Other cities and Unknown last.
+    $('[data-cities]').hidden = !b.cities;
+    if (!b.cities) return;
+    const cities = orderCities(b.cities).map((c) => ({ label: cityLabel(c, countryName), value: c.count }));
+    setHTML(chartEl('cities'), cities.length ? barList(cities, CLICKS, { limit: 10 }) : nothing('No clicks in this period.'));
+    setHTML(tableEl('cities'), dataTable(cities, ['City', 'Clicks'], { share: true }));
   }
 
   // ---------------------------------------------------------------- Visits
@@ -404,7 +414,7 @@ export function initAnalytics(source: AnalyticsSource): AnalyticsControls {
       setLoading(exportButton, false);
     }
   });
-  for (const key of ['series', 'hours', 'weekdays', 'os', 'browsers', 'devices', 'referrers', 'countries']) {
+  for (const key of ['series', 'hours', 'weekdays', 'os', 'browsers', 'devices', 'referrers', 'countries', 'cities']) {
     bindChartTableToggle($<HTMLButtonElement>(`[data-table-toggle="${key}"]`), chartEl(key), tableEl(key));
   }
   for (const key of ['os', 'browsers', 'devices']) bindShowNumbers($<HTMLInputElement>(`[data-numbers="${key}"]`), chartEl(key));
