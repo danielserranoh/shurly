@@ -1817,6 +1817,12 @@ live in `mcp_server/README.md`, written for developers. There is no user manual 
       before building anything once it exists; a failed lookup stops it too. Images go out with the deploy
       workflow, settings change on the live service (`tests/test_deploy_ecs_script.py`, on stubbed `aws` and
       `docker`)
+- [x] Reproducible builds: `uv.lock` was gitignored, so every CI run, deploy and Monday rebuild resolved the newest
+      of 121 packages, and a release could ship versions its PR never tested → the lock is committed; CI and the
+      deploy run `uv sync --locked`, the image `--frozen`. New versions come from Dependabot's weekly PR against
+      `dev` (uv and the workflows' actions, minor and patch grouped). The caps stay, as a safety net
+      (`tests/test_dependency_lock.py`)
+  - [ ] Pin the base image and the uv binary by digest, with Dependabot's docker ecosystem to bump them
 
 ### 6.4 Monitoring & Logging
 - [x] CloudWatch Logs setup → `/aws/ecs/default/shurly-api-5fdb`; `X-Request-Id` correlates requests

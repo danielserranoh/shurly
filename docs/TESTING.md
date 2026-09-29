@@ -82,8 +82,8 @@ ALLOW_PASSWORD_SIGNUP=true
 #### 3. Start Backend
 
 ```bash
-# Install dependencies
-uv sync
+# Install dependencies: exactly uv.lock's, with the tests' and the MCP's
+uv sync --extra dev --extra mcp
 
 # Run backend server
 uv run uvicorn main:app --reload

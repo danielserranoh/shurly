@@ -69,7 +69,8 @@ jobs:
       # --require-mcp: the image ships the [mcp] extra, so its tests must run.
       - name: Install deps + run tests
         run: |
-          uv sync --extra dev --extra mcp
+          # Exactly uv.lock: what the PR's CI tested, and what the image installs (`--frozen`).
+          uv sync --locked --extra dev --extra mcp
           uv run pytest -q --require-mcp
 
       - name: Configure AWS credentials (OIDC)

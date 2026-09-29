@@ -26,6 +26,19 @@ implementation lifecycle and is independent of the URL version segment.
 
 ## [Unreleased]
 
+### Changed — dependencies are pinned by a committed uv.lock (6.3)
+- **`uv.lock` is committed.** It was gitignored, so every CI run, deploy and Monday rebuild resolved the newest
+  versions of 121 packages. A release could ship versions its PR's CI never ran, and the weekly rebuild changed
+  production's dependencies with no PR at all.
+- **CI and the deploy job run `uv sync --locked`,** which installs exactly the lock and fails when `pyproject.toml`
+  changed without it (`uv lock`). The image keeps `uv sync --frozen`, from the same file.
+- **New versions arrive in Dependabot's weekly PR against `dev`** (`.github/dependabot.yml`): uv and the
+  workflows' actions, with minor and patch bumps grouped, and a major as a PR of its own.
+- **The caps stay,** as a safety net under the weekly bump (alembic, google-auth, maxminddb, ruff, fastmcp), with
+  their comments reworded.
+- **The README and docs/TESTING.md** install with `uv sync --extra dev --extra mcp`: plain `uv sync` leaves out
+  pytest and ruff. They also say how to add or bump a dependency.
+
 ### Changed — the MCP's sign-in pages are Shurly's, not FastMCP's (5.8)
 - **The consent page and every error the MCP sign-in can show are Shurly's.** No FastMCP name or logo, and
   nothing loaded from gofastmcp.com. They come from `server/templates/mcp_consent.html` and `mcp_error.html`.
