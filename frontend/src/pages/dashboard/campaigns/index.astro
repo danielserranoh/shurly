@@ -90,12 +90,13 @@ import Icon from '@/components/ui/Icon.astro';
       card.querySelector('[data-ctr]')!.textContent = '—';
       return;
     }
-    const opened = Math.round((s.click_through_rate / 100) * s.total_urls);
+    // Clicked: recipients who clicked their link (Opened is the email, since 3.17).
+    const clicked = Math.round((s.click_through_rate / 100) * s.total_urls);
     card.querySelector('[data-clicks]')!.textContent = formatNumber(s.total_clicks);
     card.querySelector('[data-ctr]')!.textContent = `${Math.round(s.click_through_rate)}%`;
     setHTML(
       card.querySelector('[data-meter]'),
-      html`${meter(opened, s.total_urls, `${opened} of ${s.total_urls} recipients opened their link`)}<p class="mt-1.5 text-xs text-ink-500">${pluralize(opened, 'recipient')} of ${formatNumber(s.total_urls)} opened their link</p>`,
+      html`${meter(clicked, s.total_urls, `${clicked} of ${s.total_urls} recipients clicked their link`)}<p class="mt-1.5 text-xs text-ink-500">${pluralize(clicked, 'recipient')} of ${formatNumber(s.total_urls)} clicked their link</p>`,
     );
   }
 

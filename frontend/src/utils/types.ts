@@ -217,13 +217,25 @@ export interface GeoStatsResponse {
 // ---------------------------------------------------------------------------
 
 /** What every period-bound response starts with: the range counted, after `period` or clipping. */
-export interface AnalyticsRange {
-  short_code: string;
-  domain: string | null;
+export interface CountedRange {
   from: string;
   to: string;
   timezone: string;
 }
+
+/** A link's responses name it. */
+export interface LinkIdentity {
+  short_code: string;
+  domain: string | null;
+}
+
+/** A campaign's responses name it (3.17). */
+export interface CampaignIdentity {
+  campaign_id: string;
+  campaign_name: string;
+}
+
+export type AnalyticsRange = LinkIdentity & CountedRange;
 
 /** A visit is one kind: a click, an email open (the pixel), or a bot's. */
 export type VisitKind = 'click' | 'open' | 'bot';
@@ -241,7 +253,8 @@ export interface LinkTotals {
   last_click_at: string | null;
 }
 
-export interface LinkTimeseries extends AnalyticsRange {
+/** GET …/timeseries, a link's or a campaign's: the same shape. */
+export interface Timeseries extends CountedRange {
   group_by: 'day' | 'week' | 'month';
   clicks: number;
   opens: number;
@@ -257,7 +270,8 @@ export interface BreakdownEntry {
   share: number;
 }
 
-export interface LinkBreakdown extends AnalyticsRange {
+/** GET …/breakdown, a link's or a campaign's. */
+export interface Breakdown extends CountedRange {
   type: VisitType;
   total: number;
   os: BreakdownEntry[];
@@ -278,13 +292,72 @@ export interface LinkVisit {
   referrer: string;
 }
 
-export interface LinkVisits extends AnalyticsRange {
+/** GET …/visits: a link's only (a campaign has none, on purpose). */
+export interface Visits extends CountedRange {
   type: VisitType;
   total: number;
   page: number;
   page_size: number;
   pages: number;
   visits: LinkVisit[];
+}
+
+export interface LinkTimeseries extends Timeseries, LinkIdentity {}
+export interface LinkBreakdown extends Breakdown, LinkIdentity {}
+export interface LinkVisits extends Visits, LinkIdentity {}
+
+// ---------------------------------------------------------------------------
+// Phase 3.17 — a campaign's analytics (ROADMAP 3.17.1, the contract)
+// ---------------------------------------------------------------------------
+
+/** GET …/campaigns/{id}/totals: all time. Rates are 0–1. */
+export interface CampaignTotals extends CampaignIdentity {
+  timezone: string;
+  recipients: number;
+  clicks: number;
+  opens: number;
+  /** Recipients with at least one click. */
+  clicked: number;
+  /** Recipients with at least one email open that isn't a bot's. */
+  opened: number;
+  click_rate: number;
+  open_rate: number;
+  countries: number;
+  last_click_at: string | null;
+}
+
+export interface CampaignTimeseries extends Timeseries, CampaignIdentity {}
+export interface CampaignBreakdown extends Breakdown, CampaignIdentity {}
+
+/** A row of `/recipients`: one per personalized link, all time. Times are local, null without one. */
+export interface CampaignRecipient {
+  short_code: string;
+  short_url: string;
+  domain: string | null;
+  user_data: Record<string, string>;
+  clicks: number;
+  opens: number;
+  first_click_at: string | null;
+  last_click_at: string | null;
+  last_open_at: string | null;
+}
+
+export type RecipientFilterName = 'all' | 'clicked' | 'opened' | 'none';
+
+/** GET …/recipients: a page of them, filtered, searched and sorted by the API. */
+export interface CampaignRecipients extends CampaignIdentity {
+  timezone: string;
+  filter: RecipientFilterName;
+  q: string;
+  sort: 'clicks' | 'opens' | 'last_click' | 'code';
+  order: 'asc' | 'desc';
+  total: number;
+  page: number;
+  page_size: number;
+  pages: number;
+  recipients: CampaignRecipient[];
+  /** How many match each filter, honouring `q` but not `filter`: the counts on the filter's options. */
+  counts?: Record<RecipientFilterName, number>;
 }
 
 export interface CampaignRecipientStat {

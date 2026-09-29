@@ -1262,11 +1262,20 @@ Their `click_through_rate` stays a percentage, 0 to 100.
 - [ ] Timings on PostgreSQL: a campaign of 2,000 recipients with 20k visits
 
 ### 3.17.3 Page (Agent 2)
-- [ ] Agent 2 breaks it down:
+- [x] Agent 2 breaks it down:
   - the period;
   - the header: recipients, open rate, click rate…;
   - the charts, as a link's;
   - the recipients table and its export.
+- [x] The header from `/totals`: Clicked and Opened (a share of the recipients, with a meter; Apple Mail's automatic
+      opens noted), Recipients, Clicks. "Opened" (it meant clicked) became "Clicked", on the page and the campaigns list
+- [x] The period and the charts: the link page's Analytics section, now one component for both pages
+      (`AnalyticsSection.astro`, `analytics-section.ts`), with no Visits tab and no export
+- [x] Recipients, all time: the table and phone rows (#122) on `/recipients`. The API filters (with `counts` on the
+      filter's options), searches, sorts and pages; ticks survive a page change; Export CSV (`/recipients.csv`)
+- [x] A development-only mock (`&mock`, `src/utils/campaign-analytics-mock.ts`), which the build's dev-only check
+      keeps out of production
+- [ ] Check it against the real routes once Agent 1's two PRs land, at 1440 and 390 px, empty campaigns included
 
 ---
 

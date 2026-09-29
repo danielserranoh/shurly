@@ -10,18 +10,10 @@ import { html, raw, type RawHTML } from './html';
 import { icon } from './icons';
 import { linkHref } from './link-address';
 import { activityLine, ariaSort, personLabel, secondaryLabel, sortChoice, SORT_CHOICES, type RecipientSort, type SortState } from './recipients-view';
+import type { CampaignRecipient } from './types';
 
-/** A row of `/recipients`: one per personalized link, all time. */
-export interface Recipient {
-  short_code: string;
-  short_url: string;
-  domain: string | null;
-  user_data: Record<string, string>;
-  clicks: number;
-  opens: number;
-  last_click_at: string | null;
-  last_open_at: string | null;
-}
+/** A row of `/recipients` (ROADMAP 3.17.1). */
+export type Recipient = CampaignRecipient;
 
 export interface RecipientsOptions {
   /** The campaign's CSV columns, in order: the table shows each, the first as the name. */

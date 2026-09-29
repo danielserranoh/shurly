@@ -26,6 +26,25 @@ implementation lifecycle and is independent of the URL version segment.
 
 ## [Unreleased]
 
+### Added — a campaign's analytics (Phase 3.17)
+- **The campaign page's header numbers are all-time and about people** (`/totals`):
+  - **Clicked:** the recipients who clicked their link, as a share of all of them;
+  - **Opened:** the recipients who opened the email (its tracking image), with a note that Apple Mail's automatic
+    opens count too;
+  - **Recipients** and **Clicks**.
+
+  "Opened" used to mean "clicked their link". It's "Clicked" now, here and on the campaigns list.
+- **The link page's Analytics section, over all the campaign's links:** the period, By time, By context and By
+  location. There's no list of visits, on purpose.
+- **Recipients, all time, a page at a time:**
+  - search; All, Clicked, Opened or Not yet, each with its count;
+  - sorted by clicks, opens, the last click or the link;
+  - ticks that survive a page change, for "Copy their links";
+  - Export CSV of every recipient that matches (`/recipients.csv`). It replaces the "Download click report" menu
+    item.
+- "Unique visitors" and "Most engaged" are gone. Sorted by clicks, the recipients put the most engaged first.
+- The Analytics section is one component for both pages (`AnalyticsSection.astro`, `analytics-section.ts`).
+
 ### Added — a campaign's recipients table (styleguide, Phase 3.17)
 - **`recipientsView()`** (`frontend/src/utils/recipients.ts`), for the campaign page's Recipients: a table on
   wide screens (the CSV's columns, the link with Copy and QR, clicks, opens, the last click) and stacked rows

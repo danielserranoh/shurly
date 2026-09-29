@@ -7,7 +7,7 @@ import { icon } from './icons';
 import { campaignHref } from './links';
 import { tagPill } from './tags';
 import { canChange, creatorEmailBehindName, creatorName, lockedMenuAttrs, personalBadge, type Viewer } from './viewer';
-import type { Campaign, CampaignListResponse, CampaignSummary, CampaignUsersResponse, CreateCampaignRequest, Tag } from './types';
+import type { Campaign, CampaignListResponse, CampaignSummary, CreateCampaignRequest, Tag } from './types';
 
 export const listCampaigns = () => apiGet<CampaignListResponse>('/api/v1/campaigns?limit=100');
 export const getCampaign = (id: string) => apiGet<Campaign>(`/api/v1/campaigns/${encodeURIComponent(id)}`);
@@ -16,12 +16,9 @@ export const deleteCampaign = (id: string) => apiDelete(`/api/v1/campaigns/${enc
 export const setCampaignTags = (id: string, tagIds: string[]) =>
   apiPatch<{ campaign_id: string; tags: Tag[] }>(`/api/v1/campaigns/${encodeURIComponent(id)}/tags`, { tag_ids: tagIds });
 export const campaignSummary = (id: string) => apiGet<CampaignSummary>(`/api/v1/analytics/campaigns/${encodeURIComponent(id)}/summary`);
-export const campaignRecipients = (id: string) => apiGet<CampaignUsersResponse>(`/api/v1/analytics/campaigns/${encodeURIComponent(id)}/users`);
 
 export const exportCampaignLinks = (c: Pick<Campaign, 'id' | 'name'>) =>
   apiDownload(`/api/v1/campaigns/${encodeURIComponent(c.id)}/export`, `${slug(c.name)}-links.csv`);
-export const exportCampaignReport = (c: Pick<Campaign, 'id' | 'name'>) =>
-  apiDownload(`/api/v1/analytics/campaigns/${encodeURIComponent(c.id)}/users?format=csv`, `${slug(c.name)}-clicks.csv`);
 
 function slug(name: string): string {
   return name.toLowerCase().normalize('NFKD').replace(/[^\w]+/g, '-').replace(/^-|-$/g, '') || 'campaign';
@@ -64,7 +61,7 @@ export function renderCampaignCard(c: Campaign, viewer: Viewer | null = null): R
     <dl class="grid grid-cols-3 gap-2 rounded-xl bg-ink-50 px-4 py-3">
       <div><dt class="text-xs text-ink-500">Recipients</dt><dd class="mt-0.5 text-lg font-semibold text-ink-950">${c.url_count}</dd></div>
       <div><dt class="text-xs text-ink-500">Clicks</dt><dd class="mt-0.5 text-lg font-semibold text-ink-950" data-clicks><span class="skeleton inline-block h-5 w-8 align-middle"></span></dd></div>
-      <div><dt class="text-xs text-ink-500">Opened</dt><dd class="mt-0.5 text-lg font-semibold text-ink-950" data-ctr><span class="skeleton inline-block h-5 w-10 align-middle"></span></dd></div>
+      <div><dt class="text-xs text-ink-500">Clicked</dt><dd class="mt-0.5 text-lg font-semibold text-ink-950" data-ctr><span class="skeleton inline-block h-5 w-10 align-middle"></span></dd></div>
     </dl>
     <div data-meter class="-mt-1"></div>
 
