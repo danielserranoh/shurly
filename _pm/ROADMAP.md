@@ -1657,14 +1657,17 @@ live in `mcp_server/README.md`, written for developers. There is no user manual 
 - [x] Integration tests (FastAPI `TestClient` against in-memory SQLite)
   - [x] API endpoints
   - [x] Database operations
-- [ ] E2E tests: Playwright, on every push and PR (the `e2e` job of `test.yml`); `npm run e2e`, see
+- [x] E2E tests: Playwright, on every push and PR (the `e2e` job of `test.yml`); `npm run e2e`, see
       `docs/TESTING.md`. Phase 3.11 ran a manual smoke of 14 core flows before them
   - [x] The harness: the production build in Chromium, against the real API with a fake Google
         (`tests/e2e/app.py`, never in the image) on its own PostgreSQL. A test fails on a CSP or Trusted Types
         violation, an uncaught error, a 5xx, or a request to any other host
-  - [x] Signing in with Google and out; a link from the dashboard to its page: its numbers, tabs, periods and CSV
-  - [ ] A campaign's page (3.17), Settings, the phone layout (390 px) and the public pages: the next PR
-  - [ ] Accessibility checks (axe), in a PR of their own once the harness is stable
+  - [x] Signing in with Google and out; a link from the dashboard's list to its page: its numbers, tabs, periods
+        and CSV
+  - [x] A campaign from the wizard to who clicked (3.17): the counts, a sort, a filter, copied links, its CSV;
+        Settings: the profile, the tabs by keyboard; a phone (390 px): a link's tabs, a campaign's recipients;
+        the public pages and the 404
+- [ ] Accessibility checks (axe) in the end-to-end tests, in a PR of their own
 
 ### 6.2 Performance Optimization
 - [ ] Database indexes review

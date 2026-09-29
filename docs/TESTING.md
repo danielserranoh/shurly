@@ -146,6 +146,12 @@ ports must be free), signs in once (`e2e/auth.setup.ts`), runs `e2e/*.spec.ts` o
 servers. The API's log is `frontend/e2e/.logs/api.log`; a failed test leaves a screenshot in
 `frontend/test-results/`. Add `--headed` or `--ui` to watch.
 
+Writing a spec: import `test` and `expect` from `e2e/fixtures.ts`, never from `@playwright/test`, so the rules
+apply. Make what the spec tests the way a person would; make what it only needs through the API, as the owner
+(the `ownerApi` fixture). `e2e/helpers.ts` has a person's click and email open (straight to the API, with a
+browser's user agent), picking an option of a segmented control, and a downloaded CSV's lines. Wait on what the
+page shows, never on time, and give each spec data of its own: a run shares one database.
+
 ---
 
 ## Functional Testing Checklist

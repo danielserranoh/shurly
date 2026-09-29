@@ -5,9 +5,12 @@
 // - a request to a host other than this machine (fonts, analytics, anything): it's blocked, and reported.
 // harness.spec.ts breaks each once, with `enforceRules` off, to show they're caught.
 
-import { test as base, expect } from '@playwright/test';
+import { readFile } from 'node:fs/promises';
 
-import { API_URL } from './env';
+import { test as base, expect, type APIRequestContext } from '@playwright/test';
+
+import { TOKEN_KEY } from '../src/utils/auth';
+import { API_URL, OWNER_STATE, WEB_URL } from './env';
 
 interface Violation {
   directive: string;
@@ -23,10 +26,14 @@ declare global {
   }
 }
 
+interface StorageState {
+  origins: Array<{ origin: string; localStorage: Array<{ name: string; value: string }> }>;
+}
+
 const LOCAL_HOSTS = new Set(['127.0.0.1', 'localhost', '[::1]']);
 const isLocal = (url: URL) => !/^(https?|wss?):$/.test(url.protocol) || LOCAL_HOSTS.has(url.hostname);
 
-export const test = base.extend<{ enforceRules: boolean; broken: string[] }>({
+export const test = base.extend<{ enforceRules: boolean; broken: string[]; ownerApi: APIRequestContext }>({
   /** Fail the test on a broken rule: off only in harness.spec.ts, which reads `broken` instead. */
   enforceRules: [true, { option: true }],
   /** The rules broken so far, one line each. */
@@ -59,6 +66,15 @@ export const test = base.extend<{ enforceRules: boolean; broken: string[] }>({
     },
     { auto: true },
   ],
+  /** The API as the owner, with auth.setup.ts's session: for what a spec needs made, not what it tests. */
+  ownerApi: async ({ playwright }, use) => {
+    const state = JSON.parse(await readFile(OWNER_STATE, 'utf8')) as StorageState;
+    const token = state.origins.find((o) => o.origin === WEB_URL)?.localStorage.find((item) => item.name === TOKEN_KEY)?.value;
+    if (!token) throw new Error(`No owner session in ${OWNER_STATE}: the setup project saves it`);
+    const api = await playwright.request.newContext({ baseURL: API_URL, extraHTTPHeaders: { Authorization: `Bearer ${token}` } });
+    await use(api);
+    await api.dispose();
+  },
 });
 
 export { expect };
