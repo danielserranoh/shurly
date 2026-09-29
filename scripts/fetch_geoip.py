@@ -13,13 +13,14 @@ import gzip
 import sys
 from datetime import date
 from pathlib import Path
-from urllib.request import urlopen
+from urllib.request import Request, urlopen
 
 import maxminddb
 
 FILENAME = "dbip-country-lite.mmdb"
 URL = "https://download.db-ip.com/free/dbip-country-lite-{month}.mmdb.gz"
 KNOWN = ("8.8.8.8", "US")  # every file must know it before it's installed
+USER_AGENT = "shurly-fetch-geoip/1"  # download.db-ip.com answers Python's default with a 403
 
 
 def months(today: date) -> list[str]:
@@ -37,7 +38,7 @@ def fetch(out_dir: Path, today: date | None = None, opener=urlopen) -> Path | No
     for month in months(today or date.today()):
         url = URL.format(month=month)
         try:
-            with opener(url, timeout=60) as response:
+            with opener(Request(url, headers={"User-Agent": USER_AGENT}), timeout=60) as response:
                 candidate.write_bytes(gzip.decompress(response.read()))
         except Exception as error:  # a 404 until the month's file is out, a network error…
             print(f"{url}: {type(error).__name__}: {error}")

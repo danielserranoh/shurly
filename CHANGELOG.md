@@ -26,6 +26,15 @@ implementation lifecycle and is independent of the URL version segment.
 
 ## [Unreleased]
 
+### Fixed — the image has its country database again (a hotfix, 8.4)
+- **The release's image shipped without DB-IP's country database.** The build got a 403 for this month's file
+  and for last month's, because download.db-ip.com refuses Python's default User-Agent. Visits saved since then
+  have no country, and the deploy job warned: "No geolocation data".
+- **`scripts/fetch_geoip.py` now asks with its own User-Agent,** `shurly-fetch-geoip/1`. The tests' stand-in for
+  DB-IP refuses Python's agent, as the real one does.
+- The visits saved without a country keep none until the one-off backfill that comes with cities (8.4) fills it
+  in from their stored address.
+
 ### Added — the Shlink import runs as a one-off ECS task (decision B)
 - **`scripts/run_shlink_import.sh`** runs `python -m server.tools.shlink import` in production's network, against
   the private RDS, from the live service's own image, environment and network. It makes the task definition for
