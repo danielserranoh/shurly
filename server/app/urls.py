@@ -40,7 +40,7 @@ from server.schemas.url import (
     URLResponse,
     URLUpdate,
 )
-from server.utils.access import LinkDomain, find_url, find_urls, viewer
+from server.utils.access import LinkDomain, find_urls, viewer, visible_url_or_404
 from server.utils.columns import fit
 from server.utils.domain import get_or_create_default_domain, resolve_domain_for_host
 from server.utils.geo import country_of
@@ -534,7 +534,7 @@ def get_url(
     - **401**: Authentication required or invalid token
     - **404**: URL not found, or someone else's personal link
     """
-    url = _get_visible_url(db, short_code, current_user, domain=domain)
+    url = visible_url_or_404(db, current_user, short_code, domain)
     return _to_url_response(url, _click_count(db, url))
 
 
@@ -571,7 +571,7 @@ def delete_url(
 
     **Note:** Only standard and custom URLs can be deleted directly. Campaign URLs must be deleted through the campaign.
     """
-    url = _get_visible_url(db, short_code, current_user, domain=domain, to_change=True)
+    url = visible_url_or_404(db, current_user, short_code, domain, to_change=True)
 
     # Prevent deleting campaign URLs directly
     if url.url_type == URLType.CAMPAIGN:
@@ -630,7 +630,7 @@ def update_url(
 
     **Note:** The short_code itself cannot be changed. Campaign URLs must be managed through the campaign.
     """
-    url = _get_visible_url(db, short_code, current_user, domain=domain, to_change=True)
+    url = visible_url_or_404(db, current_user, short_code, domain, to_change=True)
 
     # Prevent updating campaign URLs
     if url.url_type == URLType.CAMPAIGN:
@@ -687,7 +687,7 @@ def update_url_tags(
     """
     from server.core.models import Tag
 
-    url = _get_visible_url(db, short_code, current_user, domain=domain, to_change=True)
+    url = visible_url_or_404(db, current_user, short_code, domain, to_change=True)
 
     tag_ids_str = tag_data.get("tag_ids", [])
 
@@ -831,7 +831,7 @@ def get_url_preview(
     - **401**: Authentication required or invalid token
     - **404**: URL not found, or someone else's personal link
     """
-    url = _get_visible_url(db, short_code, current_user, domain=domain)
+    url = visible_url_or_404(db, current_user, short_code, domain)
 
     has_custom = bool(url.og_title or url.og_description or url.og_image_url)
 
@@ -878,7 +878,7 @@ async def refresh_url_preview(
 
     **Note:** Custom Open Graph values (manually set) will not be overwritten.
     """
-    url = _get_visible_url(db, short_code, current_user, domain=domain, to_change=True)
+    url = visible_url_or_404(db, current_user, short_code, domain, to_change=True)
 
     # Fetch metadata from destination
     metadata = await fetch_opengraph_metadata(str(url.original_url))
@@ -917,22 +917,6 @@ def _as_utc(dt: datetime | None) -> datetime | None:
 # change is a 403 (server/utils/access.py).
 
 
-def _get_visible_url(
-    db: Session, short_code: str, user: User, *, domain: str | None = None, to_change: bool = False
-) -> URL:
-    """Phase 8.3 — `domain` picks among the links one code names (`find_url`)."""
-    who = viewer(db, user)
-    url = find_url(db, who, short_code, domain)
-    if not url:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="URL not found",
-        )
-    if to_change:
-        who.ensure_can_change(url)
-    return url
-
-
 @urls_router.get(
     "/{short_code}/rules",
     response_model=list[RedirectRuleResponse],
@@ -944,7 +928,7 @@ def list_redirect_rules(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    url = _get_visible_url(db, short_code, current_user, domain=domain)
+    url = visible_url_or_404(db, current_user, short_code, domain)
     rules = (
         db.query(RedirectRule)
         .filter(RedirectRule.url_id == url.id)
@@ -967,7 +951,7 @@ def create_redirect_rule(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    url = _get_visible_url(db, short_code, current_user, domain=domain, to_change=True)
+    url = visible_url_or_404(db, current_user, short_code, domain, to_change=True)
     rule = RedirectRule(
         url_id=url.id,
         priority=rule_data.priority,
@@ -993,7 +977,7 @@ def update_redirect_rule(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    url = _get_visible_url(db, short_code, current_user, domain=domain, to_change=True)
+    url = visible_url_or_404(db, current_user, short_code, domain, to_change=True)
     from uuid import UUID as _UUID
 
     try:
@@ -1026,7 +1010,7 @@ def delete_redirect_rule(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    url = _get_visible_url(db, short_code, current_user, domain=domain, to_change=True)
+    url = visible_url_or_404(db, current_user, short_code, domain, to_change=True)
     from uuid import UUID as _UUID
 
     try:

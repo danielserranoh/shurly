@@ -26,6 +26,23 @@ implementation lifecycle and is independent of the URL version segment.
 
 ## [Unreleased]
 
+### Security — who sees people's data, route by route
+- **`docs/PERSONAL_DATA.md`** lists every route and MCP tool: what people's data it returns (recipients' CSV rows and
+  activity, visits, addresses, accounts), who sees it, and the guard in the code that decides.
+- **`tests/test_personal_data_inventory.py` keeps it true.** It fails when:
+  - a route or tool has no row;
+  - a row's guard isn't in its code;
+  - the MCP column isn't the tools;
+  - people's data goes to anyone without "(by design)".
+
+  So a new route can't widen who sees people's data without saying so in the same PR.
+- **One lookup for a link and one for a campaign** (`visible_url_or_404`, `visible_campaign_or_404`, in
+  `server/utils/access.py`). Each had two copies, in the link and campaign routes and in the analytics. The rules are
+  the same, and every route answers as it did.
+- **Two questions for the user are marked "decision pending":** a campaign link's visits one by one, and orphan
+  visits' IPs.
+- **One finding, not fixed yet:** a crawler's preview of a campaign link carries its recipient's data. See the doc.
+
 ### Added — a campaign's analytics (Phase 3.17)
 - **The campaign page's header numbers are all-time and about people** (`/totals`):
   - **Clicked:** the recipients who clicked their link, as a share of all of them;
