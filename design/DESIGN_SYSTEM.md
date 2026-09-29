@@ -59,14 +59,14 @@ CSS classes (in `global.css`): `btn` (+ `btn-primary | accent | secondary | ghos
 
 Astro components (`frontend/src/components/`): `brand/Logo`, `ui/Icon` (Lucide), `ui/PageHeader`,
 `ui/StatCard`, `ui/EmptyState`, `ui/Modal`, `ui/ProBadge`, `ui/PasswordField`, `ui/GoogleLogo`,
-`ui/AvatarCropper` (the photo's crop dialog), `ui/Pager` (Previous and Next under a paged list),
+`ui/AvatarCropper` (the photo's crop dialog), `ui/OrgMark` (the organization's logo, or its initial), `ui/Pager` (Previous and Next under a paged list),
 `illustrations/Illustration` (11 line illustrations), `app/EditLinkModal`, `app/QrModal`,
 `app/VisibilityToggle` (the "Personal" switch of the create flows).
 
 Rendered in TypeScript (`frontend/src/utils/`): link card (`links.ts`), campaign card
 (`campaigns.ts`), tag pill and tag picker (`tags.ts`, `tag-input.ts`), charts (`charts.ts`),
 toasts, confirm dialogs and copy feedback (`ui.ts`), who's looking and locked controls
-(`viewer.ts`), the avatar and its crop (`avatar.ts`, `avatar-cropper.ts`, `avatar-crop.ts`), a campaign's recipients
+(`viewer.ts`), the avatar and its crop (`avatar.ts`, `avatar-cropper.ts`, `avatar-crop.ts`), the organization's logo (`org-logo.ts`), both kept by the API (`stored-image.ts`, `image-file.ts`), a campaign's recipients
 (`recipients.ts`, logic in `recipients-view.ts`). Every interpolation goes through the escaping `html` template tag (`html.ts`).
 
 ## Patterns
@@ -96,6 +96,11 @@ toasts, confirm dialogs and copy feedback (`ui.ts`), who's looking and locked co
   slider or + and − to zoom. The circle is always covered: zooming out stops when the photo's short side
   fills it, and it can't be dragged off. It's saved as a 512 px square from the dialog, which stays open
   to show an error.
+- **Organization marks.** The organization shows as a rounded square next to its name (`ui/OrgMark`, painted by
+  `paintOrgMark` in `org-logo.ts`): the name's initial in brand cyan on navy, like an avatar, until its logo has
+  loaded, then the logo on white with a hairline ring, whole (`object-contain`), since a logo keeps its shape and
+  its transparency. No crop dialog: owners and admins pick or drop the file and it's saved as it is. Members
+  see the logo without the buttons.
 - **Paging.** The links and the campaigns come 20 at a time, with the pager under the list: "Showing 21–40 of 57",
   Previous and Next, and `?page=` in the address so a reload or a shared link keeps the place. It hides while
   the list fits on one page.

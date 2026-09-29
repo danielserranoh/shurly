@@ -14,6 +14,7 @@ from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import deferred, relationship
 
 from server.core import Base
+from server.utils.stored_image import version_of
 
 
 class UserProfile(Base):
@@ -41,9 +42,7 @@ class UserProfile(Base):
     @property
     def avatar_version(self) -> str | None:
         """Changes with each upload; None without an avatar."""
-        if self.avatar_updated_at is None:
-            return None
-        return self.avatar_updated_at.strftime("%Y%m%d%H%M%S%f")
+        return version_of(self.avatar_updated_at)
 
     def __repr__(self):
         return f"<UserProfile(user_id={self.user_id})>"

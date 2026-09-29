@@ -950,7 +950,28 @@ own links. Tags are already global.
       move someone's personal links later → `GET /api/v1/organization/removed-members` (owners only; closed
       accounts on the organization's domain, with what they still own; not an MCP tool)
 
-### 3.14.4 Verification
+### 3.14.4 Organization logo
+The avatar's upload (3.12, PR #92) for the organization: the same pipeline and HTTP contract, shared rather than
+copied (`server/utils/images.py`, `server/utils/stored_image.py`; `frontend/src/utils/stored-image.ts`,
+`image-file.ts`).
+- [x] Who: owners and admins upload and remove it, every member sees it, someone outside the organization gets a
+      404 (`editable_organization`, `server/utils/organization.py`). A member's upload is refused before it's
+      read. Each change writes `org.logo_changed` to the event log
+- [x] Storage: migration `0012`, additive: `organizations.logo` (deferred), `logo_content_type`, `logo_updated_at`,
+      all nullable. So `users.api_key`'s drop moves to `0013`
+- [x] Processing: JPEG, PNG or WebP by their magic bytes, 2 MB at most (refused as it streams in), 4096 px a side,
+      Pillow's pixel limit (a decompression bomb is a 413), metadata stripped, WebP. Unlike a face, a logo keeps its
+      shape (fit within 512×512, never cropped, never enlarged) and its transparency (RGBA). No SVG
+- [x] API: `PUT`, `GET` and `DELETE /api/v1/organization/logo`, the avatar's contract: the raw body, an ETag,
+      `?v=<logo_version>` immutable only for the current version, `private, no-cache` otherwise, a 404 without one,
+      `nosniff`. `GET /organization` gains `logo_version`. Not MCP tools (`EXCLUDED_ROUTE_MAPS`)
+- [x] Settings → Organization: a Logo section (owners and admins upload, preview and remove; members see it), and
+      the members card's header shows it. The account menu shows the organization, its logo or else the name's
+      initial (`components/ui/OrgMark.astro`)
+- [x] Tests: `tests/test_phase3144_organization_logo.py`, `frontend/tests/image-file.test.mjs`,
+      `frontend/e2e/organization-logo.spec.ts` (upload and display, axe on a desktop and a phone)
+
+### 3.14.5 Verification
 - [x] Tests (TDD): visibility matrix (A sees B's organization links, not B's personal ones), organization by
       default and personal only on request; the roles table row by row, through the API and the MCP; the
       last-owner invariant (step down, demote, deactivate, two owners demoting each other); analytics and CSV
@@ -1810,10 +1831,10 @@ live in `mcp_server/README.md`, written for developers. There is no user manual 
         so dropping it while a task of that release serves fails every user query mid-rollout. A test drops it by
         hand and runs this release against it: signing in, an API key, `/me`, the MCP, revoking
         (`tests/test_phase63_api_keys.py`)
-  - [ ] Migration `0012` drops `users.api_key` and `ix_users_api_key`, and the drift test's `_PENDING_DROP` goes:
+  - [ ] Migration `0013` drops `users.api_key` and `ix_users_api_key`, and the drift test's `_PENDING_DROP` goes:
         **only after the release that stopped mapping it is in production**, since until then a running task still
-        names the column. It takes `0012`: `0010` (the `last_click_at` repair) and `0011` (a visit's city, 8.4)
-        took the numbers it had been given (2026-09-29)
+        names the column. It takes `0013`: `0010` (the `last_click_at` repair), `0011` (a visit's city, 8.4) and
+        `0012` (the organization's logo, 3.14.4) took the numbers it had been given (2026-09-29)
   - [x] The MCP can't generate or revoke a key: talked into it by untrusted text, an assistant would get
         the new key in its context. Nor `login` or `change_password`: no password or JWT passes through an
         assistant (`EXCLUDED_ROUTE_MAPS`, pinned by `tests/test_phase52_mcp_tools.py`)

@@ -67,6 +67,15 @@ export function forgetOrganization(): void {
 }
 
 /**
+ * The organization changed (its logo, 3.14.4), as `org`: kept as this page's, and the app header
+ * repaints from it (`shurly:organization`).
+ */
+export function organizationChanged(org: Organization): void {
+  organization = Promise.resolve(org);
+  window.dispatchEvent(new CustomEvent<Organization>('shurly:organization', { detail: org }));
+}
+
+/**
  * Run `fn` after the API refused a change (a 403): the role the page knew was out of date,
  * so the cached organization goes and the page can check again what the viewer may change.
  */

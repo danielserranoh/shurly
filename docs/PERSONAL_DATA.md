@@ -46,6 +46,7 @@ of the same module that the route calls.
 | `viewer` | The caller's organization, for something they create |
 | `_my_membership` | A member of the caller's organization |
 | `change_role`, `remove_member`, `transfer_ownership`, `removed_members`, `adopt_personal_links` | The organization's roles (`server/utils/organization.py`) |
+| `editable_organization` | An owner or admin of the caller's organization, for its logo: a member gets a 403, someone outside it a 404 (`server/utils/organization.py`) |
 | `RequireAuthMiddleware` | The MCP: an account's token or API key |
 
 ## Routes
@@ -97,6 +98,9 @@ of the same module that the route calls.
 | `GET /api/v1/health/db` | none | anyone | public | excluded |
 | `GET /api/v1/organization` | **own account**: the organization, and the caller's role | a member | `_my_membership` | `get_organization` |
 | `POST /api/v1/organization/adopt-personal-links` | none: counts | an owner | `adopt_personal_links` | excluded |
+| `DELETE /api/v1/organization/logo` | none | an owner or admin | `editable_organization` | excluded |
+| `GET /api/v1/organization/logo` | none: the organization's logo | a member | `_my_membership` | excluded |
+| `PUT /api/v1/organization/logo` | **own account**: the organization, and the caller's role, with the new logo's version | an owner or admin | `editable_organization` | excluded |
 | `GET /api/v1/organization/members` | **accounts**: every member's email, names, role and join date | any member | `_my_membership` | `list_organization_members` |
 | `DELETE /api/v1/organization/members/{user_id}` | none | an admin or owner, as `remove_member` allows | `remove_member` | excluded |
 | `PATCH /api/v1/organization/members/{user_id}` | **accounts**: that member's email, names and role | an admin or owner, as `change_role` allows | `change_role` | excluded |
