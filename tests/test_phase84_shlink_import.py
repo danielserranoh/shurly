@@ -260,6 +260,37 @@ class TestAgain:
 class TestVisits:
     """Decision A (2026-09-28): Shlink's visits come too, with --visits."""
 
+    def test_a_visits_city_by_its_name_never_its_coordinates(self, db_session, owner):
+        """Phase 8.4 — `visitLocation.cityName`, the English name, as Shurly's own visits keep
+        one (from GeoLite2 City, as Shlink's are). Its latitude and longitude stay behind."""
+        located = {
+            "countryCode": "ES",
+            "countryName": "Spain",
+            "regionName": "Aragon",
+            "cityName": "Zaragoza",
+            "latitude": 41.6561,
+            "longitude": -0.8773,
+            "timezone": "Europe/Madrid",
+            "isEmpty": False,
+        }
+        visits = [
+            {**visit("2025-03-01T10:00:00+00:00"), "visitLocation": located},
+            {**visit("2025-03-02T10:00:00+00:00"), "visitLocation": {**located, "cityName": ""}},
+            {**visit("2025-03-03T10:00:00+00:00"), "visitLocation": {"countryCode": "PT"}},
+            {**visit("2025-03-04T10:00:00+00:00"), "visitLocation": {"cityName": "Ll" * 100}},
+        ]
+
+        run(db_session, owner, {"short_url": short_url("abc"), "visits": visits}, visits=True)
+        db_session.commit()
+
+        rows = db_session.query(Visitor).order_by(Visitor.visited_at).all()
+        assert [(v.country, v.city) for v in rows] == [
+            ("ES", "Zaragoza"),
+            ("ES", None),
+            ("PT", None),
+            (None, ("Ll" * 100)[: Visitor.city.type.length]),
+        ]
+
     VISITS = [
         {**visit("2025-03-01T10:00:00+02:00"), "potentialBot": True},
         {**visit("2025-03-02T10:00:00+00:00"), "visitLocation": None, "referer": None},

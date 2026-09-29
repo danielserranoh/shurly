@@ -128,7 +128,9 @@ def aws(tmp_path) -> Path:
     return state
 
 
-def _run(state: Path, *args: str, stdin: str = "", **extra) -> subprocess.CompletedProcess:
+def _run(
+    state: Path, *args: str, stdin: str = "", script: Path = SCRIPT, **extra
+) -> subprocess.CompletedProcess:
     env = {
         **os.environ,
         "PATH": f"{state.parent / 'bin'}{os.pathsep}{os.environ['PATH']}",
@@ -141,7 +143,7 @@ def _run(state: Path, *args: str, stdin: str = "", **extra) -> subprocess.Comple
         **extra,
     }
     return subprocess.run(
-        ["bash", str(SCRIPT), *args],
+        ["bash", str(script), *args],
         env=env,
         input=stdin,
         capture_output=True,

@@ -171,8 +171,22 @@ class BreakdownItem(BaseModel):
     share: float = Field(description="`count` over the response's `total`, 0 to 1, 4 decimals")
 
 
+class CityItem(BaseModel):
+    name: str = Field(
+        description="The city's English name; \"Unknown\" without one; in a campaign's breakdown, "
+        '"Other cities" for those its visits came from fewer than 5 of its links'
+    )
+    country: str | None = Field(
+        description="Its country's ISO code: two cities of one name are two items. Null for "
+        '"Unknown" and "Other cities"'
+    )
+    count: int
+    share: float = Field(description="`count` over the response's `total`, 0 to 1, 4 decimals")
+
+
 class BreakdownFields(BaseModel):
-    """Visits of a kind by OS, browser, device, referrer and country: a link's or a campaign's."""
+    """Visits of a kind by OS, browser, device, referrer, country and city: a link's or a
+    campaign's."""
 
     type: str = Field(description="The kind of visit counted: clicks, opens, bots or all")
     total: int
@@ -181,6 +195,11 @@ class BreakdownFields(BaseModel):
     devices: list[BreakdownItem]
     referrers: list[BreakdownItem]
     countries: list[BreakdownItem]
+    cities: list[CityItem] | None = Field(
+        description="By city and country (Phase 8.4). Null for a campaign link: its visits are one "
+        "named recipient's. A campaign's names a city only when its visits came from at least 5 "
+        'of its links, and sums the rest as "Other cities"'
+    )
 
 
 class BreakdownResponse(LinkPeriodResponse, BreakdownFields):

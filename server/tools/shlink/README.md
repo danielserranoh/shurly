@@ -134,7 +134,8 @@ The report lists every rule left out or approximated. Nothing is dropped silentl
   **unique-visitor counts only cover the cutover onward**.
 - A link's last click is its latest imported click: neither Shlink's potential bots nor opens move it.
 - The country is `visitLocation.countryCode`, an ISO code as Shurly stores one: providers name some countries
-  differently. The user agent, referer and date come as they were.
+  differently. The city is `visitLocation.cityName`, the English name, as Shurly keeps one; the latitude and
+  longitude aren't kept. The user agent, referer and date come as they were.
 - A bot is what Shlink flagged as `potentialBot`. The `/track` pixel is a visit Shlink didn't redirect
   (`redirectUrl` null), so the pixel's opens don't count as clicks.
 - **They count toward the link's visit cap (`max_visits`) as Shurly's own do: clicks only.** A bot or a pixel
@@ -144,5 +145,6 @@ The report lists every rule left out or approximated. Nothing is dropped silentl
 - A run imports only the visits newer than the link's last imported one. The cutover's final snapshot
   therefore adds what happened since the first import. A second visit in the very same second as that last
   one would be missed.
-- Shurly's own visits get their country from DB-IP's database (`server/utils/geo.py`), also as an ISO code, so
-  the geo view counts imported and new visits together.
+- Shurly's own visits get their country and city from MaxMind's GeoLite2 City, as Shlink's do, else their
+  country from DB-IP's database (`server/utils/geo.py`). The same codes and names, so the geo view counts
+  imported and new visits together.

@@ -5,6 +5,7 @@ it ("Last … ago", else "No clicks yet"). It used to move on every visit the re
 and the Shlink import counted Shlink's potential bots. Migration 0010 repairs what's stored.
 """
 
+import uuid
 from datetime import datetime, timezone
 
 import pytest
@@ -135,9 +136,17 @@ def test_migration_0010_repairs_what_is_stored(pg_engine):
             ("clicked", datetime(2026, 9, 27, 8, 0), {"is_pixel": True}),
             ("bots", datetime(2026, 9, 27, 7, 0), {"is_bot": True}),
         ]:
-            db.add(
-                Visitor(
-                    url_id=links[code].id, short_code=code, ip="203.0.113.0", visited_at=at, **flags
+            # Only the columns 0009 has: the model maps later ones (0011's `city`), which an ORM
+            # INSERT would name.
+            db.execute(
+                Visitor.__table__.insert().values(
+                    id=uuid.uuid4(),
+                    url_id=links[code].id,
+                    short_code=code,
+                    ip="203.0.113.0",
+                    visited_at=at,
+                    is_bot=flags.get("is_bot", False),
+                    is_pixel=flags.get("is_pixel", False),
                 )
             )
         db.flush()

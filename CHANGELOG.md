@@ -26,6 +26,23 @@ implementation lifecycle and is independent of the URL version segment.
 
 ## [Unreleased]
 
+### Added — a visit's city, in the breakdowns (8.4)
+- **A visit's city is stored** (`visits.city`, migration `0011`): its English name, from GeoLite2 City, looked up
+  from the stored, anonymized address like its country. Nothing else about the place: no region, postcode or
+  coordinates.
+- **A link's and a campaign's breakdowns list `cities`**, each with its country's ISO code, and "Unknown" (country
+  null) for the visits without one. A city only ever goes out counted:
+  - A campaign link's breakdown has `"cities": null`, since its visits are one named recipient's.
+  - A campaign's names a city only when its visits in the period came from at least 5 of its links. The rest are
+    summed as "Other cities". Otherwise a day on which one recipient clicked would name their city.
+  - `/visits` and its CSV have no city.
+- **The Shlink import brings `visitLocation.cityName`,** and never the coordinates.
+- **`python -m server.tools.backfill_places`** fills in older visits' empty countries and cities from their stored
+  address. It fills only what's empty, and a city only where the country agrees.
+  - In production, `scripts/run_backfill_places.sh` runs it as a one-off ECS task, a dry run first.
+  - It and the Shlink import's runner share `scripts/one_off_task.sh`.
+- **Migration numbers:** `0011` is the city, so `users.api_key`'s drop takes `0012`.
+
 ### Added — GeoLite2 City in the image, kept within MaxMind's 30 days (8.4)
 - **The image carries MaxMind's GeoLite2 City**, the data for a visit's city, which comes next. A visit's country
   now comes from it too. DB-IP's country database stays as the fallback (`GEOIP_FALLBACK_DATABASE`), and the
@@ -400,7 +417,7 @@ implementation lifecycle and is independent of the URL version segment.
   `?nostat` hit. The Shlink import counted Shlink's potential bots the same way; it doesn't anymore.
 - **Migration `0010` repairs what's stored:** each link's latest click, or nothing. Data only, in two
   statements. During the rollout, the previous release can still set a bot's time. So `users.api_key`'s drop
-  takes `0011`.
+  takes `0012` (`0011` is a visit's city, 8.4).
 - **Unique visitors don't count an unknown address.** Every visit imported from Shlink has ip "unknown" (it
   exposes none), and so does a visit whose address Shurly couldn't read. They made one extra "visitor" in the
   overview, a campaign's summary, top performers and users, and the MCP's link summary. So unique-visitor counts
@@ -713,7 +730,7 @@ implementation lifecycle and is independent of the URL version segment.
   running this one, mid-rollout: signing in, every authenticated call, the MCP.
 - This release doesn't map it. A PostgreSQL test drops the column by hand and runs this release against the result:
   signing in, generating an API key, `/me`, an MCP tool call with the key, revoking.
-- The release after drops it, in migration `0011` (0009 is the avatar, 3.12; 0010 repairs `last_click_at`). Until then the migration drift test ignores exactly that column
+- The release after drops it, in migration `0012` (0009 is the avatar, 3.12; 0010 repairs `last_click_at`; 0011 is a visit's city, 8.4). Until then the migration drift test ignores exactly that column
   and its index, and a guard fails once they're gone.
 
 ### Security — the client IP behind CloudFront (Phase 6.3)

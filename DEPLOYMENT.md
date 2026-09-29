@@ -705,7 +705,9 @@ Visitor logging is privacy-first by default, configured via env vars (every vari
 [docs/ENVIRONMENT.md](docs/ENVIRONMENT.md)):
 
 - **`ANONYMIZE_REMOTE_ADDR=true`** (default): IPv4 truncated to `/24`, IPv6 to `/64` at insert time. Truncation happens in `server/utils/network.py::anonymize_ip` before the `Visitor` row is committed — full addresses never reach Postgres. The client IP is resolved first and truncated after (`visit_ip`), for orphan visits too.
-- **A visit's country (Phase 8.4)** is looked up from the address that's stored: the anonymized one when `ANONYMIZE_REMOTE_ADDR` is on. The lookup never sees more than what's kept, and only the country, an ISO code, is stored: no city, no coordinates. The cost: a country range finer than a `/24` can give no country or the wrong one. Measured on GeoLite2 City (2026-09-25): another country for 0.04% of IPv4 addresses, and never for IPv6, which it doesn't split finer than a `/64`. MaxMind's licence forbids using the data to identify or locate a person, a household or a street address (GeoLite EULA §5), which a country from an anonymized address can't. The lookup runs in process against a file, with no network call (§ Geolocation data).
+- **A visit's country and city (Phase 8.4)** are looked up from the address that's stored: the anonymized one when `ANONYMIZE_REMOTE_ADDR` is on. The lookup never sees more than what's kept. Only the country, an ISO code, and the city, its English name, are stored: no region, postcode or coordinates. The lookup runs in process against a file, with no network call (§ Geolocation data).
+  - The cost of looking up the `/24`, measured on GeoLite2 City (2026-09-25): another city for 0.38% of IPv4 addresses, another country for 0.04%, and none for IPv6, which it doesn't split finer than a `/64`. GeoLite2 knows a city for 45% of the IPv4 address space; the rest get a country only. A city is where the network is registered or routed, not where the person is: an approximation, and MaxMind's free data is less accurate than its paid data.
+  - MaxMind's licence forbids using the data to identify or locate a person, a household or a street address (GeoLite EULA §5). So a city only goes out counted, never visit by visit, never for a campaign link (one named recipient's), and a campaign's only from 5 of its recipients (`docs/PERSONAL_DATA.md` § Cities).
 - Bots and email tracking pixels share the `visits` table but carry `is_bot` / `is_pixel` flags so click analytics exclude them by default.
 - Tracking pixel responses set `Cache-Control: no-store` so HTML email clients re-fetch on every open.
 - The `User.api_key_scope` enum is in place so post-launch role rollouts (`READ_ONLY`, `CREATE_ONLY`, `DOMAIN_SPECIFIC`) ship without a destructive migration; only `FULL_ACCESS` is enforced today.
@@ -775,7 +777,7 @@ An API key is kept as its SHA-256 hash and its first 12 characters (`users.api_k
   gets a 401 from it. The same key works again once the rollout ends. JWTs and signing in with Google
   aren't affected.
 - `users.api_key`, empty from then on, is no longer mapped from the release after `0007`'s: the ORM named it in every
-  SELECT and INSERT of a user. The release after that drops it (`0011`). Not sooner: a task still running the
+  SELECT and INSERT of a user. The release after that drops it (`0012`). Not sooner: a task still running the
   previous release would fail every user query mid-rollout.
 - A downgrade past `0007` can't give the keys back: everyone generates a new one.
 
@@ -1009,10 +1011,10 @@ The MCP's usage is in `mcp.tool_call` lines (`mcp_server/README.md` § Usage log
 
 ## Geolocation data (Phase 8.4)
 
-A visit's country comes from MaxMind's GeoLite2 City, at `/app/data/GeoLite2-City.mmdb` (`GEOIP_DATABASE`). When that
-file isn't there, it comes from DB-IP's IP to Country Lite, at `/app/data/dbip-country-lite.mmdb`
-(`GEOIP_FALLBACK_DATABASE`, countries only). Both are looked up in process, from the stored address (§ GDPR
-posture). An empty `GEOIP_DATABASE` turns lookups off. GeoLite2 City adds about 65 MB to the image.
+A visit's country and city come from MaxMind's GeoLite2 City, at `/app/data/GeoLite2-City.mmdb` (`GEOIP_DATABASE`).
+When that file isn't there, the country comes from DB-IP's IP to Country Lite, at `/app/data/dbip-country-lite.mmdb`
+(`GEOIP_FALLBACK_DATABASE`, countries only), and there's no city. Both are looked up in process, from the stored
+address (§ GDPR posture). An empty `GEOIP_DATABASE` turns lookups off. GeoLite2 City adds about 65 MB to the image.
 
 - **The build fetches both** (`scripts/fetch_geoip.py`, the dockerfile's `geoip` stage). Each is installed only if it
   opens and places 8.8.8.8 in the US. GeoLite2's must also match MaxMind's SHA-256 and be less than 25 days old.
@@ -1029,7 +1031,7 @@ posture). An empty `GEOIP_DATABASE` turns lookups off. GeoLite2 City adds about 
   - §6.1: the database mustn't reach a third party. The image stays in the private ECR repository, and nothing
     uploads the file (no build artifact, no public registry).
   - §5: it must never be used to identify or locate a person, a household or a street address. The lookup gets the
-    anonymized address, and only the country is kept.
+    anonymized address, only the country and the city are kept, and a city only goes out counted (§ GDPR posture).
   - §3: the attribution, "This product includes GeoLite Data created by MaxMind, available from
     https://www.maxmind.com". It's in `NOTICE`, the README, and on the pages that show countries, next to DB-IP's
     (CC BY 4.0).
@@ -1064,9 +1066,10 @@ posture). An empty `GEOIP_DATABASE` turns lookups off. GeoLite2 City adds about 
   | sort @timestamp desc
   ```
 - **ECR's lifecycle rule destroys the old copies.** Each image holds its week's copy of GeoLite2, so images pushed
-  more than 30 days ago are expired. It isn't applied from here. Preview it first
-  (`aws ecr start-lifecycle-policy-preview`), and check that it expires the per-platform images along with their
-  index:
+  more than 30 days ago are expired. Applied to `shurly-api` on 2026-09-29, after a preview: it expired 48 of 105
+  images, the newest from 2026-04-28, and none serving or recent. It isn't applied from here: to apply it again,
+  preview it first (`aws ecr start-lifecycle-policy-preview`), and check that it expires the per-platform images
+  along with their index:
   ```json
   {
     "rules": [
@@ -1090,6 +1093,17 @@ posture). An empty `GEOIP_DATABASE` turns lookups off. GeoLite2 City adds about 
   ```
   A rollback to any image of the last 30 days keeps working. If the weekly run failed four weeks running, the rule
   would expire the image that's serving, and a new task couldn't start. `geo.database_stale` fires first, on day 25.
+- **Filling in older visits:** the visits saved before cities, or while an image had no database, have neither.
+  `scripts/run_backfill_places.sh` runs `python -m server.tools.backfill_places` as a one-off ECS task, from the
+  live service's image, environment and network, the way the Shlink import runs (`scripts/one_off_task.sh`).
+  - It looks each up as the redirect does, from the stored address, and fills only what's empty. A city goes only
+    where the visit's country is empty or agrees. It skips Shlink's imported visits, which have no address.
+  - A dry run first, which reports counts and writes nothing. Then `--for-real`, typing the service's name back.
+    Running it twice is harmless.
+  - It needs no task role, since it reads nothing from AWS. Its output goes to the service's log group, in
+    streams `backfill-places/…`, and the task definition made for it is deleted at the end.
+  - Run it after the release that brings cities, once GeoLite2 City is in the image: with DB-IP's file only, it
+    fills countries and no city.
 - **Locally:** `uv run python scripts/fetch_geoip.py` puts DB-IP's file in `data/` (git-ignored), plus GeoLite2 City
   when `MAXMIND_ACCOUNT_ID` and `MAXMIND_LICENSE_KEY` are set. The 30 days apply to a developer's copy too:
   delete `data/GeoLite2-City.mmdb` within 30 days, or fetch it again. Without either file, countries are null.

@@ -1,8 +1,8 @@
 """
-Phase 8.4 — the country a visit comes from, for the geo view: an ISO 3166-1 alpha-2 code
-from MaxMind's GeoLite2 City (GEOIP_DATABASE), or DB-IP's IP to Country Lite (CC BY 4.0,
-https://db-ip.com) when it isn't there (GEOIP_FALLBACK_DATABASE). The image build fetches
-both (scripts/fetch_geoip.py).
+Phase 8.4 — where a visit comes from, for the geo view: its country, an ISO 3166-1 alpha-2
+code, and its city, by its English name. From MaxMind's GeoLite2 City (GEOIP_DATABASE), or
+DB-IP's IP to Country Lite (CC BY 4.0, https://db-ip.com), countries only, when it isn't there
+(GEOIP_FALLBACK_DATABASE). The image build fetches both (scripts/fetch_geoip.py).
 
 In process, from a memory-mapped file opened once: no network call on the redirect path.
 The caller looks up the address it stores, anonymized when ANONYMIZE_REMOTE_ADDR is on, so
@@ -15,6 +15,7 @@ GeoLite2 copy replaced within 30 days of an update: past 25, `geo.database_stale
 
 import threading
 import time
+from typing import NamedTuple
 
 import maxminddb
 
@@ -100,14 +101,33 @@ def reset() -> None:
         _reader, _opened = None, False
 
 
-def country_of(address: str | None) -> str | None:
-    """`address`'s ISO country code, or None: no database, no record, or not an address."""
+class Place(NamedTuple):
+    country: str | None  # an ISO code
+    city: str | None  # its English name
+
+
+NOWHERE = Place(None, None)
+
+
+def place_of(address: str | None) -> Place:
+    """`address`'s country and city, each None when unknown: no database, no record, not an
+    address, or no city in the record (DB-IP's has none; GeoLite2 lacks many)."""
     reader = open_database()
     if reader is None or not address:
-        return None
+        return NOWHERE
     try:
         record = reader.get(address)
     except (ValueError, maxminddb.InvalidDatabaseError):
-        return None
-    code = ((record or {}).get("country") or {}).get("iso_code")
-    return code if isinstance(code, str) else None
+        return NOWHERE
+    record = record or {}
+    code = (record.get("country") or {}).get("iso_code")
+    city = ((record.get("city") or {}).get("names") or {}).get("en")
+    return Place(
+        code if isinstance(code, str) else None,
+        (city.strip() or None) if isinstance(city, str) else None,
+    )
+
+
+def country_of(address: str | None) -> str | None:
+    """`address`'s ISO country code, or None: no database, no record, or not an address."""
+    return place_of(address).country

@@ -21,11 +21,18 @@ from server.utils import geo
 from server.utils.domain import get_or_create_default_domain
 
 
-def write_database(path, networks: dict[str, str], database_type: str = "DBIP-Country-Lite"):
-    """A tiny country database, DB-IP's shape by default: network → ISO code."""
+def write_database(
+    path, networks: dict[str, str | tuple], database_type: str = "DBIP-Country-Lite"
+):
+    """A tiny database: network → ISO code, DB-IP's shape by default; or network → (ISO code,
+    city), GeoLite2 City's shape, the city's name in `city.names.en` (None: the country only)."""
     writer = MMDBWriter(ip_version=6, ipv4_compatible=True, database_type=database_type)
-    for network, code in networks.items():
-        writer.insert_network(IPSet([network]), {"country": {"iso_code": code}})
+    for network, place in networks.items():
+        code, city = place if isinstance(place, tuple) else (place, None)
+        record = {"country": {"iso_code": code}}
+        if city is not None:
+            record["city"] = {"geoname_id": 1, "names": {"en": city, "es": f"{city} (es)"}}
+        writer.insert_network(IPSet([network]), record)
     writer.to_db_file(str(path))
     return path
 
@@ -88,7 +95,91 @@ class TestLookup:
         assert geo.country_of(address) == country
 
 
+# GeoLite2 City's shape: the two halves of 203.0.113.0/25 in different cities (and countries),
+# and an IPv6 network whose city it doesn't know.
+CITIES = {
+    "203.0.113.0/26": ("ES", "Zaragoza"),
+    "203.0.113.64/26": ("PT", "Porto"),
+    "2001:db8::/32": ("FR", None),
+}
+
+
+@pytest.fixture
+def cities(tmp_path, monkeypatch):
+    path = write_database(tmp_path / "GeoLite2-City.mmdb", CITIES, "GeoLite2-City")
+    monkeypatch.setattr(settings, "geoip_database", str(path))
+    geo.reset()
+    yield path
+    geo.reset()
+
+
+class TestPlaces:
+    """Phase 8.4 — a visit's city too: its English name, from GeoLite2 City."""
+
+    @pytest.mark.usefixtures("cities")
+    @pytest.mark.parametrize(
+        ("address", "place"),
+        [
+            ("203.0.113.7", ("ES", "Zaragoza")),
+            ("203.0.113.77", ("PT", "Porto")),
+            ("2001:db8::1", ("FR", None)),  # a country whose city it doesn't know
+            ("198.51.100.1", (None, None)),
+            ("unknown", (None, None)),
+            (None, (None, None)),
+        ],
+    )
+    def test_an_address_to_its_country_and_city(self, address, place):
+        assert geo.place_of(address) == place
+        assert geo.country_of(address) == place[0]
+
+    @pytest.mark.usefixtures("database")
+    def test_dbip_knows_no_city(self):
+        assert geo.place_of("203.0.113.7") == ("ES", None)
+
+    def test_a_city_without_an_english_name_is_none(self, tmp_path, monkeypatch):
+        writer = MMDBWriter(ip_version=6, ipv4_compatible=True, database_type="GeoLite2-City")
+        writer.insert_network(
+            IPSet(["203.0.113.0/24"]),
+            {"country": {"iso_code": "JP"}, "city": {"names": {"ja": "札幌市"}}},
+        )
+        writer.to_db_file(str(tmp_path / "ja.mmdb"))
+        monkeypatch.setattr(settings, "geoip_database", str(tmp_path / "ja.mmdb"))
+        geo.reset()
+
+        assert geo.place_of("203.0.113.1") == ("JP", None)
+        geo.reset()
+
+
 class TestVisits:
+    @pytest.mark.usefixtures("cities")
+    def test_a_click_and_an_open_store_the_city_of_the_anonymized_address(
+        self, client, db_session, link, monkeypatch
+    ):
+        """203.0.113.77 is in Porto; its /24, the stored 203.0.113.0, in Zaragoza."""
+        _via_the_alb(client, "/geo1", "203.0.113.77", monkeypatch)
+        _via_the_alb(client, "/geo1/track", "203.0.113.77", monkeypatch)
+
+        visits = db_session.query(Visitor).order_by(Visitor.is_pixel).all()
+        assert [(v.is_pixel, v.ip, v.country, v.city) for v in visits] == [
+            (False, "203.0.113.0", "ES", "Zaragoza"),
+            (True, "203.0.113.0", "ES", "Zaragoza"),
+        ]
+
+    def test_a_city_name_is_cut_to_its_column(
+        self, client, db_session, link, tmp_path, monkeypatch
+    ):
+        long = "Llanfair" * 30  # 240 characters: no real one is over 60
+        path = write_database(
+            tmp_path / "long.mmdb", {"203.0.113.0/24": ("GB", long)}, "GeoLite2-City"
+        )
+        monkeypatch.setattr(settings, "geoip_database", str(path))
+        geo.reset()
+
+        assert _via_the_alb(client, "/geo1", "203.0.113.9", monkeypatch).status_code == 302
+
+        assert db_session.query(Visitor).one().city == long[: Visitor.city.type.length]
+        geo.reset()
+
     @pytest.mark.usefixtures("database")
     def test_the_anonymized_address_is_looked_up(self, client, db_session, link, monkeypatch):
         """203.0.113.77 is in PT; its /24, the stored 203.0.113.0, in ES."""
