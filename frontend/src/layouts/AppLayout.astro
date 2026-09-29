@@ -2,6 +2,7 @@
 import BaseLayout from './BaseLayout.astro';
 import Logo from '@/components/brand/Logo.astro';
 import Icon from '@/components/ui/Icon.astro';
+import OrgMark from '@/components/ui/OrgMark.astro';
 import { site } from '@/config/site';
 import { feedbackHref } from '@/utils/feedback';
 
@@ -66,6 +67,17 @@ const maxWidth = { default: 'max-w-6xl', narrow: 'max-w-3xl', wide: 'max-w-7xl' 
             <p class="truncate text-sm font-semibold text-ink-950" data-user-email>…</p>
             <span class="badge badge-brand mt-2"><span class="status-dot text-brand-600"></span>Early access</span>
           </div>
+          <!-- Phase 3.14.4: the organization, with its logo; not there for an account outside one -->
+          <div data-user-org hidden>
+            <div class="menu-sep"></div>
+            <div class="flex items-center gap-2.5 px-2.5 py-2">
+              <OrgMark class="size-8 rounded-lg text-sm" />
+              <div class="min-w-0">
+                <p class="text-xs text-ink-500">Organization</p>
+                <p class="truncate text-sm font-semibold text-ink-950" data-user-org-name></p>
+              </div>
+            </div>
+          </div>
           <div class="menu-sep"></div>
           <a class="menu-item" href="/dashboard/settings/"><Icon name="settings" />Settings</a>
           <a class="menu-item" href="/dashboard/settings/#tags"><Icon name="tags" />Manage tags</a>
@@ -121,10 +133,12 @@ const maxWidth = { default: 'max-w-6xl', narrow: 'max-w-3xl', wide: 'max-w-7xl' 
 <script>
   import { logout } from '@/utils/auth';
   import { avatarUrl } from '@/utils/avatar';
-  import { getMe, initialOf } from '@/utils/viewer';
-  import type { User } from '@/utils/types';
+  import { paintOrgMark, type Marked } from '@/utils/org-logo';
+  import { getMe, getMyOrganization, initialOf } from '@/utils/viewer';
+  import type { Organization, User } from '@/utils/types';
 
   const CACHE_KEY = 'shurly_me';
+  const ORG_CACHE_KEY = 'shurly_org';
 
   /** What the header shows, and all it keeps in sessionStorage. */
   interface Shown {
@@ -182,9 +196,40 @@ const maxWidth = { default: 'max-w-6xl', narrow: 'max-w-3xl', wide: 'max-w-7xl' 
   // Phase 3.12 — the account was read again (refreshMe), e.g. after the profile was saved.
   window.addEventListener('shurly:me', (e) => remember((e as CustomEvent<User>).detail));
 
+  // Phase 3.14.4 — the organization in the account menu: its name, and its logo once loaded
+  // (from the browser's cache after the first time: its URL has the version), else the initial.
+  const orgRow = document.querySelector<HTMLElement>('[data-user-org]')!;
+  function paintOrg(org: Marked | null) {
+    orgRow.hidden = !org;
+    if (!org) return;
+    orgRow.querySelector<HTMLElement>('[data-user-org-name]')!.textContent = org.name;
+    void paintOrgMark(orgRow.querySelector<HTMLElement>('[data-org-mark]')!, org);
+  }
+  function rememberOrg(org: Organization | null) {
+    if (org) sessionStorage.setItem(ORG_CACHE_KEY, JSON.stringify({ name: org.name, logo_version: org.logo_version ?? null }));
+    else sessionStorage.removeItem(ORG_CACHE_KEY);
+    paintOrg(org);
+  }
+  const cachedOrg = sessionStorage.getItem(ORG_CACHE_KEY);
+  if (cachedOrg) {
+    try {
+      paintOrg(JSON.parse(cachedOrg));
+    } catch {
+      sessionStorage.removeItem(ORG_CACHE_KEY);
+    }
+  }
+  getMyOrganization()
+    .then(rememberOrg)
+    .catch(() => {
+      /* the cached one stays */
+    });
+  // Its logo changed, in Settings → Organization.
+  window.addEventListener('shurly:organization', (e) => rememberOrg((e as CustomEvent<Organization>).detail));
+
   document.addEventListener('click', (e) => {
     if ((e.target as HTMLElement).closest('[data-logout]')) {
       sessionStorage.removeItem(CACHE_KEY);
+      sessionStorage.removeItem(ORG_CACHE_KEY);
       logout();
     }
   });

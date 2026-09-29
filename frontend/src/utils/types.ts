@@ -497,6 +497,8 @@ export interface Organization {
   name: string;
   google_domain: string | null;
   role: OrgRole;
+  /** Phase 3.14.4 — changes with each upload; null without a logo. Absent from APIs older than the logo. */
+  logo_version?: string | null;
 }
 
 export interface OrgMember {

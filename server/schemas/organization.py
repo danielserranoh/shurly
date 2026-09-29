@@ -2,7 +2,7 @@
 
 import uuid as uuid_pkg
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from server.core.models import OrgRole
 from server.schemas.datetimes import UtcDateTime
@@ -15,6 +15,14 @@ class OrganizationResponse(BaseModel):
     name: str
     google_domain: str | None
     role: OrgRole
+    # Phase 3.14.4 — additive: older clients ignore it.
+    logo_version: str | None = Field(
+        default=None,
+        description=(
+            "Changes with each upload; null without a logo. "
+            "The image: GET /api/v1/organization/logo?v=<logo_version>."
+        ),
+    )
 
 
 class MemberResponse(BaseModel):

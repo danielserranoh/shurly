@@ -38,7 +38,7 @@ def _version(engine) -> str | None:
         return MigrationContext.configure(conn).get_current_revision()
 
 
-# Phase 6.3 — users.api_key, empty since 0007, is no longer mapped, and 0012 drops it in
+# Phase 6.3 — users.api_key, empty since 0007, is no longer mapped, and 0013 drops it in
 # the release after: the previous release's tasks still select it, and would fail
 # mid-rollout. Until then the drift check ignores exactly the column and its index;
 # test_the_pending_drop_is_still_pending fails once they're gone, and both go.
@@ -137,7 +137,7 @@ def _what(diff) -> tuple:
 
 
 def test_the_pending_drop_is_still_pending(pg_engine):
-    """The drift check ignores users.api_key and its index until 0012 drops them, and
+    """The drift check ignores users.api_key and its index until 0013 drops them, and
     nothing else. When this fails because they're gone: delete `_PENDING_DROP` and this
     test."""
     run_migrations(pg_engine)
