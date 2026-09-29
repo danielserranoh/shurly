@@ -1,5 +1,7 @@
 {
   "extends": "astro/tsconfigs/strict",
+  // The base leaves out dist/ only; dist-e2e/ is the end-to-end tests' build (npm run e2e).
+  "exclude": ["dist", "dist-e2e"],
   "compilerOptions": {
     "baseUrl": ".",
     "paths": {

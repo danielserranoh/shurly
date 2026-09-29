@@ -38,6 +38,12 @@ logs/
 frontend/node_modules/
 frontend/dist/
 frontend/.astro/
+# Phase 6.1 — the end-to-end tests' build, session, API log and results
+frontend/dist-e2e/
+frontend/e2e/.auth/
+frontend/e2e/.logs/
+frontend/playwright-report/
+frontend/test-results/
 
 # OS
 .DS_Store

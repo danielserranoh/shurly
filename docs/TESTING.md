@@ -5,11 +5,12 @@ This guide provides comprehensive instructions for testing the Shurly URL shorte
 ## Table of Contents
 
 1. [Local Setup](#local-setup)
-2. [Functional Testing Checklist](#functional-testing-checklist)
-3. [UX Testing Scenarios](#ux-testing-scenarios)
-4. [API Testing](#api-testing)
-5. [Edge Cases & Error Handling](#edge-cases--error-handling)
-6. [Performance Testing](#performance-testing)
+2. [End-to-end tests](#end-to-end-tests)
+3. [Functional Testing Checklist](#functional-testing-checklist)
+4. [UX Testing Scenarios](#ux-testing-scenarios)
+5. [API Testing](#api-testing)
+6. [Edge Cases & Error Handling](#edge-cases--error-handling)
+7. [Performance Testing](#performance-testing)
 
 ---
 
@@ -102,13 +103,48 @@ npm install
 # Start dev server
 npm run dev
 
-# Frontend will be at http://localhost:4321
+# Frontend will be at http://localhost:4232
 ```
 
 #### 5. Verify Setup
 
 - Backend: http://localhost:8000/docs (should show Swagger UI)
-- Frontend: http://localhost:4321 (should show landing page)
+- Frontend: http://localhost:4232 (should show landing page)
+
+---
+
+## End-to-end tests
+
+Phase 6.1. Playwright drives the production build of the frontend in Chromium, against the real API on a real
+PostgreSQL. CI runs them on every push and pull request (the `e2e` job of `.github/workflows/test.yml`).
+
+- **The API** is `tests/e2e/app.py`: the app, with the pytest suite's fake Google (`tests/fake_google.py`) in
+  place of Google's page and endpoints, and no link previews fetched. Signing in goes through the real flow
+  (`/auth/google/start`, the callback, the one-time code); the fake's page answers at once, for
+  `e2e.owner@griddo.io`, the organization's first account and so its owner. The wrapper refuses to start without
+  `E2E=1` (Playwright sets it) or with a `DB_HOST` other than `localhost`, `127.0.0.1` or `::1`. It isn't in
+  `main.py`, and the image never copies `tests/` (`tests/test_e2e_guard.py` checks the dockerfile).
+- **The pages** are built into `frontend/dist-e2e/` with `PUBLIC_API_URL` pointing at the test API, so they carry
+  the production Content-Security-Policy and Trusted Types. Chromium only: it's the browser that enforces
+  Trusted Types.
+- **Every test fails** on a CSP or Trusted Types violation, an uncaught error in a page, a 5xx from the API, or a
+  request to any host but this machine: fonts, analytics, anything (`frontend/e2e/fixtures.ts`).
+  `harness.spec.ts` breaks each rule once to show it's caught.
+
+To run them, on a throwaway database:
+
+```bash
+docker run -d --name shurly-e2e-pg -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=shurly_e2e \
+  -p 127.0.0.1:55433:5432 postgres:17
+cd frontend
+npx playwright install chromium   # once; or set E2E_CHANNEL=chrome to use your Google Chrome
+DB_HOST=127.0.0.1 DB_PORT=55433 DB_USER=postgres DB_PASSWORD=postgres DB_NAME=shurly_e2e npm run e2e
+```
+
+Playwright builds the pages, starts the API on `127.0.0.1:18000` and the pages on `127.0.0.1:14321` (both
+ports must be free), signs in once (`e2e/auth.setup.ts`), runs `e2e/*.spec.ts` one at a time, and stops both
+servers. The API's log is `frontend/e2e/.logs/api.log`; a failed test leaves a screenshot in
+`frontend/test-results/`. Add `--headed` or `--ui` to watch.
 
 ---
 
