@@ -26,6 +26,26 @@ implementation lifecycle and is independent of the URL version segment.
 
 ## [Unreleased]
 
+### Added — GeoLite2 City in the image, kept within MaxMind's 30 days (8.4)
+- **The image carries MaxMind's GeoLite2 City**, the data for a visit's city, which comes next. A visit's country
+  now comes from it too. DB-IP's country database stays as the fallback (`GEOIP_FALLBACK_DATABASE`), and the
+  image grows by about 65 MB.
+- **It's fetched with MaxMind's account ID and licence key,** the GitHub secrets `MAXMIND_ACCOUNT_ID` and
+  `MAXMIND_LICENSE_KEY`, which the deploy job hands to the build as BuildKit secrets. They're in no image layer,
+  build argument or log line. The key goes to MaxMind only, never to the storage MaxMind's download redirects to.
+- **The deploy runs every Monday at 05:00 UTC,** rebuilding main's current commit: MaxMind's licence wants a copy
+  replaced within 30 days of an update. One deploy runs at a time, so a push during the weekly run waits.
+- **It's checked at every step.**
+  - The download must match MaxMind's SHA-256, place 8.8.8.8 in the US and be under 25 days old.
+  - The deploy fails, and deploys nothing, when the key is set but GeoLite2 City wasn't fetched.
+  - The app logs what it opened and its age (`geo.database_opened`), why it fell back to DB-IP, and
+    `geo.database_stale` past 25 days.
+- **`/api/v1/health` reports its `build`,** the deploy run that made the image. The smoke test waits for it as well
+  as the commit, because the weekly image has the same commit as the one it replaces.
+- **ECR's lifecycle rule** that expires images older than 30 days, and so their copies of GeoLite2, is in
+  DEPLOYMENT.md § Geolocation data, to apply by hand.
+- **Credits:** `NOTICE`, the README and the countries card credit MaxMind's GeoLite data and DB-IP.
+
 ### Added — the Shlink import runs as a one-off ECS task (decision B)
 - **`scripts/run_shlink_import.sh`** runs `python -m server.tools.shlink import` in production's network, against
   the private RDS, from the live service's own image, environment and network. It makes the task definition for

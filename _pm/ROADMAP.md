@@ -34,8 +34,9 @@ Order agreed in the 2026-09-27 review; confirm each item before starting it.
 6. **Internal dogfood** with the frontend and the MCP (5.6).
 7. **Replace Shlink on `go.griddo.io`** (Phase 8): after the dogfood and error alerting (6.4). Done on `dev`: a
    link is its code and its domain (8.3); exporting, reviewing and importing Shlink's links and visits, and a
-   visit's country (8.4). Left: how the import runs in production (8.4, decision B), the `go.griddo.io` domain
-   row and switching the default to it (8.3), error alerting (6.4), and the cutover (8.5).
+   visit's country (8.4). Left: running the import in production (8.4: the one-off task is ready; its bucket
+   and IAM are made by hand), a visit's city (8.4), the `go.griddo.io` domain row and switching the default to
+   it (8.3), error alerting (6.4), and the cutover (8.5).
 
 Also landed on 2026-09-28, outside this list: the account profile (3.12: name, country, time zone and a photo;
 people by name in Settings → Organization and "Created by"), analytics days in the viewer's time zone (3.12.8),
@@ -1929,7 +1930,19 @@ the import can be re-run.
       integration"). Nothing fills it today, so once Shlink's history is imported the geo view shows only that
       history, and would mislead → the ISO code, from DB-IP's IP to Country Lite (CC BY 4.0, no account),
       looked up in process from the stored, anonymized address (`server/utils/geo.py`). The image build fetches
-      the file, and the deploy job warns without it. The Shlink import stores codes too; the page shows names
+      the file, and the deploy job warns without it. The Shlink import stores codes too; the page shows names.
+      Since GeoLite2 City (below), the country comes from it, with DB-IP as the fallback
+- [ ] A visit's city, from MaxMind's GeoLite2 City (the user's decision, 2026-09-29; free account, licence key)
+  - [x] The data: GeoLite2 City in the image, fetched with MaxMind's credentials as BuildKit secrets, next to
+        DB-IP's countries, which stay as the fallback. MaxMind's EULA wants a copy replaced within 30 days of an
+        update → the deploy runs every Monday too, one deploy at a time; the job fails when the key is set but
+        GeoLite2 wasn't fetched; `geo.database_stale` past 25 days; old images expire after 30 days (ECR's
+        lifecycle rule, in DEPLOYMENT.md § Geolocation data, applied by hand). Credits in `NOTICE`
+  - [ ] `Visitor.city` (migration 0011), from the stored, anonymized address; `cities` in the link's and the
+        campaign's breakdowns (3.16, 3.17), "Unknown" counted; never a single campaign link's, never per visit.
+        The Shlink import maps `visitLocation.cityName`. A one-off backfill fills null cities and countries from
+        the stored addresses, nulls only, as a one-off task like the import's
+  - [ ] The Location tab shows them (after the API)
 
 ### 8.5 Cutover
 - [ ] Freeze link creation in Shlink; final delta export + import
