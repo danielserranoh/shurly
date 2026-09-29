@@ -107,6 +107,8 @@ Backend (FastAPI)               Frontend (Astro 7 + Tailwind 4)
   - Format: `uv run ruff format .`
   - Scope link and campaign queries with `viewer(db, user)` from `server/utils/access.py`: `sees(Model)` in the
     filter, `ensure_can_change(item)` before a change. Never filter by `created_by == user.id`
+  - Adding or changing a route or MCP tool: update its row in `docs/PERSONAL_DATA.md` (what people's data it
+    returns, who sees it, the guard) in the same PR. `tests/test_personal_data_inventory.py` fails otherwise
 
 - **Frontend** (`frontend/`):
   - Pages: `frontend/src/pages/`
