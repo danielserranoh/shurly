@@ -1,0 +1,12 @@
+Shurly: third-party data
+
+The container image built from this repository carries two IP geolocation databases, which
+scripts/fetch_geoip.py fetches at build time. Neither is in this repository.
+
+MaxMind GeoLite2 City
+  This product includes GeoLite Data created by MaxMind, available from https://www.maxmind.com.
+  Used under the GeoLite End User License Agreement: https://www.maxmind.com/en/geolite2/eula
+
+DB-IP IP to Country Lite
+  IP geolocation by DB-IP (https://db-ip.com), licensed under the Creative Commons Attribution
+  4.0 International License: https://creativecommons.org/licenses/by/4.0/

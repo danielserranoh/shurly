@@ -44,3 +44,15 @@ def test_liveness_commit_is_unknown_outside_a_built_image(client: TestClient, mo
     monkeypatch.delenv("GIT_SHA", raising=False)
     r = client.get("/api/v1/health")
     assert r.json()["commit"] == "unknown"
+
+
+def test_liveness_reports_the_build(client: TestClient, monkeypatch):
+    """Phase 8.4 — the weekly redeploy rebuilds the commit that's already serving, so the commit
+    can't tell its image from the old one: the deploy run's id, baked in as BUILD_ID, can."""
+    monkeypatch.setenv("BUILD_ID", "36534428022")
+    assert client.get("/api/v1/health").json()["build"] == "36534428022"
+
+
+def test_liveness_build_is_unknown_outside_a_built_image(client: TestClient, monkeypatch):
+    monkeypatch.delenv("BUILD_ID", raising=False)
+    assert client.get("/api/v1/health").json()["build"] == "unknown"

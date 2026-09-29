@@ -698,7 +698,7 @@ Visitor logging is privacy-first by default, configured via env vars (every vari
 [docs/ENVIRONMENT.md](docs/ENVIRONMENT.md)):
 
 - **`ANONYMIZE_REMOTE_ADDR=true`** (default): IPv4 truncated to `/24`, IPv6 to `/64` at insert time. Truncation happens in `server/utils/network.py::anonymize_ip` before the `Visitor` row is committed — full addresses never reach Postgres. The client IP is resolved first and truncated after (`visit_ip`), for orphan visits too.
-- **A visit's country (Phase 8.4)** is looked up from the address that's stored: the anonymized one when `ANONYMIZE_REMOTE_ADDR` is on. The lookup never sees more than what's kept, and only the country, an ISO code, is stored: no city, no coordinates. The cost: a country range finer than a `/24` (rare in the data) can give no country or the wrong one. The lookup runs in process against a file, with no network call (§ Geolocation data).
+- **A visit's country (Phase 8.4)** is looked up from the address that's stored: the anonymized one when `ANONYMIZE_REMOTE_ADDR` is on. The lookup never sees more than what's kept, and only the country, an ISO code, is stored: no city, no coordinates. The cost: a country range finer than a `/24` can give no country or the wrong one. Measured on GeoLite2 City (2026-09-25): another country for 0.04% of IPv4 addresses, and never for IPv6, which it doesn't split finer than a `/64`. MaxMind's licence forbids using the data to identify or locate a person, a household or a street address (GeoLite EULA §5), which a country from an anonymized address can't. The lookup runs in process against a file, with no network call (§ Geolocation data).
 - Bots and email tracking pixels share the `visits` table but carry `is_bot` / `is_pixel` flags so click analytics exclude them by default.
 - Tracking pixel responses set `Cache-Control: no-store` so HTML email clients re-fetch on every open.
 - The `User.api_key_scope` enum is in place so post-launch role rollouts (`READ_ONLY`, `CREATE_ONLY`, `DOMAIN_SPECIFIC`) ship without a destructive migration; only `FULL_ACCESS` is enforced today.
@@ -1002,15 +1002,90 @@ The MCP's usage is in `mcp.tool_call` lines (`mcp_server/README.md` § Usage log
 
 ## Geolocation data (Phase 8.4)
 
-A visit's country comes from DB-IP's IP to Country Lite database (CC BY 4.0: pages that show countries credit DB-IP),
-which the image carries at `/app/data/dbip-country-lite.mmdb`. `GEOIP_DATABASE` names it; empty turns lookups off.
+A visit's country comes from MaxMind's GeoLite2 City, at `/app/data/GeoLite2-City.mmdb` (`GEOIP_DATABASE`). When that
+file isn't there, it comes from DB-IP's IP to Country Lite, at `/app/data/dbip-country-lite.mmdb`
+(`GEOIP_FALLBACK_DATABASE`, countries only). Both are looked up in process, from the stored address (§ GDPR
+posture). An empty `GEOIP_DATABASE` turns lookups off. GeoLite2 City adds about 65 MB to the image.
 
-- **The build fetches it** (`scripts/fetch_geoip.py`, the dockerfile's `geoip` stage): this month's file, or last
-  month's until this month's is out. It's installed only if it opens and places 8.8.8.8 in the US. Every release
-  therefore carries a recent one; DB-IP publishes monthly.
-- **Without it, the build still succeeds** and visits have no country. The deploy job warns on the run's page
-  (`No geolocation data`), and the app logs `geo.database_missing` once at startup. The next release fetches it again.
-- **Locally:** `uv run python scripts/fetch_geoip.py` puts it in `data/` (git-ignored). Without it, countries are null.
+- **The build fetches both** (`scripts/fetch_geoip.py`, the dockerfile's `geoip` stage). Each is installed only if it
+  opens and places 8.8.8.8 in the US. GeoLite2's must also match MaxMind's SHA-256 and be less than 25 days old.
+  DB-IP's is this month's file, or last month's until this month's is out. Both are asked with the script's own
+  User-Agent, because DB-IP answers Python's default with a 403.
+- **MaxMind's credentials** are the GitHub secrets `MAXMIND_ACCOUNT_ID` and `MAXMIND_LICENSE_KEY`. They can be the
+  repository's, or the `dev` environment's, which is where the deploy job runs for a push and for the weekly run.
+  - The job hands them to the build as BuildKit secrets, mounted for the fetch alone. They're in no image layer,
+    build argument or log line, and the running task never has them.
+  - The key goes to MaxMind only, over HTTPS. It isn't forwarded to the storage MaxMind redirects the download to.
+- **The licence, the [GeoLite EULA](https://www.maxmind.com/en/geolite2/eula):**
+  - §6.3: stop using and destroy an old copy within 30 days of MaxMind releasing an update. Hence the weekly run
+    and ECR's lifecycle rule, below.
+  - §6.1: the database mustn't reach a third party. The image stays in the private ECR repository, and nothing
+    uploads the file (no build artifact, no public registry).
+  - §5: it must never be used to identify or locate a person, a household or a street address. The lookup gets the
+    anonymized address, and only the country is kept.
+  - §3: the attribution, "This product includes GeoLite Data created by MaxMind, available from
+    https://www.maxmind.com". It's in `NOTICE`, the README, and on the pages that show countries, next to DB-IP's
+    (CC BY 4.0).
+- **Every Monday at 05:00 UTC** (`schedule:` in `deploy-backend.yml`), the deploy job rebuilds main's current
+  commit with that week's databases and deploys it. GitHub runs a schedule from the default branch, main, so it
+  starts once this workflow is on main.
+  - One deploy runs at a time (`concurrency`). A push to main during the weekly run waits, then deploys its commit.
+  - The smoke test waits for `/api/v1/health` to report both the commit and the run's `build`. The weekly image has
+    the same commit as the one it replaces, so the commit alone can't tell them apart.
+  - Weekly leaves three retries within MaxMind's 30 days. When a weekly run fails, GitHub emails whoever last
+    changed the `schedule:` line. Running the workflow by hand (workflow_dispatch) retries.
+  - GitHub turns off a public repository's schedules after 60 days without activity. The Actions tab turns them
+    back on.
+- **The deploy job checks what the build fetched** (the `Geolocation data` step), and the push build reuses exactly
+  that, from the same run's builder cache:
+  - MaxMind's key is set but there's no GeoLite2 City: the job fails (`No GeoLite2 City`) and deploys nothing, so
+    the running image keeps serving. The fetch's lines above the error say why: a 401 is the account ID or the key,
+    a 429 is MaxMind's download limit.
+  - No key: a warning (`No MaxMind credentials`), and countries come from DB-IP only.
+  - No DB-IP file: a warning (`No DB-IP fallback`).
+- **At startup the app logs what it opened.**
+  - `geo.database_opened`: its path, type, build date and age in days. When it fell back to DB-IP, it also logs
+    `primary` and `primary_error`.
+  - `geo.database_missing`: neither file opened.
+  - `geo.database_stale`: a GeoLite2 copy is more than 25 days old, so no weekly run has deployed for three weeks.
+    Act on it before day 30.
+
+  In CloudWatch Logs Insights:
+  ```
+  filter event like /^geo\.database/
+  | fields @timestamp, event, path, database_type, built, age_days, primary_error
+  | sort @timestamp desc
+  ```
+- **ECR's lifecycle rule destroys the old copies.** Each image holds its week's copy of GeoLite2, so images pushed
+  more than 30 days ago are expired. It isn't applied from here. Preview it first
+  (`aws ecr start-lifecycle-policy-preview`), and check that it expires the per-platform images along with their
+  index:
+  ```json
+  {
+    "rules": [
+      {
+        "rulePriority": 1,
+        "description": "GeoLite EULA 6.3: no image, nor its GeoLite2 copy, older than 30 days",
+        "selection": {
+          "tagStatus": "any",
+          "countType": "sinceImagePushed",
+          "countUnit": "days",
+          "countNumber": 30
+        },
+        "action": { "type": "expire" }
+      }
+    ]
+  }
+  ```
+  ```bash
+  aws ecr put-lifecycle-policy --repository-name shurly-api --region eu-south-2 --profile griddo-main \
+      --lifecycle-policy-text file://ecr-lifecycle.json
+  ```
+  A rollback to any image of the last 30 days keeps working. If the weekly run failed four weeks running, the rule
+  would expire the image that's serving, and a new task couldn't start. `geo.database_stale` fires first, on day 25.
+- **Locally:** `uv run python scripts/fetch_geoip.py` puts DB-IP's file in `data/` (git-ignored), plus GeoLite2 City
+  when `MAXMIND_ACCOUNT_ID` and `MAXMIND_LICENSE_KEY` are set. The 30 days apply to a developer's copy too:
+  delete `data/GeoLite2-City.mmdb` within 30 days, or fetch it again. Without either file, countries are null.
 
 ## Moving Shlink's links (Phase 8.4)
 

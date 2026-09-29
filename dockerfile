@@ -5,14 +5,18 @@
 # Linux x86 hosts.
 
 # ─── Geolocation data (Phase 8.4) ───────────────────────────────────────────
-# DB-IP's IP to Country Lite (CC BY 4.0, https://db-ip.com), fetched and checked by
-# scripts/fetch_geoip.py: it must open and place 8.8.8.8 in the US. On the build platform
-# only, since the data is the same for every platform. It never fails the build: without the
-# file, visits have no country, and the deploy job warns.
+# MaxMind's GeoLite2 City (its EULA: replaced within 30 days, so the image is rebuilt weekly),
+# and DB-IP's IP to Country Lite (CC BY 4.0, https://db-ip.com), the fallback. Fetched and
+# checked by scripts/fetch_geoip.py. MaxMind's account ID and licence key are build secrets:
+# mounted for that one step, in no layer. On the build platform only, since the data is the
+# same for every platform. It never fails the build; the deploy job does, without GeoLite2.
 FROM --platform=$BUILDPLATFORM python:3.11-slim AS geoip
 RUN pip install --no-cache-dir "maxminddb>=3.2,<4"
 COPY scripts/fetch_geoip.py /fetch_geoip.py
-RUN python /fetch_geoip.py /geoip
+# A new value each run, so no cache ever serves last week's databases.
+ARG GEOIP_REFRESH=""
+RUN --mount=type=secret,id=maxmind_account_id --mount=type=secret,id=maxmind_license_key \
+    echo "refresh: ${GEOIP_REFRESH}" && python /fetch_geoip.py /geoip
 
 # Just the data: what the image copies, and what the deploy job checks
 # (`--target geoip-data --output type=local`).
@@ -64,8 +68,8 @@ COPY server ./server
 COPY mcp_server ./mcp_server
 COPY main.py ./
 
-# Phase 8.4 — the geolocation database, where GEOIP_DATABASE looks by default. It may be
-# absent (the fetch never fails the build): then visits have no country.
+# Phase 8.4 — the geolocation databases, where GEOIP_DATABASE and GEOIP_FALLBACK_DATABASE look
+# by default. Either may be absent (the fetch never fails the build): without both, no country.
 COPY --from=geoip-data / ./data/
 
 ENV PATH="/app/.venv/bin:$PATH" \
@@ -77,6 +81,10 @@ ENV PATH="/app/.venv/bin:$PATH" \
 # invalidate the dependency layers above. Defaults to "unknown" for local builds.
 ARG GIT_SHA=unknown
 ENV GIT_SHA=$GIT_SHA
+# Phase 8.4 — and the deploy run that built it: the weekly rebuild keeps the commit, so the
+# smoke test tells the images apart by this.
+ARG BUILD_ID=unknown
+ENV BUILD_ID=$BUILD_ID
 
 EXPOSE 8000
 

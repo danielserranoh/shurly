@@ -123,7 +123,8 @@ CORS_ORIGINS=["http://localhost:4232","http://localhost:3000"]
 
 # Phase 3.9 / 3.10 settings (all optional, sensible defaults shown)
 ANONYMIZE_REMOTE_ADDR=true                 # Truncate IPv4→/24, IPv6→/64
-GEOIP_DATABASE=data/dbip-country-lite.mmdb # A visit's country (scripts/fetch_geoip.py); empty: off
+GEOIP_DATABASE=data/GeoLite2-City.mmdb     # A visit's country (scripts/fetch_geoip.py); empty: off
+GEOIP_FALLBACK_DATABASE=data/dbip-country-lite.mmdb # DB-IP's, when GeoLite2 City isn't there
 TRUSTED_PROXIES=[]                         # CIDR allowlist for X-Forwarded-For
 DISABLE_TRACK_PARAM=nostat                 # Query string that suppresses logging
 SHORT_URL_MODE=loose                       # "loose" lowercases codes/slugs
@@ -548,6 +549,9 @@ with its default and meaning, is in [docs/ENVIRONMENT.md](docs/ENVIRONMENT.md). 
 
 MIT
 
-IP geolocation by [DB-IP](https://db-ip.com), from its IP to Country Lite database, licensed under
-[CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). The image fetches it at build time
-(`scripts/fetch_geoip.py`); it isn't in this repository.
+This product includes GeoLite Data created by MaxMind, available from
+[https://www.maxmind.com](https://www.maxmind.com), under the
+[GeoLite EULA](https://www.maxmind.com/en/geolite2/eula). IP geolocation by [DB-IP](https://db-ip.com),
+from its IP to Country Lite database, licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
+The image fetches both at build time (`scripts/fetch_geoip.py`); neither is in this repository. See
+[NOTICE](NOTICE).

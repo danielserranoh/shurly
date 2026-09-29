@@ -37,7 +37,14 @@ def liveness() -> dict[str, str]:
     # the commit being deployed: a bare 200 can't tell the new image from the
     # old one, which is how a release once reported success while the previous
     # image kept serving. Public repo, so the SHA discloses nothing.
-    return {"status": "ok", "commit": os.getenv("GIT_SHA", "unknown")}
+    # `build` (Phase 8.4) is the deploy run that built it (`ARG BUILD_ID`): the
+    # weekly rebuild keeps the commit, so the smoke test waits for both. Runs
+    # are public too.
+    return {
+        "status": "ok",
+        "commit": os.getenv("GIT_SHA", "unknown"),
+        "build": os.getenv("BUILD_ID", "unknown"),
+    }
 
 
 @health_router.get(
