@@ -4,6 +4,7 @@ from server.app.analytics import analytics_router
 from server.app.auth import auth_router
 from server.app.avatar import avatar_router
 from server.app.campaigns import campaigns_router
+from server.app.client_errors import client_errors_router
 from server.app.google_auth import google_router
 from server.app.health import health_router
 from server.app.organization import organization_router
@@ -22,3 +23,4 @@ api_router.include_router(urls_router, prefix="/urls", tags=["urls"])
 api_router.include_router(campaigns_router, prefix="/campaigns", tags=["campaigns"])
 api_router.include_router(analytics_router, prefix="/analytics", tags=["analytics"])
 api_router.include_router(tags_router, prefix="", tags=["tags"])
+api_router.include_router(client_errors_router, prefix="/client-errors", tags=["client errors"])

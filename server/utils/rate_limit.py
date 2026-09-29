@@ -63,6 +63,7 @@ LOGIN_FAILURES_PER_ACCOUNT = Limit(
 )
 SIGN_IN_PER_IP = Limit("sign_in_ip", 60, "rate_limit_sign_in_per_ip")
 MCP_CLIENTS_PER_IP = Limit("mcp_clients_ip", 60, "rate_limit_mcp_clients_per_ip")
+CLIENT_ERRORS_PER_IP = Limit("client_errors_ip", 60, "rate_limit_client_errors_per_ip")
 
 
 @dataclass(frozen=True)
@@ -162,6 +163,7 @@ _ROUTES: dict[tuple[str, str], tuple[Limit, str]] = {
     ("GET", "/mcp/auth/callback"): (SIGN_IN_PER_IP, _TEXT),
     ("POST", "/mcp/register"): (MCP_CLIENTS_PER_IP, _JSON),
     ("POST", "/mcp/token"): (MCP_CLIENTS_PER_IP, _JSON),
+    ("POST", "/api/v1/client-errors"): (CLIENT_ERRORS_PER_IP, _JSON),
 }
 
 

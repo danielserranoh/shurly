@@ -155,6 +155,9 @@ class Settings(BaseSettings):
     # /mcp/register and /mcp/token: claude.ai calls them from Anthropic's addresses,
     # shared by everybody, so this one is generous.
     rate_limit_mcp_clients_per_ip: int = 60
+    # Browser error reports (POST /api/v1/client-errors): anyone may send them, signed in
+    # or not. The web app sends 5 at most per page it loads.
+    rate_limit_client_errors_per_ip: int = 30
 
     @property
     def mcp_oauth_configured(self) -> bool:
