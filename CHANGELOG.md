@@ -26,6 +26,16 @@ implementation lifecycle and is independent of the URL version segment.
 
 ## [Unreleased]
 
+### Fixed — the short-link host's icon, and a strict CSP on the crawler preview
+- **`/favicon.ico` answers with a 204,** cached a week. Browsers ask every host for its icon. On the short-link host
+  the request reached `/{short_code}`, and was an orphan visit in "Typos & broken links" each time. `robots.txt`
+  answers as it did.
+- **A social crawler's preview page comes with a strict Content-Security-Policy,** like the unavailable-link page:
+  nothing but its one style block, allowed by hash.
+  - Its one inline style attribute became a class, since a hash doesn't cover attributes.
+  - It loads no image: the OG image is a meta tag the crawler fetches itself.
+  - Its refresh to the destination still works.
+
 ### Added — a page for someone whose short link doesn't lead anywhere
 - **People got raw JSON.** Opening a short link with no such code, one not live yet, one expired or one with its
   visit limit used up showed `{"detail": …}` in the browser. Those people are Griddo's clients and prospects.
