@@ -26,6 +26,22 @@ implementation lifecycle and is independent of the URL version segment.
 
 ## [Unreleased]
 
+### Added — a page for someone whose short link doesn't lead anywhere
+- **People got raw JSON.** Opening a short link with no such code, one not live yet, one expired or one with its
+  visit limit used up showed `{"detail": …}` in the browser. Those people are Griddo's clients and prospects.
+- **A browser now gets a page, with the same status.** That's 404, or 410 for an expired or used-up link, with
+  copy for each: `server/templates/link_unavailable.html`.
+  - A link not live yet shows the no-such-link page, as its 404 always was, so a scheduled link isn't revealed.
+  - The page shows nothing from the request, not even the code.
+  - It comes with a strict Content-Security-Policy: nothing but its one style block, allowed by hash. It's
+    `no-store`, `noindex` and `nosniff`.
+- **Everything else gets the JSON it always had.** A page only when the Accept header prefers `text/html` to
+  `application/json`; `*/*` (curl, fetch), JSON or no header get the JSON. Both carry `Vary: Accept`.
+- **`INVALID_SHORT_URL_REDIRECT`**, Shlink's setting, sends everyone elsewhere instead, in all four cases:
+  - a 302 that isn't cached;
+  - an unknown code is still an orphan visit first;
+  - off by default, and an absolute http(s) URL or the app won't start.
+
 ### Fixed — the Analytics page's Pro card, and its typos' window
 - **"Go deeper" no longer says a link's own views are coming with Pro.** Each link's page already has the last 30
   or 90 days, dates you pick, and its visits as a CSV, free (paywall rule 1). The card says so, and points to Top
