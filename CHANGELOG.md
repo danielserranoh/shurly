@@ -26,6 +26,24 @@ implementation lifecycle and is independent of the URL version segment.
 
 ## [Unreleased]
 
+### Security — a client could choose its own address on s.griddo.io
+- **uvicorn ran with `--proxy-headers --forwarded-allow-ips "*"`.** It trusted every peer, and replaced the
+  connection's address with the leftmost `X-Forwarded-For` entry, which the client writes, before the app ran. So
+  on the path straight to the ALB (`s.griddo.io`), Phase 6.3's resolution, which reads the header from the right
+  and only from `TRUSTED_PROXIES`, saw the forged address as the socket's.
+  - The per-IP rate limits could be dodged with a new forged address each time.
+  - Visits and orphan visits stored the address the client chose, with its country and city.
+  - Found in production by shurly-93 on 2026-09-29: `client_ip_source` read `socket` for `s.griddo.io`.
+  - CloudFront's path (`shurly.griddo.io`) wasn't affected: its viewer check reads the address CloudFront
+    appended.
+- **The image runs uvicorn with `--no-proxy-headers`.** The app alone reads the proxy headers.
+  - `X-Forwarded-Proto` now comes from a trusted proxy only (`ForwardedProtoMiddleware`, its rightmost value), so a
+    redirect built from the scheme stays `https` behind the ALB.
+  - `tests/test_phase63_forwarded_headers.py` runs the real uvicorn with the CMD's flags. A forged
+    `X-Forwarded-For` isn't the client, a new one each time is still rate-limited, and the scheme comes only
+    from the ALB.
+- Visits stored before the fix keep the address they were stored with.
+
 ### Changed — dependencies are pinned by a committed uv.lock (6.3)
 - **`uv.lock` is committed.** It was gitignored, so every CI run, deploy and Monday rebuild resolved the newest
   versions of 121 packages. A release could ship versions its PR's CI never ran, and the weekly rebuild changed
