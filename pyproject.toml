@@ -26,6 +26,17 @@ dependencies = [
     # Phase 3.13.2 — verifies Google's ID token (signature, aud, iss, exp) for
     # sign in with Google (server/utils/google_oidc.py). Capped like alembic.
     "google-auth>=2.40,<3",
+    # Phase 3.12 — the time zones and countries a profile may name
+    # (server/utils/timezones.py): one list everywhere, where the system's varies
+    # (Debian's lacks the legacy names browsers still report). A floor, not a pin.
+    "tzdata>=2025.2",
+    # Phase 3.12 — decodes an uploaded avatar and re-encodes it without metadata
+    # (server/utils/avatar.py). It parses untrusted input: watch its CVEs, and keep
+    # the floor above the last fixed one (11.3.0, CVE-2025-48379).
+    "pillow>=11.3",
+    # Phase 8.4 — reads DB-IP's IP to Country Lite database (server/utils/geo.py), memory-
+    # mapped, in process. Capped like alembic: there's no committed uv.lock.
+    "maxminddb>=3.2,<4",
 ]
 
 [project.optional-dependencies]
@@ -39,6 +50,8 @@ dev = [
     "pytest-asyncio>=0.23.0",
     "pytest-cov>=4.0.0",
     "httpx>=0.26.0",
+    # Phase 8.4 — writes the tiny geolocation databases the tests read (tests/test_geolocation.py).
+    "mmdb-writer>=0.2.7,<0.3",
 ]
 # Phase 5 — MCP server. Optional so it doesn't bloat the production image
 # unless deliberately enabled. Install with `uv sync --extra mcp` for local
@@ -73,12 +86,18 @@ select = [
     "B",   # flake8-bugbear
     "C4",  # flake8-comprehensions
     "UP",  # pyupgrade
+    "TID251",  # banned APIs, below
 ]
 ignore = [
     "E501",  # line too long, handled by formatter
     "B008",  # do not perform function calls in argument defaults
     "C901",  # too complex
 ]
+
+# requires-python is >=3.10 and CI runs 3.10: keep target-version at py310, so pyupgrade
+# (UP017) never suggests what 3.10 lacks.
+[tool.ruff.lint.flake8-tidy-imports.banned-api]
+"datetime.UTC".msg = "Python 3.10 has no datetime.UTC (added in 3.11): use datetime.timezone.utc"
 
 [tool.ruff.lint.isort]
 known-first-party = ["server"]

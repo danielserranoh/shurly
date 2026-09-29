@@ -66,6 +66,7 @@ const maxWidth = { default: 'max-w-6xl', narrow: 'max-w-3xl', wide: 'max-w-7xl' 
           <a class="menu-item" href="/dashboard/settings/"><Icon name="settings" />Settings</a>
           <a class="menu-item" href="/dashboard/settings/#tags"><Icon name="tags" />Manage tags</a>
           <a class="menu-item" href="/dashboard/settings/#api"><Icon name="key" />API &amp; MCP</a>
+          <a class="menu-item" href="/manual/"><Icon name="book-open" />Help</a>
           <div class="menu-sep"></div>
           <button type="button" class="menu-item" data-logout><Icon name="log-out" />Log out</button>
         </div>
@@ -99,6 +100,7 @@ const maxWidth = { default: 'max-w-6xl', narrow: 'max-w-3xl', wide: 'max-w-7xl' 
         <a href="/dashboard/settings/" class:list={['menu-item h-11 text-base', section === 'settings' && 'bg-ink-100 text-ink-950']}>
           <Icon name="settings" />Settings
         </a>
+        <a href="/manual/" class="menu-item h-11 text-base"><Icon name="book-open" />Help</a>
         <div class="menu-sep"></div>
         <button type="button" class="menu-item h-11 text-base" data-logout><Icon name="log-out" />Log out</button>
       </nav>
@@ -112,16 +114,38 @@ const maxWidth = { default: 'max-w-6xl', narrow: 'max-w-3xl', wide: 'max-w-7xl' 
 
 <script>
   import { logout } from '@/utils/auth';
-  import { getMe } from '@/utils/viewer';
+  import { avatarUrl } from '@/utils/avatar';
+  import { getMe, initialOf } from '@/utils/viewer';
   import type { User } from '@/utils/types';
 
   const CACHE_KEY = 'shurly_me';
 
-  function paint(user: Pick<User, 'email'>) {
+  /** What the header shows, and all it keeps in sessionStorage. */
+  interface Shown {
+    email: string;
+    first_name?: string | null;
+    avatar_version?: string | null;
+  }
+
+  let painting = 0;
+  function paint(user: Shown) {
+    const run = ++painting;
     document.querySelectorAll('[data-user-email]').forEach((el) => (el.textContent = user.email));
     document.querySelectorAll<HTMLElement>('[data-user-initial]').forEach((el) => {
-      el.textContent = (user.email[0] ?? '?').toUpperCase();
+      el.textContent = initialOf(user.email, user.first_name);
       el.title = user.email;
+    });
+    // Phase 3.12 — the photo replaces the initial once it's loaded (from the browser's cache
+    // after the first time: its URL has the version). No photo, or one that fails: the initial.
+    void avatarUrl(user.avatar_version).then((url) => {
+      if (!url || run !== painting) return;
+      document.querySelectorAll<HTMLElement>('[data-user-initial]').forEach((el) => {
+        const photo = document.createElement('img');
+        photo.src = url;
+        photo.alt = '';
+        photo.className = 'size-full rounded-full object-cover';
+        el.replaceChildren(photo);
+      });
     });
   }
 
@@ -133,15 +157,24 @@ const maxWidth = { default: 'max-w-6xl', narrow: 'max-w-3xl', wide: 'max-w-7xl' 
       sessionStorage.removeItem(CACHE_KEY);
     }
   }
+  function remember(user: User) {
+    const shown: Shown = {
+      email: user.email,
+      first_name: user.profile?.first_name ?? null,
+      avatar_version: user.profile?.avatar_version ?? null,
+    };
+    sessionStorage.setItem(CACHE_KEY, JSON.stringify(shown));
+    paint(shown);
+  }
+
   // Shared with the page's own scripts, so /auth/me is fetched once per page.
   getMe()
-    .then((user) => {
-      sessionStorage.setItem(CACHE_KEY, JSON.stringify({ email: user.email }));
-      paint(user);
-    })
+    .then(remember)
     .catch(() => {
       /* 401 is handled by the API client; other errors leave the cached name */
     });
+  // Phase 3.12 — the account was read again (refreshMe), e.g. after the profile was saved.
+  window.addEventListener('shurly:me', (e) => remember((e as CustomEvent<User>).detail));
 
   document.addEventListener('click', (e) => {
     if ((e.target as HTMLElement).closest('[data-logout]')) {

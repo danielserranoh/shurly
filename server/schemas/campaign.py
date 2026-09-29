@@ -49,10 +49,17 @@ class CampaignURLResponse(BaseModel):
     id: UUID
     short_code: str
     short_url: str | None = None
+    domain: str | None = None  # Phase 8.3 — the link's domain; see URLResponse
     user_data: dict | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+    @field_validator("domain", mode="before")
+    @classmethod
+    def _hostname(cls, value: object) -> object:
+        """`URL.domain` is the Domain row: its hostname."""
+        return getattr(value, "hostname", value)
 
 
 class CampaignResponse(BaseModel):
@@ -69,6 +76,9 @@ class CampaignResponse(BaseModel):
     # Phase 3.14.3 — whose it is
     visibility: Visibility = "organization"
     created_by_email: str | None = None
+    # Phase 3.12 — the creator's name, from their profile; null without one.
+    created_by_first_name: str | None = None
+    created_by_last_name: str | None = None
 
     model_config = {"from_attributes": True}
 

@@ -38,6 +38,12 @@ logs/
 frontend/node_modules/
 frontend/dist/
 frontend/.astro/
+# Phase 6.1 — the end-to-end tests' build, session, API log and results
+frontend/dist-e2e/
+frontend/e2e/.auth/
+frontend/e2e/.logs/
+frontend/playwright-report/
+frontend/test-results/
 
 # OS
 .DS_Store
@@ -58,3 +64,8 @@ uv.lock
 .coverage.*
 htmlcov/
 _exchange/
+# Phase 8.4 — the geolocation database (scripts/fetch_geoip.py)
+/data/
+# Phase 8.4 — Shlink snapshots can hold personal data (server/tools/shlink/README.md)
+*.snapshot.json
+*.review.csv

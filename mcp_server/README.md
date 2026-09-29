@@ -50,8 +50,8 @@ mcp_server/
 ```
 
 The package is intentionally separate from `server/` so it can be packaged
-and deployed independently if we want a separate Lambda/Fargate task for
-the MCP surface (Phase 5.5 will decide). It depends on `main.app` (the
+and deployed independently if we ever want a separate ECS service for
+the MCP surface (Phase 5.5 kept it in the same task). It depends on `main.app` (the
 FastAPI application) for the routes, but doesn't otherwise touch the
 HTTP server's runtime.
 
@@ -195,27 +195,43 @@ claude mcp add --transport http shurly https://shurly.griddo.io/mcp/ \
 ## Auto-generated tool surface (Phase 5.2)
 
 Phase 5.1 produced 47 raw tools — every FastAPI route, verbatim. Phase 5.2
-filters and renames that set down to **36 LLM-facing tools** with clean names.
+filters and renames that set down to **44 LLM-facing tools** with clean names.
 
 Two filters live in `mcp_server/server.py`:
 
 - **`EXCLUDED_ROUTE_MAPS`** — drops public unversioned routes (`/`,
   `/{short_code}` redirect, `/{short_code}/track` pixel, `/robots.txt`),
-  health probes (`/api/v1/health`, `/api/v1/health/db`), and the legacy
-  `/api/v1/stats/*` namespace superseded by `/api/v1/analytics/*`.
+  health probes (`/api/v1/health`, `/api/v1/health/db`), a link's visits and a campaign's
+  recipients as CSVs (`list_url_visits` and `list_campaign_recipients` page through them
+  instead), and what
+  only the person should do: changing the organization, the password, the API key,
+  and signing in with a password.
 - **`MCP_TOOL_NAMES`** — maps FastAPI's verbose auto-generated operationIds
   (`create_short_url_api_v1_urls_post`) to clean MCP tool names
   (`create_short_url`).
 
-The surface is now **40 tools**: auth (6), organization (2), URL CRUD + tagging +
-previews (11), redirect rules (4), campaigns (6), analytics (7), tags (4). Phase 3.11
+The surface is now **44 tools**: auth (2), organization (2), URL CRUD + tagging +
+previews (11), redirect rules (4), campaigns (6), analytics (15), tags (4). Phase 3.11
 added `get_url` and `fetch_url_metadata` to the original 36; Phase 3.14.2 added
-`get_organization` and `list_organization_members`.
+`get_organization` and `list_organization_members`; Phase 3.16 added `get_url_totals`,
+`get_url_timeseries`, `get_url_breakdown` and `list_url_visits` (not the visits' CSV); Phase 3.17
+added `get_campaign_totals`, `get_campaign_timeseries`, `get_campaign_breakdown` and
+`list_campaign_recipients` (not the recipients' CSV). `register` left in Phase 3.13.2
+(it's a tool only with `ALLOW_PASSWORD_SIGNUP` on, for local development), and
+`generate_api_key`, `revoke_api_key`, `login` and `change_password` in Phase 6.3.
 
 Changing the organization (roles, removals, handing ownership over) stays out of
 the MCP on purpose: an assistant that reads untrusted text, such as link titles or
 fetched pages, could be talked into "make X an owner". Those routes are excluded in
 `EXCLUDED_ROUTE_MAPS` and remain available through the web app and the REST API.
+
+So does managing the API key (Phase 6.3). Talked into "generate a new API key", an
+assistant would get the new key in its context (the reason `/auth/me` no longer
+returns it), and the key the person uses would stop working. Generating and revoking
+it is done in Settings → API & MCP, or with the REST API. Signing in with a password
+and changing it stay out too: `login` would put a JWT in the assistant's context, and
+both take a password from it. The MCP is already signed in, so neither does anything
+there that the person needs.
 
 `tests/test_phase52_mcp_tools.py` pins this list. When a route is added or
 renamed, the test fails until `MCP_TOOL_NAMES` (or `EXCLUDED_ROUTE_MAPS`) is
@@ -235,9 +251,15 @@ Phase 5.3 ships hand-written tools alongside the auto-generated set:
 - **`add_redirect_rule`** — sugar over `POST /urls/{code}/rules` with named
   condition args (`device="ios"`, `language="en"`, etc.) instead of a raw
   conditions list.
+
+Like every tool that takes a link's code, these two take a `domain` too (Phase 8.3): one
+code can name links on several domains, and without it the default domain's link answers.
 - **`list_orphan_visits_grouped`** — clusters orphan visits by
   `attempted_path` so typo patterns are obvious instead of paginating
-  through a flat event log.
+  through a flat event log. Each path comes with its first and last hit,
+  and `did_you_mean`: the caller's links it's one edit from. It's the
+  analytics page's grouping (`server/utils/orphans.py`), over every kind
+  of orphan visit, with the newest 3 hits of each path as samples.
 
 Like the API, they act with the caller's role (Phase 3.14.3): the
 organization's links and the caller's personal ones are visible, and changing
@@ -248,7 +270,7 @@ The pure logic lives in `mcp_server/curated.py` (takes `db: Session` and
 `mcp_server/server.py` open a `SessionLocal` per call and resolve the
 caller with `resolve_current_user(db)` (Phase 5.4).
 
-Total tool surface: **44 tools** (40 auto-generated + 4 curated). The 5.2 contract test (`tests/test_phase52_mcp_tools.py`) and
+Total tool surface: **48 tools** (44 auto-generated + 4 curated). The 5.2 contract test (`tests/test_phase52_mcp_tools.py`) and
 the 5.3 logic tests (`tests/test_phase53_curated_tools.py`) together pin
 the surface.
 
@@ -473,11 +495,11 @@ filter request_id = "<id>"
 
 ### Setup (once, with SSO)
 
-Keep the logs 90 days; CloudWatch keeps them forever unless told otherwise:
+Keep the logs 60 days (set 2026-09-28); CloudWatch keeps them forever unless told otherwise:
 
 ```bash
 AWS_PROFILE=griddo-main aws logs put-retention-policy --region eu-south-2 \
-    --log-group-name /aws/ecs/default/shurly-api-5fdb --retention-in-days 90
+    --log-group-name /aws/ecs/default/shurly-api-5fdb --retention-in-days 60
 ```
 
 Save a query so it shows up under **Saved queries** in the console (the `/` in the

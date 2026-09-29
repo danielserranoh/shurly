@@ -1,0 +1,211 @@
+---
+// Phase 3.16/3.17 — the Analytics section of a link's page and of a campaign's: the period, the tabs and their
+// panels. src/utils/analytics-section.ts wires it (initAnalytics) to the page's source of numbers.
+import Icon from '@/components/ui/Icon.astro';
+import type { IconName } from '@/utils/icons';
+
+interface Props {
+  /** The Visits tab: a link's page only (a campaign has no list of visits, on purpose). */
+  visits?: boolean;
+  /** Export CSV: the period's visits, so a link's page only. */
+  exportCsv?: boolean;
+}
+const { visits = false, exportCsv = false } = Astro.props;
+// The manual's section for this page: a link's page is the one with Visits.
+const help = `/manual/read-your-analytics/#${visits ? 'a-links-page' : 'a-campaigns-page'}`;
+
+const tabs: Array<{ key: string; label: string; icon: IconName }> = [
+  { key: 'time', label: 'By time', icon: 'calendar' },
+  { key: 'context', label: 'By context', icon: 'monitor' },
+  { key: 'location', label: 'By location', icon: 'globe' },
+  ...(visits ? [{ key: 'visits', label: 'Visits', icon: 'list' as IconName }] : []),
+];
+const donuts = [
+  { key: 'os', title: 'Operating systems' },
+  { key: 'browsers', title: 'Browsers' },
+  { key: 'devices', title: 'Devices' },
+];
+---
+
+<!-- Analytics for a period (3.16, 3.17) -->
+<section class="card mt-6" aria-labelledby="analytics-title">
+  <div class="flex flex-col gap-4 p-5 pb-4 sm:p-6 sm:pb-4 lg:flex-row lg:items-center lg:justify-between">
+    <div class="min-w-0">
+      <div class="flex flex-wrap items-baseline gap-x-3">
+        <h2 id="analytics-title" class="font-semibold text-ink-950">Analytics</h2>
+        <a class="link text-sm" href={help}>How to read this</a>
+      </div>
+      <p class="text-sm text-ink-500" data-range><span class="skeleton inline-block h-4 w-56 align-middle"></span></p>
+    </div>
+    <div class="flex min-w-0 items-center gap-2">
+      <div class="segmented scrollbar-none min-w-0 overflow-x-auto" role="radiogroup" aria-label="Period" data-periods>
+        {[7, 30, 90].map((d) => <label><input type="radio" name="period" value={String(d)} /><span>{d} days</span></label>)}
+        <label data-custom><input type="radio" name="period" value="custom" /><span><Icon name="calendar" /><span data-custom-label>Custom</span></span></label>
+      </div>
+      {exportCsv && <button type="button" class="btn btn-secondary btn-sm shrink-0" data-export aria-label="Export CSV"><Icon name="download" /><span class="max-sm:hidden">Export CSV</span></button>}
+    </div>
+  </div>
+
+  <div id="range-menu" popover class="menu w-72 p-4" data-align="end">
+    <form class="grid gap-3" data-range-form novalidate>
+      <p class="text-sm font-semibold text-ink-950">Custom range</p>
+      <div class="grid grid-cols-2 gap-2">
+        <label class="grid gap-1.5"><span class="label">From</span><input type="date" name="from" class="input" required /></label>
+        <label class="grid gap-1.5"><span class="label">To</span><input type="date" name="to" class="input" required /></label>
+      </div>
+      <p class="field-error" data-range-error hidden></p>
+      <div class="flex justify-end gap-2">
+        <button type="button" class="btn btn-ghost btn-sm" data-range-cancel>Cancel</button>
+        <button type="submit" class="btn btn-primary btn-sm">Apply</button>
+      </div>
+    </form>
+  </div>
+
+  <div
+    role="tablist"
+    aria-label="Analytics"
+    class="scrollbar-none relative flex gap-6 overflow-x-auto px-5 shadow-[inset_0_-1px_0_var(--color-line)] [mask-image:linear-gradient(to_right,transparent,#000_var(--fade-start,0px),#000_calc(100%-var(--fade-end,2.5rem)),transparent)] sm:px-6 md:[mask-image:none]"
+    data-tablist
+  >
+    {
+      tabs.map((tab, i) => (
+        <button type="button" role="tab" id={`tab-${tab.key}`} class="tab mb-0 shrink-0 max-sm:focus-visible:outline-offset-[-2px]" aria-selected={i === 0 ? 'true' : 'false'} aria-controls={`panel-${tab.key}`} tabindex={i === 0 ? 0 : -1} data-tab={tab.key}>
+          <Icon name={tab.icon} />
+          {tab.label}
+        </button>
+      ))
+    }
+  </div>
+
+  <!-- By time: the period's clicks (or opens) over time, by hour and by weekday -->
+  <div role="tabpanel" id="panel-time" aria-labelledby="tab-time" class="p-5 sm:p-6" hidden>
+    <div data-panel-error hidden></div>
+    <div data-panel-body>
+      <div class="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h3 class="font-semibold text-ink-950" data-series-title>Clicks over time</h3>
+          <p class="text-sm text-ink-500" data-series-sub>Per day</p>
+        </div>
+        <div class="flex flex-wrap items-center gap-2">
+          <div class="segmented" role="radiogroup" aria-label="Show" data-series-picker hidden>
+            <label><input type="radio" name="series" value="clicks" checked /><span>Clicks</span></label>
+            <label><input type="radio" name="series" value="opens" /><span>Email opens</span></label>
+          </div>
+          <div class="segmented" role="radiogroup" aria-label="Group by">
+            <label><input type="radio" name="group" value="day" /><span>Day</span></label>
+            <label><input type="radio" name="group" value="week" /><span>Week</span></label>
+            <label><input type="radio" name="group" value="month" /><span>Month</span></label>
+          </div>
+          <button type="button" class="btn btn-ghost btn-sm" data-table-toggle="series" aria-pressed="false"><Icon name="list" /><span data-label>Table</span></button>
+        </div>
+      </div>
+      <div class="mt-6" data-chart="series"></div>
+      <div class="mt-4 max-h-80 overflow-auto rounded-xl border border-line" data-table="series" hidden></div>
+      <p class="hint mt-4" data-opens-note hidden>Apple Mail loads the images of an email when it arrives, to protect its users’ privacy, so some opens aren’t people reading.</p>
+      <p class="hint mt-2" data-days-hint hidden></p>
+      <div class="mt-8 grid gap-8 border-t border-line pt-6 lg:grid-cols-2">
+        <section aria-labelledby="hours-title">
+          <div class="flex items-start justify-between gap-3">
+            <div>
+              <h3 id="hours-title" class="font-semibold text-ink-950">Time of day</h3>
+              <p class="text-sm text-ink-500" data-hours-sub>Clicks by hour</p>
+            </div>
+            <button type="button" class="btn btn-ghost btn-sm" data-table-toggle="hours" aria-pressed="false"><Icon name="list" /><span data-label>Table</span></button>
+          </div>
+          <div class="mt-5" data-chart="hours"></div>
+          <div class="mt-4 max-h-80 overflow-auto rounded-xl border border-line" data-table="hours" hidden></div>
+        </section>
+        <section aria-labelledby="weekdays-title">
+          <div class="flex items-start justify-between gap-3">
+            <div>
+              <h3 id="weekdays-title" class="font-semibold text-ink-950">Day of the week</h3>
+              <p class="text-sm text-ink-500" data-weekdays-sub>Clicks by weekday</p>
+            </div>
+            <button type="button" class="btn btn-ghost btn-sm" data-table-toggle="weekdays" aria-pressed="false"><Icon name="list" /><span data-label>Table</span></button>
+          </div>
+          <div class="mt-5" data-chart="weekdays"></div>
+          <div class="mt-4 max-h-80 overflow-auto rounded-xl border border-line" data-table="weekdays" hidden></div>
+        </section>
+      </div>
+    </div>
+  </div>
+
+  <!-- By context: operating systems, browsers, devices and referrers -->
+  <div role="tabpanel" id="panel-context" aria-labelledby="tab-context" class="p-5 sm:p-6" hidden>
+    <div data-panel-error hidden></div>
+    <div class="grid gap-6" data-panel-body>
+      <div class="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
+        {
+          donuts.map((d) => (
+            <section class="rounded-2xl border border-line p-5" aria-labelledby={`${d.key}-title`}>
+              <div class="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+                <h3 id={`${d.key}-title`} class="font-semibold text-ink-950">{d.title}</h3>
+                <div class="flex items-center gap-3">
+                  <label class="flex items-center gap-2 text-sm text-ink-600"><span class="switch"><input type="checkbox" role="switch" data-numbers={d.key} /><span></span></span>Show numbers</label>
+                  <button type="button" class="btn btn-ghost btn-sm" data-table-toggle={d.key} aria-pressed="false"><Icon name="list" /><span data-label>Table</span></button>
+                </div>
+              </div>
+              <div class="mt-5" data-chart={d.key}></div>
+              <div class="mt-4 max-h-80 overflow-auto rounded-xl border border-line" data-table={d.key} hidden></div>
+            </section>
+          ))
+        }
+      </div>
+      <section class="rounded-2xl border border-line p-5" aria-labelledby="referrers-title">
+        <div class="flex items-start justify-between gap-3">
+          <div>
+            <h3 id="referrers-title" class="font-semibold text-ink-950">Referrers</h3>
+            <p class="text-sm text-ink-500">Direct means no referrer: an email app, a chat, or a typed link.</p>
+          </div>
+          <button type="button" class="btn btn-ghost btn-sm" data-table-toggle="referrers" aria-pressed="false"><Icon name="list" /><span data-label>Table</span></button>
+        </div>
+        <div class="mt-5" data-chart="referrers"></div>
+        <div class="mt-4 max-h-80 overflow-auto rounded-xl border border-line" data-table="referrers" hidden></div>
+      </section>
+    </div>
+  </div>
+
+  <!-- By location: countries -->
+  <div role="tabpanel" id="panel-location" aria-labelledby="tab-location" class="p-5 sm:p-6" hidden>
+    <div data-panel-error hidden></div>
+    <section data-panel-body aria-labelledby="countries-title">
+      <div class="flex items-start justify-between gap-3">
+        <div>
+          <h3 id="countries-title" class="font-semibold text-ink-950">Countries</h3>
+          <p class="text-sm text-ink-500">Countries by <a class="link" href="https://db-ip.com" target="_blank" rel="noopener">DB-IP</a>. Unknown: clicks it couldn’t place, or from before countries were recorded.</p>
+        </div>
+        <button type="button" class="btn btn-ghost btn-sm" data-table-toggle="countries" aria-pressed="false"><Icon name="list" /><span data-label>Table</span></button>
+      </div>
+      <div class="mt-5" data-chart="countries"></div>
+      <div class="mt-4 max-h-80 overflow-auto rounded-xl border border-line" data-table="countries" hidden></div>
+    </section>
+  </div>
+
+  <!-- Visits: one row each, newest first (a link's page only) -->
+  {
+    visits && (
+      <>
+      <div role="tabpanel" id="panel-visits" aria-labelledby="tab-visits" class="p-5 sm:p-6" hidden>
+        <div data-panel-error hidden></div>
+        <div data-panel-body>
+          <div class="flex flex-wrap items-center justify-between gap-3">
+            <div class="segmented scrollbar-none max-w-full overflow-x-auto" role="radiogroup" aria-label="Which visits">
+              <label><input type="radio" name="visit-type" value="clicks" checked /><span>Clicks</span></label>
+              <label><input type="radio" name="visit-type" value="opens" /><span>Email opens</span></label>
+              <label><input type="radio" name="visit-type" value="bots" /><span>Bots</span></label>
+              <label><input type="radio" name="visit-type" value="all" /><span>All</span></label>
+            </div>
+            <p class="text-sm text-ink-500" data-visits-count aria-live="polite"></p>
+          </div>
+          <div class="mt-4" data-visits></div>
+          <nav class="mt-4 flex items-center justify-between gap-3" aria-label="Pages of visits" data-pager hidden>
+            <button type="button" class="btn btn-secondary btn-sm" data-page="newer"><Icon name="chevron-left" />Newer</button>
+            <span class="text-sm text-ink-500" data-page-of></span>
+            <button type="button" class="btn btn-secondary btn-sm" data-page="older">Older<Icon name="chevron-right" /></button>
+          </nav>
+        </div>
+      </div>
+      </>
+    )
+  }
+</section>

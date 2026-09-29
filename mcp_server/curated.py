@@ -29,29 +29,31 @@ from __future__ import annotations
 
 import csv
 import io
-from collections import Counter, defaultdict
+from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from server.app.analytics import _distinct_visitors, _exclude_bots
 from server.core.models import (
-    URL,
     Campaign,
     OrphanVisit,
     RedirectRule,
     User,
     Visitor,
 )
-from server.utils.access import Visibility, viewer
+from server.utils.access import Visibility, find_url, viewer
 from server.utils.campaign import (
     generate_campaign_urls,
     parse_csv,
     validate_csv,
 )
 from server.utils.domain import get_or_create_default_domain
-from server.utils.url import is_valid_url
+from server.utils.local_days import LocalDays, last_days
+from server.utils.orphans import did_you_mean, orphan_groups
+from server.utils.url import is_valid_url, link_hostname
 
 # ---------------------------------------------------------------------------
 # create_campaign_from_rows
@@ -151,6 +153,7 @@ def add_redirect_rule(
     *,
     short_code: str,
     target_url: str,
+    domain: str | None = None,
     priority: int = 0,
     device: str | None = None,
     language: str | None = None,
@@ -198,7 +201,7 @@ def add_redirect_rule(
 
     # Phase 3.14.3 — the same rules as the endpoint: see the link, then be able to change it.
     who = viewer(db, user)
-    url = db.query(URL).filter(URL.short_code == short_code, who.sees(URL)).first()
+    url = find_url(db, who, short_code, domain)  # Phase 8.3 — the code on `domain`
     if url is None:
         raise LookupError(f"URL with short_code={short_code!r} not found for current user")
     if not who.can_change(url):
@@ -234,6 +237,7 @@ def get_url_analytics_summary(
     user: User,
     *,
     short_code: str,
+    domain: str | None = None,
     days: int = 7,
     include_bots: bool = False,
 ) -> dict[str, Any]:
@@ -246,40 +250,24 @@ def get_url_analytics_summary(
     if days < 1 or days > 90:
         raise ValueError("days must be between 1 and 90")
 
-    url = db.query(URL).filter(URL.short_code == short_code, viewer(db, user).sees(URL)).first()
+    url = find_url(db, viewer(db, user), short_code, domain)  # Phase 8.3 — the code on `domain`
     if url is None:
         raise LookupError(f"URL with short_code={short_code!r} not found for current user")
 
-    base = db.query(Visitor).filter(Visitor.url_id == url.id)
-    if not include_bots:
-        # Excludes both crawlers and the email tracking pixel — the same
-        # filter the regular analytics endpoints apply by default.
-        base = base.filter(Visitor.is_bot.is_(False), Visitor.is_pixel.is_(False))
+    # The app's clicks (`_exclude_bots`): never the email tracking pixel, which is an open,
+    # and crawlers only with include_bots.
+    base = _exclude_bots(db.query(Visitor).filter(Visitor.url_id == url.id), include_bots)
 
     total_clicks = base.count()
-    # `func.count(func.distinct(...))` is portable across SQLite and Postgres;
-    # the previous `query.distinct(col).count()` form silently no-ops on SQLite.
-    unique_ips = base.with_entities(func.count(func.distinct(Visitor.ip))).scalar() or 0
+    # Unique visitors: distinct addresses, an unknown one aside (`_distinct_visitors`). A
+    # count of distinct values is portable; `query.distinct(col).count()` no-ops on SQLite.
+    unique_ips = base.with_entities(_distinct_visitors()).scalar() or 0
 
-    # Daily series (most recent `days` calendar days, oldest → newest).
-    end_date = datetime.now(timezone.utc).date()
-    start_date = end_date - timedelta(days=days - 1)
-    daily_rows = (
-        base.with_entities(
-            func.date(Visitor.visited_at).label("d"),
-            func.count(Visitor.id).label("c"),
-        )
-        .filter(func.date(Visitor.visited_at) >= start_date)
-        .group_by(func.date(Visitor.visited_at))
-        .all()
-    )
-    counts_by_day = {str(r.d): int(r.c) for r in daily_rows}
+    # Daily series: the last `days` days where the viewer is (their profile's time zone,
+    # else UTC), oldest → newest. The app's days (server/utils/local_days.py), so its numbers.
+    local = LocalDays.of(user)
     daily = [
-        {
-            "date": (start_date + timedelta(days=i)).isoformat(),
-            "clicks": counts_by_day.get((start_date + timedelta(days=i)).isoformat(), 0),
-        }
-        for i in range(days)
+        {"date": day.isoformat(), "clicks": clicks} for day, clicks in last_days(base, local, days)
     ]
 
     # Top countries (ungrouped — we want the absolute counts, not a
@@ -298,6 +286,7 @@ def get_url_analytics_summary(
 
     return {
         "short_code": url.short_code,
+        "domain": link_hostname(url),
         "original_url": url.original_url,
         "url_type": url.url_type.value if url.url_type else None,
         "totals": {
@@ -306,6 +295,7 @@ def get_url_analytics_summary(
             "include_bots": include_bots,
         },
         "daily": daily,
+        "timezone": local.name,
         "top_countries": top_countries,
     }
 
@@ -317,59 +307,83 @@ def get_url_analytics_summary(
 
 def list_orphan_visits_grouped(
     db: Session,
-    user: User,  # noqa: ARG001 — orphans are tenant-wide; kept for auth parity
+    user: User,
     *,
     since_days: int = 30,
     limit_groups: int = 20,
 ) -> dict[str, Any]:
     """
-    Group orphan visits by `attempted_path` so the LLM can spot typo patterns.
+    Group orphan visits by `attempted_path` so the LLM can spot typo patterns, with the links a
+    typo was probably meant for.
 
-    Orphan visits are tenant-wide (Phase 3.10.4), so the `user` argument is
-    accepted only for auth-context parity with the other curated tools — it
-    has no scoping effect on the query.
+    The grouping is the analytics page's (`server/utils/orphans.py`), in SQL, over every kind of
+    orphan visit and the last `since_days`. Orphan visits are tenant-wide (Phase 3.10.4): `user`
+    decides only which links are suggested. The samples, the newest 3 hits of each path, are
+    this tool's own.
     """
     if since_days < 1 or since_days > 365:
         raise ValueError("since_days must be between 1 and 365")
     if limit_groups < 1 or limit_groups > 200:
         raise ValueError("limit_groups must be between 1 and 200")
 
-    cutoff = datetime.now(timezone.utc) - timedelta(days=since_days)
-
-    rows = (
-        db.query(OrphanVisit)
-        .filter(OrphanVisit.created_at >= cutoff)
-        .order_by(OrphanVisit.created_at.desc())
-        .all()
-    )
-
-    paths = Counter(r.attempted_path for r in rows)
-    samples: dict[str, list[dict[str, Any]]] = defaultdict(list)
-    for r in rows:
-        bucket = samples[r.attempted_path]
-        if len(bucket) < 3:
-            bucket.append(
-                {
-                    "type": r.type.value,
-                    "ip": r.ip,
-                    "user_agent": r.user_agent,
-                    "referer": r.referer,
-                    "created_at": r.created_at.isoformat() if r.created_at else None,
-                }
-            )
-
-    groups = [
-        {
-            "attempted_path": path,
-            "count": count,
-            "samples": samples[path],
-        }
-        for path, count in paths.most_common(limit_groups)
-    ]
+    since = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=since_days)
+    groups, total_visits, total_paths = orphan_groups(db, since=since, limit=limit_groups)
+    paths = [group.attempted_path for group in groups]
+    suggested = did_you_mean(db, viewer(db, user), paths)
+    samples = _newest_hits(db, paths, since)
 
     return {
         "since_days": since_days,
-        "total_visits": sum(paths.values()),
-        "distinct_paths": len(paths),
-        "groups": groups,
+        "total_visits": total_visits,
+        "distinct_paths": total_paths,
+        "groups": [
+            {
+                "attempted_path": group.attempted_path,
+                "count": group.visits,
+                "first_seen": group.first_seen.isoformat(),
+                "last_seen": group.last_seen.isoformat(),
+                "did_you_mean": suggested[group.attempted_path],
+                "samples": samples.get(group.attempted_path, []),
+            }
+            for group in groups
+        ],
     }
+
+
+def _newest_hits(db: Session, paths: list[str], since: datetime) -> dict[str, list[dict[str, Any]]]:
+    """Each path's newest 3 hits since `since`, in one query. Their IPs are a decision pending
+    (docs/PERSONAL_DATA.md): shown, as they always were."""
+    if not paths:
+        return {}
+    newest = (
+        func.row_number()
+        .over(
+            partition_by=OrphanVisit.attempted_path,
+            order_by=(OrphanVisit.created_at.desc(), OrphanVisit.id.desc()),
+        )
+        .label("newest")
+    )
+    ranked = (
+        db.query(OrphanVisit.id, newest)
+        .filter(OrphanVisit.created_at >= since, OrphanVisit.attempted_path.in_(paths))
+        .subquery()
+    )
+    rows = (
+        db.query(OrphanVisit)
+        .join(ranked, ranked.c.id == OrphanVisit.id)
+        .filter(ranked.c.newest <= 3)
+        .order_by(ranked.c.newest)
+        .all()
+    )
+    samples: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for r in rows:
+        samples[r.attempted_path].append(
+            {
+                "type": r.type.value,
+                "ip": r.ip,
+                "user_agent": r.user_agent,
+                "referer": r.referer,
+                "created_at": r.created_at.isoformat() if r.created_at else None,
+            }
+        )
+    return samples

@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field, field_validator
 
 from server.core.models.url import URLType
 from server.utils.access import Visibility
+from server.utils.bounds import INT4_MAX
 from server.utils.url import is_valid_url
 
 if TYPE_CHECKING:
@@ -37,7 +38,10 @@ class URLCreate(BaseModel):
         None, description="URL stops being active at this UTC timestamp"
     )
     max_visits: int | None = Field(
-        None, ge=1, description="Hard cap on real visits before returning 410 Gone"
+        None,
+        ge=1,
+        le=INT4_MAX,
+        description="Hard cap on clicks (click_count) before returning 410 Gone",
     )
 
     # Phase 3.9.4 — default-deny crawlability
@@ -85,7 +89,10 @@ class URLCustomCreate(BaseModel):
         None, description="URL stops being active at this UTC timestamp"
     )
     max_visits: int | None = Field(
-        None, ge=1, description="Hard cap on real visits before returning 410 Gone"
+        None,
+        ge=1,
+        le=INT4_MAX,
+        description="Hard cap on clicks (click_count) before returning 410 Gone",
     )
 
     # Phase 3.9.4 — default-deny crawlability
@@ -131,7 +138,9 @@ class URLUpdate(BaseModel):
     valid_until: datetime | None = Field(
         None, description="Update expiration timestamp (null clears)"
     )
-    max_visits: int | None = Field(None, ge=1, description="Update visit cap (null clears)")
+    max_visits: int | None = Field(
+        None, ge=1, le=INT4_MAX, description="Update visit cap (null clears)"
+    )
 
     # Phase 3.9.4 — toggle crawlability
     crawlable: bool | None = Field(None, description="Allow this short URL in robots.txt")
@@ -159,8 +168,19 @@ class URLResponse(BaseModel):
     id: UUID
     short_code: str
     short_url: str | None = None  # Computed field, set after validation
+    # Phase 8.3 — the link's domain: one code can name links on several. `?domain=` on a
+    # link's routes takes it. From the Domain row; set after validation for a link from
+    # before domains (the default's).
+    domain: str | None = None
     original_url: str
     url_type: URLType
+
+    @field_validator("domain", mode="before")
+    @classmethod
+    def _hostname(cls, value: object) -> object:
+        """`URL.domain` is the Domain row: its hostname."""
+        return getattr(value, "hostname", value)
+
     title: str | None = None
     forward_parameters: bool = True
 
@@ -186,6 +206,7 @@ class URLResponse(BaseModel):
 
     # Phase 3.11 — campaign linkage + personalization data (null for standard/custom URLs)
     campaign_id: UUID | None = None
+    campaign_name: str | None = None  # its campaign's name, whichever campaign it is
     user_data: dict | None = None
 
     # Tags
@@ -198,6 +219,9 @@ class URLResponse(BaseModel):
     # Phase 3.14.3 — whose it is
     visibility: Visibility = "organization"
     created_by_email: str | None = None
+    # Phase 3.12 — the creator's name, from their profile; null without one.
+    created_by_first_name: str | None = None
+    created_by_last_name: str | None = None
 
     model_config = {"from_attributes": True}
 

@@ -1,32 +1,81 @@
 """Analytics endpoints for URLs and campaigns."""
 
-from datetime import datetime, timedelta
-from uuid import UUID as UUIDType
+from bisect import bisect_right
+from collections import Counter
+from datetime import date, datetime, timedelta
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import func
+from fastapi.responses import StreamingResponse
+from pydantic import BeforeValidator
+from sqlalchemy import JSON, and_, case, cast, func, literal, or_, select
 from sqlalchemy.orm import Query as SAQuery
 from sqlalchemy.orm import Session
 
 from server.core import get_db
 from server.core.auth import get_current_user
-from server.core.models import URL, Campaign, OrphanVisit, User, Visitor
+from server.core.config import settings
+from server.core.models import URL, Campaign, Domain, OrphanVisit, OrphanVisitType, User, Visitor
 from server.schemas.analytics import (
+    BreakdownItem,
+    BreakdownResponse,
+    CampaignBreakdownResponse,
     CampaignSummary,
+    CampaignTimeseriesResponse,
+    CampaignTotalsResponse,
     CampaignUsersResponse,
     CampaignUserStat,
     DailyStats,
     DailyStatsResponse,
     GeoStats,
     GeoStatsResponse,
+    HourCounts,
+    LinkTotalsResponse,
+    OrphanGroupsResponse,
     OverviewStats,
+    RecipientCounts,
+    RecipientRow,
+    RecipientsResponse,
+    TimeseriesBucket,
+    TimeseriesResponse,
+    VisitRow,
+    VisitsResponse,
+    WeekdayCounts,
     WeeklyStats,
     WeeklyStatsResponse,
 )
 from server.schemas.responses import get_responses
-from server.utils.access import viewer
+from server.utils.access import (
+    LinkDomain,
+    viewer,
+    visible_campaign_or_404,
+    visible_url_or_404,
+)
+from server.utils.bounds import MAX_PAGE, MAX_SKIP
 from server.utils.csv_export import stream_csv
-from server.utils.url import build_short_url
+from server.utils.domain import normalize_hostname
+from server.utils.local_days import (
+    MAX_PERIOD_DAYS,
+    LocalDays,
+    Period,
+    PeriodError,
+    count_per_period,
+    last_days,
+)
+from server.utils.network import UNKNOWN_IP
+from server.utils.orphans import did_you_mean, orphan_groups
+from server.utils.profile import clean_timezone
+from server.utils.url import build_short_url, link_hostname, link_short_url
+from server.utils.visit_facets import country_label, families, kind_of, referrer_host
+
+
+def _distinct_visitors():
+    """
+    How many distinct addresses: unique visitors. An unknown address (`UNKNOWN_IP`: every
+    visit imported from Shlink, or one whose address couldn't be read) is no one in
+    particular, so it never counts: NULLIF makes it NULL, which COUNT(DISTINCT) skips.
+    """
+    return func.count(func.distinct(func.nullif(Visitor.ip, UNKNOWN_IP)))
 
 
 def _exclude_bots(query: SAQuery, include_bots: bool) -> SAQuery:
@@ -38,6 +87,423 @@ def _exclude_bots(query: SAQuery, include_bots: bool) -> SAQuery:
     """
     q = query.filter(Visitor.is_pixel.is_(False))
     return q if include_bots else q.filter(Visitor.is_bot.is_(False))
+
+
+# Days are counted where the viewer is (server/utils/local_days.py): `tz`, else their
+# profile's zone, else UTC. `tz` changes how visits are grouped into days, never which count.
+TimeZoneParam = Annotated[
+    str | None,
+    BeforeValidator(clean_timezone),
+    Query(
+        description=(
+            "IANA time zone to count days in, e.g. Europe/Madrid. Defaults to your profile's, "
+            "else UTC. It changes how visits are grouped into days, not which ones count."
+        ),
+    ),
+]
+
+# Phase 3.16 — the kinds of visit (ROADMAP 3.16.1): every visit is exactly one.
+VisitType = Literal["clicks", "opens", "bots", "all"]
+
+
+def _of_type(query: SAQuery, visit_type: str) -> SAQuery:
+    """
+    Phase 3.16 — the visits of a kind, drawing the lines `visit_facets.kind_of` draws.
+    A click is what `_exclude_bots` keeps; an open, a pixel hit that isn't a bot's; a bot's,
+    any visit whose user agent was one, pixel hits included.
+    """
+    if visit_type == "clicks":
+        return _exclude_bots(query, include_bots=False)
+    if visit_type == "opens":
+        return query.filter(Visitor.is_pixel.is_(True), Visitor.is_bot.is_(False))
+    if visit_type == "bots":
+        return query.filter(Visitor.is_bot.is_(True))
+    return query
+
+
+_PERIOD = Query(
+    None,
+    ge=1,
+    le=MAX_PERIOD_DAYS,
+    description="The last N local days, today included. Default 30",
+)
+_FROM = Query(None, alias="from", description="A custom range's first local day, with `to`")
+_TO = Query(
+    None,
+    alias="to",
+    description="A custom range's last local day, inclusive: after today counts to today",
+)
+
+
+def _period(
+    period: int | None = _PERIOD,
+    first: date | None = _FROM,
+    last: date | None = _TO,
+    tz: TimeZoneParam = None,
+    current_user: User = Depends(get_current_user),
+) -> Period:
+    """Phase 3.16 — the local days a per-link route counts: `period`, or `from` and `to`."""
+    return _resolved(current_user, tz, period, first, last)
+
+
+def _geo_period(
+    days: int | None = Query(
+        None,
+        ge=1,
+        le=3660,
+        deprecated=True,
+        description="Before `period`, and the same: the last N days. Past 731, the last 731",
+    ),
+    period: int | None = _PERIOD,
+    first: date | None = _FROM,
+    last: date | None = _TO,
+    tz: TimeZoneParam = None,
+    current_user: User = Depends(get_current_user),
+) -> Period:
+    """`/geo`'s period: `_period`'s, or its old `days`, which is `period` up to the longest a
+    period is (MAX_PERIOD_DAYS, 731): the cap wins."""
+    if days is not None:
+        if period is not None or first is not None or last is not None:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Give days, or a period or from and to, not both: days is the old period.",
+            )
+        period = min(days, MAX_PERIOD_DAYS)
+    return _resolved(current_user, tz, period, first, last)
+
+
+def _resolved(
+    user: User, tz: str | None, period: int | None, first: date | None, last: date | None
+) -> Period:
+    try:
+        return Period.resolve(LocalDays.of(user, tz), period, first, last)
+    except PeriodError as error:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(error)
+        ) from None
+
+
+def _link_visits(db: Session, url: URL) -> SAQuery:
+    """A link's visits (Phase 3.16)."""
+    return db.query(Visitor).filter(Visitor.url_id == url.id)
+
+
+def _campaign_visits(db: Session, campaign: Campaign) -> SAQuery:
+    """Phase 3.17 — the visits of a campaign's links: a subquery on `urls.campaign_id`, never a
+    list of ids."""
+    links = select(URL.id).where(URL.campaign_id == campaign.id)
+    return db.query(Visitor).filter(Visitor.url_id.in_(links))
+
+
+def _in_period(visits: SAQuery, period: Period, visit_type: str) -> SAQuery:
+    """`visits` of a kind (`_of_type`) in the period."""
+    start, end = period.bounds()
+    in_period = visits.filter(Visitor.visited_at >= start, Visitor.visited_at < end)
+    return _of_type(in_period, visit_type)
+
+
+# What a visit shows, and newest first: the id breaks ties, so pages keep one order.
+_SHOWN = (
+    Visitor.visited_at,
+    Visitor.is_pixel,
+    Visitor.is_bot,
+    Visitor.country,
+    Visitor.user_agent,
+    Visitor.referer,
+)
+_NEWEST_FIRST = (Visitor.visited_at.desc(), Visitor.id.desc())
+
+
+def _shown(row, days: LocalDays) -> VisitRow:
+    """A visit as the list and the CSV show it: labels, never an IP."""
+    found = families(row.user_agent)
+    return VisitRow(
+        visited_at=days.local(row.visited_at).replace(microsecond=0),
+        kind=kind_of(row.is_pixel, row.is_bot),
+        country=country_label(row.country),
+        browser=found.browser,
+        os=found.os,
+        device=found.device,
+        referrer=referrer_host(row.referer),
+    )
+
+
+def _period_fields(url: URL, period: Period) -> dict:
+    """What every per-link response over a period starts with."""
+    return {
+        "short_code": url.short_code,
+        "domain": link_hostname(url),
+        "from": period.first,
+        "to": period.last,
+        "timezone": period.days.name,
+    }
+
+
+def _click_totals(visits: SAQuery, days: LocalDays) -> dict:
+    """
+    The all-time numbers a link's header and a campaign's share: its clicks and opens, how
+    many of its links were clicked and opened, the countries its clicks came from, and the
+    last click, in `days`' zone.
+    """
+    clicks, countries, clicked, last = (
+        _of_type(visits, "clicks")
+        .with_entities(
+            func.count(Visitor.id),
+            func.count(func.distinct(Visitor.country)),
+            func.count(func.distinct(Visitor.url_id)),
+            func.max(Visitor.visited_at),
+        )
+        .one()
+    )
+    opens, opened = (
+        _of_type(visits, "opens")
+        .with_entities(func.count(Visitor.id), func.count(func.distinct(Visitor.url_id)))
+        .one()
+    )
+    return {
+        "clicks": clicks,
+        "opens": opens,
+        "clicked": clicked,
+        "opened": opened,
+        "countries": countries,
+        "last_click_at": _moment(days, last),
+    }
+
+
+def _series(visits: SAQuery, period: Period, group_by: str) -> dict:
+    """A series' fields (`SeriesFields`): the period's clicks and opens per bucket, hour and
+    weekday, on local time. The rows are read once, then bucketed here."""
+    start, end = period.bounds()
+    # Clicks and opens are the visits that aren't a bot's (`_of_type`, `kind_of`).
+    rows = (
+        visits.filter(
+            Visitor.visited_at >= start, Visitor.visited_at < end, Visitor.is_bot.is_(False)
+        )
+        .with_entities(Visitor.visited_at, Visitor.is_pixel)
+        .all()
+    )
+
+    buckets = period.buckets(group_by)
+    starts = [first for first, _ in buckets]
+    kinds = ("click", "open")
+    per_bucket = [[0, 0] for _ in buckets]
+    per_hour = [[0, 0] for _ in range(24)]
+    per_weekday = [[0, 0] for _ in range(7)]
+    for visited_at, is_pixel in rows:
+        local = period.days.local(visited_at)
+        kind = kinds.index(kind_of(is_pixel, is_bot=False))
+        per_bucket[bisect_right(starts, local.date()) - 1][kind] += 1
+        per_hour[local.hour][kind] += 1
+        per_weekday[local.isoweekday() - 1][kind] += 1
+
+    return {
+        "group_by": group_by,
+        "clicks": sum(clicks for clicks, _ in per_bucket),
+        "opens": sum(opens for _, opens in per_bucket),
+        "stats": [
+            TimeseriesBucket(start=first, end=last, clicks=clicks, opens=opens)
+            for (first, last), (clicks, opens) in zip(buckets, per_bucket, strict=True)
+        ],
+        "hour_of_day": [
+            HourCounts(hour=hour, clicks=clicks, opens=opens)
+            for hour, (clicks, opens) in enumerate(per_hour)
+        ],
+        "day_of_week": [
+            WeekdayCounts(day=day, clicks=clicks, opens=opens)
+            for day, (clicks, opens) in enumerate(per_weekday, start=1)
+        ],
+    }
+
+
+def _breakdown_fields(visits: SAQuery, period: Period, visit_type: str) -> dict:
+    """A breakdown's fields (`BreakdownFields`): the period's visits of a kind by OS, browser,
+    device, referrer and country, each grouped in SQL and each distinct value worked out once."""
+    in_period = _in_period(visits, period, visit_type)
+
+    def grouped(column):
+        return in_period.with_entities(column, func.count(Visitor.id)).group_by(column).all()
+
+    os_names, browsers, devices, referrers, countries = (Counter() for _ in range(5))
+    for user_agent, count in grouped(Visitor.user_agent):
+        found = families(user_agent)
+        os_names[found.os] += count
+        browsers[found.browser] += count
+        devices[found.device] += count
+    for referer, count in grouped(Visitor.referer):
+        referrers[referrer_host(referer)] += count
+    for country, count in grouped(Visitor.country):
+        countries[country_label(country)] += count
+    total = sum(countries.values())
+
+    return {
+        "type": visit_type,
+        "total": total,
+        "os": _breakdown(os_names, total),
+        "browsers": _breakdown(browsers, total),
+        "devices": _breakdown(devices, total),
+        "referrers": _breakdown(referrers, total),
+        "countries": _breakdown(countries, total),
+    }
+
+
+def _campaign_period_fields(campaign: Campaign, period: Period) -> dict:
+    """What every per-campaign response over a period starts with."""
+    return {
+        "campaign_id": str(campaign.id),
+        "campaign_name": campaign.name,
+        "from": period.first,
+        "to": period.last,
+        "timezone": period.days.name,
+    }
+
+
+def _rate(part: int, whole: int) -> float:
+    return round(part / whole, 4) if whole else 0.0
+
+
+def _moment(days: LocalDays, at: datetime | None) -> datetime | None:
+    """A naive-UTC time as the zone's, to the second; None stays None."""
+    return days.local(at).replace(microsecond=0) if at else None
+
+
+RecipientFilter = Literal["all", "clicked", "opened", "none"]
+RecipientSort = Literal["clicks", "opens", "last_click", "code"]
+
+
+def _recipient_numbers(campaign: Campaign):
+    """
+    Phase 3.17 — each of a campaign's links' all-time clicks and opens, first and last click
+    and last open: one aggregate over its visits that aren't a bot's, where a pixel hit is an
+    open and anything else a click (as in `_series`).
+    """
+    click, opened = Visitor.is_pixel.is_(False), Visitor.is_pixel.is_(True)
+    return (
+        select(
+            Visitor.url_id.label("url_id"),
+            func.sum(case((click, 1), else_=0)).label("clicks"),
+            func.sum(case((opened, 1), else_=0)).label("opens"),
+            func.min(case((click, Visitor.visited_at))).label("first_click"),
+            func.max(case((click, Visitor.visited_at))).label("last_click"),
+            func.max(case((opened, Visitor.visited_at))).label("last_open"),
+        )
+        .where(
+            Visitor.url_id.in_(select(URL.id).where(URL.campaign_id == campaign.id)),
+            Visitor.is_bot.is_(False),
+        )
+        .group_by(Visitor.url_id)
+        .subquery()
+    )
+
+
+def _search_recipients(db: Session, q: str):
+    """
+    `q`, ignoring case, over `user_data`'s values (never its keys) and the short code. Escaped
+    (`autoescape`): `%` and `_` in it are characters, not LIKE's wildcards.
+    """
+    if db.get_bind().dialect.name == "postgresql":
+        # json_each_text refuses anything but an object (a JSON null, say): an empty one then.
+        data = case(
+            (func.json_typeof(URL.user_data) == "object", URL.user_data),
+            else_=cast(literal("{}"), JSON),
+        )
+        fields = func.json_each_text(data).table_valued("value")
+    else:  # SQLite, in the tests
+        fields = func.json_each(URL.user_data).table_valued("value")
+    in_values = (
+        select(literal(1)).select_from(fields).where(fields.c.value.icontains(q, autoescape=True))
+    ).exists()
+    return or_(URL.short_code.icontains(q, autoescape=True), in_values)
+
+
+def _recipients(
+    db: Session,
+    campaign: Campaign,
+    q: str,
+    recipient_filter: str,
+    sort: str,
+    order: str,
+):
+    """
+    A campaign's recipients with their numbers, searched, filtered and sorted in SQL, and the
+    counts each filter gives for the search. Returns (the sorted query, the counts): its rows
+    are (URL, clicks, opens, first click, last click, last open).
+    """
+    numbers = _recipient_numbers(campaign)
+    clicks = func.coalesce(numbers.c.clicks, 0)
+    opens = func.coalesce(numbers.c.opens, 0)
+    last_click = numbers.c.last_click
+    recipients = (
+        db.query(URL)
+        .outerjoin(numbers, numbers.c.url_id == URL.id)
+        .filter(URL.campaign_id == campaign.id)
+    )
+    if q:
+        recipients = recipients.filter(_search_recipients(db, q))
+
+    everyone, clicked, opened, neither = recipients.with_entities(
+        func.count(URL.id),
+        func.sum(case((clicks > 0, 1), else_=0)),
+        func.sum(case((opens > 0, 1), else_=0)),
+        func.sum(case((and_(clicks == 0, opens == 0), 1), else_=0)),
+    ).one()
+    counts = RecipientCounts(
+        all=everyone, clicked=clicked or 0, opened=opened or 0, none=neither or 0
+    )
+
+    if recipient_filter == "clicked":
+        recipients = recipients.filter(clicks > 0)
+    elif recipient_filter == "opened":
+        recipients = recipients.filter(opens > 0)
+    elif recipient_filter == "none":
+        recipients = recipients.filter(clicks == 0, opens == 0)
+
+    def directed(expression):
+        return expression.desc() if order == "desc" else expression.asc()
+
+    # Ties: the latest click, most recent first (never clicked last), then the code.
+    ties = (last_click.desc().nulls_last(), URL.short_code.asc(), URL.id.asc())
+    if sort == "clicks":
+        ordering = (directed(clicks), *ties)
+    elif sort == "opens":
+        ordering = (directed(opens), *ties)
+    elif sort == "last_click":
+        ordering = (directed(last_click).nulls_last(), URL.short_code.asc(), URL.id.asc())
+    else:
+        ordering = (directed(URL.short_code), URL.id.asc())
+
+    rows = recipients.with_entities(
+        URL,
+        clicks,
+        opens,
+        numbers.c.first_click,
+        last_click,
+        numbers.c.last_open,
+    ).order_by(*ordering)
+    return rows, counts
+
+
+def _recipient_row(row, days: LocalDays) -> RecipientRow:
+    url, clicks, opens, first_click, last_click, last_open = row
+    return RecipientRow(
+        short_code=url.short_code,
+        short_url=link_short_url(url),
+        domain=link_hostname(url),
+        user_data=url.user_data or {},
+        clicks=clicks,
+        opens=opens,
+        first_click_at=_moment(days, first_click),
+        last_click_at=_moment(days, last_click),
+        last_open_at=_moment(days, last_open),
+    )
+
+
+def _breakdown(counts: Counter, total: int) -> list[BreakdownItem]:
+    """By count, then name; each with its share of `total`."""
+    ordered = sorted(counts.items(), key=lambda item: (-item[1], item[0].casefold(), item[0]))
+    return [
+        BreakdownItem(name=name, count=count, share=round(count / total, 4) if total else 0.0)
+        for name, count in ordered
+    ]
 
 
 analytics_router = APIRouter()
@@ -53,15 +519,17 @@ analytics_router = APIRouter()
 )
 def get_url_daily_stats(
     short_code: str,
+    domain: LinkDomain = None,
     include_bots: bool = Query(False, description="Include bot/crawler visits in counts"),
     format: str = Query("json", pattern="^(json|csv)$", description="Response format"),
+    tz: TimeZoneParam = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """
-    Get daily click statistics for a URL (last 7 days).
+    Get daily click statistics for a URL: the last 7 days, today included.
 
-    Returns day-by-day click counts for the last 7 days.
+    Days are local to your profile's time zone, or to `tz`, else UTC; `timezone` says which.
 
     **Authentication:** Required (JWT Bearer token)
 
@@ -74,46 +542,14 @@ def get_url_daily_stats(
     - **404**: URL not found, or someone else's personal link
     """
     # Verify the user can see the URL (Phase 3.14.3 — the organization's, or their own)
-    url = (
-        db.query(URL)
-        .filter(URL.short_code == short_code, viewer(db, current_user).sees(URL))
-        .first()
-    )
-    if not url:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="URL not found",
-        )
+    url = visible_url_or_404(db, current_user, short_code, domain)
 
-    # Get last 7 days
-    today = datetime.utcnow().date()
-    seven_days_ago = today - timedelta(days=6)
-    # Convert to datetime for comparison
-    seven_days_ago_dt = datetime.combine(seven_days_ago, datetime.min.time())
-
-    # Query visits grouped by date
-    base_q = db.query(
-        func.date(Visitor.visited_at).label("visit_date"),
-        func.count(Visitor.id).label("click_count"),
-    ).filter(
-        Visitor.short_code == short_code,
-        Visitor.visited_at >= seven_days_ago_dt,
-    )
-    visits_by_date = (
-        _exclude_bots(base_q, include_bots).group_by(func.date(Visitor.visited_at)).all()
-    )
-
-    # Create dict for easy lookup
-    visits_dict = {visit.visit_date: visit.click_count for visit in visits_by_date}
-
-    # Build stats for all 7 days (fill zeros for missing days)
-    stats = []
-    total_clicks = 0
-    for i in range(7):
-        day = seven_days_ago + timedelta(days=i)
-        clicks = visits_dict.get(day, 0)
-        total_clicks += clicks
-        stats.append(DailyStats(date=day, clicks=clicks))
+    # The last 7 days where the viewer is, today included. Keyed on the link, never its code:
+    # the same code can name links on two domains.
+    days = LocalDays.of(current_user, tz)
+    visits = _exclude_bots(db.query(Visitor).filter(Visitor.url_id == url.id), include_bots)
+    stats = [DailyStats(date=day, clicks=clicks) for day, clicks in last_days(visits, days, 7)]
+    total_clicks = sum(day.clicks for day in stats)
 
     if format == "csv":
         return stream_csv(
@@ -126,6 +562,7 @@ def get_url_daily_stats(
         short_code=short_code,
         stats=stats,
         total_clicks=total_clicks,
+        timezone=days.name,
     )
 
 
@@ -139,15 +576,17 @@ def get_url_daily_stats(
 )
 def get_url_weekly_stats(
     short_code: str,
+    domain: LinkDomain = None,
     include_bots: bool = Query(False, description="Include bot/crawler visits in counts"),
     format: str = Query("json", pattern="^(json|csv)$", description="Response format"),
+    tz: TimeZoneParam = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """
-    Get weekly click statistics for a URL (last 8 weeks).
+    Get weekly click statistics for a URL: 8 seven-day weeks, the last ending today.
 
-    Returns week-by-week click counts for the last 8 weeks.
+    Days are local to your profile's time zone, or to `tz`, else UTC; `timezone` says which.
 
     **Authentication:** Required (JWT Bearer token)
 
@@ -160,43 +599,22 @@ def get_url_weekly_stats(
     - **404**: URL not found, or someone else's personal link
     """
     # Verify the user can see the URL (Phase 3.14.3 — the organization's, or their own)
-    url = (
-        db.query(URL)
-        .filter(URL.short_code == short_code, viewer(db, current_user).sees(URL))
-        .first()
-    )
-    if not url:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="URL not found",
+    url = visible_url_or_404(db, current_user, short_code, domain)
+
+    # 8 seven-day weeks where the viewer is, the last ending today (it used to end yesterday).
+    days = LocalDays.of(current_user, tz)
+    first = days.today() - timedelta(days=8 * 7 - 1)
+    visits = _exclude_bots(db.query(Visitor).filter(Visitor.url_id == url.id), include_bots)
+    counts = count_per_period(visits, days.bounds(first, 8 * 7)[::7])
+    stats = [
+        WeeklyStats(
+            week_start=first + timedelta(weeks=week),
+            week_end=first + timedelta(weeks=week, days=6),
+            clicks=clicks,
         )
-
-    today = datetime.utcnow().date()
-    eight_weeks_ago = today - timedelta(weeks=8)
-
-    stats = []
-    total_clicks = 0
-
-    for i in range(8):
-        week_start = eight_weeks_ago + timedelta(weeks=i)
-        week_end = week_start + timedelta(days=6)
-
-        # Count visits in this week
-        wq = db.query(func.count(Visitor.id)).filter(
-            Visitor.short_code == short_code,
-            func.date(Visitor.visited_at) >= week_start,
-            func.date(Visitor.visited_at) <= week_end,
-        )
-        click_count = _exclude_bots(wq, include_bots).scalar() or 0
-
-        total_clicks += click_count
-        stats.append(
-            WeeklyStats(
-                week_start=week_start,
-                week_end=week_end,
-                clicks=click_count,
-            )
-        )
+        for week, clicks in enumerate(counts)
+    ]
+    total_clicks = sum(counts)
 
     if format == "csv":
         return stream_csv(
@@ -209,6 +627,7 @@ def get_url_weekly_stats(
         short_code=short_code,
         stats=stats,
         total_clicks=total_clicks,
+        timezone=days.name,
     )
 
 
@@ -222,16 +641,16 @@ def get_url_weekly_stats(
 )
 def get_url_geo_stats(
     short_code: str,
-    days: int = 30,
+    domain: LinkDomain = None,
+    period: Period = Depends(_geo_period),
     include_bots: bool = Query(False, description="Include bot/crawler visits in counts"),
     format: str = Query("json", pattern="^(json|csv)$", description="Response format"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """
-    Get geographic distribution of clicks for a URL.
-
-    Returns click counts grouped by country for the specified time period.
+    A link's clicks by country, over a period's local days: as its breakdown counts them
+    (`/breakdown`'s countries, the same total), in this older shape.
 
     **Authentication:** Required (JWT Bearer token)
 
@@ -239,48 +658,39 @@ def get_url_geo_stats(
     - **short_code**: The short code to get statistics for
 
     **Query Parameters:**
-    - **days**: Number of days to look back (default: 30)
+    - **period**, or **from** and **to**, and **tz**: the local days, as on the other routes.
+      Default: the last 30
+    - **days**: the old `period`, still taken. Past 731 it counts the last 731, the longest a
+      period is: the cap wins. With `period` or `from`/`to` too, a 422
+    - **include_bots**: count bots' clicks too. Email opens never count: they aren't clicks
+
+    A click with no country counts as "Unknown". `period_days` is the days counted.
 
     **Responses:**
-    - **200**: Geographic statistics retrieved successfully - Returns clicks by country
+    - **200**: Clicks by country, the most first
     - **401**: Authentication required or invalid token
     - **404**: URL not found, or someone else's personal link
+    - **422**: `days` out of range, or with a period
     """
     # Verify the user can see the URL (Phase 3.14.3 — the organization's, or their own)
-    url = (
-        db.query(URL)
-        .filter(URL.short_code == short_code, viewer(db, current_user).sees(URL))
-        .first()
-    )
-    if not url:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="URL not found",
-        )
+    url = visible_url_or_404(db, current_user, short_code, domain)
 
-    cutoff_date = datetime.utcnow() - timedelta(days=days)
-
-    # Query visits grouped by country
-    geo_q = db.query(
-        Visitor.country,
-        func.count(Visitor.id).label("click_count"),
-    ).filter(
-        Visitor.short_code == short_code,
-        Visitor.visited_at >= cutoff_date,
-        Visitor.country.isnot(None),
-    )
-    geo_stats = (
-        _exclude_bots(geo_q, include_bots)
+    start, end = period.bounds()
+    in_period = _link_visits(db, url).filter(Visitor.visited_at >= start, Visitor.visited_at < end)
+    countries: Counter = Counter()
+    for country, clicks in (
+        _exclude_bots(in_period, include_bots)
+        .with_entities(Visitor.country, func.count(Visitor.id))
         .group_by(Visitor.country)
-        .order_by(func.count(Visitor.id).desc())
         .all()
-    )
-
+    ):
+        countries[country_label(country)] += clicks
+    total_clicks = sum(countries.values())
+    # The breakdown's order: the most clicks first, then by name.
     stats = [
-        GeoStats(country=geo.country or "Unknown", clicks=geo.click_count) for geo in geo_stats
+        GeoStats(country=item.name, clicks=item.count)
+        for item in _breakdown(countries, total_clicks)
     ]
-
-    total_clicks = sum(stat.clicks for stat in stats)
 
     if format == "csv":
         return stream_csv(
@@ -293,7 +703,220 @@ def get_url_geo_stats(
         short_code=short_code,
         stats=stats,
         total_clicks=total_clicks,
-        period_days=days,
+        period_days=(period.last - period.first).days + 1,
+    )
+
+
+@analytics_router.get(
+    "/urls/{short_code}/totals",
+    response_model=LinkTotalsResponse,
+    responses={
+        200: {"description": "The link's all-time numbers"},
+        **get_responses(401, 404, 422),
+    },
+)
+def get_url_totals(
+    short_code: str,
+    domain: LinkDomain = None,
+    tz: TimeZoneParam = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    A link's all-time numbers, for the header of its page (Phase 3.16).
+
+    - **clicks**: its clicks, as `click_count`: bots and email opens aside
+    - **opens**: hits on its email tracking pixel that aren't a bot's. They overcount: Apple
+      Mail Privacy Protection loads the pixel, like every image, when a message arrives, read
+      or not
+    - **countries**: how many distinct countries its clicks came from
+    - **last_click_at**: its latest click, in `tz`, else your profile's zone, else UTC; null
+      without one. Unlike the link's `last_click_at`, bots and crawler previews don't count
+    """
+    url = visible_url_or_404(db, current_user, short_code, domain)
+    days = LocalDays.of(current_user, tz)
+    totals = _click_totals(_link_visits(db, url), days)
+    return LinkTotalsResponse(
+        short_code=url.short_code,
+        domain=link_hostname(url),
+        timezone=days.name,
+        clicks=totals["clicks"],
+        opens=totals["opens"],
+        countries=totals["countries"],
+        last_click_at=totals["last_click_at"],
+    )
+
+
+@analytics_router.get(
+    "/urls/{short_code}/timeseries",
+    response_model=TimeseriesResponse,
+    responses={
+        200: {"description": "Clicks and opens over the period"},
+        **get_responses(401, 404, 422),
+    },
+)
+def get_url_timeseries(
+    short_code: str,
+    domain: LinkDomain = None,
+    group_by: Literal["day", "week", "month"] = Query(
+        "day", description="Local days, ISO weeks (from Monday) or months"
+    ),
+    period: Period = Depends(_period),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    A link's clicks and email opens over a period, side by side (Phase 3.16).
+
+    - **stats**: per local day, ISO week or month of the period, oldest first, with zeros; the
+      first and last buckets are clipped to it, and `end` is inclusive
+    - **hour_of_day**: per local hour, 0 to 23. On the day DST ends, the hour that happens
+      twice counts both times
+    - **day_of_week**: per local weekday, 1 (Monday) to 7
+
+    The period is `period` (the last N local days, today included, default 30) or `from` and
+    `to`, at most 731 days. Bots count in neither. Opens overcount: Apple Mail Privacy
+    Protection loads the pixel, like every image, when a message arrives, read or not.
+    """
+    url = visible_url_or_404(db, current_user, short_code, domain)
+    return TimeseriesResponse(
+        **_period_fields(url, period), **_series(_link_visits(db, url), period, group_by)
+    )
+
+
+@analytics_router.get(
+    "/urls/{short_code}/breakdown",
+    response_model=BreakdownResponse,
+    responses={
+        200: {"description": "The period's visits by OS, browser, device, referrer and country"},
+        **get_responses(401, 404, 422),
+    },
+)
+def get_url_breakdown(
+    short_code: str,
+    domain: LinkDomain = None,
+    visit_type: VisitType = Query(
+        "clicks",
+        alias="type",
+        description="clicks; opens (email pixel hits, not a bot's); bots; or all",
+    ),
+    period: Period = Depends(_period),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    A link's visits of a kind over a period, by OS, browser, device, referrer and country
+    (Phase 3.16).
+
+    Every value is listed, by count and then name, with its share of `total`. OS and browser
+    are families, parsed from the user agent. Device is desktop, mobile, tablet, or other (a
+    bot's). A referrer is its host, "Direct" without one; a missing value is "Unknown". A
+    country is an ISO code.
+
+    The period is `period` (the last N local days, today included, default 30) or `from` and
+    `to`, at most 731 days. Opens overcount: Apple Mail Privacy Protection loads the pixel, like
+    every image, when a message arrives, read or not.
+    """
+    url = visible_url_or_404(db, current_user, short_code, domain)
+    return BreakdownResponse(
+        **_period_fields(url, period),
+        **_breakdown_fields(_link_visits(db, url), period, visit_type),
+    )
+
+
+@analytics_router.get(
+    "/urls/{short_code}/visits",
+    response_model=VisitsResponse,
+    responses={
+        200: {"description": "The period's visits, a page at a time"},
+        **get_responses(401, 404, 422),
+    },
+)
+def list_url_visits(
+    short_code: str,
+    domain: LinkDomain = None,
+    visit_type: VisitType = Query(
+        "clicks",
+        alias="type",
+        description="clicks; opens (email pixel hits, not a bot's); bots; or all",
+    ),
+    page: int = Query(1, ge=1, le=MAX_PAGE, description="From 1; a page past the last is empty"),
+    page_size: int = Query(20, ge=1, le=100),
+    period: Period = Depends(_period),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    A link's visits of a kind over a period, newest first, a page at a time (Phase 3.16).
+
+    Each visit shows its local time, its kind (click, open or bot), country, browser, OS,
+    device and referrer host: never an IP, a user agent or a full referrer. Missing values
+    are "Unknown"; a referrer is "Direct" without one.
+
+    The period is `period` (the last N local days, today included, default 30) or `from` and
+    `to`, at most 731 days. Opens overcount: Apple Mail Privacy Protection loads the pixel,
+    like every image, when a message arrives, read or not.
+    """
+    url = visible_url_or_404(db, current_user, short_code, domain)
+    visits = _in_period(_link_visits(db, url), period, visit_type)
+    total = visits.with_entities(func.count(Visitor.id)).scalar()
+    rows = (
+        visits.with_entities(*_SHOWN)
+        .order_by(*_NEWEST_FIRST)
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+        .all()
+    )
+    return VisitsResponse(
+        **_period_fields(url, period),
+        type=visit_type,
+        total=total,
+        page=page,
+        page_size=page_size,
+        pages=-(-total // page_size),
+        visits=[_shown(row, period.days) for row in rows],
+    )
+
+
+@analytics_router.get(
+    "/urls/{short_code}/visits.csv",
+    response_class=StreamingResponse,
+    responses={
+        200: {"description": "Every visit of the period", "content": {"text/csv": {}}},
+        **get_responses(401, 404, 422),
+    },
+)
+def export_url_visits(
+    short_code: str,
+    domain: LinkDomain = None,
+    visit_type: VisitType = Query(
+        "all",
+        alias="type",
+        description="all by default; clicks, opens or bots export only those",
+    ),
+    period: Period = Depends(_period),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Every visit of a link over a period, as a CSV, newest first (Phase 3.16).
+
+    The list's columns plus the raw user agent: never an IP. Every cell is spreadsheet-safe.
+    Not an MCP tool: an assistant pages through `list_url_visits` instead.
+    """
+    url = visible_url_or_404(db, current_user, short_code, domain)
+    # Read before the response streams: the session is the request's.
+    rows = _in_period(_link_visits(db, url), period, visit_type).with_entities(*_SHOWN)
+    rows = rows.order_by(*_NEWEST_FIRST).all()
+    # Each row as the list shows it (same columns, same dates), plus the raw user agent.
+    lines = (
+        (*_shown(row, period.days).model_dump(mode="json").values(), row.user_agent or "")
+        for row in rows
+    )
+    return stream_csv(
+        headers=[*VisitRow.model_fields, "user_agent"],
+        rows=lines,
+        filename=f"{url.short_code}-visits-{period.first}-{period.last}.csv",
     )
 
 
@@ -308,6 +931,7 @@ def get_url_geo_stats(
 def get_campaign_summary(
     campaign_id: str,
     include_bots: bool = Query(False, description="Include bot/crawler visits in counts"),
+    tz: TimeZoneParam = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -327,31 +951,13 @@ def get_campaign_summary(
     - **401**: Authentication required or invalid token
     - **404**: Campaign not found, or someone else's personal campaign
     """
-    # Convert campaign_id string to UUID
-    try:
-        campaign_uuid = UUIDType(campaign_id)
-    except ValueError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid campaign ID format",
-        ) from exc
-
-    # Verify the user can see the campaign (Phase 3.14.3 — the organization's, or their own)
-    campaign = (
-        db.query(Campaign)
-        .filter(Campaign.id == campaign_uuid, viewer(db, current_user).sees(Campaign))
-        .first()
-    )
-    if not campaign:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Campaign not found",
-        )
+    # The organization's, or their own (Phase 3.14.3): every campaign route decides alike.
+    campaign = visible_campaign_or_404(db, current_user, campaign_id)
+    campaign_uuid = campaign.id
 
     # Get all URLs for this campaign
     campaign_urls = db.query(URL).filter(URL.campaign_id == campaign_uuid).all()
     url_ids = [url.id for url in campaign_urls]
-    short_codes = [url.short_code for url in campaign_urls]
 
     # Total clicks
     total_clicks = (
@@ -365,7 +971,7 @@ def get_campaign_summary(
     # Unique IPs
     unique_ips = (
         _exclude_bots(
-            db.query(func.count(func.distinct(Visitor.ip))).filter(Visitor.url_id.in_(url_ids)),
+            db.query(_distinct_visitors()).filter(Visitor.url_id.in_(url_ids)),
             include_bots,
         ).scalar()
         or 0
@@ -387,7 +993,7 @@ def get_campaign_summary(
             URL.short_code,
             URL.user_data,
             func.count(Visitor.id).label("click_count"),
-            func.count(func.distinct(Visitor.ip)).label("unique_ips"),
+            _distinct_visitors().label("unique_ips"),
             func.max(Visitor.visited_at).label("last_clicked"),
         )
         .join(Visitor, URL.id == Visitor.url_id)
@@ -416,25 +1022,12 @@ def get_campaign_summary(
         for perf in top_performers_data
     ]
 
-    # Daily timeline (last 7 days)
-    today = datetime.utcnow().date()
-    seven_days_ago = today - timedelta(days=6)
-
-    daily_q = db.query(
-        func.date(Visitor.visited_at).label("visit_date"),
-        func.count(Visitor.id).label("click_count"),
-    ).filter(
-        Visitor.short_code.in_(short_codes),
-        func.date(Visitor.visited_at) >= seven_days_ago,
-    )
-    daily_data = _exclude_bots(daily_q, include_bots).group_by(func.date(Visitor.visited_at)).all()
-
-    daily_dict = {day.visit_date: day.click_count for day in daily_data}
-    daily_timeline = []
-    for i in range(7):
-        day = seven_days_ago + timedelta(days=i)
-        clicks = daily_dict.get(day, 0)
-        daily_timeline.append(DailyStats(date=day, clicks=clicks))
+    # Daily timeline: the last 7 days where the viewer is, today included.
+    days = LocalDays.of(current_user, tz)
+    visits = _exclude_bots(db.query(Visitor).filter(Visitor.url_id.in_(url_ids)), include_bots)
+    daily_timeline = [
+        DailyStats(date=day, clicks=clicks) for day, clicks in last_days(visits, days, 7)
+    ]
 
     return CampaignSummary(
         campaign_id=str(campaign.id),
@@ -446,6 +1039,7 @@ def get_campaign_summary(
         click_through_rate=round(click_through_rate, 2),
         top_performers=top_performers,
         daily_timeline=daily_timeline,
+        timezone=days.name,
     )
 
 
@@ -480,26 +1074,9 @@ def get_campaign_users(
     - **401**: Authentication required or invalid token
     - **404**: Campaign not found, or someone else's personal campaign
     """
-    # Convert campaign_id string to UUID
-    try:
-        campaign_uuid = UUIDType(campaign_id)
-    except ValueError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid campaign ID format",
-        ) from exc
-
-    # Verify the user can see the campaign (Phase 3.14.3 — the organization's, or their own)
-    campaign = (
-        db.query(Campaign)
-        .filter(Campaign.id == campaign_uuid, viewer(db, current_user).sees(Campaign))
-        .first()
-    )
-    if not campaign:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Campaign not found",
-        )
+    # The organization's, or their own (Phase 3.14.3): every campaign route decides alike.
+    campaign = visible_campaign_or_404(db, current_user, campaign_id)
+    campaign_uuid = campaign.id
 
     # Get all URLs with their visit stats
     campaign_urls = db.query(URL).filter(URL.campaign_id == campaign_uuid).all()
@@ -510,7 +1087,7 @@ def get_campaign_users(
         db.query(
             Visitor.url_id,
             func.count(Visitor.id).label("click_count"),
-            func.count(func.distinct(Visitor.ip)).label("unique_ips"),
+            _distinct_visitors().label("unique_ips"),
             func.max(Visitor.visited_at).label("last_clicked"),
         )
         .join(URL, URL.id == Visitor.url_id)
@@ -574,6 +1151,250 @@ def get_campaign_users(
 
 
 @analytics_router.get(
+    "/campaigns/{campaign_id}/totals",
+    response_model=CampaignTotalsResponse,
+    responses={
+        200: {"description": "The campaign's all-time numbers"},
+        **get_responses(400, 401, 404, 422),
+    },
+)
+def get_campaign_totals(
+    campaign_id: str,
+    tz: TimeZoneParam = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    A campaign's all-time numbers, for the header of its page (Phase 3.17). A campaign has one
+    link per recipient, a row of its CSV.
+
+    - **recipients**: its links
+    - **clicks** and **opens**: over all of them, as a link's. Opens overcount: Apple Mail
+      Privacy Protection loads the pixel, like every image, when a message arrives, read or
+      not; and so does the open rate
+    - **clicked** (Clicked): the recipients with at least one click; **opened** (Opened): with
+      at least one pixel open. A recipient can be both
+    - **click_rate** and **open_rate**: clicked and opened over recipients, 0 to 1
+    - **countries** and **last_click_at**: as a link's
+
+    The same campaigns as `/users`: the organization's, whatever your role, and your own.
+    """
+    campaign = visible_campaign_or_404(db, current_user, campaign_id)
+    days = LocalDays.of(current_user, tz)
+    recipients = db.query(func.count(URL.id)).filter(URL.campaign_id == campaign.id).scalar()
+    totals = _click_totals(_campaign_visits(db, campaign), days)
+    return CampaignTotalsResponse(
+        campaign_id=str(campaign.id),
+        campaign_name=campaign.name,
+        timezone=days.name,
+        recipients=recipients,
+        click_rate=_rate(totals["clicked"], recipients),
+        open_rate=_rate(totals["opened"], recipients),
+        **totals,
+    )
+
+
+@analytics_router.get(
+    "/campaigns/{campaign_id}/timeseries",
+    response_model=CampaignTimeseriesResponse,
+    responses={
+        200: {"description": "Clicks and opens over the period, over the campaign's links"},
+        **get_responses(400, 401, 404, 422),
+    },
+)
+def get_campaign_timeseries(
+    campaign_id: str,
+    group_by: Literal["day", "week", "month"] = Query(
+        "day", description="Local days, ISO weeks (from Monday) or months"
+    ),
+    period: Period = Depends(_period),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    A campaign's clicks and email opens over a period, side by side, over all its links
+    (Phase 3.17): a link's series (`/urls/{short_code}/timeseries`), summed.
+
+    The period is `period` (the last N local days, today included, default 30) or `from` and
+    `to`, at most 731 days. Bots count in neither. Opens overcount: Apple Mail Privacy
+    Protection loads the pixel, like every image, when a message arrives, read or not.
+    """
+    campaign = visible_campaign_or_404(db, current_user, campaign_id)
+    return CampaignTimeseriesResponse(
+        **_campaign_period_fields(campaign, period),
+        **_series(_campaign_visits(db, campaign), period, group_by),
+    )
+
+
+@analytics_router.get(
+    "/campaigns/{campaign_id}/breakdown",
+    response_model=CampaignBreakdownResponse,
+    responses={
+        200: {"description": "The period's visits by OS, browser, device, referrer and country"},
+        **get_responses(400, 401, 404, 422),
+    },
+)
+def get_campaign_breakdown(
+    campaign_id: str,
+    visit_type: VisitType = Query(
+        "clicks",
+        alias="type",
+        description="clicks; opens (email pixel hits, not a bot's); bots; or all",
+    ),
+    period: Period = Depends(_period),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    A campaign's visits of a kind over a period, by OS, browser, device, referrer and country,
+    over all its links (Phase 3.17): a link's breakdown (`/urls/{short_code}/breakdown`),
+    summed.
+
+    The period is `period` (the last N local days, today included, default 30) or `from` and
+    `to`, at most 731 days. Opens overcount: Apple Mail Privacy Protection loads the pixel,
+    like every image, when a message arrives, read or not.
+    """
+    campaign = visible_campaign_or_404(db, current_user, campaign_id)
+    return CampaignBreakdownResponse(
+        **_campaign_period_fields(campaign, period),
+        **_breakdown_fields(_campaign_visits(db, campaign), period, visit_type),
+    )
+
+
+_RECIPIENT_FILTER = Query(
+    "all", alias="filter", description="all; clicked; opened; or none (neither clicked nor opened)"
+)
+_RECIPIENT_SEARCH = Query(
+    "", max_length=200, description="Ignoring case, over user_data's values and the short code"
+)
+_RECIPIENT_SORT = Query("clicks", description="clicks, opens, last_click or code")
+_RECIPIENT_ORDER = Query("desc", description="desc or asc")
+
+
+@analytics_router.get(
+    "/campaigns/{campaign_id}/recipients",
+    response_model=RecipientsResponse,
+    responses={
+        200: {"description": "The campaign's recipients, a page at a time"},
+        **get_responses(400, 401, 404, 422),
+    },
+)
+def list_campaign_recipients(
+    campaign_id: str,
+    recipient_filter: RecipientFilter = _RECIPIENT_FILTER,
+    q: str = _RECIPIENT_SEARCH,
+    sort: RecipientSort = _RECIPIENT_SORT,
+    order: Literal["desc", "asc"] = _RECIPIENT_ORDER,
+    page: int = Query(1, ge=1, le=MAX_PAGE, description="From 1; a page past the last is empty"),
+    page_size: int = Query(50, ge=1, le=200),
+    tz: TimeZoneParam = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    A campaign's recipients, all time, for following up with people: who clicked, who hasn't
+    (Phase 3.17). Each shows their link, their CSV row (`user_data`), their clicks and opens,
+    their first and last click and their last open. Bots don't count.
+
+    - **filter**: all; clicked (Clicked, at least one click); opened (Opened, at least one
+      pixel open); or none (neither)
+    - **q**: ignoring case, over `user_data`'s values (not its keys) and the short code
+    - **sort** and **order**: clicks (the default, most first), opens, last_click or code;
+      ties go to the latest click, then the code
+    - **counts**: how many each filter gives for `q`, whatever `filter`. Clicked and Opened
+      can overlap
+
+    The same campaigns, and so the same names and emails, as `/users`: the organization's,
+    whatever your role, and your own.
+    """
+    campaign = visible_campaign_or_404(db, current_user, campaign_id)
+    days = LocalDays.of(current_user, tz)
+    rows, counts = _recipients(db, campaign, q, recipient_filter, sort, order)
+    total = rows.order_by(None).with_entities(func.count(URL.id)).scalar()
+    page_rows = rows.offset((page - 1) * page_size).limit(page_size).all()
+    return RecipientsResponse(
+        campaign_id=str(campaign.id),
+        campaign_name=campaign.name,
+        timezone=days.name,
+        filter=recipient_filter,
+        q=q,
+        sort=sort,
+        order=order,
+        total=total,
+        page=page,
+        page_size=page_size,
+        pages=-(-total // page_size),
+        counts=counts,
+        recipients=[_recipient_row(row, days) for row in page_rows],
+    )
+
+
+@analytics_router.get(
+    "/campaigns/{campaign_id}/recipients.csv",
+    response_class=StreamingResponse,
+    responses={
+        200: {"description": "Every recipient that matches", "content": {"text/csv": {}}},
+        **get_responses(400, 401, 404, 422),
+    },
+)
+def export_campaign_recipients(
+    campaign_id: str,
+    recipient_filter: RecipientFilter = _RECIPIENT_FILTER,
+    q: str = _RECIPIENT_SEARCH,
+    sort: RecipientSort = _RECIPIENT_SORT,
+    order: Literal["desc", "asc"] = _RECIPIENT_ORDER,
+    tz: TimeZoneParam = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Every recipient of a campaign that matches `filter` and `q`, sorted as the list, as a CSV
+    (Phase 3.17): their `user_data` columns, flattened as in `/users`' CSV, then their code,
+    short URL, clicks, opens, first and last click and last open. Every cell is
+    spreadsheet-safe: `user_data` comes from people's CSVs. Not an MCP tool.
+    """
+    campaign = visible_campaign_or_404(db, current_user, campaign_id)
+    days = LocalDays.of(current_user, tz)
+    # Read before the response streams: the session is the request's.
+    rows, _ = _recipients(db, campaign, q, recipient_filter, sort, order)
+    recipients = [_recipient_row(row, days) for row in rows.all()]
+    columns: list[str] = []
+    for recipient in recipients:
+        columns += [key for key in recipient.user_data if key not in columns]
+
+    def moment(at: datetime | None) -> str:
+        return at.isoformat() if at else ""
+
+    lines = (
+        [
+            *(recipient.user_data.get(key, "") for key in columns),
+            recipient.short_code,
+            recipient.short_url,
+            recipient.clicks,
+            recipient.opens,
+            moment(recipient.first_click_at),
+            moment(recipient.last_click_at),
+            moment(recipient.last_open_at),
+        ]
+        for recipient in recipients
+    )
+    return stream_csv(
+        headers=[
+            *columns,
+            "short_code",
+            "short_url",
+            "clicks",
+            "opens",
+            "first_click_at",
+            "last_click_at",
+            "last_open_at",
+        ],
+        rows=lines,
+        filename=f"campaign-{campaign.id}-recipients.csv",
+    )
+
+
+@analytics_router.get(
     "/overview",
     response_model=OverviewStats,
     responses={
@@ -583,6 +1404,7 @@ def get_campaign_users(
 )
 def get_overview_stats(
     include_bots: bool = Query(False, description="Include bot/crawler visits in counts"),
+    tz: TimeZoneParam = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -598,7 +1420,9 @@ def get_overview_stats(
     - **200**: Overview statistics retrieved successfully - Includes total URLs, campaigns, clicks, unique visitors, recent activity (7 days), and top 5 URLs
     - **401**: Authentication required or invalid token
 
-    **Note:** Includes all-time totals and recent activity for the last 7 days.
+    **Note:** Includes all-time totals and recent activity for the last 7 days, today
+    included, in your profile's time zone (or `tz`, else UTC; `timezone` says which).
+    `recent_clicks_7d` is their sum.
     Each `top_urls` item has `short_code`, `short_url`, `title`, `original_url`,
     `url_type` and `clicks` (tracking-pixel opens are never counted as clicks).
     """
@@ -626,23 +1450,20 @@ def get_overview_stats(
     # Unique visitors (all time)
     total_unique_visitors = (
         _exclude_bots(
-            db.query(func.count(func.distinct(Visitor.ip))).filter(Visitor.url_id.in_(url_ids)),
+            db.query(_distinct_visitors()).filter(Visitor.url_id.in_(url_ids)),
             include_bots,
         ).scalar()
         or 0
     )
 
-    # Recent clicks (last 7 days)
-    seven_days_ago = datetime.utcnow() - timedelta(days=7)
-    recent_clicks_7d = (
-        _exclude_bots(
-            db.query(func.count(Visitor.id)).filter(
-                Visitor.url_id.in_(url_ids), Visitor.visited_at >= seven_days_ago
-            ),
-            include_bots,
-        ).scalar()
-        or 0
-    )
+    # Recent activity: the last 7 days where the viewer is, today included. The headline is
+    # their sum, so it matches the chart (it used to be a rolling 168 hours).
+    days = LocalDays.of(current_user, tz)
+    recent = _exclude_bots(db.query(Visitor).filter(Visitor.url_id.in_(url_ids)), include_bots)
+    recent_activity = [
+        DailyStats(date=day, clicks=clicks) for day, clicks in last_days(recent, days, 7)
+    ]
+    recent_clicks_7d = sum(day.clicks for day in recent_activity)
 
     # Top 5 URLs by click count.
     # outer-join keeps URLs with zero visits; click filters must be expressed on the join
@@ -658,11 +1479,15 @@ def get_overview_stats(
             URL.original_url,
             URL.url_type,
             URL.title,
+            Domain.hostname,
             func.count(Visitor.id).label("click_count"),
         )
         .join(Visitor, visitor_join, isouter=True)
+        .outerjoin(Domain, URL.domain_id == Domain.id)
         .filter(who.sees(URL))
-        .group_by(URL.id, URL.short_code, URL.original_url, URL.url_type, URL.title)
+        .group_by(
+            URL.id, URL.short_code, URL.original_url, URL.url_type, URL.title, Domain.hostname
+        )
         .order_by(func.count(Visitor.id).desc())
         .limit(5)
         .all()
@@ -671,8 +1496,10 @@ def get_overview_stats(
     top_urls = [
         {
             "short_code": url.short_code,
-            # Phase 3.11 — absolute short URL + title so the dashboard can render/copy links
-            "short_url": build_short_url(url.short_code),
+            # Phase 3.11 — absolute short URL + title so the dashboard can render/copy links;
+            # Phase 8.3 — on the link's own domain, which the dashboard links to it with
+            "short_url": build_short_url(url.short_code, url.hostname),
+            "domain": url.hostname or normalize_hostname(settings.default_domain),
             "title": url.title,
             "original_url": url.original_url,
             "url_type": url.url_type.value,
@@ -680,26 +1507,6 @@ def get_overview_stats(
         }
         for url in top_urls_data
     ]
-
-    # Recent activity (last 7 days)
-    today = datetime.utcnow().date()
-    seven_days_ago_date = today - timedelta(days=6)
-
-    daily_q = db.query(
-        func.date(Visitor.visited_at).label("visit_date"),
-        func.count(Visitor.id).label("click_count"),
-    ).filter(
-        Visitor.url_id.in_(url_ids),
-        func.date(Visitor.visited_at) >= seven_days_ago_date,
-    )
-    daily_data = _exclude_bots(daily_q, include_bots).group_by(func.date(Visitor.visited_at)).all()
-
-    daily_dict = {day.visit_date: day.click_count for day in daily_data}
-    recent_activity = []
-    for i in range(7):
-        day = seven_days_ago_date + timedelta(days=i)
-        clicks = daily_dict.get(day, 0)
-        recent_activity.append(DailyStats(date=day, clicks=clicks))
 
     return OverviewStats(
         total_urls=total_urls,
@@ -709,6 +1516,7 @@ def get_overview_stats(
         recent_clicks_7d=recent_clicks_7d,
         top_urls=top_urls,
         recent_activity=recent_activity,
+        timezone=days.name,
     )
 
 
@@ -721,7 +1529,7 @@ def get_overview_stats(
 )
 def get_orphan_visits(
     limit: int = Query(100, ge=1, le=500, description="Max number of rows"),
-    skip: int = Query(0, ge=0),
+    skip: int = Query(0, ge=0, le=MAX_SKIP),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -755,3 +1563,64 @@ def get_orphan_visits(
             for r in rows
         ],
     }
+
+
+@analytics_router.get(
+    "/orphan-visits/grouped",
+    response_model=OrphanGroupsResponse,
+    responses={
+        200: {"description": "The paths tried on unknown codes, most tried first"},
+        **get_responses(401, 422),
+    },
+)
+def get_orphan_visit_groups(
+    period: Period = Depends(_period),
+    page: int = Query(1, ge=1, le=MAX_PAGE, description="From 1; a page past the last is empty"),
+    page_size: int = Query(20, ge=1, le=100),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    ROADMAP 3.10.4 — "Typos & broken links": the paths tried on unknown codes in the period, a
+    page at a time. The most tried first, then the latest hit, then the path.
+
+    - **did_you_mean**: up to 3 links the viewer sees that the path is one edit away from (a
+      character deleted, inserted, replaced, or swapped with its neighbour), or the same code but
+      for case where codes are lowercase. None for a path no code could be: longer than a code,
+      or with a character no code has, like a scanner's `/wp-login.php`.
+    - Hits on "/" (`base_url`) aren't typos: not counted.
+    - Never an IP, a user agent or a referrer. Orphan visits belong to no organization, as on
+      `/orphan-visits`; the links suggested are the viewer's to see.
+    """
+    since, until = period.bounds()
+    groups, total_visits, total_paths = orphan_groups(
+        db,
+        since=since,
+        until=until,
+        types=[OrphanVisitType.INVALID_SHORT_URL],
+        skip=(page - 1) * page_size,
+        limit=page_size,
+    )
+    suggested = did_you_mean(db, viewer(db, current_user), [g.attempted_path for g in groups])
+    return OrphanGroupsResponse.model_validate(
+        {
+            "from": period.first,
+            "to": period.last,
+            "timezone": period.days.name,
+            "total_visits": total_visits,
+            "total_paths": total_paths,
+            "page": page,
+            "page_size": page_size,
+            "pages": -(-total_paths // page_size),
+            "groups": [
+                {
+                    "attempted_path": group.attempted_path,
+                    "visits": group.visits,
+                    "first_seen": _moment(period.days, group.first_seen),
+                    "last_seen": _moment(period.days, group.last_seen),
+                    "did_you_mean": suggested[group.attempted_path],
+                }
+                for group in groups
+            ],
+        }
+    )

@@ -2,8 +2,9 @@
 Phase 6.3 — rate limits on what anyone can call.
 
 - The password login runs a bcrypt check per attempt (~165 ms of CPU) on the tasks
-  that also serve redirects: limited per client IP, and failed attempts per account
-  (in the login endpoint, which knows the outcome).
+  that also serve redirects: limited per client IP, and failed attempts per account.
+  Those are counted where a password is checked, which knows the outcome: the login,
+  and the current password given to change or set one (server/app/auth.py).
 - Google's and the MCP's sign-in endpoints write a row per request: per client IP.
   /mcp/register and /mcp/token have their own, generous count: claude.ai calls them
   from Anthropic's addresses, shared by everybody.
@@ -15,9 +16,10 @@ no IP or email is stored or logged. If the database can't count, the request goe
 through and `rate_limit.store_failed` is logged: a limit protects, it mustn't
 become an outage.
 
-The client IP is `resolve_client_ip`'s: with TRUSTED_PROXIES naming the ALB, the
-address the ALB saw. Unset, every request seems to come from the ALB, and a per-IP
-limit becomes one limit for everybody.
+The client IP is `client_ip`'s (server/utils/network.py): with TRUSTED_PROXIES naming
+the ALB, the address the ALB saw, and behind CloudFront the viewer's, when the request
+proves it came through the distribution. Unset, every request seems to come from the
+ALB, and a per-IP limit becomes one limit for everybody.
 """
 
 import hashlib
@@ -35,7 +37,7 @@ from server.core import SessionLocal
 from server.core.config import settings
 from server.core.models import RateLimit
 from server.utils.event_log import log_event
-from server.utils.network import resolve_client_ip
+from server.utils.network import client_ip
 
 # Tests point this at their database.
 session_factory = SessionLocal
@@ -61,6 +63,7 @@ LOGIN_FAILURES_PER_ACCOUNT = Limit(
 )
 SIGN_IN_PER_IP = Limit("sign_in_ip", 60, "rate_limit_sign_in_per_ip")
 MCP_CLIENTS_PER_IP = Limit("mcp_clients_ip", 60, "rate_limit_mcp_clients_per_ip")
+CLIENT_ERRORS_PER_IP = Limit("client_errors_ip", 60, "rate_limit_client_errors_per_ip")
 
 
 @dataclass(frozen=True)
@@ -142,14 +145,6 @@ def _increment(key: str, window_start: int) -> int:
         return count
 
 
-def client_ip(request: Request) -> str:
-    return resolve_client_ip(
-        request.client.host if request.client else None,
-        request.headers.get("x-forwarded-for"),
-        settings.trusted_proxies,
-    )
-
-
 # How a refusal is shown: JSON for API calls; for Google's sign-in, which the browser
 # navigates to, the frontend's login page; plain text for the MCP's sign-in pages.
 _JSON, _FRONTEND, _TEXT = "json", "frontend", "text"
@@ -168,6 +163,7 @@ _ROUTES: dict[tuple[str, str], tuple[Limit, str]] = {
     ("GET", "/mcp/auth/callback"): (SIGN_IN_PER_IP, _TEXT),
     ("POST", "/mcp/register"): (MCP_CLIENTS_PER_IP, _JSON),
     ("POST", "/mcp/token"): (MCP_CLIENTS_PER_IP, _JSON),
+    ("POST", "/api/v1/client-errors"): (CLIENT_ERRORS_PER_IP, _JSON),
 }
 
 

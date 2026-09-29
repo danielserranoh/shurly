@@ -20,11 +20,10 @@ fastmcp = pytest.importorskip("fastmcp")
 
 EXPECTED_TOOLS: set[str] = {
     # Auth. No `register` since Phase 3.13.2: accounts come from signing in with Google.
-    "login",
+    # No API key management, `login` or `change_password` since Phase 6.3.
     "get_current_user_info",
-    "change_password",
-    "generate_api_key",
-    "revoke_api_key",
+    # Phase 3.12: names, country and time zone. Low impact and easy to undo.
+    "update_my_profile",
     # Organization (Phase 3.14.2): read-only, role changes stay out of the MCP
     "get_organization",
     "list_organization_members",
@@ -58,8 +57,18 @@ EXPECTED_TOOLS: set[str] = {
     "get_url_daily_stats",
     "get_url_weekly_stats",
     "get_url_geo_stats",
+    # Phase 3.16 — per-link analytics, as on Shlink's link page
+    "get_url_totals",
+    "get_url_timeseries",
+    "get_url_breakdown",
+    "list_url_visits",  # its CSV (`/visits.csv`) is not a tool
     "get_campaign_summary",
     "get_campaign_users",
+    # Phase 3.17 — per-campaign analytics
+    "get_campaign_totals",
+    "get_campaign_timeseries",
+    "get_campaign_breakdown",
+    "list_campaign_recipients",  # its CSV (`/recipients.csv`) is not a tool
     "get_orphan_visits",
     # Tags
     "list_tags",
@@ -112,18 +121,10 @@ def test_public_routes_are_excluded():
     assert not leaked, f"Public routes leaked into MCP tools: {sorted(leaked)}"
 
 
-def test_legacy_stats_excluded():
-    """Legacy /api/v1/stats/* routes must never be MCP tools."""
+def test_the_avatar_is_not_a_tool():
+    """Phase 3.12 — an image upload, and an image back: of no use to an assistant."""
     names = _list_tool_names()
-    legacy_prefixes = (
-        "day_statistics",
-        "week_statistics",
-        "world_statistics",
-        "main_statistics",
-        "next_statistics",
-    )
-    leaked = {n for n in names if n.startswith(legacy_prefixes)}
-    assert not leaked, f"Legacy stats routes leaked: {sorted(leaked)}"
+    assert not {name for name in names if "avatar" in name}
 
 
 def test_health_probes_excluded():
@@ -161,3 +162,27 @@ def test_organization_changes_stay_out_of_the_mcp():
     )
     leaked = {n for n in names if n.startswith(governance)}
     assert not leaked, f"Organization changes exposed as MCP tools: {sorted(leaked)}"
+
+
+def test_api_key_management_stays_out_of_the_mcp():
+    """Phase 6.3 — generating or revoking the API key is the person's to do, in
+    Settings or through the API.
+
+    An assistant reading untrusted text (a link title, a fetched page) could be
+    talked into "generate a new API key": the new key would land in its context,
+    which is why /auth/me no longer returns it, and the key the person uses would
+    stop working.
+    """
+    names = _list_tool_names()
+    leaked = {n for n in names if n.startswith(("generate_api_key", "revoke_api_key"))}
+    assert not leaked, f"API key management exposed as MCP tools: {sorted(leaked)}"
+
+
+def test_no_password_or_session_token_passes_through_the_mcp():
+    """Phase 6.3 — `login` would put a JWT in the assistant's context, and both it
+    and `change_password` take a password from it. The MCP is already signed in, so
+    neither does anything there that the person needs.
+    """
+    names = _list_tool_names()
+    leaked = {n for n in names if n.startswith(("login", "change_password"))}
+    assert not leaked, f"Password tools exposed as MCP tools: {sorted(leaked)}"

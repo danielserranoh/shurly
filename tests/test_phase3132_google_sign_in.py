@@ -30,6 +30,7 @@ from server.core.models import (
     OrgRole,
     User,
     UserIdentity,
+    UserProfile,
 )
 from server.utils.google_oidc import GoogleHttp
 from tests.fake_google import CLIENT_ID, CLIENT_SECRET, FakeGoogle
@@ -162,7 +163,8 @@ class TestStart:
         assert query["response_type"] == "code"
         assert query["client_id"] == CLIENT_ID
         assert query["redirect_uri"] == REDIRECT_URI
-        assert set(query["scope"].split()) == {"openid", "email"}
+        # Phase 3.12: `profile` puts the names in the ID token, for the profile.
+        assert set(query["scope"].split()) == {"openid", "email", "profile"}
         assert query["code_challenge_method"] == "S256"
         assert query["code_challenge"]
         assert query["hd"] == "griddo.io"
@@ -461,6 +463,80 @@ class TestAccounts:
 
         assert _sign_in(browser)["error"] == "inactive"
         assert db_session.query(UserIdentity).count() == 0
+
+
+class TestProfileFromGoogle:
+    """Phase 3.12 — Google's names start the profile of an account that has none yet.
+    Once there's one, it's the person's: Google changes nothing, not even names they cleared."""
+
+    @staticmethod
+    def _names(browser) -> tuple[str | None, str | None]:
+        profile = _me(browser, _token(browser)).json()["profile"]
+        return profile["first_name"], profile["last_name"]
+
+    def test_start_a_profile(self, browser, google):
+        google.claims.update(given_name="Ana", family_name="García")
+
+        assert self._names(browser) == ("Ana", "García")
+
+    def test_nothing_without_the_claims(self, browser, db_session):
+        assert self._names(browser) == (None, None)
+        assert db_session.query(UserProfile).count() == 0
+
+    def test_one_name_is_enough(self, browser, google):
+        google.claims["given_name"] = "Ana"
+
+        assert self._names(browser) == ("Ana", None)
+
+    def test_later_sign_ins_fill_an_account_made_before(self, browser, google, db_session):
+        _person(db_session)
+        google.claims.update(given_name="Ana", family_name="García")
+
+        assert self._names(browser) == ("Ana", "García")
+
+    def test_never_over_names_the_person_set(self, browser, google, db_session):
+        _token(browser)
+        user = db_session.query(User).one()
+        db_session.add(UserProfile(user_id=user.id, first_name="Anita"))
+        db_session.commit()
+        google.claims.update(given_name="Ana", family_name="García")
+
+        assert self._names(browser) == ("Anita", None)
+
+    def test_leave_a_saved_profile_without_names_alone(self, browser, google, db_session):
+        _token(browser)
+        user = db_session.query(User).one()
+        db_session.add(UserProfile(user_id=user.id, country="ES", timezone="Atlantic/Canary"))
+        db_session.commit()
+        google.claims.update(given_name="Ana", family_name="García")
+        _token(browser)
+
+        profile = db_session.query(UserProfile).one()
+        db_session.refresh(profile)
+        assert (profile.first_name, profile.last_name, profile.country, profile.timezone) == (
+            None,
+            None,
+            "ES",
+            "Atlantic/Canary",
+        )
+
+    def test_names_the_person_cleared_stay_cleared(self, browser, google):
+        google.claims.update(given_name="Ana", family_name="García")
+        token = _token(browser)
+        cleared = browser.patch(
+            "/api/v1/auth/me/profile",
+            headers={"Authorization": f"Bearer {token}"},
+            json={"first_name": None, "last_name": None},
+        )
+        assert cleared.status_code == 200
+
+        assert self._names(browser) == (None, None)
+
+    @pytest.mark.parametrize("claim", ["a" * 101, "Ana\nMaría", 42, "   "])
+    def test_a_name_the_profile_would_refuse_is_left_out(self, browser, google, claim):
+        google.claims.update(given_name=claim, family_name="García")
+
+        assert self._names(browser) == (None, "García")
 
 
 class TestLoginCode:

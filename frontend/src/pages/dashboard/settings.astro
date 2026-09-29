@@ -1,5 +1,6 @@
 ---
 import AppLayout from '@/layouts/AppLayout.astro';
+import { SETTINGS_TAB_FROM_HASH } from '@/inline-scripts.mjs';
 import PageHeader from '@/components/ui/PageHeader.astro';
 import Icon from '@/components/ui/Icon.astro';
 import EmptyState from '@/components/ui/EmptyState.astro';
@@ -73,18 +74,7 @@ const panelProps = (key: string, index: number): HTMLAttributes<'div'> => ({
   </div>
 
   <!-- Open the tab named in the URL hash before first paint, so #tags never flashes the Account tab. -->
-  <script is:inline>
-    (function () {
-      var tab = document.getElementById('tab-' + location.hash.slice(1).toLowerCase());
-      if (!tab || tab.getAttribute('role') !== 'tab') return;
-      document.querySelectorAll('[data-tablist] [role="tab"]').forEach(function (t) {
-        var on = t === tab;
-        t.setAttribute('aria-selected', String(on));
-        t.tabIndex = on ? 0 : -1;
-        document.getElementById(t.getAttribute('aria-controls')).hidden = !on;
-      });
-    })();
-  </script>
+  <script is:inline set:html={SETTINGS_TAB_FROM_HASH}></script>
 
   <EmptyState id="settings-error" hidden illustration="error" title="We couldn’t load your settings" body="Check your connection and try again.">
     <button type="button" class="btn btn-primary" data-settings-retry><Icon name="refresh" />Try again</button>
@@ -94,90 +84,26 @@ const panelProps = (key: string, index: number): HTMLAttributes<'div'> => ({
 <script>
   import { ApiError, errorMessage } from '@/utils/api';
   import { setLoading } from '@/utils/ui';
+  import { initTabs } from '@/utils/tabs';
   import { currentUser } from '@/components/settings/store';
   import { getMe } from '@/utils/viewer';
 
   const root = document.querySelector<HTMLElement>('[data-settings]')!;
   const tablist = root.querySelector<HTMLElement>('[data-tablist]')!;
-  const tabs = [...tablist.querySelectorAll<HTMLButtonElement>('[role="tab"]')];
-  const keys = tabs.map((t) => t.dataset.tab!);
-  const DEFAULT_TAB = keys[0];
 
   // ---------------------------------------------------------------- Tabs
-  const keyFromHash = () => {
-    const key = location.hash.slice(1).toLowerCase();
-    return keys.includes(key) ? key : DEFAULT_TAB;
-  };
+  // A click or the arrows pick a tab, Home and End jump to the ends, and the hash names it: the account
+  // menu links to #tags and #api, and back/forward follow (src/utils/tabs.ts).
+  initTabs(tablist, { hash: true });
 
-  /** Keep the active tab visible when the tab row scrolls sideways (small screens). */
-  function revealTab(tab: HTMLElement, smooth: boolean) {
-    const left = tab.offsetLeft - (tablist.clientWidth - tab.offsetWidth) / 2;
-    tablist.scrollTo({ left: Math.max(0, left), behavior: smooth ? 'smooth' : 'auto' });
-  }
-
-  /** Fade whichever edge of the tab row has more tabs hiding behind it. */
-  function updateFades() {
-    const max = tablist.scrollWidth - tablist.clientWidth;
-    tablist.style.setProperty('--fade-start', tablist.scrollLeft > 2 ? '2rem' : '0px');
-    tablist.style.setProperty('--fade-end', tablist.scrollLeft < max - 2 ? '2.5rem' : '0px');
-  }
-  tablist.addEventListener('scroll', updateFades, { passive: true });
-  window.addEventListener('resize', updateFades);
-
-  function select(key: string, { focus = false, syncHash = true, animate = true } = {}) {
-    for (const tab of tabs) {
-      const on = tab.dataset.tab === key;
-      const panel = document.getElementById(tab.getAttribute('aria-controls')!)!;
-      tab.setAttribute('aria-selected', String(on));
-      tab.tabIndex = on ? 0 : -1;
-      if (on && panel.hidden) {
-        panel.hidden = false;
-        if (animate) {
-          panel.classList.remove('animate-fade-in');
-          void panel.offsetWidth; // restart the animation
-          panel.classList.add('animate-fade-in');
-        }
-      } else if (!on) {
-        panel.hidden = true;
-      }
-    }
-    const active = tabs.find((t) => t.dataset.tab === key)!;
-    if (focus) active.focus();
-    revealTab(active, animate);
-    if (syncHash) {
-      const hash = key === DEFAULT_TAB ? '' : `#${key}`;
-      if (location.hash !== hash) history.replaceState(history.state, '', `${location.pathname}${location.search}${hash}`);
-    }
-  }
-
-  tablist.addEventListener('click', (e) => {
-    const tab = (e.target as HTMLElement).closest<HTMLButtonElement>('[role="tab"]');
-    if (tab) select(tab.dataset.tab!);
-  });
-
-  // Roving tabindex: arrows move between tabs (and open them), Home/End jump to the ends.
-  tablist.addEventListener('keydown', (e) => {
-    const index = tabs.indexOf(document.activeElement as HTMLButtonElement);
-    if (index < 0) return;
-    const target = { ArrowRight: index + 1, ArrowLeft: index - 1, Home: 0, End: tabs.length - 1 }[e.key];
-    if (target === undefined) return;
-    e.preventDefault();
-    select(keys[(target + tabs.length) % tabs.length], { focus: true });
-  });
-
-  // The account menu links to #tags and #api; follow those (and back/forward) without a reload.
+  // Arriving from the menu while scrolled down: bring the tabs back out from under the sticky header.
   window.addEventListener('hashchange', () => {
-    select(keyFromHash(), { syncHash: false });
-    // Arriving from the menu while scrolled down: bring the tabs back out from under the sticky header.
     if (tablist.getBoundingClientRect().top < 80) window.scrollTo({ top: 0, behavior: 'smooth' });
   });
   document.addEventListener('click', (e) => {
     const a = (e.target as HTMLElement).closest<HTMLAnchorElement>('a[href*="#"]');
     if (a && a.pathname === location.pathname) a.closest<HTMLElement>('[popover]')?.hidePopover();
   });
-
-  select(keyFromHash(), { syncHash: false, animate: false });
-  updateFades();
 
   // ---------------------------------------------------------------- Account
   const errorState = document.getElementById('settings-error')!;

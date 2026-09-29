@@ -19,6 +19,10 @@ Accounts are recognised by Google's `sub`, which survives an email rename:
 
 A closed account (removed from the organization) is refused either way.
 
+Phase 3.12 — the names in the ID token start the profile of an account that has none.
+Once there's one, it's the person's: nothing from Google changes it, not even names they
+cleared (clearing is an edit). A name the profile would refuse is left out.
+
 Secrets are stored as SHA-256 digests (the PKCE verifier excepted), used once and
 short-lived; expired rows are purged when new ones are made. These functions
 flush but don't commit: the caller owns the transaction.
@@ -31,10 +35,11 @@ from datetime import datetime, timedelta
 from sqlalchemy import delete, func
 from sqlalchemy.orm import Session
 
-from server.core.models import GoogleAuthState, LoginCode, User, UserIdentity
+from server.core.models import GoogleAuthState, LoginCode, User, UserIdentity, UserProfile
 from server.utils.event_log import log_event
 from server.utils.google_oidc import GoogleAccount, GoogleSignInError, new_code_verifier
 from server.utils.organization import join_default_organization
+from server.utils.profile import NAME_MAX_LENGTH, clean_name
 
 PROVIDER = "google"
 STATE_TTL = timedelta(minutes=10)
@@ -92,6 +97,7 @@ def sign_in_with_google(db: Session, account: GoogleAccount) -> User:
         if identity.email != account.email:
             identity.email = account.email
             db.flush()
+        _fill_names(db, user, account)
         return user
 
     user = db.query(User).filter(func.lower(User.email) == account.email).first()
@@ -114,7 +120,28 @@ def sign_in_with_google(db: Session, account: GoogleAccount) -> User:
     db.flush()
     # A new account joins; an existing one that never did (it predates 3.14) joins now.
     join_default_organization(db, user)
+    _fill_names(db, user, account)
     return user
+
+
+def _fill_names(db: Session, user: User, account: GoogleAccount) -> None:
+    """Phase 3.12 — Google's names start a profile; an existing one is the person's."""
+    if user.profile is not None:
+        return
+    first, last = _name(account.given_name), _name(account.family_name)
+    if first is None and last is None:
+        return
+    db.add(UserProfile(user=user, first_name=first, last_name=last))
+    db.flush()
+
+
+def _name(value: str | None) -> str | None:
+    """A name from Google as the profile would take it; None when it wouldn't."""
+    try:
+        name = clean_name(value)
+    except ValueError:
+        return None
+    return name if isinstance(name, str) and len(name) <= NAME_MAX_LENGTH else None
 
 
 def _lock_out_whoever_made_it(db: Session, user: User) -> None:

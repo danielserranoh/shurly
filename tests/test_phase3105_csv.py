@@ -124,3 +124,23 @@ class TestCampaignUsersCSV:
         assert "short_code" in rows[0]
         names = {(row[0], row[1]) for row in rows[1:]}
         assert names == {("Ada", "Lovelace"), ("Alan", "Turing")}
+
+
+def test_rows_stream_in_chunks_not_one_by_one():
+    """Phase 3.16 — each chunk is a thread hop in Starlette: 10,000 rows come in a few, all there."""
+    import asyncio
+
+    from server.utils.csv_export import stream_csv
+
+    response = stream_csv(
+        headers=["n", "text"], rows=((n, f"row {n}") for n in range(10_000)), filename="x.csv"
+    )
+
+    async def chunks() -> list[str]:
+        return [chunk async for chunk in response.body_iterator]
+
+    received = asyncio.run(chunks())
+
+    assert 1 < len(received) < 10
+    lines = "".join(received).splitlines()
+    assert (len(lines), lines[0], lines[-1]) == (10_001, "n,text", "9999,row 9999")

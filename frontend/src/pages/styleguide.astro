@@ -12,6 +12,8 @@ import EmptyState from '@/components/ui/EmptyState.astro';
 import Modal from '@/components/ui/Modal.astro';
 import ProBadge from '@/components/ui/ProBadge.astro';
 import PasswordField from '@/components/ui/PasswordField.astro';
+import Pager from '@/components/ui/Pager.astro';
+import AvatarCropper from '@/components/ui/AvatarCropper.astro';
 import Illustration from '@/components/illustrations/Illustration.astro';
 import Section from '@/components/styleguide/Section.astro';
 import Specimen from '@/components/styleguide/Specimen.astro';
@@ -1196,6 +1198,9 @@ const colorCount = allColors.length;
             <div id="sg-panel-api" role="tabpanel" aria-labelledby="sg-tab-api" class="pt-4 text-sm text-ink-600" hidden>Your API key, and how to connect an AI assistant.</div>
           </div>
         </Specimen>
+        <Specimen title="Pager" description="Previous and Next under a paged list, the links or the campaigns, with the rows it shows. Hidden while the list fits on one page; one per page, and ?page= keeps the place. Here, 57 links, 20 a page." code={['<Pager />', 'renderPager()', 'pageFromQuery()']} stage="white" class="pt-0!">
+          <div data-sg-pager><Pager /></div>
+        </Specimen>
       </Section>
 
       <!-- 07 Forms ======================================================= -->
@@ -1351,6 +1356,14 @@ const colorCount = allColors.length;
             <PasswordField id="sg-password" label="Password" autocomplete="new-password" minlength={8} hint="At least 8 characters.">
               <a slot="label-end" class="text-sm font-medium text-ink-600 hover:text-ink-950" href="#sg-password">Forgot it?</a>
             </PasswordField>
+          </div>
+        </Specimen>
+
+        <Specimen title="Photo" description="An initial until there’s a photo. A photo is cropped in a dialog where the circle is always covered: zoom out stops when the picture’s short side fills it, and it can’t be dragged off. Saved as a 512 px square." code={['<AvatarCropper />', 'cropAvatar(file, onSave)']} stage="white">
+          <div class="flex flex-wrap items-center gap-5">
+            <span class="grid size-16 place-items-center rounded-full bg-ink-950 text-2xl font-semibold text-brand-300" aria-hidden="true">A</span>
+            <span class="grid size-16 place-items-center overflow-hidden rounded-full bg-ink-100 text-ink-400" data-sg-avatar><Icon name="image" class="size-5" /></span>
+            <button type="button" class="btn btn-secondary btn-sm" data-sg-crop><Icon name="image" />Try the crop</button>
           </div>
         </Specimen>
       </Section>
@@ -1683,11 +1696,63 @@ const colorCount = allColors.length;
           </div>
         </Specimen>
 
+        <Specimen title="Donut chart" description="Shares of one total: operating systems, browsers, devices. Hover a slice, or tab through the legend. Show numbers adds counts and percents; the table lists every item." code={['donutChart()', 'donutTable()', 'bindShowNumbers()']}>
+          <div class="grid gap-6 lg:grid-cols-2">
+            <section class="card p-5 sm:p-6" aria-labelledby="sg-os-title">
+              <div class="flex flex-wrap items-center justify-between gap-3">
+                <h4 id="sg-os-title" class="font-semibold text-ink-950">Operating systems</h4>
+                <div class="flex items-center gap-3">
+                  <label class="flex items-center gap-2 text-sm text-ink-600"><span class="switch"><input type="checkbox" role="switch" data-sg-os-numbers /><span></span></span>Show numbers</label>
+                  <button type="button" class="btn btn-ghost btn-sm" data-sg-os-toggle aria-pressed="false"><Icon name="list" /><span data-label>Table</span></button>
+                </div>
+              </div>
+              <div class="mt-5" data-sg-os></div>
+              <div class="mt-4 max-h-80 overflow-auto rounded-xl border border-line" data-sg-os-table hidden></div>
+            </section>
+            <section class="card p-5 sm:p-6" aria-labelledby="sg-browsers-title">
+              <div class="flex flex-wrap items-center justify-between gap-3">
+                <h4 id="sg-browsers-title" class="font-semibold text-ink-950">Browsers</h4>
+                <div class="flex items-center gap-3">
+                  <label class="flex items-center gap-2 text-sm text-ink-600"><span class="switch"><input type="checkbox" role="switch" data-sg-browsers-numbers /><span></span></span>Show numbers</label>
+                  <button type="button" class="btn btn-ghost btn-sm" data-sg-browsers-toggle aria-pressed="false"><Icon name="list" /><span data-label>Table</span></button>
+                </div>
+              </div>
+              <div class="mt-5" data-sg-browsers></div>
+              <div class="mt-4 max-h-80 overflow-auto rounded-xl border border-line" data-sg-browsers-table hidden></div>
+            </section>
+            <ul class="grid content-start gap-3.5 text-sm text-ink-700 lg:col-span-2 lg:grid-cols-2 lg:gap-x-8">
+              <li class="flex gap-3"><span class="mt-1 flex shrink-0 gap-0.5" aria-hidden="true"><span class="size-3.5 rounded-[3px] bg-brand-400"></span><span class="size-3.5 rounded-[3px] bg-brand-800"></span><span class="size-3.5 rounded-[3px] bg-brand-300"></span><span class="size-3.5 rounded-[3px] bg-brand-600"></span></span><span><b class="font-semibold text-ink-950">One hue.</b> Four blues, light and dark in turn, so neighbours never look alike.</span></li>
+              <li class="flex gap-3"><span class="mt-1 size-3.5 shrink-0 rounded-[3px] bg-ink-400" aria-hidden="true"></span><span><b class="font-semibold text-ink-950">A grey tail:</b> the fifth item, or <i>Other</i> for everything past the top four.</span></li>
+              <li class="flex gap-3"><Icon name="hash" class="mt-0.5 size-3.5 shrink-0 text-ink-500" /><span><b class="font-semibold text-ink-950">The total in the hole.</b> Hovering or focusing a slice puts its share there.</span></li>
+              <li class="flex gap-3"><Icon name="list" class="mt-0.5 size-3.5 shrink-0 text-ink-500" /><span><b class="font-semibold text-ink-950">The legend is the list</b> screen readers read, numbers included even when they're hidden. The table has every item, with shares that add up to 100%.</span></li>
+            </ul>
+          </div>
+        </Specimen>
+
+        <Specimen title="Recipients table" description="A campaign's people, a page at a time. Sort by a header (on phones, Sort by), and tick rows to copy their links. In the app the API sorts and pages; here the page does." code={['recipientsView()', 'recipientTable()', 'recipientRows()', 'sortSelect()']}>
+          <div class="grid gap-6">
+            <section class="card overflow-hidden" aria-labelledby="sg-recipients-title">
+              <div class="border-b border-line p-5">
+                <h4 id="sg-recipients-title" class="font-semibold text-ink-950">Recipients <span class="font-normal text-ink-500">· 8</span></h4>
+                <p class="text-sm text-ink-500">Wide screens: every column of the CSV, then the link, clicks, opens and the last click.</p>
+              </div>
+              <div class="max-h-[28rem] overflow-auto" data-sg-recipients></div>
+            </section>
+            <section class="card w-full max-w-sm overflow-hidden" aria-labelledby="sg-recipient-rows-title">
+              <div class="flex flex-wrap items-center justify-between gap-3 border-b border-line p-4">
+                <h4 id="sg-recipient-rows-title" class="font-semibold text-ink-950">On a phone</h4>
+                <div data-sg-recipient-sort></div>
+              </div>
+              <div class="max-h-[28rem] overflow-auto" data-sg-recipient-rows></div>
+            </section>
+          </div>
+        </Specimen>
+
         <Specimen title="Bar list, meter & sparkline" code={['barList()', 'meter()', 'sparkline()']}>
           <div class="grid gap-4 xl:grid-cols-[1.4fr_1fr]">
             <section class="card p-5 sm:p-6" aria-labelledby="sg-geo-title">
               <h4 id="sg-geo-title" class="font-semibold text-ink-950">Top countries</h4>
-              <p class="text-sm text-ink-500">Ranked bars, the value at the tip. Last 30 days.</p>
+              <p class="text-sm text-ink-500">Ranked bars, the value at the tip. Long lists show the top five, then Show all. Last 30 days.</p>
               <div class="mt-5" data-sg-barlist></div>
             </section>
             <div class="grid content-start gap-4">
@@ -1929,6 +1994,8 @@ const colorCount = allColors.length;
     </div>
   </footer>
 
+  <AvatarCropper />
+
   <Modal id="sg-modal" title="Add tags" description="Tags are added to every selected link. Existing tags stay." width="30rem">
     <div class="grid gap-2 px-6 py-5">
       <span class="label" id="sg-modal-tags-label">Tags to add</span>
@@ -1962,10 +2029,14 @@ const colorCount = allColors.length;
 </style>
 
 <script>
-  import { barList, bindChartTableToggle, columnChart, dataTable, meter, sparkline, type ColumnDatum } from '@/utils/charts';
+  import { barList, bindChartTableToggle, bindShowNumbers, columnChart, dataTable, donutChart, donutTable, meter, sparkline, type ColumnDatum } from '@/utils/charts';
+  import { recipientRows, recipientTable, sortSelect, syncSelection, type Recipient } from '@/utils/recipients';
+  import { DEFAULT_SORT, nextSort, type RecipientSort, type SortState } from '@/utils/recipients-view';
   import { html, setHTML } from '@/utils/html';
   import { renderLinkCard, renderLinkSkeleton } from '@/utils/links';
+  import { renderPager } from '@/utils/paging';
   import { closeDialog, confirmDialog, hydrateTimes, setLoading, toast } from '@/utils/ui';
+  import { cropAvatar } from '@/utils/avatar-cropper';
   import type { ShortLink, Tag } from '@/utils/types';
 
   const $ = <T extends HTMLElement = HTMLElement>(sel: string, root: ParentNode = document) => root.querySelector<T>(sel);
@@ -2098,6 +2169,20 @@ const colorCount = allColors.length;
     });
   });
 
+  // The Pager: 57 links, 20 a page, brought to each page by renderPager as the lists do.
+  const pager = $('[data-sg-pager] nav')!;
+  let pagerPage = 1;
+  const showPagerPage = () => renderPager(pager, pagerPage, 20, 57, Math.min(20, 57 - (pagerPage - 1) * 20));
+  $('[data-prev]', pager)!.addEventListener('click', () => {
+    pagerPage -= 1;
+    showPagerPage();
+  });
+  $('[data-next]', pager)!.addEventListener('click', () => {
+    pagerPage += 1;
+    showPagerPage();
+  });
+  showPagerPage();
+
   // ------------------------------------------------------------ Tags
   $$<HTMLButtonElement>('[data-sg-chips] button.tag').forEach((chip) =>
     chip.addEventListener('click', () => chip.setAttribute('aria-pressed', String(chip.getAttribute('aria-pressed') !== 'true'))),
@@ -2202,6 +2287,8 @@ const colorCount = allColors.length;
       forward_parameters: false,
       visibility: 'personal',
       created_by_email: 'luis@griddo.io',
+      created_by_first_name: 'Luis',
+      created_by_last_name: 'Ortega',
       valid_until: at(3 * DAY),
       tags: [tag('social', 'blue-500'), tag('b2b', 'orange-500')],
       click_count: 42,
@@ -2294,16 +2381,135 @@ const colorCount = allColors.length;
   $$<HTMLInputElement>('input[name="sg-chart-period"]').forEach((radio) => radio.addEventListener('change', () => drawChart(radio.value as 'daily' | 'weekly')));
   if (chartToggle && chartEl && tableEl) bindChartTableToggle(chartToggle, chartEl, tableEl);
 
+  const donuts = [
+    {
+      key: 'os',
+      heading: 'Operating system',
+      items: [
+        { label: 'Windows', value: 14 },
+        { label: 'macOS', value: 9 },
+        { label: 'iOS', value: 6 },
+        { label: 'Android', value: 4 },
+        { label: 'Linux', value: 1 },
+      ],
+    },
+    {
+      key: 'browsers',
+      heading: 'Browser',
+      items: [
+        { label: 'Chrome', value: 21 },
+        { label: 'Safari', value: 8 },
+        { label: 'Edge', value: 4 },
+        { label: 'Firefox', value: 2 },
+        { label: 'Samsung Internet', value: 1 },
+        { label: 'Opera', value: 1 },
+        { label: 'DuckDuckGo', value: 1 },
+      ],
+    },
+  ];
+  for (const { key, heading, items } of donuts) {
+    const donutEl = $(`[data-sg-${key}]`);
+    const donutTableEl = $(`[data-sg-${key}-table]`);
+    const donutToggle = $<HTMLButtonElement>(`[data-sg-${key}-toggle]`);
+    const numbers = $<HTMLInputElement>(`[data-sg-${key}-numbers]`);
+    if (!donutEl || !donutTableEl || !donutToggle || !numbers) continue;
+    donutChart(donutEl, items);
+    setHTML(donutTableEl, donutTable(items, [heading, 'Clicks']));
+    bindChartTableToggle(donutToggle, donutEl, donutTableEl);
+    bindShowNumbers(numbers, donutEl);
+  }
+
   setHTML(
     $('[data-sg-barlist]'),
-    barList([
-      { label: 'Spain', value: 412 },
-      { label: 'United States', value: 268 },
-      { label: 'Mexico', value: 131 },
-      { label: 'Germany', value: 64 },
-      { label: 'France', value: 38 },
-    ]),
+    barList(
+      [
+        { label: 'Spain', value: 412 },
+        { label: 'United States', value: 268 },
+        { label: 'Mexico', value: 131 },
+        { label: 'Germany', value: 64 },
+        { label: 'France', value: 38 },
+        { label: 'United Kingdom', value: 21 },
+        { label: 'Portugal', value: 12 },
+        { label: 'Ireland', value: 5 },
+        { label: 'Philippines', value: 1 },
+      ],
+      ['click', 'clicks'],
+      { limit: 5 },
+    ),
   );
+  // Recipients table: sample people, sorted here as the API would.
+  const ago = (hours: number) => new Date(Date.now() - hours * 3600_000).toISOString();
+  const people: Recipient[] = [
+    ['ana-7k2', 'Ana', 'Acme', 'Madrid', 12, 3, ago(2)],
+    ['luis-p4q', 'Luis', 'Globex', 'Barcelona', 7, 1, ago(26)],
+    ['marta-x9', 'Marta', 'Initech', 'Valencia', 0, 2, null],
+    ['john-3fd', 'John', 'Umbrella Corporation', 'London', 3, 0, ago(70)],
+    ['sofia-m1', 'Sofía', '', 'Sevilla', 1, 1, ago(5)],
+    ['pierre-q8', 'Pierre', 'Hooli', 'Paris', 0, 0, null],
+    ['lena-b5', 'Lena', 'Vandelay Industries', 'Berlin', 5, 4, ago(1)],
+    ['ivan-2c', 'Iván', 'Stark', 'Bilbao', 0, 0, null],
+  ].map(([code, firstName, company, region, clicks, opens, last]) => ({
+    short_code: code as string,
+    short_url: `https://go.griddo.io/${code}`,
+    domain: 'go.griddo.io',
+    user_data: { firstName: firstName as string, company: company as string, region: region as string },
+    clicks: clicks as number,
+    opens: opens as number,
+    first_click_at: last as string | null,
+    last_click_at: last as string | null,
+    last_open_at: null,
+  }));
+  const recipientColumns = ['firstName', 'company', 'region'];
+  const picked = new Set<string>(['lena-b5']);
+  let recipientSort: SortState = DEFAULT_SORT;
+  const byKey: Record<RecipientSort, (r: Recipient) => number | string> = {
+    clicks: (r) => r.clicks,
+    opens: (r) => r.opens,
+    last_click: (r) => r.last_click_at ?? '',
+    code: (r) => r.short_code,
+  };
+  function drawRecipients() {
+    const key = byKey[recipientSort.sort];
+    const sorted = [...people].sort((a, b) => {
+      const x = key(a);
+      const y = key(b);
+      const order = x < y ? -1 : x > y ? 1 : 0;
+      return (recipientSort.order === 'asc' ? order : -order) || a.short_code.localeCompare(b.short_code);
+    });
+    const opts = { columns: recipientColumns, sort: recipientSort, selected: picked };
+    const table = $('[data-sg-recipients]');
+    const rows = $('[data-sg-recipient-rows]');
+    if (table) setHTML(table, recipientTable(sorted, opts));
+    if (rows) setHTML(rows, recipientRows(sorted, opts));
+    const sortBox = $('[data-sg-recipient-sort]');
+    if (sortBox) setHTML(sortBox, sortSelect(recipientSort));
+    [table, rows].forEach((el) => el && hydrateTimes(el));
+  }
+  drawRecipients();
+  document.addEventListener('click', (e) => {
+    const header = (e.target as HTMLElement).closest<HTMLElement>('[data-sg-recipients] [data-sort]');
+    if (!header) return;
+    recipientSort = nextSort(recipientSort, header.dataset.sort as RecipientSort);
+    drawRecipients();
+    $<HTMLElement>(`[data-sg-recipients] [data-sort="${recipientSort.sort}"]`)?.focus();
+  });
+  document.addEventListener('change', (e) => {
+    const target = e.target as HTMLInputElement | HTMLSelectElement;
+    if (target.matches('[data-sg-recipient-sort] [data-sort-select]')) {
+      const [sort, order] = target.value.split(':');
+      recipientSort = { sort: sort as RecipientSort, order: order as SortState['order'] };
+      drawRecipients();
+    } else if (target.closest('[data-sg-recipients], [data-sg-recipient-rows]') && target.matches('[data-select]')) {
+      const box = target as HTMLInputElement;
+      if (box.checked) picked.add(box.dataset.select!);
+      else picked.delete(box.dataset.select!);
+      document.querySelectorAll('[data-sg-recipients], [data-sg-recipient-rows]').forEach((root) => syncSelection(root, box.dataset.select!, box.checked));
+    } else if (target.matches('[data-sg-recipients] [data-select-all]')) {
+      people.forEach((r) => ((target as HTMLInputElement).checked ? picked.add(r.short_code) : picked.delete(r.short_code)));
+      drawRecipients();
+    }
+  });
+
   setHTML($('[data-sg-meter]'), meter(34, 50, 'Click-through: 34 of 50 recipients'));
   setHTML($('[data-sg-spark]'), sparkline([6, 9, 7, 12, 10, 15, 13, 18], 120, 36));
 
@@ -2322,5 +2528,33 @@ const colorCount = allColors.length;
     if (count) count.textContent = q ? `${shown} of ${iconTiles.length} icons` : `${iconTiles.length} icons`;
     const empty = $('[data-sg-icon-empty]');
     if (empty) empty.hidden = shown > 0;
+  });
+
+  // ------------------------------------------------------------ Photo: the crop dialog, on a drawn sample
+  $('[data-sg-crop]')?.addEventListener('click', async () => {
+    const sample = document.createElement('canvas');
+    [sample.width, sample.height] = [960, 640];
+    const paint = sample.getContext('2d')!;
+    const sky = paint.createLinearGradient(0, 0, 0, 640);
+    sky.addColorStop(0, '#dbe7ff');
+    sky.addColorStop(1, '#1d3b8a');
+    paint.fillStyle = sky;
+    paint.fillRect(0, 0, 960, 640);
+    paint.fillStyle = '#ffd166';
+    paint.beginPath();
+    paint.arc(480, 300, 150, 0, Math.PI * 2);
+    paint.fill();
+    const image = await new Promise<Blob | null>((resolve) => sample.toBlob(resolve, 'image/png'));
+    if (!image) return;
+    await cropAvatar(image, async (square) => {
+      const result = $('[data-sg-avatar]');
+      if (!result) return;
+      const photo = document.createElement('img');
+      photo.src = URL.createObjectURL(square);
+      photo.alt = 'The cropped photo';
+      photo.className = 'size-full object-cover';
+      result.replaceChildren(photo);
+      toast('Photo saved', 'success', { description: `${square.type}, ${Math.round(square.size / 1024)} KB` });
+    });
   });
 </script>

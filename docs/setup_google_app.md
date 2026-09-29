@@ -67,8 +67,9 @@ Shurly comprueba además, por su cuenta, que el token de Google venga del domini
 
 - `openid` — obligatorio
 - `.../auth/userinfo.email` — obligatorio
-- `.../auth/userinfo.profile` — opcional: hoy Shurly no lo pide (solo `openid email`), pero la
-  Phase 3.12 querrá rellenar el nombre y la foto desde Google. Puedes añadirlo ya.
+- `.../auth/userinfo.profile` — el inicio de sesión web lo pide desde la Phase 3.12, para empezar el
+  perfil de una cuenta nueva con su nombre (la foto no se usa); el del MCP pide solo `openid email`.
+  Añádelo.
 
 No añadas ninguno más. Ninguno de estos es sensible, así que no hace falta revisión de Google.
 
@@ -120,7 +121,7 @@ Shurly lee esta configuración de variables de entorno (servicio `shurly-api`, E
 | `GOOGLE_REDIRECT_URI` | `https://shurly.griddo.io/api/v1/auth/google/callback` |
 | `FRONTEND_URL` | `https://shurly.griddo.io` |
 | `ORGANIZATION_DOMAIN` | `griddo.io` (ya es el valor por defecto) |
-| `CORS_ORIGINS` | tiene que **incluir el origen del frontend**: la página canjea el código con un `POST` desde otro dominio, y sin esto el login falla en el último paso |
+| `CORS_ORIGINS` | nada para esto en producción: la página canjea el código con un `POST` al mismo origen (`shurly.griddo.io`, 4.10). Solo un frontend servido desde otro origen necesita el suyo aquí |
 
 Si falta cualquiera de ellas, Shurly arranca igualmente y el login con Google responde "no
 disponible". Nada se rompe.

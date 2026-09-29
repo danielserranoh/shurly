@@ -282,7 +282,8 @@ export function confirmDialog(opts: ConfirmOptions): Promise<boolean> {
 // Menus (popover API, positioned next to their trigger)
 // ---------------------------------------------------------------------------
 
-function positionMenu(menu: HTMLElement, trigger: HTMLElement): void {
+/** Place a popover menu under its trigger (or any anchor), inside the viewport. */
+export function positionMenu(menu: HTMLElement, trigger: HTMLElement): void {
   const r = trigger.getBoundingClientRect();
   const align = menu.dataset.align ?? 'end';
   menu.style.position = 'fixed';
@@ -339,6 +340,19 @@ export function installGlobalUI(): void {
     const closer = target.closest<HTMLElement>('[data-dialog-close]');
     if (closer) {
       closeDialog(closer.closest('dialog'));
+      return;
+    }
+
+    // A bar list's "Show all N" (charts.ts → barList): the rows past its limit, and back.
+    const showAll = target.closest<HTMLButtonElement>('[data-show-all]');
+    if (showAll) {
+      const open = showAll.getAttribute('aria-expanded') !== 'true';
+      document
+        .getElementById(showAll.getAttribute('aria-controls') ?? '')
+        ?.querySelectorAll<HTMLElement>('[data-extra]')
+        .forEach((row) => (row.hidden = !open));
+      showAll.setAttribute('aria-expanded', String(open));
+      showAll.textContent = open ? 'Show fewer' : (showAll.dataset.more ?? 'Show all');
       return;
     }
 

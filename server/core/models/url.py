@@ -64,7 +64,8 @@ class URL(Base):
 
     # Phase 3.9.2 — Validity window and visit cap (Shlink-inspired)
     # All NULL by default → no constraint. valid_since/valid_until enforce a date window;
-    # max_visits enforces a hard cap on real (non-crawler) visits before serving 410 Gone.
+    # max_visits enforces a hard cap on clicks (`click_count`: bots and pixel opens aside) before
+    # serving 410 Gone.
     valid_since = Column(DateTime(timezone=True), nullable=True)
     valid_until = Column(DateTime(timezone=True), nullable=True)
     max_visits = Column(Integer, nullable=True)
@@ -110,9 +111,27 @@ class URL(Base):
         return "personal" if self.organization_id is None else "organization"
 
     @property
+    def campaign_name(self) -> str | None:
+        """A campaign link's campaign, by name. Lists eager-load `campaign`, or this costs a
+        query per link."""
+        return self.campaign.name if self.campaign else None
+
+    @property
     def created_by_email(self) -> str | None:
         """Lists eager-load `creator`, or this costs a query per link."""
         return self.creator.email if self.creator else None
+
+    # Phase 3.12 — the creator's name, from their profile. Lists eager-load `creator` and
+    # its `profile`, or these cost queries per link.
+    @property
+    def created_by_first_name(self) -> str | None:
+        profile = self.creator.profile if self.creator else None
+        return profile.first_name if profile else None
+
+    @property
+    def created_by_last_name(self) -> str | None:
+        profile = self.creator.profile if self.creator else None
+        return profile.last_name if profile else None
 
     def __repr__(self):
         return f"<URL(short_code={self.short_code}, type={self.url_type})>"

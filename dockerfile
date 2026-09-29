@@ -4,6 +4,21 @@
 # itself stays platform-agnostic so it also runs on developer Macs (arm64) and
 # Linux x86 hosts.
 
+# ─── Geolocation data (Phase 8.4) ───────────────────────────────────────────
+# DB-IP's IP to Country Lite (CC BY 4.0, https://db-ip.com), fetched and checked by
+# scripts/fetch_geoip.py: it must open and place 8.8.8.8 in the US. On the build platform
+# only, since the data is the same for every platform. It never fails the build: without the
+# file, visits have no country, and the deploy job warns.
+FROM --platform=$BUILDPLATFORM python:3.11-slim AS geoip
+RUN pip install --no-cache-dir "maxminddb>=3.2,<4"
+COPY scripts/fetch_geoip.py /fetch_geoip.py
+RUN python /fetch_geoip.py /geoip
+
+# Just the data: what the image copies, and what the deploy job checks
+# (`--target geoip-data --output type=local`).
+FROM scratch AS geoip-data
+COPY --from=geoip /geoip/ /
+
 FROM python:3.11-slim AS builder
 
 # uv for fast, deterministic installs from the lockfile.
@@ -48,6 +63,10 @@ COPY --from=builder /app/.venv /app/.venv
 COPY server ./server
 COPY mcp_server ./mcp_server
 COPY main.py ./
+
+# Phase 8.4 — the geolocation database, where GEOIP_DATABASE looks by default. It may be
+# absent (the fetch never fails the build): then visits have no country.
+COPY --from=geoip-data / ./data/
 
 ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \

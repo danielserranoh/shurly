@@ -13,6 +13,7 @@ from server.app.urls import redirect_router
 from server.core import get_db
 from server.core.config import settings
 from server.utils.event_log import log_event
+from server.utils.nul import NulMiddleware, nul_value_error
 from server.utils.rate_limit import RateLimitMiddleware
 
 
@@ -154,6 +155,10 @@ def create_app(mcp_auth=None) -> FastAPI:
         # `TESTING=1` skips DB seeding (conftest manages the in-memory schema).
         if not os.getenv("TESTING"):
             _seed_database()
+            # Phase 8.4 — open the geolocation database now: a missing one is logged at startup.
+            from server.utils.geo import open_database
+
+            open_database()
 
         # `app.state.mcp_app` is set during construction below (after the
         # routers are registered, so the MCP introspection sees them all).
@@ -177,6 +182,12 @@ def create_app(mcp_auth=None) -> FastAPI:
     # inside CORS (which answers preflights itself, and adds its headers to a 429)
     # and inside RequestIdMiddleware (which logs the 429 like any response).
     app.add_middleware(RateLimitMiddleware)
+
+    # Phase 6.3 — a NUL character in a request is a 400 or a 422 before any route sees it:
+    # PostgreSQL can't hold one, and each answered 500 (server/utils/nul.py). Outside the
+    # rate limits, inside CORS and the request id, like them.
+    app.add_middleware(NulMiddleware)
+    app.add_exception_handler(ValueError, nul_value_error)
 
     app.add_middleware(
         CORSMiddleware,

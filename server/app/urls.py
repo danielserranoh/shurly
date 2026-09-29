@@ -1,6 +1,9 @@
 """URL shortening endpoints."""
 
+import base64
+import hashlib
 import logging
+import re
 from datetime import datetime, timezone
 from urllib.parse import urlencode
 from uuid import UUID
@@ -40,10 +43,13 @@ from server.schemas.url import (
     URLResponse,
     URLUpdate,
 )
-from server.utils.access import viewer
-from server.utils.columns import fit
+from server.utils.access import LinkDomain, find_urls, viewer, visible_url_or_404
+from server.utils.bounds import MAX_SKIP
+from server.utils.columns import fit, stored_referer, stored_user_agent
 from server.utils.domain import get_or_create_default_domain, resolve_domain_for_host
-from server.utils.network import anonymize_ip, resolve_client_ip
+from server.utils.geo import country_of
+from server.utils.negotiation import prefers_html
+from server.utils.network import UNKNOWN_IP, visit_ip
 from server.utils.opengraph import fetch_opengraph_metadata, is_social_media_crawler
 from server.utils.redirect_rules import pick_target
 from server.utils.url import (
@@ -51,6 +57,8 @@ from server.utils.url import (
     generate_short_code,
     is_reserved_short_code,
     is_valid_custom_code,
+    link_hostname,
+    link_short_url,
     make_code_unique,
     normalize_short_code,
     url_origin,
@@ -64,6 +72,67 @@ redirect_router = APIRouter()  # Separate router for redirect endpoint
 
 # Initialize Jinja2 templates for preview page
 templates = Jinja2Templates(directory="server/templates")
+
+# ROADMAP 3.9.2 — the pages the short-link host serves come with a strict CSP: nothing but their
+# one <style> block, allowed by its hash. The hash is taken from the page as it's served, so an
+# edit to the CSS can't leave it unstyled; the block has no Jinja, so any render gives it.
+UNAVAILABLE_PAGE = "link_unavailable.html"
+PREVIEW_PAGE = "preview.html"
+
+
+def _style_hash(template: str) -> str:
+    served = templates.env.get_template(template).render()
+    style = re.search(r"<style>(.*?)</style>", served, re.S).group(1)
+    return "sha256-" + base64.b64encode(hashlib.sha256(style.encode()).digest()).decode()
+
+
+# A crawler's preview loads nothing but its style: the OG image is a meta tag the crawler fetches
+# itself, and the meta refresh and the link to the destination aren't loads a CSP governs.
+PREVIEW_HEADERS = {
+    "Content-Security-Policy": (
+        f"default-src 'none'; style-src '{_style_hash(PREVIEW_PAGE)}'; base-uri 'none'; "
+        "form-action 'none'; frame-ancestors 'none'"
+    ),
+    "Cache-Control": "public, max-age=300",  # 5 minutes
+}
+
+
+UNAVAILABLE_HEADERS = {
+    "Content-Security-Policy": (
+        f"default-src 'none'; style-src '{_style_hash(UNAVAILABLE_PAGE)}'; img-src data:; "
+        "base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+    ),
+    # A link fixed later shouldn't stay cached as a 404 or a 410.
+    "Cache-Control": "no-store",
+    "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "no-referrer",
+    "X-Robots-Tag": "noindex",
+    "Vary": "Accept",
+}
+
+
+def _unavailable(request: Request, status_code: int, reason: str, detail: str) -> Response:
+    """
+    A short link that doesn't lead anywhere: with INVALID_SHORT_URL_REDIRECT, a 302 there for
+    everyone (Shlink's setting), never cached; otherwise the status code, as a page for a person's
+    browser (`reason`: unknown, expired or used_up) and as the JSON it always was for everything
+    else. `Vary: Accept`, since the body depends on it.
+    """
+    if settings.invalid_short_url_redirect:
+        return RedirectResponse(
+            url=settings.invalid_short_url_redirect,
+            status_code=status.HTTP_302_FOUND,
+            headers={"Cache-Control": "private, max-age=0"},
+        )
+    if not prefers_html(request.headers.get("accept")):
+        raise HTTPException(status_code=status_code, detail=detail, headers={"Vary": "Accept"})
+    return templates.TemplateResponse(
+        request,
+        UNAVAILABLE_PAGE,
+        {"reason": reason},
+        status_code=status_code,
+        headers=UNAVAILABLE_HEADERS,
+    )
 
 
 # Phase 3.11 — URLResponse computed fields (`short_url`, `click_count`).
@@ -99,7 +168,8 @@ def _click_count(db: Session, url: URL) -> int:
 def _to_url_response(url: URL, click_count: int) -> URLResponse:
     """Serialize a URL row plus its computed `short_url` and `click_count`."""
     response = URLResponse.model_validate(url)
-    response.short_url = build_short_url(url.short_code)
+    response.short_url = link_short_url(url)
+    response.domain = link_hostname(url)
     response.click_count = click_count
     return response
 
@@ -410,7 +480,7 @@ def list_urls(
     ),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
-    skip: int = Query(0, ge=0, description="Number of URLs to skip, for pagination"),
+    skip: int = Query(0, ge=0, le=MAX_SKIP, description="Number of URLs to skip, for pagination"),
     limit: int = Query(100, ge=1, le=100, description="Maximum number of URLs to return (1-100)"),
 ):
     """
@@ -423,7 +493,7 @@ def list_urls(
     **Authentication:** Required (JWT Bearer token)
 
     **Query Parameters:**
-    - **skip**: Number of records to skip for pagination (default: 0, min: 0)
+    - **skip**: Number of records to skip for pagination (default: 0, min: 0, max: 1,000,000,000)
     - **limit**: Maximum number of records to return (default: 100, min: 1, max: 100).
       Out-of-range values are rejected with 422, not clamped: to read more than 100
       URLs, page through them with `skip` until you have `total`.
@@ -478,9 +548,14 @@ def list_urls(
     if url_type:
         query = query.filter(URL.url_type.in_(url_type))
 
-    # Tags and creators for the whole page in one query each (no N+1 lazy load per URL)
+    # Tags, creators and their profiles (Phase 3.12: names), and campaigns (their names) for
+    # the whole page, one query each: no lazy load per URL, creator or campaign.
     urls = (
-        query.options(selectinload(URL.tags), selectinload(URL.creator))
+        query.options(
+            selectinload(URL.tags),
+            selectinload(URL.creator).selectinload(User.profile),
+            selectinload(URL.campaign),
+        )
         .order_by(URL.created_at.desc())
         .offset(skip)
         .limit(limit)
@@ -509,6 +584,7 @@ def list_urls(
 )
 def get_url(
     short_code: str,
+    domain: LinkDomain = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -528,7 +604,7 @@ def get_url(
     - **401**: Authentication required or invalid token
     - **404**: URL not found, or someone else's personal link
     """
-    url = _get_visible_url(db, short_code, current_user)
+    url = visible_url_or_404(db, current_user, short_code, domain)
     return _to_url_response(url, _click_count(db, url))
 
 
@@ -542,6 +618,7 @@ def get_url(
 )
 def delete_url(
     short_code: str,
+    domain: LinkDomain = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -564,7 +641,7 @@ def delete_url(
 
     **Note:** Only standard and custom URLs can be deleted directly. Campaign URLs must be deleted through the campaign.
     """
-    url = _get_visible_url(db, short_code, current_user, to_change=True)
+    url = visible_url_or_404(db, current_user, short_code, domain, to_change=True)
 
     # Prevent deleting campaign URLs directly
     if url.url_type == URLType.CAMPAIGN:
@@ -591,6 +668,7 @@ def delete_url(
 def update_url(
     short_code: str,
     url_update: URLUpdate,
+    domain: LinkDomain = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -622,7 +700,7 @@ def update_url(
 
     **Note:** The short_code itself cannot be changed. Campaign URLs must be managed through the campaign.
     """
-    url = _get_visible_url(db, short_code, current_user, to_change=True)
+    url = visible_url_or_404(db, current_user, short_code, domain, to_change=True)
 
     # Prevent updating campaign URLs
     if url.url_type == URLType.CAMPAIGN:
@@ -653,6 +731,7 @@ def update_url(
 def update_url_tags(
     short_code: str,
     tag_data: dict,
+    domain: LinkDomain = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -678,7 +757,7 @@ def update_url_tags(
     """
     from server.core.models import Tag
 
-    url = _get_visible_url(db, short_code, current_user, to_change=True)
+    url = visible_url_or_404(db, current_user, short_code, domain, to_change=True)
 
     tag_ids_str = tag_data.get("tag_ids", [])
 
@@ -729,7 +808,10 @@ def bulk_tag_urls(
     **Authentication:** Required (JWT Bearer token)
 
     **Request Body:**
-    - **short_codes**: List of short codes to tag
+    - **links**: The links to tag, each `{"short_code": …, "domain": …}`. Use `links` when
+      codes exist on several domains: the domain picks the link
+    - **short_codes**: Short codes to tag, one link per code: the default domain's, then
+      the other domains' by hostname (as without `?domain=`)
     - **tag_ids**: List of tag IDs to apply
 
     **Responses:**
@@ -740,7 +822,12 @@ def bulk_tag_urls(
     """
     from server.core.models import Tag
 
-    short_codes = bulk_data.get("short_codes", [])
+    # Phase 8.3 — a link is its code and its domain: `links` name both; a plain code takes
+    # one link, by the same rule as a route without `?domain=` (`find_url`).
+    addresses = [
+        (item.get("short_code"), item.get("domain")) for item in bulk_data.get("links", [])
+    ]
+    addresses += [(code, None) for code in bulk_data.get("short_codes", [])]
     tag_ids_str = bulk_data.get("tag_ids", [])
 
     # Convert string UUIDs to UUID objects
@@ -751,14 +838,11 @@ def bulk_tag_urls(
     except (ValueError, AttributeError) as e:
         raise HTTPException(status_code=400, detail=f"Invalid tag ID format: {str(e)}") from e
 
-    # Fetch the URLs the user can see, with their current tags in one query (no N+1)
+    # The links the user can see, each once, with their current tags in one query (no N+1)
     who = viewer(db, current_user)
-    urls = (
-        db.query(URL)
-        .options(selectinload(URL.tags))
-        .filter(URL.short_code.in_(short_codes), who.sees(URL))
-        .all()
-    )
+    addresses = [(code, domain) for code, domain in addresses if isinstance(code, str)]
+    found = find_urls(db, who, addresses, selectinload(URL.tags))
+    urls = list({url.id: url for url in found.values()}.values())
 
     # Fetch tags
     tags = db.query(Tag).filter(Tag.id.in_(tag_ids)).all()
@@ -798,6 +882,7 @@ def bulk_tag_urls(
 )
 def get_url_preview(
     short_code: str,
+    domain: LinkDomain = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -816,7 +901,7 @@ def get_url_preview(
     - **401**: Authentication required or invalid token
     - **404**: URL not found, or someone else's personal link
     """
-    url = _get_visible_url(db, short_code, current_user)
+    url = visible_url_or_404(db, current_user, short_code, domain)
 
     has_custom = bool(url.og_title or url.og_description or url.og_image_url)
 
@@ -824,7 +909,7 @@ def get_url_preview(
         og_title=url.og_title or url.title,
         og_description=url.og_description,
         og_image_url=url.og_image_url,
-        og_url=build_short_url(short_code),
+        og_url=link_short_url(url),
         has_custom_preview=has_custom,
         fetched_at=url.og_fetched_at,
     )
@@ -840,6 +925,7 @@ def get_url_preview(
 )
 async def refresh_url_preview(
     short_code: str,
+    domain: LinkDomain = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -862,7 +948,7 @@ async def refresh_url_preview(
 
     **Note:** Custom Open Graph values (manually set) will not be overwritten.
     """
-    url = _get_visible_url(db, short_code, current_user, to_change=True)
+    url = visible_url_or_404(db, current_user, short_code, domain, to_change=True)
 
     # Fetch metadata from destination
     metadata = await fetch_opengraph_metadata(str(url.original_url))
@@ -884,7 +970,7 @@ async def refresh_url_preview(
         og_title=url.og_title or url.title,
         og_description=url.og_description,
         og_image_url=url.og_image_url,
-        og_url=build_short_url(short_code),
+        og_url=link_short_url(url),
         has_custom_preview=bool(url.og_title or url.og_description or url.og_image_url),
         fetched_at=url.og_fetched_at,
     )
@@ -901,19 +987,6 @@ def _as_utc(dt: datetime | None) -> datetime | None:
 # change is a 403 (server/utils/access.py).
 
 
-def _get_visible_url(db: Session, short_code: str, user: User, *, to_change: bool = False) -> URL:
-    who = viewer(db, user)
-    url = db.query(URL).filter(URL.short_code == short_code, who.sees(URL)).first()
-    if not url:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="URL not found",
-        )
-    if to_change:
-        who.ensure_can_change(url)
-    return url
-
-
 @urls_router.get(
     "/{short_code}/rules",
     response_model=list[RedirectRuleResponse],
@@ -921,10 +994,11 @@ def _get_visible_url(db: Session, short_code: str, user: User, *, to_change: boo
 )
 def list_redirect_rules(
     short_code: str,
+    domain: LinkDomain = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    url = _get_visible_url(db, short_code, current_user)
+    url = visible_url_or_404(db, current_user, short_code, domain)
     rules = (
         db.query(RedirectRule)
         .filter(RedirectRule.url_id == url.id)
@@ -943,10 +1017,11 @@ def list_redirect_rules(
 def create_redirect_rule(
     short_code: str,
     rule_data: RedirectRuleCreate,
+    domain: LinkDomain = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    url = _get_visible_url(db, short_code, current_user, to_change=True)
+    url = visible_url_or_404(db, current_user, short_code, domain, to_change=True)
     rule = RedirectRule(
         url_id=url.id,
         priority=rule_data.priority,
@@ -968,10 +1043,11 @@ def update_redirect_rule(
     short_code: str,
     rule_id: str,
     rule_update: RedirectRuleUpdate,
+    domain: LinkDomain = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    url = _get_visible_url(db, short_code, current_user, to_change=True)
+    url = visible_url_or_404(db, current_user, short_code, domain, to_change=True)
     from uuid import UUID as _UUID
 
     try:
@@ -1000,10 +1076,11 @@ def update_redirect_rule(
 def delete_redirect_rule(
     short_code: str,
     rule_id: str,
+    domain: LinkDomain = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    url = _get_visible_url(db, short_code, current_user, to_change=True)
+    url = visible_url_or_404(db, current_user, short_code, domain, to_change=True)
     from uuid import UUID as _UUID
 
     try:
@@ -1048,9 +1125,9 @@ def base_url_landing(request: Request, db: Session = Depends(get_db)):
         OrphanVisit(
             type=OrphanVisitType.BASE_URL,
             attempted_path="/",
-            ip=fit(request.client.host if request.client else None, OrphanVisit.ip),
-            user_agent=request.headers.get("user-agent"),
-            referer=request.headers.get("referer"),
+            ip=fit(visit_ip(request), OrphanVisit.ip),
+            user_agent=stored_user_agent(request.headers.get("user-agent")),
+            referer=stored_referer(request.headers.get("referer")),
         )
     )
     db.commit()
@@ -1088,20 +1165,17 @@ def tracking_pixel(short_code: str, request: Request, db: Session = Depends(get_
     # Pixel hits never consume max_visits quota and are always logged (even
     # under DISABLE_TRACK_PARAM, since the whole point of the endpoint is to log).
     visit_user_agent = request.headers.get("user-agent")
-    raw_ip = resolve_client_ip(
-        request.client.host if request.client else None,
-        request.headers.get("x-forwarded-for"),
-        settings.trusted_proxies,
-    )
-    stored_ip = anonymize_ip(raw_ip) if settings.anonymize_remote_addr else raw_ip
+    stored_ip = visit_ip(request)
     db.add(
         Visitor(
             url_id=url.id,
             short_code=short_code,
-            ip=fit(stored_ip or "unknown", Visitor.ip),
-            user_agent=visit_user_agent,
-            referer=request.headers.get("referer"),
-            is_bot=ua_is_bot(visit_user_agent),
+            ip=fit(stored_ip or UNKNOWN_IP, Visitor.ip),
+            # Phase 8.4 — from the stored address: anonymized, when that's on.
+            country=country_of(stored_ip),
+            user_agent=stored_user_agent(visit_user_agent),
+            referer=stored_referer(request.headers.get("referer")),
+            is_bot=ua_is_bot(visit_user_agent),  # from the whole user agent
             is_pixel=True,
         )
     )
@@ -1137,9 +1211,34 @@ def robots_txt(db: Session = Depends(get_db)) -> str:
 
 
 @redirect_router.get(
+    "/favicon.ico", status_code=status.HTTP_204_NO_CONTENT, include_in_schema=False
+)
+def favicon() -> Response:
+    """
+    Browsers ask every host for its icon. The short-link host has none: a 204, cached a week.
+    Here, and not left to `/{short_code}`, where it would be an orphan visit in "Typos & broken
+    links" each time. The pages it serves say so too (`<link rel="icon" href="data:,">`).
+    """
+    return Response(
+        status_code=status.HTTP_204_NO_CONTENT, headers={"Cache-Control": "public, max-age=604800"}
+    )
+
+
+def _with_query(destination: str, params: dict) -> str:
+    """`destination`, with `params` appended to its query."""
+    if not params:
+        return destination
+    separator = "&" if "?" in destination else "?"
+    return f"{destination}{separator}{urlencode(params)}"
+
+
+@redirect_router.get(
     "/{short_code}",
     responses={
-        302: {"description": "Redirect to original URL"},
+        302: {
+            "description": "Redirect to original URL; or, with INVALID_SHORT_URL_REDIRECT, "
+            "where a link that doesn't lead anywhere sends everyone"
+        },
         **get_responses(404),
         410: {"description": "Short URL is expired or has reached its visit cap"},
     },
@@ -1160,11 +1259,16 @@ def redirect_short_url(short_code: str, request: Request, db: Session = Depends(
     - **404**: Short URL not found, or URL is not yet active (`valid_since` in the future)
     - **410**: URL is expired (`valid_until` passed) or has reached its `max_visits` cap
 
+    A 404 or 410 is a page for a person's browser (its Accept prefers text/html), and the JSON
+    `{"detail": …}` for everything else. Not yet active answers exactly as not found does. With
+    INVALID_SHORT_URL_REDIRECT set, all four send everyone there instead, with a 302.
+
     **Note:**
     - Campaign user data is ALWAYS appended as query parameters (for personalization)
     - Regular query params are only forwarded if `forward_parameters=true` (for attribution tracking)
     - Social media crawlers (Twitter, Facebook, LinkedIn, WhatsApp, etc.) see rich preview cards
-    - Crawler preview hits do NOT consume `max_visits` quota (no Visitor row inserted)
+    - Only clicks use up `max_visits`, as they count in `click_count`: bot hits and tracking-pixel
+      opens are logged but don't, and crawler previews aren't logged at all
     """
     # Phase 3.10.1 — resolve the URL by (Host header → domain) + short_code so
     # the same code can live on multiple hostnames. Unknown hosts fall back to
@@ -1179,104 +1283,77 @@ def redirect_short_url(short_code: str, request: Request, db: Session = Depends(
 
     if not url:
         # Phase 3.10.4 — log the orphan before returning 404. Useful for catching
-        # typo'd codes leaked into print/QR campaigns. Anonymize IP same as for
-        # regular visits so GDPR posture is consistent.
-        orphan_ip = (
-            anonymize_ip(
-                resolve_client_ip(
-                    request.client.host if request.client else None,
-                    request.headers.get("x-forwarded-for"),
-                    settings.trusted_proxies,
-                )
-            )
-            if settings.anonymize_remote_addr
-            else (request.client.host if request.client else None)
-        )
+        # typo'd codes leaked into print/QR campaigns. Its IP is a visit's (`visit_ip`),
+        # so the GDPR posture is the same.
+        orphan_ip = visit_ip(request)
         db.add(
             OrphanVisit(
                 type=OrphanVisitType.INVALID_SHORT_URL,
                 attempted_path=str(request.url.path)[:2048],
                 ip=fit(orphan_ip, OrphanVisit.ip),
-                user_agent=request.headers.get("user-agent"),
-                referer=request.headers.get("referer"),
+                user_agent=stored_user_agent(request.headers.get("user-agent")),
+                referer=stored_referer(request.headers.get("referer")),
             )
         )
         db.commit()
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Short URL '{short_code}' not found",
-        )
+        return _unavailable(request, 404, "unknown", f"Short URL '{short_code}' not found")
 
     # Phase 3.9.2 — validity window and visit cap enforcement.
-    # Order matters: not-yet-valid returns 404 (don't reveal premature URLs);
-    # expired and quota-exhausted return 410 (the URL existed and is no longer active).
+    # Order matters: not-yet-valid returns 404 (don't reveal premature URLs): it answers,
+    # page included, exactly as no such code does. Expired and quota-exhausted return 410
+    # (the URL existed and is no longer active).
     now = datetime.now(timezone.utc)
 
     if url.valid_since is not None and now < _as_utc(url.valid_since):
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Short URL '{short_code}' not found",
-        )
+        return _unavailable(request, 404, "unknown", f"Short URL '{short_code}' not found")
 
     if url.valid_until is not None and now >= _as_utc(url.valid_until):
-        raise HTTPException(
-            status_code=status.HTTP_410_GONE,
-            detail="This short URL has expired",
-        )
+        return _unavailable(request, 410, "expired", "This short URL has expired")
 
+    # The cap counts clicks, the `click_count` the API reports: bot hits and email opens don't
+    # use it up. One definition, so the link page's "N of max" can't disagree with the 410.
     if url.max_visits is not None:
-        visit_count = db.query(Visitor).filter(Visitor.url_id == url.id).count()
-        if visit_count >= url.max_visits:
-            raise HTTPException(
-                status_code=status.HTTP_410_GONE,
-                detail="This short URL has reached its visit limit",
+        if _click_count(db, url) >= url.max_visits:
+            return _unavailable(
+                request, 410, "used_up", "This short URL has reached its visit limit"
             )
-
-    # Update last_click_at timestamp
-    url.last_click_at = datetime.now(timezone.utc)
 
     # Phase 3.10.2 — let conditional rules override the destination before we
     # append campaign params or forwarded query params. First-match wins by
     # priority; if no rule matches, fall through to the URL's original_url.
-    redirect_url = pick_target(
+    destination = pick_target(
         list(url.redirect_rules),
         url.original_url,
         user_agent=request.headers.get("user-agent"),
         accept_language=request.headers.get("accept-language"),
         query_params=dict(request.query_params),
     )
-    query_params = {}
-
     # For campaign URLs, ALWAYS append user data (personalization)
-    if url.url_type == URLType.CAMPAIGN and url.user_data:
-        query_params.update(url.user_data)
-
+    personal = url.user_data if url.url_type == URLType.CAMPAIGN and url.user_data else {}
     # For regular query params, respect forward_parameters flag (attribution tracking)
-    if url.forward_parameters and request.query_params:
-        query_params.update(dict(request.query_params))
-
-    # Append query params if any
-    if query_params:
-        query_string = urlencode(query_params)
-        separator = "&" if "?" in redirect_url else "?"
-        redirect_url = f"{redirect_url}{separator}{query_string}"
+    forwarded = dict(request.query_params) if url.forward_parameters else {}
+    redirect_url = _with_query(destination, {**personal, **forwarded})
 
     # Check User-Agent for social media crawlers
     user_agent = request.headers.get("user-agent", "")
 
     if is_social_media_crawler(user_agent):
-        # Serve preview page with Open Graph tags for social media
+        # Serve preview page with Open Graph tags for social media. Never with the recipient's
+        # data: when a recipient shares their campaign link, the social network's crawler is who
+        # asks (docs/PERSONAL_DATA.md). Its refresh target is the destination as the rules pick
+        # it, with what the shared address itself forwards; people get the personalized redirect.
         return templates.TemplateResponse(
             request,
-            "preview.html",
+            PREVIEW_PAGE,
             {
                 "og_title": url.og_title or url.title or url.original_url,
                 "og_description": url.og_description or f"Visit {url.original_url}",
                 "og_image_url": url.og_image_url,
-                "short_url": build_short_url(short_code),
-                "destination_url": redirect_url,
+                # Phase 8.3 — the domain it was asked on.
+                "short_url": build_short_url(short_code, domain.hostname),
+                "destination_url": _with_query(destination, forwarded),
             },
-            headers={"Cache-Control": "public, max-age=300"},  # Cache for 5 min
+            headers=PREVIEW_HEADERS,
         )
 
     # Phase 3.10.6 — pull configured status + cache header for each redirect path.
@@ -1301,22 +1378,23 @@ def redirect_short_url(short_code: str, request: Request, db: Session = Depends(
     # Phase 3.9.5: anonymize the IP before persisting (GDPR pseudonymization).
     # Phase 3.9.6: only honor X-Forwarded-For from trusted proxies (CIDR allowlist).
     visit_user_agent = request.headers.get("user-agent")
-    raw_ip = resolve_client_ip(
-        request.client.host if request.client else None,
-        request.headers.get("x-forwarded-for"),
-        settings.trusted_proxies,
-    )
-    stored_ip = anonymize_ip(raw_ip) if settings.anonymize_remote_addr else raw_ip
+    stored_ip = visit_ip(request)
     visit = Visitor(
         url_id=url.id,
         short_code=short_code,
-        ip=fit(stored_ip or "unknown", Visitor.ip),
-        user_agent=visit_user_agent,
-        referer=request.headers.get("referer"),
-        is_bot=ua_is_bot(visit_user_agent),
+        ip=fit(stored_ip or UNKNOWN_IP, Visitor.ip),
+        country=country_of(stored_ip),  # Phase 8.4 — from the stored address
+        user_agent=stored_user_agent(visit_user_agent),
+        referer=stored_referer(request.headers.get("referer")),
+        is_bot=ua_is_bot(visit_user_agent),  # from the whole user agent
+        visited_at=now.replace(tzinfo=None),  # naive UTC, like the column's default
     )
 
     db.add(visit)
+    # Phase 3.16 — the link's last click is a click, as `/totals` counts one: a bot's visit
+    # doesn't move it, nor do a crawler's preview or a `?nostat` hit, which return above.
+    if not visit.is_bot:
+        url.last_click_at = now
     db.commit()
 
     # Phase 3.10.6 — honor REDIRECT_STATUS_CODE + REDIRECT_CACHE_LIFETIME.

@@ -53,10 +53,10 @@ class TestURLDailyAnalytics:
         data = response.json()
         assert data["short_code"] == "testdaily"
         assert len(data["stats"]) == 7  # 7 days
-        # Note: SQLite date functions behave differently than PostgreSQL
-        # In production with PostgreSQL, this would return the correct counts
-        # For now, verify the endpoint works and returns correct structure
-        assert data["total_clicks"] >= 0
+        # The real counts, on SQLite too: days are bounded by UTC instants, not SQL's date(),
+        # which returns a string on SQLite (server/utils/local_days.py). Oldest day first.
+        assert data["total_clicks"] == 15
+        assert [stat["clicks"] for stat in data["stats"]] == [0, 0, 5, 4, 3, 2, 1]
         assert isinstance(data["total_clicks"], int)
         # Verify structure
         assert "date" in data["stats"][0]

@@ -1,7 +1,21 @@
 """Network address helpers — IP anonymization and proxy trust resolution."""
 
+import hashlib
+import hmac
 import ipaddress
 from collections.abc import Iterable
+
+from pydantic import SecretStr
+from starlette.requests import Request
+
+from server.core.config import settings
+
+# Phase 6.3 — the viewer's address, as CloudFront sends it to the origin.
+VIEWER_ADDRESS_HEADER = "cloudfront-viewer-address"
+# What a visit stores without an address: every visit imported from Shlink, which exposes
+# none, and one whose address couldn't be read. It's no one in particular, so it never counts
+# as a unique visitor (`_distinct_visitors`, server/app/analytics.py).
+UNKNOWN_IP = "unknown"
 
 
 def anonymize_ip(addr: str | None) -> str | None:
@@ -62,3 +76,109 @@ def resolve_client_ip(
         if not _addr_in_any_cidr(hop, trusted):
             return hop
     return hops[0] if hops else socket_addr
+
+
+def viewer_address(value: str | None) -> str | None:
+    """
+    Phase 6.3 — the IP in a `CloudFront-Viewer-Address` header, or None if it doesn't
+    parse. The header is the address and the viewer's source port: `198.51.100.10:46532`,
+    and an IPv6 address unbracketed, so the port follows the last colon
+    (`2001:db8::1:46532`). A bracketed `[2001:db8::1]:46532` is read too.
+    """
+    if not value:
+        return None
+    host, colon, port = value.strip().rpartition(":")
+    if not colon or not port.isdigit():
+        return None
+    if host.startswith("[") and host.endswith("]"):
+        host = host[1:-1]
+    try:
+        return str(ipaddress.ip_address(host))
+    except ValueError:
+        return None
+
+
+def _canonical_ip(value: str) -> str | None:
+    try:
+        return str(ipaddress.ip_address(value))
+    except ValueError:
+        return None
+
+
+def cloudfront_viewer(viewer_header: str | None, forwarded_for: str | None) -> str | None:
+    """
+    Phase 6.3 — the viewer's IP from `CloudFront-Viewer-Address`, if it's the address
+    CloudFront appended to X-Forwarded-For: second from the right, since the ALB appends
+    the edge after it ("append", its default X-Forwarded-For mode).
+
+    CloudFront writes both from the same connection, so they differ only when one isn't
+    CloudFront's: an origin request policy that doesn't add CloudFront's headers
+    (AllViewer) forwards the viewer's own `CloudFront-Viewer-Address`, or the ALB stopped
+    appending. Then None, and X-Forwarded-For decides. Compared in canonical form. It
+    takes both going wrong at once to believe a forged address: with the ALB not
+    appending, the entry second from the right can be one the viewer sent.
+    """
+    viewer = viewer_address(viewer_header)
+    hops = [hop.strip() for hop in (forwarded_for or "").split(",") if hop.strip()]
+    if viewer is None or len(hops) < 2 or _canonical_ip(hops[-2]) != viewer:
+        return None
+    return viewer
+
+
+def _digest(value: str) -> bytes:
+    return hashlib.sha256(value.encode()).digest()
+
+
+def came_through_cloudfront(presented: str | None, secrets: Iterable[SecretStr]) -> bool:
+    """
+    Phase 6.3 — whether a request carries the distribution's secret origin header.
+
+    Compared as SHA-256 digests with `hmac.compare_digest`, so the time taken says
+    nothing about a secret, its length included; every value is compared, whichever
+    matches.
+    """
+    if not presented:
+        return False
+    digest = _digest(presented)
+    matched = False
+    for secret in secrets:
+        matched |= hmac.compare_digest(digest, _digest(secret.get_secret_value()))
+    return matched
+
+
+def client_ip(request: Request) -> str:
+    """
+    Phase 6.3 — the client's IP: what the rate limits count, and what a visit is stored
+    with (`visit_ip`). The one place that decides it.
+
+    Behind CloudFront (shurly.griddo.io, 4.10) the ALB's peer is a CloudFront edge, and
+    X-Forwarded-For's rightmost untrusted address is the edge's. CloudFront sends the
+    viewer's own address in `CloudFront-Viewer-Address`, believed only on a request that
+    carries the distribution's secret origin header: the ALB is shared and reachable
+    directly, and anyone can send the viewer header, but not the secret. And only when
+    it's the address CloudFront appended to X-Forwarded-For (`cloudfront_viewer`).
+    Otherwise, and when that header is missing or doesn't parse, `resolve_client_ip`.
+    """
+    headers = request.headers
+    forwarded_for = headers.get("x-forwarded-for")
+    if settings.cloudfront_origin_secrets and came_through_cloudfront(
+        headers.get(settings.cloudfront_origin_header), settings.cloudfront_origin_secrets
+    ):
+        viewer = cloudfront_viewer(headers.get(VIEWER_ADDRESS_HEADER), forwarded_for)
+        if viewer is not None:
+            return viewer
+    return resolve_client_ip(
+        request.client.host if request.client else None,
+        forwarded_for,
+        settings.trusted_proxies,
+    )
+
+
+def visit_ip(request: Request) -> str:
+    """
+    The address a visit, or an orphan visit, is stored with: `client_ip`, then
+    anonymized (Phase 3.9.5) unless ANONYMIZE_REMOTE_ADDR is off. Resolved first:
+    truncating a proxy's address would store the wrong network.
+    """
+    ip = client_ip(request)
+    return anonymize_ip(ip) if settings.anonymize_remote_addr else ip

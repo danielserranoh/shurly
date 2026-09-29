@@ -20,7 +20,7 @@ shared ALB (eu-south-2) — created by ECS Express for Shlink, reused for Shurly
    ├─ priority 11 → shlink-web      → links.griddo.io
    └─ priority 12 → shurly-api      → shurly.griddo.io (the app, API, MCP), s.griddo.io (interim, until Phase 8)
         ↓
-        Fargate task (ARM64, 0.25 vCPU / 0.5 GB)
+        Fargate task (x86_64, 0.25 vCPU / 0.5 GB)
         FastAPI + uvicorn  ⇄  RDS PostgreSQL t4g.micro
                                  (private inside the default VPC)
 ```
@@ -46,7 +46,8 @@ Decided 2026-09-28. Nothing was published on `s.griddo.io`, so it goes at the Ph
 
 - AWS CLI configured with two SSO profiles (`griddo-main`, `griddo-production`).
 - Docker (BuildKit + buildx). On Apple Silicon, `linux/arm64` builds are native; on x86_64 hosts buildx falls back to QEMU emulation, which works but is slower.
-- Python 3.10+, `uv`, and the project deps installed locally for the test step inside `scripts/deploy_ecs.sh`.
+- Python 3.10+ and `uv`, to run the tests before the first deploy: `scripts/deploy_ecs.sh` doesn't run them
+  (the deploy workflow does, before every later one).
 - Existing infrastructure already provisioned in `griddo-main` for the Shlink deploy (we reuse it):
   - Default VPC `vpc-01b31e19aa032bcff`
   - IAM roles `ecsTaskExecutionRole` and `ecsInfrastructureRoleForExpressServices`
@@ -133,10 +134,12 @@ cat > .env <<EOF
 DB_HOST=<from create_rds.sh output>
 DB_PASSWORD=<from create_rds.sh output>
 JWT_SECRET_KEY=<from step 3>
-CORS_ORIGINS=["https://shurly.griddo.io"]
 EOF
 chmod 600 .env  # avoid accidental git add
 ```
+
+`CORS_ORIGINS` is left out: the script defaults it to `'[]'`, as the frontend shares the API's host (§ CORS).
+To set one, single-quote the JSON (`CORS_ORIGINS='["http://localhost:4232"]'`), or `source` mangles it.
 
 Then deploy:
 
@@ -146,10 +149,14 @@ AWS_PROFILE=griddo-main ./scripts/deploy_ecs.sh
 
 The script:
 - Creates the ECR repository `shurly-api` if needed (with image scanning + immutable tags).
-- Builds the container for `linux/arm64` and pushes by SHA.
+- Builds the container for `linux/amd64` and `linux/arm64` (Fargate runs the first) and pushes it tagged
+  `<sha>-<timestamp>`.
 - Calls `aws ecs create-express-gateway-service` with all Phase 3.9/3.10 settings as env vars, `--cpu 256 --memory 512`, healthcheck `/api/v1/health`, scaling 1–2 tasks, and Shlink's existing IAM roles.
 - Tolerates the documented `--monitor-resources` timeout (Shlink lesson #2) and verifies via `describe-express-gateway-service`.
-- On subsequent runs, the script detects the service exists and calls `update-express-gateway-service` instead — Express Mode handles the blue/green target group rotation.
+- **Creates only.** Once the service exists, the script stops before building anything: an update would send
+  the container it builds, whose environment holds only the variables above, and drop every setting added on
+  the service since. Later images go out with the deploy workflow (§ CI/CD with OIDC), which changes only the
+  image; settings change on the live service (§ Settings, under Sign in with Google).
 
 Smoke the auto-generated host:
 
@@ -362,7 +369,7 @@ That's the only secret needed. No `AWS_ACCESS_KEY_ID`, no `AWS_SECRET_ACCESS_KEY
 
 ### Workflow trigger
 
-`deploy-backend.yml` is `workflow_dispatch`-only by default. Once the first manual deploy works end-to-end, optionally re-enable `push: branches: [main]` to get continuous delivery.
+`deploy-backend.yml` deploys on every push to `main`. `main` is branch-protected (a PR with passing tests), so a commit that lands there has already passed that gate. It also runs by hand from the Actions tab (`workflow_dispatch`), for a rollback or a redeploy.
 
 ---
 
@@ -377,14 +384,21 @@ Function and this section. The AWS resources below are still to be created (ROAD
 
 | Path pattern | Origin | Cache policy | Origin request policy | Function |
 |---|---|---|---|---|
-| `/api/*` | the ALB | CachingDisabled | AllViewer | — |
-| `/mcp*` | the ALB | CachingDisabled | AllViewer | — |
-| `/.well-known/*` | the ALB | CachingDisabled | AllViewer | — |
-| `/docs*`, `/redoc`, `/openapi.json` | the ALB | CachingDisabled | AllViewer | — |
+| `/api/*` | the ALB | CachingDisabled | AllViewerAndCloudFrontHeaders-2022-06 | — |
+| `/mcp*` | the ALB | CachingDisabled | AllViewerAndCloudFrontHeaders-2022-06 | — |
+| `/.well-known/*` | the ALB | CachingDisabled | AllViewerAndCloudFrontHeaders-2022-06 | — |
+| `/docs*`, `/redoc`, `/openapi.json` | the ALB | CachingDisabled | AllViewerAndCloudFrontHeaders-2022-06 | — |
 | Default (`*`) | the S3 bucket, with Origin Access Control | CachingOptimized | — | `static-paths`, viewer request |
 
-- **ALB behaviours:** all HTTP methods (the API takes `POST`, `PUT`, `PATCH`, `DELETE`). AllViewer forwards the `Host`
-  header (`shurly.griddo.io`), so the ALB's host rule (priority 12) and its certificate match as they do today.
+The client IP assumes the ALB's X-Forwarded-For processing mode is **append**, its default
+(`routing.http.xff_header_processing.mode`): the edge's address goes after the one CloudFront appended (§ Client IPs
+behind CloudFront).
+
+- **ALB behaviours:** all HTTP methods (the API takes `POST`, `PUT`, `PATCH`, `DELETE`). The origin request policy
+  forwards the `Host` header (`shurly.griddo.io`), so the ALB's host rule (priority 12) and its certificate match as
+  they do today, and it adds `CloudFront-Viewer-Address`, the client IP (§ Client IPs behind CloudFront). Not plain
+  AllViewer: under it, any `CloudFront-*` header that reaches the app is the viewer's own.
+- **The ALB origin:** HTTPS only, with the custom origin header `X-Origin-Verify` (§ Client IPs behind CloudFront).
 - **What each path is:** `/mcp*` covers the bare `/mcp` (the API's 308 to `/mcp/`), the MCP itself and its OAuth
   endpoints (`/mcp/authorize`, `/mcp/token`, …). `/.well-known/*` carries the OAuth metadata (5.8).
 - **Short links:** they live on `s.griddo.io` and later `go.griddo.io`, which keep going straight to the ALB. On
@@ -425,8 +439,51 @@ Add a response-headers policy on the default behaviour with:
 - `Referrer-Policy: strict-origin-when-cross-origin`
 - `X-Frame-Options: DENY`
 
-The Content-Security-Policy is a separate item: the inline sign-in guards in `BaseLayout.astro` need hashes
-computed at build time.
+### Content-Security-Policy (Phase 6.3)
+
+The Content-Security-Policy is not in this headers policy: **it ships with the build.** Every page carries
+`<meta http-equiv="content-security-policy">`, written by Astro (`security.csp` in `astro.config.mjs`) with the
+hashes of the scripts it emits. Those hashes change whenever the code does, so they belong with the pages, not in a
+CloudFront setting that would need updating on every deploy. The policy:
+
+| Directive | Value | Why |
+|---|---|---|
+| `script-src` | `'self'` plus hashes | Bundled scripts, and the inline ones in `src/inline-scripts.mjs`: the sign-in guards and the Settings tab picker. No `'unsafe-inline'`, no `'unsafe-eval'` |
+| `style-src` | `'self'` plus hashes | `<style>` elements only by hash |
+| `style-src-attr` | `'unsafe-inline'` | Style attributes are set from data (chart widths, tag colours), and no hash can cover an attribute |
+| `img-src` | `'self' https: data: blob:` | Link previews from any site, small assets the build inlines, the QR code's PNG export |
+| `font-src` | `'self' data:` | The build inlines one small font |
+| `connect-src` | `'self'` plus the origin of `PUBLIC_API_URL` | The API: the same origin in production |
+| `default-src`, `base-uri`, `form-action` | `'self'` | |
+| `object-src` | `'none'` | |
+| `require-trusted-types-for` | `'script'` | The DOM's HTML sinks (`innerHTML` and the like) take TrustedHTML only, not strings |
+| `trusted-types` | `shurly-html` | The one policy allowed: `src/utils/html.ts`, behind `setHTML` and `toElement` |
+
+- **Trusted Types:** the only way to put markup into the page is `setHTML` or `toElement` (`src/utils/html.ts`).
+  They pass it through the one policy, `shurly-html`, and escape anything that isn't markup from the escaping
+  `html` tag.
+  - A raw `el.innerHTML = '…'` anywhere else throws, and so does creating any other policy or a second one.
+  - Browsers without Trusted Types ignore both directives, and the markup stays a string.
+  - `frontend/tests/no-raw-html.test.mjs` fails on a `createPolicy` outside `html.ts`.
+- **What a `<meta>` policy can't do:** it can't set `frame-ancestors`. `X-Frame-Options: DENY` above covers
+  framing.
+- **Placement:** a `<meta>` policy only governs what comes after it. Astro writes it at the end of `<head>`, so the
+  inline guards run first in `<body>`, still before anything paints.
+- **The build check:** `npm run build` ends with `scripts/check-csp.mjs`, and the build fails if any page:
+  - lacks the policy;
+  - has a script or preload before it;
+  - has an inline script or `<style>` its hashes don't cover;
+  - has an inline event handler or a `javascript:` URL;
+  - lacks `require-trusted-types-for 'script'` or `trusted-types shurly-html`, or allows `default`, `*` or
+    `'allow-duplicates'`.
+
+  It also fails unless exactly one built script chunk defines the policy. Two chunks would mean `html.ts` was
+  bundled twice, and a page loading both would throw at the second `createPolicy`.
+
+  Then `scripts/check-dev-only.mjs` fails the build if a script carries development-only code: the link
+  analytics' mock (`&mock` under `astro dev`, Phase 3.16), found by its marker or its chunk's name.
+- **Local testing:** `astro dev` has no CSP (an Astro limitation). To see it, run `npm run build` and then
+  `npx astro preview`, with `PUBLIC_API_URL` pointing at a running API.
 
 ### Certificate
 
@@ -546,27 +603,58 @@ app and the API are now the same origin (§ CORS).
 **Rollback:** point the alias back to the ALB. Its host rule and its certificate stay in place, so the API
 answers as before. The pages come back with the next attempt.
 
-### Client IPs behind CloudFront: an open decision
+### Client IPs behind CloudFront (Phase 6.3)
 
-Once `shurly.griddo.io` goes through CloudFront, two paths reach the ALB:
+Two paths reach the ALB: **directly**, for `s.griddo.io` and later `go.griddo.io`, and **through CloudFront**, for
+`shurly.griddo.io` (the API and the MCP). Through CloudFront, the ALB's peer is an edge, and the last address in
+`X-Forwarded-For` is the edge's: the rate limits would count edges instead of people.
 
-- **direct**, for `s.griddo.io` and later `go.griddo.io`;
-- **through CloudFront**, for `shurly.griddo.io`: the API and the MCP.
+So the app takes the client IP from `CloudFront-Viewer-Address`, but only on a request that proves it came through
+the distribution by carrying a secret that the distribution adds as a custom origin header (`client_ip`,
+`server/utils/network.py`). The ALB is shared and reachable directly: anyone can send `CloudFront-Viewer-Address`, but
+not the secret. Without the secret, and when the header is missing or doesn't parse, the client IP comes from
+`X-Forwarded-For` as before (§ Trusted-Proxy Configuration). The rate limits and the visit log both use it.
 
-Through CloudFront, the ALB's peer is a CloudFront edge, and the last address in `X-Forwarded-For` is that edge's.
-The resolver (§ Trusted-Proxy Configuration) takes the rightmost address that isn't a trusted proxy. It would
-therefore record, and rate-limit, CloudFront's edges instead of people. The options are backend and AWS work,
-not done here:
+The app also checks the address against the one CloudFront appended to `X-Forwarded-For`: second from the right,
+before the edge the ALB appends (its "append" mode, above). CloudFront writes both from the same connection, so they
+differ only when one isn't CloudFront's: an origin request policy that doesn't add CloudFront's headers, or an ALB
+that no longer appends. Then `X-Forwarded-For` decides, as without the secret. It would take both of those going
+wrong at once to believe a forged address.
 
-1. **Trust CloudFront's edge ranges** in `TRUSTED_PROXIES` (`ip-ranges.json`, `service=CLOUDFRONT`). It's a large
-   list, and it changes, so it needs refreshing.
-2. **Read `CloudFront-Viewer-Address`**, which CloudFront adds when the origin request policy includes it. It can
-   only be trusted on requests that provably came through CloudFront.
-3. **Prove that a request came through CloudFront.** Give the distribution a secret origin header that the API
-   (or the ALB rule for `shurly.griddo.io`) requires. Optionally, restrict that traffic to CloudFront's
-   origin-facing prefix list, `com.amazonaws.global.cloudfront.origin-facing`. With this in place, option 2 is
-   safe. The ALB is shared and still serves `s.griddo.io` and `go.griddo.io` directly, so the restriction has to
-   be per host, not a security group on the whole ALB.
+**The distribution:**
+
+- On the ALB origin, the custom origin header `X-Origin-Verify` with a random value of at least 32 characters
+  (`openssl rand -hex 32`). CloudFront overwrites a header of that name sent by a viewer.
+- Origin protocol **HTTPS only**, so the secret never crosses to the ALB in clear.
+- The origin request policy **AllViewerAndCloudFrontHeaders-2022-06** on every ALB behaviour (the table above), so
+  that CloudFront adds `CloudFront-Viewer-Address`. Under plain AllViewer, a `CloudFront-Viewer-Address` that reaches
+  the app is whatever the viewer sent, next to a genuine secret.
+
+**The task:**
+
+- `CLOUDFRONT_ORIGIN_SECRETS='["<value>"]'`, a JSON array. Until the secrets move to Secrets Manager (ROADMAP 6.3)
+  it's an ECS environment variable like the others. Its name contains `SECRET`, so the deploy log masks it. The app
+  never logs it, and printed settings show `**********`.
+- Each value needs at least 32 characters, or the app doesn't start.
+- `CLOUDFRONT_ORIGIN_HEADER` names the header: `X-Origin-Verify` by default.
+
+**Rotating the secret:**
+
+1. Give the task both values, `CLOUDFRONT_ORIGIN_SECRETS='["<new>","<old>"]'`, and deploy.
+2. Set the distribution's custom header to the new value, and wait for the distribution to deploy.
+3. Take the old value out of the task, and deploy.
+
+**Defence in depth, at the ALB (optional):** the ALB can refuse requests for `shurly.griddo.io` that skip
+CloudFront, so they never reach the app. The app doesn't depend on it. It has to be per host: the ALB is shared,
+priority 12 also serves `s.griddo.io`, and `s.griddo.io` and `go.griddo.io` are reached directly. So neither a
+condition on priority 12 nor a security group limited to CloudFront's origin-facing prefix list
+(`com.amazonaws.global.cloudfront.origin-facing`) will do. Instead:
+
+- A rule for `shurly.griddo.io` ahead of priority 12, with an `http-header` condition on `X-Origin-Verify` (both
+  values during a rotation), forwarding to Shurly. It must follow the active target group, so it goes in the rule-sync
+  Lambda's `RULE_SYNC_MAP` too (§ 6). The Lambda only changes a rule's actions, so the condition stays.
+- After it, a rule for `shurly.griddo.io` answering a fixed `403`.
+- Priority 12 then serves only `s.griddo.io`.
 
 ### Check after the first deploy
 
@@ -575,6 +663,10 @@ not done here:
 - `/login` answers `301` to `/login/`.
 - `/api/v1/health` answers with JSON, through CloudFront.
 - `/mcp/` answers `401` with `WWW-Authenticate`.
+- The client IP is yours, not the edge's, and a forged one is ignored: 21 failed `POST /api/v1/auth/login`
+  through CloudFront, each with another email and another `CloudFront-Viewer-Address: 6.6.6.N:1`, and the 21st
+  answers `429` (`RATE_LIMIT_LOGIN_PER_IP` is 20). A request straight to the ALB for `shurly.griddo.io` without the
+  secret gets `403` if the ALB rule is in place.
 - An `_astro/` file's `Cache-Control` is `immutable`, and a page's is `max-age=0`.
 
 ## Cost estimation (eu-south-2, monthly)
@@ -585,7 +677,7 @@ not done here:
 | ECS Fargate task (0.25 vCPU, 0.5 GB) | ~$9 |
 | ALB (shared with Shlink) | $0 marginal |
 | ECR (one image, ~200 MB) | <$0.10 |
-| CloudWatch Logs (30-day retention) | ~$0.50 |
+| CloudWatch Logs (60-day retention) | ~$0.50 |
 | Route 53 query traffic | ~$0.20 |
 | ACM certificate | $0 |
 | Lambda + EventBridge for ALB rule sync | $0 (free tier) |
@@ -602,9 +694,11 @@ Mitigations if cost ever pinches:
 
 ## GDPR posture
 
-Visitor logging is privacy-first by default, configured via env vars:
+Visitor logging is privacy-first by default, configured via env vars (every variable, with its default and meaning:
+[docs/ENVIRONMENT.md](docs/ENVIRONMENT.md)):
 
-- **`ANONYMIZE_REMOTE_ADDR=true`** (default): IPv4 truncated to `/24`, IPv6 to `/64` at insert time. Truncation happens in `server/utils/network.py::anonymize_ip` before the `Visitor` row is committed — full addresses never reach Postgres.
+- **`ANONYMIZE_REMOTE_ADDR=true`** (default): IPv4 truncated to `/24`, IPv6 to `/64` at insert time. Truncation happens in `server/utils/network.py::anonymize_ip` before the `Visitor` row is committed — full addresses never reach Postgres. The client IP is resolved first and truncated after (`visit_ip`), for orphan visits too.
+- **A visit's country (Phase 8.4)** is looked up from the address that's stored: the anonymized one when `ANONYMIZE_REMOTE_ADDR` is on. The lookup never sees more than what's kept, and only the country, an ISO code, is stored: no city, no coordinates. The cost: a country range finer than a `/24` (rare in the data) can give no country or the wrong one. The lookup runs in process against a file, with no network call (§ Geolocation data).
 - Bots and email tracking pixels share the `visits` table but carry `is_bot` / `is_pixel` flags so click analytics exclude them by default.
 - Tracking pixel responses set `Cache-Control: no-store` so HTML email clients re-fetch on every open.
 - The `User.api_key_scope` enum is in place so post-launch role rollouts (`READ_ONLY`, `CREATE_ONLY`, `DOMAIN_SPECIFIC`) ship without a destructive migration; only `FULL_ACCESS` is enforced today.
@@ -627,19 +721,19 @@ TRUSTED_PROXIES='["172.31.0.0/16"]'
 
 The resolver (`server/utils/network.py::resolve_client_ip`) checks the request's source against every CIDR; only when it matches does it read `X-Forwarded-For`, and then from the right: each proxy appends the address it saw, so the first entry from the right that isn't a trusted proxy is the client. The left end is whatever the client sent, so it's never trusted (before Phase 6.3 it was, and a client could choose the address the visit was recorded under). Outside the allowlist the socket address wins.
 
-Behind CloudFront (`shurly.griddo.io`, Phase 4.10) this needs a decision first: see § Frontend hosting, "Client IPs behind CloudFront".
+Behind CloudFront (`shurly.griddo.io`, Phase 4.10) the client IP comes from `CloudFront-Viewer-Address` instead, on requests that prove they came through the distribution: § Frontend hosting, "Client IPs behind CloudFront". Don't add CloudFront's ranges here.
 
 ## Rate limits (Phase 6.3)
 
 What anyone can call is limited per client IP, counted in the database (`rate_limits`) so both tasks share the counts: the password login (every attempt runs a bcrypt check, on the tasks that also serve redirects) and the Google and MCP sign-in endpoints (each request writes a row). Redirects, anything signed in and CORS preflights are never limited.
 
-- **`TRUSTED_PROXIES` must name the ALB** (`["172.31.0.0/16"]` in production): the limits key on the client IP it resolves. Unset, every request seems to come from the ALB, and each per-IP limit becomes one limit for everybody.
+- **`TRUSTED_PROXIES` must name the ALB** (`["172.31.0.0/16"]` in production): the limits key on the client IP it resolves. Unset, every request seems to come from the ALB, and each per-IP limit becomes one limit for everybody. Behind CloudFront, `CLOUDFRONT_ORIGIN_SECRETS` too (§ Frontend hosting), or everyone behind the same edge shares one count.
 - Settings, per minute unless said otherwise; `0` turns one off:
 
   | Variable | Default | Limits |
   |---|---|---|
   | `RATE_LIMIT_LOGIN_PER_IP` | `20` | `POST /api/v1/auth/login` |
-  | `RATE_LIMIT_LOGIN_FAILURES_PER_ACCOUNT` | `10` | Failed password logins per address, per 15 minutes |
+  | `RATE_LIMIT_LOGIN_FAILURES_PER_ACCOUNT` | `10` | Failed password checks per address, per 15 minutes: logins, and the current password given to `POST /api/v1/auth/change-password` or `PUT /api/v1/auth/password` |
   | `RATE_LIMIT_SIGN_IN_PER_IP` | `30` | Google's sign-in (`/api/v1/auth/google/*`), the MCP's sign-in pages (`/mcp/authorize`, `/mcp/consent`, `/mcp/auth/callback`) and `POST /auth/register` |
   | `RATE_LIMIT_MCP_CLIENTS_PER_IP` | `60` | `/mcp/register` and `/mcp/token`, which claude.ai calls from Anthropic's addresses, shared by everybody |
 
@@ -657,8 +751,9 @@ methods (`GET`, `POST`, `PUT`, `PATCH`, `DELETE`) and request headers (`Authoriz
 - **Production needs no cross-origin entry** once the frontend is hosted (4.10): it and the API share one
   host (the Hostnames table under Architecture), so the browser makes no cross-origin calls. Set
   `CORS_ORIGINS='[]'` then, unless the frontend is served from another origin.
-- **Today's production value lists `https://shurl.griddo.io`, a host that doesn't exist.** It's harmless
-  (no browser comes from there) but wrong; it gets corrected at the release.
+- **Production's value since release #81 (2026-09-28) is `["http://localhost:4232"]`.** It listed
+  `https://shurl.griddo.io`, a host that doesn't exist, until then. Localhost stays for running the frontend
+  locally against production until 4.10.
 - Locally the defaults cover the dev server (`http://localhost:4232`) on another port, so the middleware
   stays.
 
@@ -672,7 +767,9 @@ An API key is kept as its SHA-256 hash and its first 12 characters (`users.api_k
   `users.api_key`, where the previous release looks keys up: while its task still serves, an API key
   gets a 401 from it. The same key works again once the rollout ends. JWTs and signing in with Google
   aren't affected.
-- `users.api_key`, empty from then on, is dropped in a later release, once no running task reads it.
+- `users.api_key`, empty from then on, is no longer mapped from the release after `0007`'s: the ORM named it in every
+  SELECT and INSERT of a user. The release after that drops it (`0011`). Not sooner: a task still running the
+  previous release would fail every user query mid-rollout.
 - A downgrade past `0007` can't give the keys back: everyone generates a new one.
 
 ## Sign in with Google (Phase 3.13)
@@ -687,7 +784,8 @@ Done once, by whoever administers Google Workspace (ROADMAP 3.13.2). Step by ste
 [docs/setup_google_app.md](docs/setup_google_app.md).
 
 1. A Google Cloud project inside the griddo.io organization.
-2. OAuth consent screen **Internal**, so only Griddo accounts can sign in. Scopes: `openid`, `email`.
+2. OAuth consent screen **Internal**, so only Griddo accounts can sign in. Scopes: `openid`, `email` and
+   `profile`: the web sign-in asks for `profile` to name a new account (3.12); the MCP's, for the first two.
 3. An OAuth client of type **Web application**, with the authorized redirect URI
    `https://shurly.griddo.io/api/v1/auth/google/callback` (the MCP proxy's joins it in 5.8).
 4. The client secret goes to Secrets Manager (6.3), never into the repo or a task definition in clear.
@@ -708,11 +806,13 @@ Done once, by whoever administers Google Workspace (ROADMAP 3.13.2). Step by ste
   `{FRONTEND_URL}/login/#error=google_unavailable`, or answer `503` when `FRONTEND_URL` isn't set
   either. The rest of the app works as before, password logins included. An empty
   `ORGANIZATION_DOMAIN` keeps it off: it would let any Google account in, Gmail included.
-- `CORS_ORIGINS` must include the frontend's origin: the page `POST`s the one-time code to
-  `/api/v1/auth/google/exchange`.
+- The page `POST`s the one-time code to `/api/v1/auth/google/exchange`. In production that's the same origin
+  (`shurly.griddo.io`), so `CORS_ORIGINS` needs no entry for it (§ CORS); a frontend served from another origin
+  needs its origin listed.
 - **Where they go:** the GitHub deploy keeps the live service's environment and swaps only the image,
   so add these variables to the live ECS config ([docs/setup_google_app.md](docs/setup_google_app.md),
-  step 7). `scripts/deploy_ecs.sh` only builds the environment when the service is first created.
+  step 7). Changing it starts a deployment. `scripts/deploy_ecs.sh` only creates the service, and stops once
+  it exists.
 - To rotate the client secret: add a new secret to the OAuth client, update Secrets Manager, redeploy,
   then delete the old secret in Google Cloud.
 
@@ -765,13 +865,172 @@ Google client and `ORGANIZATION_DOMAIN` above:
 
 ---
 
+## People: joining, roles and leaving (Phase 3.14)
+
+For the rollout to the team (ROADMAP 5.6.1). People join by themselves, and an owner manages roles and removals in the
+app, in Settings → Organization. Only bringing back someone who was removed needs the database.
+
+### Before anyone joins
+
+- **Sign in with Google is set up** (§ Sign in with Google): `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`,
+  `GOOGLE_REDIRECT_URI`, `FRONTEND_URL` and `ORGANIZATION_DOMAIN`.
+- **`ORGANIZATION_DOMAIN`** is the Google Workspace domain whose accounts get in (`griddo.io`), and
+  **`ORGANIZATION_NAME`** is what the app calls the organization (`Griddo`).
+- **`BOOTSTRAP_OWNER_EMAIL`** names the first owner. That account becomes owner when it joins an organization without
+  one, and at every start of the app, if no owner is left, it's made owner again (break-glass). Set it to whoever runs
+  the rollout, and have them sign in first.
+- **`ALLOW_PASSWORD_SIGNUP` stays off**: accounts come from Google.
+
+### Joining
+
+There's no invitation list: anyone with an account on the domain who has the address can sign in. Send people the
+app's `/login/` page, and they choose Sign in with Google with their work account.
+
+- **Google vouches for them:** the address has to be verified, and the account's Workspace domain (`hd`) has to be
+  `ORGANIZATION_DOMAIN`. Otherwise the login page says only the organization's accounts can sign in, or that Google
+  hasn't verified the address.
+- **The first sign-in makes the account** and adds it to the organization as a **member**, with the names Google has
+  for them as their profile.
+- **An account made before sign-in with Google** (with a password) is linked the first time its owner signs in with
+  Google, and loses its password, its API key and its other sessions: nobody had verified that address.
+- For their first 14 days, the dashboard opens with a welcome: where to start, and connecting Claude.
+
+### Roles
+
+| Role | Can |
+|---|---|
+| member | Make links and campaigns, see the organization's, and change what they made |
+| admin | Also change and delete anyone's organization links and campaigns, and remove members |
+| owner | Also change roles, hand the role over, see who was removed and move their personal links to the organization |
+
+- **Owners change roles**, in Settings → Organization: anyone's but another owner's, to member, admin or owner. Nobody
+  raises their own role; anyone can lower it. Owners step down themselves.
+- **Hand over ownership** makes someone owner and the person handing it over an admin, in one change.
+- **There's always an owner:** the last one can't step down, and owners can't be removed. Make a second owner early
+  (ROADMAP: two owners from day one).
+- **Personal links and campaigns** stay their maker's: nobody else sees them, admins and owners included.
+
+### Leaving
+
+- **An admin or an owner removes someone below their role**: Settings → Organization, then Remove from organization.
+  Nobody removes themselves.
+- **Removing closes the account.** They can't sign in again, their API key is gone, and their sessions and the MCP's
+  sign-ins stop working at their next request. Their links keep working for whoever has them.
+- **What they made:** their organization links and campaigns stay the organization's. Their personal ones stay theirs,
+  seen by nobody, until an owner moves them to the organization from Removed people (Move to Griddo), then or later.
+- **Bringing someone back isn't in the app.** It's a database change, `users.is_active` back to true. The app's next
+  start makes them a member again: their role and their API key don't come back.
+
+### The rollout, step by step
+
+1. The first owner (`BOOTSTRAP_OWNER_EMAIL`) signs in, and Settings → Organization shows them as owner.
+2. Send each person the app's address, the manual (`/manual/`) and, for Claude, `/manual/install-mcp/`.
+3. As they sign in, they appear in Settings → Organization as members. Make a second owner.
+4. Watch the signal: § What the web app is used for, `client.error` in § Error alerting, and the MCP's `mcp.tool_call`
+   queries (`mcp_server/README.md` § Usage log).
+
+## Error alerting (Phase 6.4)
+
+The app writes one JSON line per request (`http.request`, with its `status`) to the task's log group,
+`/aws/ecs/default/shurly-api-5fdb`. A generated MCP tool calls the API in-process, so its failures get a line too.
+Alerting therefore needs no code: a CloudWatch metric filter counts the errors, an alarm watches the count, and SNS
+sends the email. None of it is set up yet (ROADMAP 6.4).
+
+| Metric filter | Pattern | Alarm |
+|---|---|---|
+| `shurly-5xx` | `{ $.event = "http.request" && $.status >= 500 }` | Sum ≥ 5 in 5 minutes |
+| `shurly-rate-limit-store` | `{ $.event = "rate_limit.store_failed" }` | Sum ≥ 1 in 5 minutes: the limits are letting everything through |
+| `shurly-client-errors` | `{ $.event = "client.error" }` | Sum ≥ 10 in 15 minutes: the web app is breaking in people's browsers |
+
+- Each filter publishes a metric in namespace `Shurly`, value `1`, default `0`. The alarms notify an SNS topic with
+  an email subscription.
+- The ALB's `HTTPCode_Target_5XX_Count` and `HTTPCode_ELB_5XX_Count` catch a task that doesn't answer at all.
+- MCP tool errors (`{ $.event = "mcp.tool_call" && $.outcome = "error" }`) include invalid input, a 4xx. They belong
+  on a dashboard, not an alarm (`mcp_server/README.md` § Usage log).
+- **Browser errors** are `client.error` lines: the web app reports an uncaught error, a rejected promise, or a CSP or
+  Trusted Types block (`POST /api/v1/client-errors`, `server/app/client_errors.py`). Each has its `kind`, `message`,
+  `source` (script:line:column) and `page` (the path, never its query), and the account's `user_id` when signed in.
+  Never an IP. A page sends 5 at most; `RATE_LIMIT_CLIENT_ERRORS_PER_IP` caps an address. Which ones, most first:
+  ```
+  filter event = "client.error"
+  | stats count(*) as reports, count_distinct(user_id) as people by kind, message, page
+  | sort reports desc
+  ```
+
+### When it fires (runbook stub)
+
+1. **Which requests fail.** In Logs Insights:
+   ```
+   filter event = "http.request" and status >= 500
+   | stats count(*) as errors by path, status
+   | sort errors desc
+   ```
+   Then follow one `request_id`: `filter request_id = "…"` shows its `http.request` line, the `mcp.tool_call` line if
+   it came through the MCP, and the traceback next to them.
+2. **Did a deploy just happen?** Check the service's events and the last backend deploy. If the errors started with
+   it, roll back by redeploying the previous image (§ Workflow trigger).
+3. **Is the database there?** `GET /api/v1/health/db`, then RDS's connections and CPU.
+4. **Write it down** in the troubleshooting catalog (`docs/AWS_ECS_DEPLOYMENT.md`): the symptom, the cause and the
+   fix.
+
+### What the web app is used for (the dogfood, ROADMAP 5.6.1)
+
+The MCP's usage is in `mcp.tool_call` lines (`mcp_server/README.md` § Usage log). The web app's is in the API's
+`http.request` lines, one per call it makes, with the path and the status: no user, so they count uses, not people.
+
+- Calls per part of the API:
+  ```
+  filter event = "http.request" and status < 400 and path like /^\/api\/v1\//
+  | parse path /^\/api\/v1\/(?<area>[a-z-]+)/
+  | stats count(*) as calls by method, area
+  | sort calls desc
+  ```
+- Links and campaigns made, by week:
+  ```
+  filter event = "http.request" and method = "POST" and status = 201 and (path = "/api/v1/urls" or path = "/api/v1/campaigns")
+  | stats count(*) as made by path, bin(7d)
+  ```
+- A link's and a campaign's analytics, tab by tab (`timeseries` is By time; `breakdown` By context and By location;
+  `visits` and `recipients` their lists), and the CSVs downloaded:
+  ```
+  filter event = "http.request" and status < 400 and path like /^\/api\/v1\/analytics\/(urls|campaigns)\//
+  | parse path /\/(?<what>totals|timeseries|breakdown|visits|visits\.csv|recipients|recipients\.csv)$/
+  | stats count(*) as calls by what
+  | sort calls desc
+  ```
+
+## Geolocation data (Phase 8.4)
+
+A visit's country comes from DB-IP's IP to Country Lite database (CC BY 4.0: pages that show countries credit DB-IP),
+which the image carries at `/app/data/dbip-country-lite.mmdb`. `GEOIP_DATABASE` names it; empty turns lookups off.
+
+- **The build fetches it** (`scripts/fetch_geoip.py`, the dockerfile's `geoip` stage): this month's file, or last
+  month's until this month's is out. It's installed only if it opens and places 8.8.8.8 in the US. Every release
+  therefore carries a recent one; DB-IP publishes monthly.
+- **Without it, the build still succeeds** and visits have no country. The deploy job warns on the run's page
+  (`No geolocation data`), and the app logs `geo.database_missing` once at startup. The next release fetches it again.
+- **Locally:** `uv run python scripts/fetch_geoip.py` puts it in `data/` (git-ignored). Without it, countries are null.
+
+## Moving Shlink's links (Phase 8.4)
+
+Three commands, `python -m server.tools.shlink export | review | import`, each from the previous one's file
+(`server/tools/shlink/README.md`). Snapshots can hold personal data: keep them in `_exchange/` or an encrypted
+store, never in the repository.
+
+- **The import writes to the database the `DB_*` settings name.** Always run it with `--dry-run` first.
+- **How it runs against the private RDS is still open (decision B, ROADMAP 8.4).** The recommendation is a one-off
+  ECS task running the same image. Until that's decided, rehearse locally against a restored copy.
+- **With `--visits`,** imported visits carry ip "unknown". Unique-visitor counts cover the cutover onward only.
+
 ## Routine operations
 
 ### View logs
 
 ```bash
-aws logs tail /ecs/shurly-api --follow --region eu-south-2 --profile griddo-main
+aws logs tail /aws/ecs/default/shurly-api-5fdb --follow --region eu-south-2 --profile griddo-main
 ```
+
+The log group keeps **60 days** (set 2026-09-28; `mcp_server/README.md` § Usage log has the command).
 
 ### Force a redeploy (e.g. after Lambda rule-sync change)
 
@@ -802,7 +1061,9 @@ PGPASSWORD=$DB_PASSWORD psql -h $DB_HOST -U $DB_USER -d $DB_NAME
 ### Rotate the JWT secret
 
 1. `JWT_SECRET_KEY=$(openssl rand -hex 32)`
-2. Update the env var in the ECS service (console or `aws ecs update-express-gateway-service`).
+2. Update the env var in the ECS service (console or `aws ecs update-express-gateway-service`). With the CLI,
+   start from the service's current container, as the deploy workflow does: `--primary-container` replaces
+   the whole environment, so one built from scratch drops every other setting.
 3. Force a redeploy. Existing JWTs will become invalid; clients will need to re-authenticate.
 
 ---

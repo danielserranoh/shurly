@@ -1,11 +1,13 @@
 # Shurly - Project Roadmap
 
 ## Project Overview
-Modern URL shortener for B2B campaigns with analytics, built for AWS serverless deployment.
+Modern URL shortener for B2B campaigns with analytics, running on AWS.
 
-**Target Domain**: `shurl.griddo.io`
+**Hosts**: `shurly.griddo.io` for the web, the app, the API and the MCP; `go.griddo.io` for short links, once
+Shurly replaces Shlink there (Phase 8). Until then test links live on `s.griddo.io`, deleted at the cutover.
 **Expected Volume**: ~100-150 URLs/month (20-50 standard + 1 campaign of ~100 users)
-**Deployment**: AWS Lambda + API Gateway + RDS PostgreSQL + S3 + CloudFront
+**Deployment**: ECS Express (Fargate, behind the shared ALB) + RDS PostgreSQL for the API and the MCP;
+S3 + CloudFront for the frontend (4.10, pending).
 
 ---
 
@@ -13,20 +15,32 @@ Modern URL shortener for B2B campaigns with analytics, built for AWS serverless 
 
 Order agreed in the 2026-09-27 review; confirm each item before starting it.
 
-1. **MCP usage log** (5.6.0): without it the dogfood produces no numbers. Code done; retention and saved queries
-   are an AWS step.
+1. **MCP usage log** (5.6.0): without it the dogfood produces no numbers. Code done, and the log group keeps
+   60 days (set 2026-09-28). Left: saving the Logs Insights queries in CloudWatch, an AWS step.
 2. ✅ **Organization and roles** (3.14): links belong to the organization by default; owner, admin and member.
    Done: API, MCP and frontend (Settings → Organization, the personal toggle, who created each link, removed
    people). Left: two owners from day one, once people have signed up.
-3. **Frontend hosting** (4.10): S3 + CloudFront; AWS steps run with SSO.
+3. **Frontend hosting** (4.10): S3 + CloudFront; AWS steps run with SSO. The deploy workflow is ready and runs on
+   merges to `main` that touch the frontend, but skips until the AWS side exists (`FRONTEND_BUCKET` unset), as it
+   did for release #81.
 4. **Identity**: sign in with Google Workspace, for the web (3.13) and the MCP (5.8). One Google project covers
-   both. The code of both is done (3.13's backend and frontend, 5.8); left: the Google project, hosting the
-   frontend (4.10) and wiring `shurly.griddo.io` (chosen 2026-09-28 for the app, API and MCP).
+   both. The code of both is done (3.13's backend and frontend, 5.8), and in production since release #81
+   (2026-09-28) on `shurly.griddo.io`, which the deploy's smoke test checks. The MCP's Google sign-in is live.
+   Left: the web's sign-in, which needs the hosted frontend (the sign-in ends on its `/login/`, 4.10), and the
+   end-to-end checks (3.13.6, 5.8).
 5. ✅ **MCP install guide**, in the app and in the user manual (5.9): `/manual/install-mcp/` and Settings → API &
    MCP. Its address comes from the build: `https://shurly.griddo.io/mcp/` once 4.10's production build sets
    `PUBLIC_API_URL`.
 6. **Internal dogfood** with the frontend and the MCP (5.6).
-7. **Replace Shlink on `go.griddo.io`** (Phase 8): after the dogfood and error alerting (6.4).
+7. **Replace Shlink on `go.griddo.io`** (Phase 8): after the dogfood and error alerting (6.4). Done on `dev`: a
+   link is its code and its domain (8.3); exporting, reviewing and importing Shlink's links and visits, and a
+   visit's country (8.4). Left: how the import runs in production (8.4, decision B), the `go.griddo.io` domain
+   row and switching the default to it (8.3), error alerting (6.4), and the cutover (8.5).
+
+Also landed on 2026-09-28, outside this list: the account profile (3.12: name, country, time zone and a photo;
+people by name in Settings → Organization and "Created by"), analytics days in the viewer's time zone (3.12.8),
+and a Content-Security-Policy and Trusted Types on every page (6.3). Release #81 took #65–#80; everything merged
+since (#82 on) is on `dev`, for the next release.
 
 Tasks marked 🔎 were not in the original plan. Each one points to an entry in the
 [retro log](#retro-log--work-we-did-not-see-coming) at the end of this file.
@@ -62,24 +76,26 @@ System creates:
 - **FastAPI** - API framework
 - **PostgreSQL** - Database (RDS)
 - **SQLAlchemy 2.0** - ORM
+- **Alembic** - Schema migrations, run at startup (3.14.1)
 - **Pydantic v2** - Validation
 - **JWT** - Authentication
-- **Mangum** - Lambda adapter for FastAPI
+- **uvicorn** - ASGI server, in a container (`dockerfile`)
+- **fastmcp** - The MCP server, in the same container (Phase 5)
 - **uv** - Package management
 - **ruff** - Linting/formatting
 
 ### Frontend
-- **Astro** - Static site generator
-- **Tailwind CSS** - Styling
+- **Astro 7** - Static site generator (static output, no adapter)
+- **Tailwind CSS 4** - Styling
 - **TypeScript** - Type safety
-- **Chart.js / Recharts** - Analytics visualization
+- **SVG charts** - Analytics visualization, no chart library (`frontend/src/utils/charts.ts`)
 
 ### Infrastructure
-- **AWS Lambda** - Compute
-- **API Gateway (HTTP API)** - API routing
-- **RDS PostgreSQL (t4g.micro)** - Database
-- **S3** - Static frontend hosting
-- **CloudFront** - CDN
+- **ECS Express Mode (Fargate)** - Compute: the API, the redirects and the MCP (`griddo-main`, eu-south-2)
+- **Shared ALB** - Routing by host (rule 12), kept on the active target group by the `ecs-alb-rule-sync` Lambda
+- **ECR** - Container images
+- **RDS PostgreSQL (db.t4g.micro)** - Database
+- **S3 + CloudFront** - Static frontend hosting (4.10, pending)
 - **Route 53** - DNS
 
 ---
@@ -165,12 +181,16 @@ System creates:
 ### 2.1 Update Analytics Endpoints ✅
 - [x] Refactor existing statistics utilities for new schema
 - [x] GET /api/analytics/urls/{short_code}/daily - Daily clicks (last 7 days)
+      → today included, in the viewer's time zone since 3.12.8
 - [x] GET /api/analytics/urls/{short_code}/weekly - Weekly clicks (last 8 weeks)
+      → 8 seven-day weeks ending today (they ended yesterday until 3.12.8)
 - [x] GET /api/analytics/urls/{short_code}/geo - Geographic distribution (with configurable days)
+      → since 2026-09-29, the period's local days and "Unknown" too, so its total is the breakdown's; `days` still
+      works, as `period`, up to 731 (`tests/test_geo_stats.py`)
 - [x] GET /api/analytics/campaigns/{id}/summary
   - [x] Total clicks, unique IPs, click-through rate
   - [x] Top 5 performing URLs
-  - [x] Daily timeline (last 7 days)
+  - [x] Daily timeline (last 7 days) → in the viewer's time zone since 3.12.8
 - [x] GET /api/analytics/campaigns/{id}/users
   - [x] List all campaign users with detailed click stats
   - [x] Clicks, unique IPs, last clicked timestamp
@@ -183,7 +203,8 @@ System creates:
 ### 2.2 Enhanced Visitor Tracking ✅
 - [x] User agent parsing utilities (browser, OS, device type detection)
 - [x] Referer tracking (already in Visitor model)
-- [ ] IP geolocation service integration (deferred - optional feature)
+- [x] IP geolocation service integration (deferred - optional feature) → wanted before the Shlink cutover: see 8.4
+      → done there: DB-IP's country database, in process
 - [ ] Background task for async logging (deferred - visitor logging is synchronous)
 
 ---
@@ -207,6 +228,9 @@ System creates:
 
 ### 3.3 Campaign Management ✅
 - [x] Campaigns list page
+  - [x] 20 at a time (2026-09-29), with the links page's pager (`components/ui/Pager.astro`) and `?page=`. Since
+        a page was capped at 100 (6.2, PR #26), it showed the newest 100 and never the rest. A campaign link's page
+        names its campaign from the link (`campaign_name`), not from those 100
 - [x] Create campaign wizard
   - [x] Step 1: Campaign info (name, original URL)
   - [x] Step 2: Upload CSV (paste + preview)
@@ -446,7 +470,14 @@ System creates:
 - [x] Enforce in redirect handler: 410 Gone if expired, 410 Gone if max_visits reached, 404 if not yet valid
 - [x] Expose fields in URLCreate / URLCustomCreate / URLUpdate / URLResponse schemas
 - [x] Tests for expiry edge cases (9 new tests covering boundary, nullable, validity window, quota consumption)
-- [x] Crawler preview hits do NOT consume quota (Visitor row only inserted on real human visits)
+- [x] Only clicks use up the cap, as `click_count` counts them: crawler previews aren't logged, and bot hits
+  and pixel opens are logged but don't count (2026-09-28: the cap had counted every Visitor row)
+- [x] A page, not JSON, for the people who open one (2026-09-29, Phase 8 parity with Shlink): a browser gets
+  `server/templates/link_unavailable.html` with the same 404 or 410; everything else the JSON. Not yet active is
+  the no-such-link page, as its 404 always was. A strict CSP allows the page's one style block by hash, taken
+  from the page as served (`tests/test_unavailable_link.py`)
+- [x] The short-link host's other answers (2026-09-29): `/favicon.ico` is a 204 cached a week, never an orphan
+  visit; a crawler's preview page has the same strict CSP (`tests/test_short_link_host_pages.py`)
 - [ ] Future CLI / scheduled Lambda for `delete-expired` (deferred to Phase 6 — bundled with the post-launch optimization sweep)
 
 ### 3.9.3 Bot Detection in Analytics ✅
@@ -546,6 +577,14 @@ System creates:
 - [x] Catch-all handler logs orphan visits before returning 404
 - [x] Endpoint GET `/api/v1/analytics/orphan-visits`
 - [x] Tests for orphan logging + listing endpoint (`tests/test_phase3104_orphan_visits.py`)
+- [x] Grouped by the path tried (2026-09-29): `GET /api/v1/analytics/orphan-visits/grouped`, for the analytics
+      page's "Typos & broken links" (`server/utils/orphans.py`, `tests/test_orphan_groups.py`)
+  - One GROUP BY over a period, paged: counts, first and last hit. Never an IP, a user agent or a referrer
+  - "Did you mean" against every link the viewer sees, not the page's newest 100: one edit away (a character
+    deleted, inserted, replaced or swapped with its neighbour), or the same code but for case. One indexed
+    lookup per path; none for a path no code could be (longer than 20, or a character no code has)
+  - The MCP's `list_orphan_visits_grouped` uses it, and stops loading every row. Its samples keep their IPs:
+    a decision pending (`docs/PERSONAL_DATA.md`)
 
 ### 3.10.5 CSV Export for Analytics ✅
 - [x] Add `?format=csv` to visit / analytics endpoints
@@ -558,6 +597,8 @@ System creates:
 - [x] `REDIRECT_CACHE_LIFETIME` config + `Cache-Control` header (default `private, max-age=0`)
 - [x] Tradeoff documented in `server/core/config.py` comment block
 - [x] Tests for each status code + cache header (`tests/test_phase3106_redirect_config.py`)
+- [x] `INVALID_SHORT_URL_REDIRECT` (2026-09-29), Shlink's: where a link that doesn't lead anywhere sends everyone,
+  as a 302 that isn't cached. Off by default; an absolute http(s) URL or the app won't start
 
 ### 3.10.7 Verification ✅
 - [x] All existing tests still pass — **285 passing**
@@ -591,20 +632,20 @@ System creates:
 timezone, and an avatar uploaded with a crop step. Name and timezone also lay the groundwork for anything
 scheduled later (sends, reports, digests) — which needs to know the user's local time.
 **Priority:** 🟢 LOW - UX polish; no dependency on Phase 4/5
-**Today:** `users` holds auth data only (email, password hash, API key + scope/constraints, is_active,
-created_at) — no name, country, timezone or avatar. The app header shows the user's initial in a `size-9`
-circle (`AppLayout.astro`, `data-user-initial`); `AccountPanel.astro` has no avatar; the backend has no
-file storage (no S3, no `UploadFile` endpoints).
+**Today:** built. Names, country and time zone (3.12.1–3.12.2), and the avatar (3.12.3–3.12.6), all in
+`user_profiles`. The app header and Settings → Account show the photo, or the first name's initial (the
+email's without one). Left: trying touch pan and pinch on a real phone (3.12.7).
 **Note (2026-09-27):** with sign-in through Google (3.13), the ID token already carries the name and a photo URL.
-Pre-fill the profile from them; the upload and crop below remain for changing the photo.
+Pre-fill the profile from them; the upload and crop below remain for changing the photo. → names done: the web
+sign-in asks for the `profile` scope (the MCP's doesn't), and `given_name`/`family_name` start the profile of an
+account without one; an existing profile is never touched, cleared names included
+(`server/utils/google_sign_in.py`). The photo is left out (decided 2026-09-28).
 
 ### 3.12.1 Data model — new `user_profiles` table ✅ decided
 Storage is the database, not S3 (the Phase 4.5/4.6 bucket + CloudFront doesn't exist yet). And it's a
-**new table rather than new columns on `users`**, for two reasons:
-- **No migrations.** There's no Alembic; the schema comes from `Base.metadata.create_all()` at startup,
-  which creates missing *tables* but never adds *columns* to existing ones. New columns on `users` would
-  exist in the test DB (built from scratch) and be missing on RDS — a production-only failure needing a
-  hand-run `ALTER TABLE` inside the VPC. A new table is created on the next boot, no manual step.
+**new table rather than new columns on `users`**:
+- ~~No migrations~~ → out of date: Alembic runs migrations at startup since 3.14.1, and columns would be
+  fine. The table came with migration 0008 (a new table only, so the previous release is unaffected).
 - **`users` is read on every request.** `server/core/auth.py` loads `User` on every authenticated call
   (JWT and API key); keeping profile and image out of it keeps that path lean.
 
@@ -620,11 +661,12 @@ user_profiles
   avatar_updated_at    DateTime     nullable   cache-busting version for the image
   updated_at           DateTime
 ```
-- [ ] Model `server/core/models/user_profile.py`, registered in `__init__.py`; `User.profile` relationship
+- [x] Model `server/core/models/user_profile.py`, registered in `__init__.py`; `User.profile` relationship
       (`uselist=False`, `back_populates`) — lazy, never joined into the auth query
-- [ ] `avatar` column mapped with `deferred()`, so reading names/country/timezone never loads the image bytes
-- [ ] Row created lazily on first save; existing users simply have no row and read as an empty profile
-- [ ] All fields nullable — nothing is required to keep using the product
+- [x] `avatar` column mapped with `deferred()`, so reading names/country/timezone never loads the image bytes
+      → migration 0009; tested for reading and saving the profile, and for a 304
+- [x] Row created lazily on first save; existing users simply have no row and read as an empty profile
+- [x] All fields nullable — nothing is required to keep using the product
 
 **Timezone is its own field, not derived from country.** A country does not determine a timezone:
 Spain alone has two (`Europe/Madrid`, `Atlantic/Canary`), and Mexico, Brazil, the US, Canada, Russia and
@@ -634,55 +676,112 @@ Australia have several. So store `country` *and* `timezone`:
 - Pre-fill from the browser (`Intl.DateTimeFormat().resolvedOptions().timeZone`); use `country` to narrow
   the timezone picker, and auto-select when the country has a single zone
 - Validate server-side against `zoneinfo.available_timezones()`; validate `country` against ISO 3166-1
+  → against the `tzdata` package instead (a dependency, `server/utils/timezones.py`): the production image's
+  database (Debian) has 486 zones and none of the legacy names browsers still report (`Asia/Calcutta`, from
+  Chrome in India). Countries come from its `iso3166.tab`. A legacy name is stored as the current one
+  (`Asia/Kolkata`); the names zone.tab gives a country stay (`Europe/Stockholm`). The picker's lists are
+  `frontend/src/data/timezones.json`, generated from the same package (`scripts/generate_timezones.py`)
 
 ### 3.12.2 Profile fields (frontend + API)
-- [ ] Account section: first name, last name, country (select), timezone (select, filtered by country,
-      pre-filled from the browser)
-- [ ] `PATCH /api/v1/auth/me/profile` — partial update; `GET /api/v1/auth/me` returns the profile
-      (names, country, timezone, avatar version) alongside the existing fields
-- [ ] Header initial comes from `first_name` when set, falling back to the email as today
+- [x] Account section: first name, last name, country (select), timezone (select, filtered by country,
+      pre-filled from the browser) → Settings → Account → Profile; a country with one zone picks it
+- [x] `PATCH /api/v1/auth/me/profile` — partial update; `GET /api/v1/auth/me` returns the profile
+      (names, country, timezone, avatar version) alongside the existing fields → `profile` on /auth/me
+      (additive), and the MCP tool `update_my_profile`; the avatar version comes with the avatar
+- [x] Header initial comes from `first_name` when set, falling back to the email as today
 
 ### 3.12.3 Avatar picker (frontend)
-- [ ] Avatar block at the top of `AccountPanel.astro`: current avatar (or initial placeholder) + change / remove
-- [ ] Two ways in: **drag & drop** an image onto the avatar area, or **select a file** from the computer
-- [ ] Accept JPEG, PNG, WebP; reject anything else and oversized files with an inline error (limit TBD, e.g. 5 MB)
+- [x] Avatar block at the top of `AccountPanel.astro`: current avatar (or initial placeholder) + change / remove
+- [x] Two ways in: **drag & drop** an image onto the avatar area, or **select a file** from the computer
+- [x] Accept JPEG, PNG, WebP; reject anything else and oversized files with an inline error (limit TBD, e.g. 5 MB)
+      → 10 MB before the crop (`avatarFileProblem`, `src/utils/avatar.ts`); an image that won't open says so too
 
 ### 3.12.4 Avatar crop: zoom + pan before saving
-- [ ] Preview the image inside the same circle the avatar is shown in
-- [ ] **Zoom** (slider + wheel/pinch) and **pan** (drag) the image under the circle
-- [ ] **Hard constraint — the circle is always fully covered.** No part of the circle may ever show the
+- [x] Preview the image inside the same circle the avatar is shown in
+- [x] **Zoom** (slider + wheel/pinch) and **pan** (drag) the image under the circle
+- [x] **Hard constraint — the circle is always fully covered.** No part of the circle may ever show the
       placeholder behind it:
   - minimum zoom = the scale at which the image's **shorter side** equals the circle's diameter ("cover");
     zooming out stops there
   - pan is clamped so no image edge can cross into the circle, at every zoom level (re-clamp on zoom)
   - initial state: minimum zoom, centred
-- [ ] Keyboard access: arrow keys pan, +/- zoom; Save / Cancel; Esc cancels
-- [ ] Follow `design/DESIGN_SYSTEM.md` (tokens, `Modal`, copy voice) and add the component to `/styleguide/`
+  → `src/utils/avatar-crop.ts`: the frame is the circle's bounding square, and covering it covers the circle
+    and the saved square alike
+- [x] Keyboard access: arrow keys pan, +/- zoom; Save / Cancel; Esc cancels
+- [x] Follow `design/DESIGN_SYSTEM.md` (tokens, `Modal`, copy voice) and add the component to `/styleguide/`
+      → `ui/AvatarCropper` (markup) and `src/utils/avatar-cropper.ts` (`cropAvatar(file, onSave)`); Forms → Photo
 
 ### 3.12.5 Avatar save (backend)
-- [ ] Crop **client-side** and upload the final square only (e.g. 512×512 WebP, ~30–80 KB), so the server
-      never handles originals or crop maths
-- [ ] `PUT /api/v1/auth/me/avatar` (upload), `DELETE /api/v1/auth/me/avatar` (back to the initial),
+- [x] Crop **client-side** and upload the final square only (e.g. 512×512 WebP, ~30–80 KB), so the server
+      never handles originals or crop maths → a 512 px WebP (PNG where the browser can't make WebP); the
+      server still re-encodes whatever it gets (below)
+- [x] `PUT /api/v1/auth/me/avatar` (upload), `DELETE /api/v1/auth/me/avatar` (back to the initial),
       `GET /api/v1/auth/me/avatar` (serves the bytes with `Cache-Control` + an ETag from `avatar_updated_at`)
-- [ ] Server-side validation regardless of the client: real image type (magic bytes, not just
-      `Content-Type`), dimensions, size cap
-- [ ] **Watch out:** the API authenticates with a bearer header, which a plain `<img src>` cannot send.
+      → the PUT's body is the image (2 MB, refused as it streams in). GET: 404 without one; immutable only
+      for the `?v=` URL of the current version, `private, no-cache` otherwise; 304 on If-None-Match;
+      nosniff. None of it is an MCP tool (`server/app/avatar.py`)
+- [x] Server-side validation regardless of the client: real image type (magic bytes, not just
+      `Content-Type`), dimensions, size cap → and re-encoded for GDPR: decoded with only the decoder the magic
+      bytes name, 4096 px a side at most (checked before the pixels load, and Pillow's `MAX_IMAGE_PIXELS`
+      set to match), turned by its EXIF orientation, stored as a 512 px WebP without EXIF (GPS), XMP or
+      ICC (`server/utils/avatar.py`). Pillow parses untrusted input here: keep it up to date
+- [x] **Watch out:** the API authenticates with a bearer header, which a plain `<img src>` cannot send.
       The frontend must fetch the avatar through the authenticated client and display it via an object URL
-      (keyed on the avatar version, so it's only re-fetched when it changes)
+      (keyed on the avatar version, so it's only re-fetched when it changes) → `avatarUrl(version)`,
+      `src/utils/avatar.ts`; after the first load, the browser's cache answers
 
 ### 3.12.6 Show it everywhere
-- [ ] Replace the initial with the avatar in the app header (`AppLayout.astro`) and in Account
-- [ ] Fall back to the initial when there is no avatar or the image fails to load
+- [x] Replace the initial with the avatar in the app header (`AppLayout.astro`) and in Account
+- [x] Fall back to the initial when there is no avatar or the image fails to load
 
 ### 3.12.7 Verification
-- [ ] Backend tests (TDD): profile round-trip through `db_session`; `PATCH` partial updates; country and
+- [x] Backend tests (TDD): profile round-trip through `db_session`; `PATCH` partial updates; country and
       timezone validation (reject unknown ISO codes and non-IANA zones, accept `Atlantic/Canary`);
       user without a profile row reads as empty; deleting a user cascades to the profile
-- [ ] Avatar tests: upload, replace, delete, type/size rejection, auth required, ETag/cache headers, and
-      that loading the profile does **not** load the avatar bytes (deferred)
-- [ ] Crop-logic unit tests for the cover constraint: min zoom, pan clamping at every zoom, re-clamp on
-      zoom-out, portrait / landscape / square / very small images
+      → `tests/test_phase312_profile.py`; the pre-fill from Google in `tests/test_phase3132_google_sign_in.py`
+- [x] Avatar tests: upload, replace, delete, type/size rejection, auth required, ETag/cache headers, and
+      that loading the profile does **not** load the avatar bytes (deferred) → `tests/test_phase312_avatar.py`,
+      with the metadata strip (a photo with GPS), EXIF orientation, 4096 px and decompression bombs
+- [x] Crop-logic unit tests for the cover constraint: min zoom, pan clamping at every zoom, re-clamp on
+      zoom-out, portrait / landscape / square / very small images → `frontend/tests/avatar-crop.test.mjs`
 - [ ] Manual check on desktop (drop + picker) and mobile (picker + touch pan/pinch), 1440 px and 390 px
+      → done at 1440 (picker, drop, drag, wheel, keys, a refused upload, cancel, remove) and the layout at
+      390; left: touch pan and pinch on a real phone
+
+### 3.12.8 Analytics days where the viewer is ✅
+Every day was a UTC calendar day, whatever the viewer's zone: in Madrid, clicks from 00:00 to 02:00 counted
+for the day before. Now a day is local to the viewer (`server/utils/local_days.py`).
+- [x] The zone: `?tz=` (an IANA name, the profile's rules, 422 otherwise), else the profile's, else UTC. `tz`
+      changes only how visits are grouped into days, never which count. Responses say it (`timezone`)
+- [x] A day runs from local midnight to local midnight: aware in the zone, converted to naive UTC like
+      `visited_at`. DST days last 23 or 25 hours; a day can start at 18:30 UTC (Asia/Kolkata)
+- [x] One query per series, bounded by the whole range before a sum per day. No database time zone
+      functions, and no SQL `date()`, which returns a string on SQLite and hid wrong counts from the tests
+- [x] Link daily and weekly, the overview's recent activity, the campaign summary's timeline, and the MCP's
+      `get_url_analytics_summary`: the app and the MCP give the same numbers
+- [x] Fixed: the weekly stats left today out (their 8 weeks ended yesterday)
+- [x] Changed: the overview's `recent_clicks_7d` is the sum of its 7 local days, so it matches the chart
+      (it was a rolling 168 hours)
+- [x] The charts' "Today" is today in that zone; without a zone in the profile, a hint links to
+      Settings → Account
+- [ ] An index on `visits` for these queries: there are single-column ones (`url_id`, `short_code`,
+      `visited_at`), no composite `(url_id, visited_at)` or `(short_code, visited_at)`. Measure on real
+      volumes before adding one
+      - Measured 2026-09-29 (3.16) on PostgreSQL 14, with a link of 10k visits among 100k on 201 links: with
+        the single-column indexes, the per-link routes answer in 6 to 12 ms (a 90-day breakdown in 9). Not
+        needed at that size. Measure again on the real volumes after the Shlink import (8.4)
+
+
+### 3.12.9 Names where people are listed
+- [x] Settings → Organization: members and removed people by name, the email under it (the email alone
+      without a name). `GET /organization/members` and `/removed-members` gain `first_name` and `last_name`,
+      and so does the MCP's `list_organization_members`; the profiles load with the list, not one per person.
+      Dialogs name the account too ("Their account is …"), as two people can share a name
+- [x] "Created by" on links and campaigns by name: `created_by_email` across the URL and campaign responses
+      → `created_by_first_name` and `created_by_last_name` next to the email, on campaigns and links; the
+      cards and the campaign and link pages by name, the email as tooltip. Each list loads its creators'
+      profiles in one query, pinned by `tests/test_phase312_creator_names.py`
+- [ ] Photos in the members list: needs an endpoint that serves another member's avatar
 
 ---
 
@@ -706,9 +805,10 @@ Not needed: production has no users and no frontend yet, and 3.13 locks sign-up 
 Until then `POST /auth/register` stays reachable through the public API and its `/docs` page.
 
 ### 3.13.2 Google sign-in
-- [ ] Google Cloud project inside the griddo.io organization, OAuth consent screen **Internal** (only Griddo
+- [x] Google Cloud project inside the griddo.io organization, OAuth consent screen **Internal** (only Griddo
       accounts can sign in), a web OAuth client with the redirect URIs of the web sign-in and of the MCP proxy
-      (5.8). Client secret in Secrets Manager (6.3). Done by whoever administers Workspace
+      (5.8). Done by whoever administers Workspace → created by the user; its redirect URIs (the web's, local
+      and the MCP's) verified 2026-09-28. Its client secret in Secrets Manager is an open line under 6.3
 - [x] `GET /api/v1/auth/google/start` → Google (OpenID Connect, `state` + PKCE, `hd=griddo.io` as a hint) →
       `GET /api/v1/auth/google/callback` → `server/app/google_auth.py`, whose docstring is the frontend's
       contract. The state is hashed, single use and 10 minutes, and bound to the browser by a cookie
@@ -887,6 +987,332 @@ without Workspace behind them a forgotten password can only be recovered by emai
 
 ---
 
+## Phase 3.16: Per-link analytics, as on Shlink's link page
+
+**Goal:** a link's page answers what Shlink's did, for a period:
+- when: a chart by day, week or month, and the counts by hour of day and day of week;
+- from what: OS, browser, device and referrer;
+- from where: countries;
+- which visits: a list and its CSV.
+
+Clicks and email opens are shown separately. The page today has 7 days, 8 weeks and top countries. Shlink's
+screens are `design/shlink-*.png` (local only, not in git: they show a real link's visits).
+
+**Split (2026-09-29):** the API is Agent 1's, the page Agent 2's, built in parallel against the contract below,
+which follows Agent 2's approved layout. Cities wait for the user's decision and aren't designed here.
+
+### 3.16.1 The contract
+
+**Kinds of visit.** Every visit is exactly one kind:
+
+| Kind | Which visits |
+|---|---|
+| `click` | Not a pixel hit, not a bot: what every other count calls a click (`_exclude_bots`) |
+| `open` | A hit on the email pixel (`/{code}/track`), not a bot |
+| `bot` | Any visit whose user agent was a bot's, pixel hits included |
+
+Opens overcount: Apple Mail Privacy Protection loads the pixel, like every image, when a message arrives, read or
+not. The page says so next to them, and so do the API docs.
+
+`/breakdown`, `/visits` and `/visits.csv` filter by kind with `type=clicks|opens|bots|all`. `/timeseries` gives
+clicks and opens side by side.
+
+Every route below:
+- is under `/api/v1/analytics/urls/{short_code}/`, takes `?domain=` like the others (8.3), and a JWT or an API key;
+- answers only for a link the caller can see (`find_url`, `viewer`), and 404 otherwise;
+- except `/totals`, takes one period:
+
+| Param | Meaning |
+|---|---|
+| `period` | The last N local days, today included: an integer from 1 to 731 (the page uses 7, 30 and 90). Default 30 |
+| `from`, `to` | A custom range: local dates, `YYYY-MM-DD`, both inclusive. Give both or neither, and not with `period`. At most 731 days. A `to` after today counts up to today |
+| `tz` | As now: an IANA zone, else the profile's, else UTC. Its rules set the days, the weeks and the hours |
+
+Each of these answers 422:
+- a `period` outside 1 to 731;
+- `from` after `to`, or a range longer than 731 days;
+- a range that starts after today;
+- `period` together with `from`/`to`, or `from` or `to` alone;
+- an unknown `tz`, `type` or `group_by`.
+
+Every response starts with the same fields. `from` and `to` are the range counted, after `period` or clipping,
+for the page to show:
+
+```json
+{"short_code": "ia-bcn-griddo", "domain": "go.griddo.io", "from": "2026-07-01", "to": "2026-09-28",
+ "timezone": "Europe/Madrid"}
+```
+
+Missing values have labels, not nulls: `"Unknown"` (a country, OS, browser or device), and `"Direct"` (no referrer).
+Dates are local: dates as `YYYY-MM-DD`, and moments as ISO 8601 with the zone's offset.
+
+**`GET …/totals`**: the header's all-time numbers. Takes only `domain` and `tz`.
+
+```json
+{"short_code": "ia-bcn-griddo", "domain": "go.griddo.io", "timezone": "Europe/Madrid",
+ "clicks": 34, "opens": 12, "countries": 5, "last_click_at": "2026-09-27T23:54:12+02:00"}
+```
+
+- `clicks` is the link's `click_count`.
+- `countries` is how many distinct countries its clicks came from; "Unknown" isn't one.
+- `last_click_at` is the latest click, or null. It isn't `URL.last_click_at`, which bots and crawler previews
+  also update.
+
+**`GET …/timeseries?group_by=day|week|month`** (default `day`)
+
+```json
+{...the common fields..., "group_by": "week", "clicks": 34, "opens": 12,
+ "stats": [{"start": "2026-07-01", "end": "2026-07-05", "clicks": 2, "opens": 0},
+           {"start": "2026-07-06", "end": "2026-07-12", "clicks": 0, "opens": 1}, …],
+ "hour_of_day": [{"hour": 0, "clicks": 1, "opens": 0}, …, {"hour": 23, "clicks": 3, "opens": 1}],
+ "day_of_week": [{"day": 1, "clicks": 6, "opens": 2}, …, {"day": 7, "clicks": 1, "opens": 0}]}
+```
+
+- Clicks and opens are both in every bucket, so the page switches between them without asking again.
+- `stats` covers the local days, ISO weeks (from Monday) or months of the range, oldest first, with zeros. `end`
+  is inclusive, and the first and last buckets are clipped to the range, like the first week above.
+- `hour_of_day` has 24 entries (0 to 23) and `day_of_week` 7 (1 is Monday), counted on local time over the range.
+  On the day DST ends, both 02:00s count in hour 2.
+
+**`GET …/breakdown?type=clicks`** (`clicks`, `opens`, `bots` or `all`)
+
+```json
+{...the common fields..., "type": "clicks", "total": 34,
+ "os":        [{"name": "Windows", "count": 14, "share": 0.4118}, …, {"name": "Unknown", "count": 1, "share": 0.0294}],
+ "browsers":  [{"name": "Chrome", "count": 20, "share": 0.5882}, …],
+ "devices":   [{"name": "desktop", "count": 25, "share": 0.7353}, …],
+ "referrers": [{"name": "www.linkedin.com", "count": 18, "share": 0.5294}, {"name": "Direct", "count": 15, "share": 0.4412}, …],
+ "countries": [{"name": "ES", "count": 25, "share": 0.7353}, …, {"name": "Unknown", "count": 2, "share": 0.0588}]}
+```
+
+- Every value is listed, by count and then name. `share` is the count over `total`, from 0 to 1 with 4 decimals,
+  so each dimension adds up to 1, give or take the rounding.
+- OS and browser are families, parsed from the user agent at query time (`server/utils/user_agent.py`):
+  - OS: Windows, macOS, iOS, Android, Linux, Chrome OS;
+  - browser: Chrome, Safari, Firefox, Edge, Opera, Internet Explorer, Bot.
+
+  New names can appear, so the page shows any string it gets.
+- Device is `desktop`, `mobile`, `tablet` or `other` (a bot's), from the parser's `device_type`. The redirect
+  rules read the same parser, but their `device` condition gives OS families (ios, android…), not a device class.
+- A referrer is its host, lowercased: `www.linkedin.com`, or `com.linkedin.android` for the app
+  (`android-app://…`). Never its path or query.
+- A country is an ISO code, as elsewhere; the page shows its name.
+
+**`GET …/visits?type=clicks&page=1&page_size=20`**
+
+```json
+{...the common fields..., "type": "clicks", "total": 34, "page": 1, "page_size": 20, "pages": 2,
+ "visits": [{"visited_at": "2026-09-27T23:54:12+02:00", "kind": "click", "country": "ES", "browser": "Chrome",
+             "os": "Windows", "device": "desktop", "referrer": "www.linkedin.com"}, …]}
+```
+
+- Newest first. `page_size` is 1 to 100, default 20. `total` is for "1–20 of N". A page past the last is an empty
+  list, not an error.
+- **No IP, anonymized or not, no user agent and no full referrer.**
+
+**`GET …/visits.csv?type=all`**: every visit of the period, streamed, with no pages.
+- The columns are the list's, plus the raw user agent: `visited_at,kind,country,browser,os,device,referrer,user_agent`.
+  Still no IP.
+- `type` defaults to `all` here. Pass the list's `type` to export only what it shows.
+- Every cell is spreadsheet-safe (`stream_csv`): a user agent or a referrer comes from anyone.
+- A route of its own, not `?format=csv`, so the MCP can list visits a page at a time but can't pull the whole file
+  into an assistant's context.
+
+**Unchanged:** `/daily`, `/weekly` and `/geo`, with `include_bots`, for existing clients and the MCP
+(`get_url_daily_stats`, `get_url_weekly_stats`, `get_url_geo_stats`, and the curated `get_url_analytics_summary`).
+The page moves to the routes above. The link response (`URLResponse`) doesn't grow: the list endpoint shares it,
+and every link on it would pay for the header's numbers.
+
+**MCP:** the new routes become tools (`get_url_totals`, `get_url_timeseries`, `get_url_breakdown`,
+`list_url_visits`). `/visits.csv` is excluded.
+
+### 3.16.2 API (Agent 1)
+- [x] The period params, one dependency for every route: `period`, `from`/`to`, clipping, the 422s, `tz`
+      (`Period`, `server/utils/local_days.py`)
+- [x] The kinds (`click`, `open`, `bot`) as one filter, next to `_exclude_bots`, which stays what a click is
+      (`_of_type`; `kind_of` in `server/utils/visit_facets.py` draws the same lines)
+- [x] `/totals`
+- [x] `/timeseries`: the range's visits read once (`visited_at` and the kind), then bucketed in Python on local
+      time: the days, weeks, months, hours and weekdays
+- [x] `/breakdown`: grouped in SQL by user agent, referrer and country, each distinct user agent parsed once
+- [x] `/visits`: paged in SQL, each page's user agents parsed. `/visits.csv`, streamed
+- [x] MCP: the tool names, `/visits.csv` excluded, `EXPECTED_TOOLS`
+- [x] README endpoints, CHANGELOG
+- [x] How long it takes on PostgreSQL (2026-09-29), a link with 10k visits in 90 days among 90k on 200 others:
+      a 90-day `/breakdown` in 9 ms (40 ms if nearly every visit has its own user agent), `/timeseries` 12 ms,
+      `/totals` 6 ms. So nothing is stored
+- [ ] Only if a link's volume makes parsing at query time slow: store the parsed fields on `visits` (browser,
+      OS, device, referrer host), with a migration and a backfill. The contract stays the same
+
+### 3.16.3 Page (Agent 2)
+- [x] Agent 2's approved layout: the period, the header's numbers, By time, By context, By location, the list and
+      its export. Broken down below; built against the contract, with a development-only mock (`&mock`,
+      `src/utils/link-analytics-mock.ts`, left out of production builds) until the routes are deployed
+- [x] Components: a donut with Show numbers and a table twin with shares, and bar lists with Show all (#115)
+- [x] The period: 7, 30 or 90 days, or Custom (two dates, checked as the API's 422s before asking), kept in the
+      address; the tab in the hash (`src/utils/analytics-view.ts`, `src/utils/tabs.ts`, tested)
+- [x] The header's all-time numbers from `/totals`: clicks, email opens (with Apple Mail's automatic opens noted),
+      countries, last click
+- [x] By time: clicks or email opens by day, week or month, and by hour and weekday, each with its table
+- [x] By context: OS, browser and device donuts, and referrers (top 10, then Show all). By location: countries,
+      Unknown last
+- [x] Visits: clicks, email opens, bots or all; a table on wide screens, stacked rows on phones; 20 a page
+- [x] Export CSV: `/visits.csv` for the period, every kind
+- [x] Check it against the real routes once Agent 1's two PRs land, at 1440 and 390 px, empty periods included
+      → on seeded data: 95 days of clicks, opens and bots, a link with only opens, one with nothing; Europe/Madrid
+      and UTC; the CSV downloaded from the page, with formula-like user agents and referrers quoted as text
+
+---
+
+## Phase 3.17: Per-campaign analytics
+
+**Goal:** since 3.16, a link's page answers when, from what and from where its visits came, for a period. A
+campaign's page should answer the same over all its recipients' links, plus the numbers an email campaign is judged
+by: how many recipients opened, and how many clicked. Today it has:
+- all-time totals;
+- a 7-day timeline;
+- the top 5;
+- each recipient's all-time clicks.
+
+It has no opens and no period.
+
+**Split (2026-09-29):** the API is Agent 1's, the page Agent 2's, both built against the contract below, as in 3.16.
+
+### 3.17.1 The contract
+
+A campaign has one link per recipient: a row of its CSV, kept as the link's `user_data`. Everything below counts the
+visits of those links, with 3.16.1's definitions:
+- the kinds: click, open, bot;
+- the period params: `period`, or `from` and `to`, with `tz`;
+- the labels: "Unknown" and "Direct";
+- the caveat on opens: Apple Mail loads the pixel on its own, so opens overcount, and so does the open rate.
+
+Every route below:
+- is under `/api/v1/analytics/campaigns/{campaign_id}/`, and takes a JWT or an API key;
+- answers for exactly the campaigns `/users` answers for today (`viewer().sees(Campaign)`):
+  - the viewer's organization's campaigns, whatever their role;
+  - the viewer's own personal ones;
+  - otherwise 404, or 400 for an id that isn't a UUID.
+
+  `/recipients` shows each recipient's `user_data`, names and emails included, as `/users` does: to the same people,
+  and no one else;
+- takes a period, as in 3.16.1, except `/totals` and `/recipients`, which are all time.
+
+Every response starts with the same fields. `/totals` and `/recipients` have no `from` or `to`:
+
+```json
+{"campaign_id": "3f2c…", "campaign_name": "Q4 webinar", "from": "2026-07-01", "to": "2026-09-28",
+ "timezone": "Europe/Madrid"}
+```
+
+**`GET …/totals`**: the header's all-time numbers. Takes only `tz`.
+
+```json
+{"campaign_id": "3f2c…", "campaign_name": "Q4 webinar", "timezone": "Europe/Madrid",
+ "recipients": 250, "clicks": 180, "opens": 410, "clicked": 96, "opened": 170,
+ "click_rate": 0.384, "open_rate": 0.68, "countries": 7, "last_click_at": "2026-09-27T23:54:12+02:00"}
+```
+
+- `recipients` is the number of links.
+- `clicked` is **Clicked**: the recipients with at least one click. `opened` is **Opened**: the recipients with at
+  least one pixel open that isn't a bot's. A recipient can be both.
+- `click_rate` is clicked ÷ recipients, and `open_rate` opened ÷ recipients: 0 to 1, with 4 decimals, and 0 when the
+  campaign has no recipients.
+- `countries` and `last_click_at` are as for a link.
+
+**`GET …/timeseries?group_by=day|week|month`** and **`GET …/breakdown?type=…`** have a link's shapes (3.16.1), over
+all the campaign's links.
+
+**`GET …/recipients?filter=all&q=&sort=clicks&order=desc&page=1&page_size=50`**: all time, for following up with
+people (who clicked, who hasn't). It takes no period: the period scopes the charts only. It takes `tz`, for its times.
+
+```json
+{"campaign_id": "3f2c…", "campaign_name": "Q4 webinar", "timezone": "Europe/Madrid",
+ "filter": "all", "q": "", "sort": "clicks", "order": "desc", "total": 250, "page": 1, "page_size": 50, "pages": 5,
+ "counts": {"all": 250, "clicked": 96, "opened": 170, "none": 60},
+ "recipients": [{"short_code": "q4-ana", "short_url": "https://shurl.griddo.io/q4-ana", "domain": "shurl.griddo.io",
+                 "user_data": {"name": "Ana", "email": "ana@example.com"}, "clicks": 3, "opens": 5,
+                 "first_click_at": "2026-09-20T10:02:11+02:00", "last_click_at": "2026-09-27T23:54:12+02:00",
+                 "last_open_at": "2026-09-27T23:50:02+02:00"}, …]}
+```
+
+- Every recipient that matches, with zeros if need be. Times are all time, local like 3.16.1's, and null without
+  one. Bots don't count.
+- `filter`:
+  - `all`, the default;
+  - `clicked`: Clicked, at least one click;
+  - `opened`: Opened, at least one pixel open;
+  - `none`: neither clicked nor opened.
+- `counts` is how many recipients each filter gives for `q`, whatever `filter` is: the filters' chips. Clicked and
+  Opened can overlap, so the four don't add up to `all`. One more aggregate, over the same search.
+- `q` (up to 200 characters) searches, ignoring case, the values of `user_data` (not its keys) and the short code.
+  - It's done in SQL: `json_each_text` on PostgreSQL, SQLite's `json_each` in the tests. A `user_data` that isn't
+    an object, a JSON null say, is searched as an empty one.
+  - The search text is escaped (`autoescape=True`, as #84's guard requires), so `%` and `_` match themselves.
+- `sort` is `clicks` (the default), `opens`, `last_click` or `code`, and `order` is `desc` (the default) or `asc`.
+  - Ties go to the latest click, most recent first, then the code, A to Z.
+  - With `last_click`, recipients without a click come last in either order.
+- `page_size` is 1 to 200, default 50. `total` and `pages` count what matches.
+- Filtering, searching, sorting and paging all happen in SQL, since a campaign can have thousands of recipients.
+
+**`GET …/recipients.csv`**: the same `filter`, `q`, `sort` and `order`, and every row that matches, streamed.
+- The columns are the recipient's `user_data`, flattened as in `/users`' CSV, then
+  `short_code,short_url,clicks,opens,first_click_at,last_click_at,last_open_at`.
+- Every cell is spreadsheet-safe: `user_data` comes from people's CSVs.
+- Not an MCP tool, like `/visits.csv`.
+
+**No list of visits at campaign level, on purpose: privacy.** A campaign's visits tied to its recipients' rows would
+be a timeline of what each named person did, when, and from where (country and device). Per-recipient totals answer
+what a campaign is judged by, and that's all `/users` gives today.
+
+**Open, for the user to decide:** a campaign's link is still a link, so 3.16's `/visits` already lists one recipient's
+visits, on that link's page. If the line is "no per-visit data tied to a person", then `/visits` and `/visits.csv`
+should refuse campaign links, and the link page should hide its Visits tab for them. Until the user decides, 3.16 stays
+as it is.
+
+**Unchanged:** `/summary` and `/users`, for existing clients and the MCP (`get_campaign_summary`, `get_campaign_users`).
+Their `click_through_rate` stays a percentage, 0 to 100.
+
+**MCP:** the new routes become the tools `get_campaign_totals`, `get_campaign_timeseries`, `get_campaign_breakdown` and
+`list_campaign_recipients`. `/recipients.csv` is excluded.
+
+### 3.17.2 API (Agent 1)
+- [x] 3.16's routes become functions over a query of visits: a link's, or a campaign's links', joined on
+      `urls.campaign_id` rather than a list of ids. A subquery, `url_id IN (SELECT id FROM urls WHERE campaign_id = …)`
+- [x] PR 1: `/totals`, `/timeseries` and `/breakdown`. `/summary`, `/users` and the new routes decide who sees a
+      campaign with one function (`_visible_campaign_or_404`)
+- [x] PR 2: `/recipients` and `/recipients.csv`, all time. Each link is joined to its visits' totals (clicks, opens,
+      first and last click, last open), and every recipient is kept with zeros. Then `filter`, `q`, `sort` and the
+      page are all done in SQL, and `counts` is one more aggregate over the search
+- [x] MCP: the tool names, `/recipients.csv` excluded, `EXPECTED_TOOLS`. README endpoints and CHANGELOG
+- [x] Timings on PostgreSQL: a campaign of 2,000 recipients with 20k visits
+      - PR 1 (2026-09-29), among 1,600 other recipients with 80k visits: `/totals` in 16 ms, `/timeseries` in 28,
+        a 90-day `/breakdown` in 28 (33 for every kind); the legacy `/summary` in 87. No index on
+        `urls.campaign_id` needed at that size
+      - PR 2, same data: `/recipients` in 27 ms, searched 30, filtered and sorted by last click 32, page 40 in 27;
+        the 2,000 rows of `/recipients.csv` in 60 (the legacy `/users`, all at once, in 36)
+
+### 3.17.3 Page (Agent 2)
+- [x] Agent 2 breaks it down:
+  - the period;
+  - the header: recipients, open rate, click rate…;
+  - the charts, as a link's;
+  - the recipients table and its export.
+- [x] The header from `/totals`: Clicked and Opened (a share of the recipients, with a meter; Apple Mail's automatic
+      opens noted), Recipients, Clicks. "Opened" (it meant clicked) became "Clicked", on the page and the campaigns list
+- [x] The period and the charts: the link page's Analytics section, now one component for both pages
+      (`AnalyticsSection.astro`, `analytics-section.ts`), with no Visits tab and no export
+- [x] Recipients, all time: the table and phone rows (#122) on `/recipients`. The API filters (with `counts` on the
+      filter's options), searches, sorts and pages; ticks survive a page change; Export CSV (`/recipients.csv`)
+- [x] A development-only mock (`&mock`, `src/utils/campaign-analytics-mock.ts`), which the build's dev-only check
+      keeps out of production
+- [x] Check it against the real routes once Agent 1's two PRs land, at 1440 and 390 px, empty campaigns included
+      → on seeded data (60 recipients: 25 clicked, 36 opened): the header, the section by week, context, the filter's
+      counts, search, the four sorts both ways, paging, ticks across pages; a campaign with formula-like CSV values,
+      shown as text and quoted in the CSV downloaded from the page
+
+---
+
 ## Phase 4: AWS Deployment (ECS Express on griddo-main) — backend ✅ · frontend pending (4.10)
 
 **Status:** live at `https://s.griddo.io` since **2026-04-27** (first deploy, PRs #7–#11). `main` is
@@ -1031,8 +1457,9 @@ for this.
   costs cents. A container means a Fargate task running around the clock (a second Express service, as
   shlink-web does), or frontend releases tied to backend deploys (served from the API container, where the
   root path belongs to short codes).
-- *Safest.* No server to patch; the bucket stays private behind Origin Access Control (OAC); HSTS and CSP
-  headers come from a CloudFront response-headers policy. CSP matters here: the JWT lives in `localStorage` (3.1).
+- *Safest.* No server to patch; the bucket stays private behind Origin Access Control (OAC); HSTS comes from a
+  CloudFront response-headers policy, and the CSP from the build itself, a `<meta>` on every page (6.3). CSP matters
+  here: the JWT lives in `localStorage` (3.1).
 
 - [x] Choose the hostname → **`shurly.griddo.io`** (decided 2026-09-28), for the web, the app, the API and the
       MCP, split by path; `go.griddo.io` is for short links only. `links.griddo.io` retires with Shlink (Phase 8)
@@ -1054,12 +1481,21 @@ for this.
       (`go.griddo.io` from Phase 8). Without `PUBLIC_SHORT_DOMAIN` the app shows short links on the API's host
       (`shurly.griddo.io/abc`). The MCP address in the manual and Settings then derives as
       `https://shurly.griddo.io/mcp/` (`PUBLIC_MCP_URL` only to override it)
-- [ ] `CORS_ORIGINS` in the task matches the chosen hostname (`deploy_ecs.sh` defaults to `https://shurl.griddo.io`)
+- [ ] `CORS_ORIGINS` in the task → `'[]'` once the frontend is hosted, as it shares the API's host (DEPLOYMENT.md
+      § CORS). `deploy_ecs.sh` and `.env.production.example` default to it; production keeps
+      `["http://localhost:4232"]` until then (6.3)
 - [x] Update the hostnames table in `DEPLOYMENT.md` (it still says "Future frontend | 7") → done in #74
 - [x] CI builds the frontend (`npm ci`, `npm test`, `npm run build` in the Tests workflow), so a PR can't break the
       deploy unseen
-- [ ] Client IPs through CloudFront: decide how the API gets the viewer's address once `shurly.griddo.io` goes
-      through the distribution (DEPLOYMENT.md § Frontend hosting, open decision; backend and AWS work)
+- [x] Client IPs through CloudFront: decide how the API gets the viewer's address once `shurly.griddo.io` goes
+      through the distribution → `CloudFront-Viewer-Address`, believed only on a request carrying the
+      distribution's secret origin header (`CLOUDFRONT_ORIGIN_SECRETS`, two values to rotate) and matching the
+      address CloudFront appended to X-Forwarded-For; otherwise X-Forwarded-For as before. One `client_ip` for the
+      rate limits and the visit log
+      (`tests/test_phase63_cloudfront_client_ip.py`)
+  - [ ] AWS, with the distribution: the custom origin header, HTTPS to the origin, the origin request policy
+        AllViewerAndCloudFrontHeaders-2022-06 and the task's `CLOUDFRONT_ORIGIN_SECRETS` (DEPLOYMENT.md § Frontend
+        hosting); optionally the per-host ALB rules
 
 ---
 
@@ -1083,8 +1519,8 @@ for this.
 
 ### 5.2 Auto-generated tools from FastAPI
 - [x] Bootstrap: `FastMCP.from_fastapi(app)` (or equivalent) — generate the first cut of tools automatically. (47 raw tools)
-- [x] Audit the generated tool list: for each `/api/v1/...` endpoint, verify the tool name, description, schema, and return shape are LLM-friendly. → `MCP_TOOL_NAMES` strips the `_api_v1_<path>_<method>` suffix from operationIds; `tests/test_phase52_mcp_tools.py` pins the surface (38 tools today)
-- [x] Filter out endpoints that should NOT be MCP tools: legacy `statistics.py`, internal-only routes, anything that handles file uploads (campaign CSV — see 5.3). → `EXCLUDED_ROUTE_MAPS` drops `/api/v1/stats/*` and the health probes. No route takes a file upload: `create_campaign` takes the CSV as a string and stays a tool, with `create_campaign_from_rows` (5.3) as the LLM-friendly variant
+- [x] Audit the generated tool list: for each `/api/v1/...` endpoint, verify the tool name, description, schema, and return shape are LLM-friendly. → `MCP_TOOL_NAMES` strips the `_api_v1_<path>_<method>` suffix from operationIds; `tests/test_phase52_mcp_tools.py` pins the surface (40 tools today)
+- [x] Filter out endpoints that should NOT be MCP tools: legacy `statistics.py`, internal-only routes, anything that handles file uploads (campaign CSV — see 5.3). → `EXCLUDED_ROUTE_MAPS` drops `/api/v1/stats/*` and the health probes (the legacy stats routes were removed on 2026-09-29, and their exclusion with them). No route takes a file upload: `create_campaign` takes the CSV as a string and stays a tool, with `create_campaign_from_rows` (5.3) as the LLM-friendly variant
 - [x] Verify the OG-preview, robots.txt, redirect path, and tracking pixel routes are excluded (they're public unversioned routes, not management API). → `/`, `/robots.txt`, `/{short_code}` and `/{short_code}/track` are excluded. The OG-preview routes (`/api/v1/urls/{code}/preview`, `…/refresh-preview`, `fetch-metadata`) are authenticated management API, so they **stay** as tools
 - [ ] Tests: each auto-generated tool round-trips through the MCP server and produces the same output as the underlying endpoint. → open: only `get_current_user_info` is called through the MCP layer (`tests/test_phase54_mcp_auth.py`); the other generated tools are covered by their REST tests, not through MCP
 
@@ -1092,7 +1528,7 @@ for this.
 - [x] **`create_campaign_from_rows`** — accepts `rows: list[dict]`, serialises to CSV in-memory, reuses the existing campaign generator.
 - [x] **`get_url_analytics_summary`** — composes totals + daily series + top countries in one call (default 7-day window, bot/pixel filtering aligned with regular analytics endpoints).
 - [x] **`add_redirect_rule`** — sugar over `POST /urls/{code}/rules` with named condition args (device/language/browser/query_param[+value]/before_date/after_date), at least one condition required.
-- [x] **`list_orphan_visits_grouped`** — clusters by `attempted_path`, returns top-N groups with capped sample list (3 per group) and overall totals.
+- [x] **`list_orphan_visits_grouped`** — clusters by `attempted_path`, returns top-N groups with capped sample list (3 per group) and overall totals. Since 2026-09-29 it's the analytics page's grouping, in SQL, with each path's first and last hit and `did_you_mean` (3.10.4).
 - [x] Logic in `mcp_server/curated.py` (testable with explicit `db`+`user`); MCP wrappers in `mcp_server/server.py` (auth stub raises until 5.4 lands).
 - [x] Tests in `tests/test_phase53_curated_tools.py` cover registration, happy paths, validation, scoping, bot/pixel toggle.
 
@@ -1151,13 +1587,19 @@ records which tools get used, how often, or how they fail.
       uvicorn's access log is off in the image. A generated tool's call into the API carries the MCP request's id
 - [x] Logs Insights queries (calls, errors and latency per tool, daily users, one request end to end) documented
       in `mcp_server/README.md` § Usage log
-- [ ] Save those queries in CloudWatch and set retention on the log group (90 days): commands in the same section,
-      to run once with SSO
+- [x] Retention on the log group: **60 days** (decided and set 2026-09-28)
+- [ ] Save those queries in CloudWatch: commands in the same section, to run once with SSO
 - [x] Tests: `tests/test_phase560_usage_log.py` (14)
 
 #### 5.6.1 Rollout and signal capture
+- [x] New members get a welcome on the dashboard for their first 14 days, until they dismiss it: where to start
+      (shorten a link, a campaign from a CSV, connecting Claude). Links are the organization's (3.14), so a new
+      member's list shows the team's links and the empty state never greets them; the old card needed a `?welcome=`
+      that nothing set since the register page went (3.13)
 - [ ] Roll out to the Griddo team: 3–5 internal users, with the frontend and the MCP.
 - [ ] Capture for 2–4 weeks: tool invocation counts (which tools get used vs ignored), tool error rates, average call duration.
+  - [x] The web app's side: its errors as `client.error` lines (6.4), and what it's used for from the API's
+        `http.request` lines: queries in `DEPLOYMENT.md` § What the web app is used for
 - [ ] Capture qualitatively: which workflows feel smooth in chat, which feel awkward (e.g. CSV import, charts).
 - [ ] Output: a "frontend feature priority" list backed by real signal, fed into the frontend backlog.
 
@@ -1175,8 +1617,9 @@ added there; Claude Code gets by with `--header`.
 - [x] **Authorization server: Google Workspace** (decided 2026-09-27), through fastmcp's OAuth proxy
       (`GoogleProvider`, in fastmcp 4.0.10), which also handles client registration (Dynamic Client Registration,
       Client ID Metadata Documents). Same Google project as the web sign-in (3.13.2)
-- [ ] Add the MCP proxy's redirect URI to the Google OAuth client of 3.13.2 → `{MCP_PUBLIC_URL}/auth/callback`,
-      → `https://shurly.griddo.io/mcp/auth/callback` (docs/setup_google_app.md, step 9)
+- [x] Add the MCP proxy's redirect URI to the Google OAuth client of 3.13.2 → `{MCP_PUBLIC_URL}/auth/callback`,
+      → `https://shurly.griddo.io/mcp/auth/callback` (docs/setup_google_app.md, step 9); verified in the
+      Google client 2026-09-28
 - [x] Protected-resource metadata (RFC 9728), and 401s carrying `WWW-Authenticate: Bearer resource_metadata="…"`
       (answers the open question at the end of this phase) → at `/.well-known/oauth-protected-resource/mcp/`,
       with the authorization server's metadata at `/.well-known/oauth-authorization-server/mcp`
@@ -1203,7 +1646,8 @@ added there; Claude Code gets by with `--header`.
       → `tests/test_phase58_mcp_oauth.py`, against a fake Google, including two app instances completing one
       sign-in
 - [ ] Check it end to end: Claude Code (`claude mcp add --transport http …`, sign-in in the browser) and a
-      claude.ai custom connector
+      claude.ai custom connector → in production (2026-09-28) the metadata documents and the 401 with
+      `resource_metadata` are verified; nobody has completed a sign-in from claude.ai or Claude Code yet
 
 ### 5.9 MCP install guide, in the app and in the user manual 🔎 R9
 **Decided (2026-09-27):** the app explains how to install the MCP, and the user manual carries the same instructions.
@@ -1233,15 +1677,33 @@ live in `mcp_server/README.md`, written for developers. There is no user manual 
 > were rewritten for that stack on 2026-09-26.
 
 ### 6.1 Testing
-- [x] Unit tests (pytest) — 465 tests, run on every PR by `test.yml` (with `--extra mcp`)
+- [x] Unit tests (pytest) — over 1,250 tests, run on every PR by `test.yml` (with `--extra mcp`)
   - [x] URL shortening logic
   - [x] Campaign CSV parsing
   - [x] Auth token generation
 - [x] Integration tests (FastAPI `TestClient` against in-memory SQLite)
   - [x] API endpoints
   - [x] Database operations
-- [ ] E2E tests (optional)
-  - [ ] Frontend flows (Phase 3.11 ran a manual smoke of 14 core flows; nothing automated)
+  - [x] The whole suite on PostgreSQL too (2026-09-29), as production runs: the `test-postgres` job, in parallel.
+        SQLite takes what PostgreSQL refuses (a `GROUP BY` on `json`, a NUL in text). A trial run found nothing
+        else hiding. `TEST_SUITE_ON_POSTGRES=1`: a database made for the run, dropped at its end
+- [x] E2E tests: Playwright, on every push and PR (the `e2e` job of `test.yml`); `npm run e2e`, see
+      `docs/TESTING.md`. Phase 3.11 ran a manual smoke of 14 core flows before them
+  - [x] The harness: the production build in Chromium, against the real API with a fake Google
+        (`tests/e2e/app.py`, never in the image) on its own PostgreSQL. A test fails on a CSP or Trusted Types
+        violation, an uncaught error, a 5xx, or a request to any other host
+  - [x] Signing in with Google and out; a link from the dashboard's list to its page: its numbers, tabs, periods
+        and CSV
+  - [x] A campaign from the wizard to who clicked (3.17): the counts, a sort, a filter, copied links, its CSV;
+        Settings: the profile, the tabs by keyboard; a phone (390 px): a link's tabs, a campaign's recipients;
+        the public pages and the 404
+- [x] Accessibility checks (axe) in the end-to-end tests (`e2e/a11y.spec.ts`): the landing, login, dashboard, link,
+      campaign and Settings pages and the manual, with their content in, on a desktop and on a phone (390 px, the
+      menu dialog included). A moderate, serious or critical issue fails the test; one that can't be fixed at once is
+      allowed with a reason and its issue, never by turning a rule off. axe found no serious issue; checking by hand
+      what it left undecided (text over a gradient, SVG), the login page's example feed was about 3:1 (fixed). The
+      moderate ones, fixed: the landing had no `main` landmark, and the login page's logo and small print sat outside
+      its landmarks. On a phone it found nothing; what it left undecided there measures 4.8:1 or more
 
 ### 6.2 Performance Optimization
 - [ ] Database indexes review
@@ -1256,25 +1718,87 @@ live in `mcp_server/README.md`, written for developers. There is no user manual 
       (pinned by `tests/test_input_lengths.py`); values from outside a schema (a fetched page's title,
       an address from `X-Forwarded-For`) are cut to their column instead of failing with a PostgreSQL 500;
       the MCP's `create_campaign_from_rows` checks its name like the API
+  - [x] NUL characters (2026-09-29): PostgreSQL can't hold U+0000 in text, so a request carrying one answered 500,
+        the short-link host's `/%00` included. A 400 for the path or query and a 422 for a JSON body, before any
+        route (`server/utils/nul.py`), and a safety net for psycopg2's refusal. `tests/test_nul_characters.py` runs
+        the requests that did on PostgreSQL
+  - [x] Headers stored in a Text column (2026-09-29): a visit keeps at most 1024 characters of user agent and 2048
+        of referrer, clicks, opens, orphan visits and the Shlink import alike (`server/utils/columns.py`). Bot
+        detection and the rules read the whole header first (`tests/test_stored_headers.py`)
+  - [x] Numbers (2026-09-29): every integer a request carries has a maximum, and a minimum of 0 or more
+        unless a negative means something (a rule's priority). Six query parameters and two body fields
+        had none, and an absurd value answered 500 (`server/utils/bounds.py`). The MCP's curated tools
+        advertise theirs. `tests/test_bounded_numbers.py` reads the OpenAPI document and the tools, and
+        fails on an unbounded one
   - [x] CSV formula injection: the exports quote cells that start like a formula, and the CSV import unquotes them
         (`spreadsheet_safe`, `server/utils/csv_export.py`)
-- [ ] SQL injection prevention check
+- [x] SQL injection prevention check → the API binds every value (ORM and Core); the raw SQL left is static or
+      takes `:name` parameters. The one finding was a LIKE pattern, not an injection: the tag search let `%` and `_`
+      act as wildcards (fixed with `autoescape=True`, as the links search had). `tests/test_sql_safety.py` reads
+      `server/`, `mcp_server/` and `main.py` and fails on SQL built from strings or an unescaped LIKE on a column
+- [x] Content-Security-Policy → a `<meta>` on every built page, written by Astro (`security.csp`): scripts only from
+      this site or by hash (the inline ones live in `frontend/src/inline-scripts.mjs`), no `'unsafe-inline'` or
+      `'unsafe-eval'` for scripts; `'unsafe-inline'` only for style attributes. `npm run build` fails on a page it
+      doesn't cover (`frontend/scripts/check-csp.mjs`); DEPLOYMENT.md § Frontend hosting
+- [x] Trusted Types (`require-trusted-types-for 'script'`): every HTML sink through a policy. The next step up from the
+      CSP; `setHTML` and `toElement` would become that policy → done: `trusted-types shurly-html`, one policy in
+      `src/utils/html.ts` that passes through only markup from `html` or `escapeHtml` (anything else is escaped). A
+      sweep of the built bundles and every page found no other sink: Astro and the libraries ship none. The build
+      fails without the directives or with `default`/`*`/`'allow-duplicates'` (`scripts/csp-rules.mjs`)
 - [x] XSS prevention in frontend (dynamic HTML goes through the escaping `html` tag from `@/utils/html`; audit the remaining raw `innerHTML` uses) → audited: data goes through `html`/`setHTML`, URLs through `safeUrl`; two raw sinks left, documented; `frontend/tests/no-raw-html.test.mjs` fails on new ones
 - [x] CORS configuration review → no credentials, only the methods and headers the API uses, `Retry-After`
       and `X-Request-Id` exposed (`tests/test_cors.py`). Production needs no cross-origin entry once the
-      frontend shares the API's origin (4.10); its `CORS_ORIGINS` still lists `https://shurl.griddo.io`, a
-      host that doesn't exist, to be corrected at the release
+      frontend shares the API's origin (4.10). At release #81 (2026-09-28) its `CORS_ORIGINS` became
+      `["http://localhost:4232"]`: `https://shurl.griddo.io`, a host that doesn't exist, is gone, and
+      localhost stays for running the frontend locally against production until 4.10
+- [x] Personal data, route by route (2026-09-29) → `docs/PERSONAL_DATA.md`
+  - It says what people's data each route and MCP tool returns, who sees it, and the guard that decides. That's 73
+    API routes, the MCP's 11 and its 4 curated tools.
+  - `tests/test_personal_data_inventory.py` fails on a route without a row, a guard not in the code, or an MCP column
+    that isn't the tools.
+  - One lookup each, in `server/utils/access.py`: `visible_url_or_404` and `visible_campaign_or_404`. The two copies of
+    each are gone, with no change of behaviour.
+  - [x] (b) At runtime, for every route that returns recipients' rows or activity, or visits: an outsider gets a 404
+        and an organization member a 200 (`tests/test_personal_data_access.py`, 20 routes, read from the table). A
+        personal campaign stays its creator's
+  - [x] Finding 1: a crawler's preview of a campaign link carried its recipient's `user_data` in its refresh URL.
+        Now it never does; people's redirect is unchanged (2026-09-29)
+  - Decisions pending, with the user: a campaign link's visits one by one; orphan visits' IPs
 - [ ] Environment secrets audit (DB password and JWT secret are plain task env vars; Secrets Manager is the planned move)
+  - [ ] The Google OAuth client's secret (3.13.2, `GOOGLE_CLIENT_SECRET`) in Secrets Manager
 - [x] SSRF guard on the Open Graph fetcher (PR #21, see CHANGELOG § Security)
 - [x] Campaign-link takeover via custom codes (see CHANGELOG § Security)
 - [x] API keys stored as a hash → SHA-256 and the first 12 characters (migration `0007`), shown once when
       generated; `/auth/me`, and so the MCP's `get_current_user_info`, no longer returns the key; new keys
       start with `shurly_` (`tests/test_phase63_api_keys.py`)
-  - [ ] Drop the emptied `users.api_key` column, in the release after `0007`
+  - [x] Stop mapping the emptied `users.api_key`: the ORM names every mapped column in its SELECTs and INSERTs,
+        so dropping it while a task of that release serves fails every user query mid-rollout. A test drops it by
+        hand and runs this release against it: signing in, an API key, `/me`, the MCP, revoking
+        (`tests/test_phase63_api_keys.py`)
+  - [ ] Migration `0011` drops `users.api_key` and `ix_users_api_key`, and the drift test's `_PENDING_DROP` goes:
+        **only after the release that stopped mapping it is in production**, since until then a running task still
+        names the column. It takes `0011`, after `0010` (the `last_click_at` repair, 2026-09-29), which took the
+        number it had been given
+  - [x] The MCP can't generate or revoke a key: talked into it by untrusted text, an assistant would get
+        the new key in its context. Nor `login` or `change_password`: no password or JWT passes through an
+        assistant (`EXCLUDED_ROUTE_MAPS`, pinned by `tests/test_phase52_mcp_tools.py`)
+- [x] `scripts/deploy_ecs.sh` can't overwrite production's settings 🔎 R14: run against the live service, its
+      update path replaced the whole environment with the 20 variables it builds, dropping every setting added
+      on the service since (sign in with Google, the MCP's OAuth, …) → it only creates the service, and stops
+      before building anything once it exists; a failed lookup stops it too. Images go out with the deploy
+      workflow, settings change on the live service (`tests/test_deploy_ecs_script.py`, on stubbed `aws` and
+      `docker`)
 
 ### 6.4 Monitoring & Logging
 - [x] CloudWatch Logs setup → `/aws/ecs/default/shurly-api-5fdb`; `X-Request-Id` correlates requests
 - [ ] Error alerting (SNS/email) — required before the Shlink cutover (8.5)
+  - [x] What to count, and a runbook stub: `DEPLOYMENT.md` § Error alerting. No code: `http.request` lines already
+        carry the status, so a metric filter on 5xx does it
+  - [ ] AWS: the metric filters, the alarms and an SNS topic with an email subscription
+  - [x] Browser errors reach the logs: the web app reports an uncaught error, a rejected promise, or a CSP or Trusted
+        Types block (which a `<meta>` policy can't report) to `POST /api/v1/client-errors`, logged as `client.error`
+        lines (never an IP; the page's path, never its query; the account's id when signed in). Five a page, limited
+        per IP. Its metric filter and a query are in `DEPLOYMENT.md` § Error alerting
 - [ ] Key metrics dashboard
   - [ ] ECS task count / CPU / memory
   - [ ] ALB 5xx and target health
@@ -1289,13 +1813,19 @@ live in `mcp_server/README.md`, written for developers. There is no user manual 
 - [x] API documentation (OpenAPI/Swagger) - auto-generated by FastAPI (`/docs`, `/redoc`)
 - [x] Deployment guide → `DEPLOYMENT.md` (walkthrough) + `docs/AWS_ECS_DEPLOYMENT.md` (playbook)
 - [x] User manual for dashboard: starts with the MCP install page (5.9), which lives in the frontend → `/manual/`, Markdown in `frontend/src/content/manual/`
+  - [x] "Make a campaign from a CSV" and "Read your analytics" (a link's page and a campaign's), reached from Help in
+        the account menu, "How to read this" in both pages' Analytics, and "How campaigns work" in the wizard's CSV
+        step. `tests/manual-links.test.mjs` fails on a link inside the manual that goes nowhere, heading included
 - [ ] Architecture diagram
 - [ ] Database schema diagram
-- [ ] Environment variables reference
+- [x] Environment variables reference → [docs/ENVIRONMENT.md](../docs/ENVIRONMENT.md) (2026-09-29): every variable
+      Shurly reads, with its default and meaning, never a production value. `tests/test_environment_reference.py`
+      fails on a setting without a row or with another default, a variable read anywhere without a row, and a stale row
 
 ### 7.2 Operational Runbook
-- [ ] How to add new users → self-service sign-up for `@griddo.io`: signing in with Google makes the account
-      (3.13.2); left: the Google project, and writing it down here
+- [x] How to add new users → `DEPLOYMENT.md` § People: joining, roles and leaving: signing in with Google makes the
+      account for the organization's Workspace domain (3.13.2), roles and removals are in Settings → Organization
+      (3.14), and the rollout's steps
 - [x] How to investigate issues → troubleshooting catalog in `docs/AWS_ECS_DEPLOYMENT.md`
 - [x] How to scale if needed → "Scale up/down" in the same runbook
 - [ ] Backup and recovery procedures
@@ -1324,45 +1854,76 @@ with one ALB change, and rolling back restores it. Shurly resolves links by (Hos
 - [x] Shared or personal links 🔎 R7: **the organization's by default, personal only on purpose** (decided
       2026-09-27) → 3.14
 - [x] Owner of the migrated links: the Griddo organization (3.14)
-- [ ] Visit history: import it as `Visitor` rows (no schema change, but Shlink exposes no IPs, so unique-visitor
-      counts won't cover it) or archive Shlink's export and start counting at the cutover
+- [ ] Check `go.griddo.io`'s current not-found redirects in Shlink before the cutover: invalid short URL, base URL,
+      regular 404. Set `INVALID_SHORT_URL_REDIRECT` to match the first (3.10.6); Shurly has no setting for the others
+- [x] Visit history: import it as `Visitor` rows (no schema change, but Shlink exposes no IPs, so unique-visitor
+      counts won't cover it) or archive Shlink's export and start counting at the cutover → **decided
+      2026-09-28: imported**, with the import's `--visits`: ip "unknown" (which tells imported visits apart), the
+      country, user agent and referer, bots and the `/track` pixel as Shlink flagged them. Unique-visitor counts
+      cover the cutover onward only
 
 ### 8.2 Case sensitivity 🔎 R6
 Shlink defaults to `SHORT_URL_MODE=strict`: case-sensitive lookups and mixed-case generated codes. Shurly's
 `loose` lowercases codes when they are created but matches the path exactly; Shlink's `loose` also matches
 case-insensitively.
 - [ ] Check which mode `go.griddo.io` runs
-- [ ] `strict` → import codes verbatim (skip `normalize_short_code`); Shurly's exact-match resolver already
-      behaves like Shlink's strict mode. Pin it with a test so lookups never get lowercased by accident
+- [x] `strict` → import codes verbatim (skip `normalize_short_code`); Shurly's exact-match resolver already
+      behaves like Shlink's strict mode. Pin it with a test so lookups never get lowercased by accident → the
+      import keeps codes verbatim; `test_answers_on_its_domain_with_its_exact_code` pins the redirect
 - [ ] `loose` → case-insensitive lookup on that domain before the cutover
+- [ ] If wanted after that decision, for Shurly's own `loose` mode: an exact match first, then a case-insensitive
+      fallback only when exactly one link matches. Not plain lowercasing: imported codes stay exact, so `AbC12` and
+      `abc12` can both exist (the pin above). Today `/ABC123` is an orphan visit even when `abc123` exists, and
+      "Typos & broken links" suggests `abc123` for it (3.10.4). Not coded until the user decides
 
 ### 8.3 Finish multi-domain (3.10.1 shipped the model only)
 - [ ] `Domain` row for `go.griddo.io`
-- [ ] `build_short_url()` uses the link's own domain; today it always builds on the default one, so a migrated
-      link would be shown as `s.griddo.io/<code>`
+- [x] `build_short_url()` uses the link's own domain; today it always builds on the default one, so a migrated
+      link would be shown as `s.griddo.io/<code>` → `link_short_url` everywhere a link's short URL is shown:
+      responses, campaigns and their CSV, the overview, previews. BASE_URL still moves only the default domain's
 - [ ] Make `go.griddo.io` the default domain at the cutover. Changing `DEFAULT_DOMAIN` alone won't do it:
       `get_or_create_default_domain()` keeps the row already marked default (`s.griddo.io`), so new links would
       still be created there (and, until the previous item lands, shown on `go.griddo.io`). Demote `s.` and
       promote `go.` explicitly, with a test
 - [ ] No per-link domain choice needed: every new link goes on `go.griddo.io`
+- [x] A link's analytics count its own visits: keyed on `visits.url_id`, never on the code, which can name
+      links on both domains while Shlink's are imported next to the test links (`tests/test_visits_per_link.py`)
+- [x] The API finds a link by its code alone (`/urls/{code}`, its analytics, rules…): the first of the links
+      the viewer sees. With one code on both domains, both visible, which one answers is arbitrary. Before the
+      import: a domain qualifier (`?domain=`), or a rule such as the default domain first → both: `?domain=`
+      on every route and MCP tool that takes a code, read like a request's Host; without it, the default
+      domain's link, then by hostname (`find_url`). Bulk tagging takes `links`. The dashboard passes the
+      domain; a bookmark without one still works (`tests/test_phase83_link_domains.py`)
 
 ### 8.4 Export → clean → import
 Clean in the export, not in Shlink: Shlink stays intact as the rollback, every decision is written down, and
 the import can be re-run.
-- [ ] Export script over Shlink's REST API (`/rest/v3/short-urls`, `…/redirect-rules`, `…/visits`) with an API
-      key → raw JSON snapshot, archived untouched
-- [ ] Review sheet (CSV), one row per link: code, domain, destination, title, tags, created, visits, last visit,
+- [x] Export script over Shlink's REST API (`/rest/v3/short-urls`, `…/redirect-rules`, `…/visits`) with an API
+      key → raw JSON snapshot, archived untouched → `python -m server.tools.shlink export`
+      (`server/tools/shlink/README.md`). The snapshot can hold personal data: `_exchange/` or an encrypted store,
+      never the repo
+- [x] Review sheet (CSV), one row per link: code, domain, destination, title, tags, created, visits, last visit,
       expired/capped, destination HTTP status, duplicate-of, and a `decision` column: `keep`, `archive` or `drop`
-- [ ] Default to `keep`: a kept link costs a row; a dropped one that turns out to be on a poster, a QR code or a
+      → `… review`, plus the redirect-rule conditions Shurly lacks and codes that differ only in case (8.2). The
+      destination status goes through the link previews' SSRF guard
+- [x] Default to `keep`: a kept link costs a row; a dropped one that turns out to be on a poster, a QR code or a
       PDF breaks for good. `archive` = migrate with a `legacy` tag the dashboard can hide; `drop` only for tests
-      and duplicates
-- [ ] Field mapping: long URL, title, tags, valid since/until, max visits, crawlable, `forwardQuery` →
+      and duplicates → the sheet fills `keep`; the import applies the rest
+- [x] Field mapping: long URL, title, tags, valid since/until, max visits, crawlable, `forwardQuery` →
       `forward_parameters`, redirect rules. Conditions Shurly lacks (e.g. IP or geolocation) go in the report;
-      nothing is dropped silently
-- [ ] Import (idempotent, `--dry-run` first): exact code, original domain and creation date; fails on a
-      conflict instead of suffixing like the custom-code path does. It writes to the private RDS, so it runs
-      as an admin-only endpoint or through ECS Exec (documented in `DEPLOYMENT.md`; it needs an ECS task role
-      with SSM permissions, and `deploy_ecs.sh` sets none today)
+      nothing is dropped silently → a rule with one leaves whole, reported; `language en-US` becomes `en` and
+      `valueless-query-param` a presence match, reported as approximated
+- [x] Import (idempotent, `--dry-run` first): exact code, original domain and creation date; fails on a
+      conflict instead of suffixing like the custom-code path does → `python -m server.tools.shlink import`
+      (`server/tools/shlink/README.md`): owned by the organization, as an owner; a link Shurly can't take stops
+      it too, unless the review drops it; a later snapshot adds only newer visits (the cutover's delta)
+  - [ ] How it runs in production: it writes to the private RDS. Decision B, with the user: a one-off ECS task
+        (recommended) or ECS Exec (needs an ECS task role with SSM permissions; `deploy_ecs.sh` sets none)
+- [x] Fill `Visitor.country` for Shurly's own visits (geolocation: 2.x's deferred "IP geolocation service
+      integration"). Nothing fills it today, so once Shlink's history is imported the geo view shows only that
+      history, and would mislead → the ISO code, from DB-IP's IP to Country Lite (CC BY 4.0, no account),
+      looked up in process from the stored, anonymized address (`server/utils/geo.py`). The image build fetches
+      the file, and the deploy job warns without it. The Shlink import stores codes too; the page shows names
 
 ### 8.5 Cutover
 - [ ] Freeze link creation in Shlink; final delta export + import
@@ -1572,4 +2133,16 @@ check earlier in the next project.
   been dropped (3.13.1)
 - **Lesson:** when a change widens what a role can see, re-check who can get that role today, not after the
   planned phases land. A setting that names a boundary isn't the boundary until something enforces it
+
+### R14 — The first-deploy script could wipe production's settings · missed · found 2026-09-29
+- **What:** `scripts/deploy_ecs.sh` created the service, and on later runs updated it with the container it built.
+  That container's environment holds 20 variables; since 3.13 production also carries settings added on the
+  live service (sign in with Google, the MCP's OAuth, `FRONTEND_URL`, …), and an update would have dropped
+  them all. The playbook still offered it as "Deploy from local" → the script only creates (6.3)
+- **How it surfaced:** the docs sweep, following why the script's `CORS_ORIGINS` default mattered at all
+- **Why it slipped:** the GitHub deploy moved to swapping only the image, and settings moved to the live service,
+  but the local script kept its create-or-update path; the rule "it's first-create only" lived in people's
+  heads and one doc line, not in the script
+- **Lesson:** when the source of truth for a setting moves, check every tool that still writes it. A rule about
+  when not to run a script belongs in the script
 

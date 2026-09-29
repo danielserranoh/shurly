@@ -1,0 +1,104 @@
+<!doctype html>
+{#- What a person sees when a short link doesn't take them anywhere. `reason` is all it gets:
+    "unknown" (no such link, or not live yet), "expired", or "used_up" (its visit limit reached).
+    One <style> block and no style attributes, so the CSP can allow it by hash; no scripts, fonts or images. -#}
+{%- if reason == "expired" -%}
+  {%- set heading = "This link has expired" -%}
+{%- elif reason == "used_up" -%}
+  {%- set heading = "This link has reached its limit" -%}
+{%- else -%}
+  {%- set heading = "This link doesn’t lead anywhere" -%}
+{%- endif %}
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<meta name="color-scheme" content="light">
+{#- No icon request: /favicon.ico on the short-link host would be one more unknown link #}
+<link rel="icon" href="data:,">
+<title>{{ heading }}</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+body {
+  margin: 0;
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 32px;
+  padding: 48px 16px;
+  background: #faf9f6;
+  color: #001b3c;
+  font: 16px/1.6 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+main {
+  width: 100%;
+  max-width: 440px;
+  padding: 32px 28px;
+  background: #fff;
+  border: 1px solid #e0e6ef;
+  border-radius: 18px;
+  box-shadow: 0 1px 2px rgba(0, 27, 60, 0.05);
+}
+.tile {
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  margin-bottom: 20px;
+  border-radius: 14px;
+  background: #f0f3f8;
+  color: #2a476e;
+}
+.tile svg { width: 24px; height: 24px; }
+h1 {
+  margin: 0 0 8px;
+  font-size: 24px;
+  line-height: 1.25;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+p { margin: 0; color: #425b7c; }
+p + p { margin-top: 12px; }
+.next { color: #001b3c; font-weight: 500; }
+footer { display: flex; align-items: center; gap: 8px; color: #5c708c; font-size: 14px; }
+footer svg { display: block; width: auto; height: 20px; }
+@media (max-width: 480px) {
+  main { padding: 24px 20px; }
+  h1 { font-size: 22px; }
+}
+</style>
+</head>
+<body>
+<main>
+  <div class="tile" aria-hidden="true">
+    {%- if reason == "expired" %}
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v3"/><path d="M16 2v3"/><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="m14 13-4 4"/><path d="m10 13 4 4"/></svg>
+    {%- elif reason == "used_up" %}
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 14 4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/></svg>
+    {%- else %}
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 17H7A5 5 0 0 1 7 7"/><path d="M15 7h2a5 5 0 0 1 4 8"/><line x1="8" x2="12" y1="12" y2="12"/><line x1="2" x2="22" y1="2" y2="22"/></svg>
+    {%- endif %}
+  </div>
+  <h1>{{ heading }}</h1>
+  {%- if reason == "expired" %}
+  <p>The person who shared it set it to stop working after a certain date, and that date has passed.</p>
+  <p class="next">If you still need what it pointed to, ask them for a new link.</p>
+  {%- elif reason == "used_up" %}
+  <p>The person who shared it set it to open a limited number of times, and they’ve all been used.</p>
+  <p class="next">If you still need what it pointed to, ask them for a new link.</p>
+  {%- else %}
+  <p>There’s no link at this address. It may have been mistyped or cut short when it was copied, or taken down since.</p>
+  <p class="next">Check the address, or ask whoever sent it for a new one.</p>
+  {%- endif %}
+</main>
+<footer>
+  <span>Short links by</span>
+  <svg viewBox="0 0 463.11 176.45" fill="none" role="img" aria-label="Shurly"><title>Shurly</title><path fill-rule="evenodd" clip-rule="evenodd" d="M377 83C377 92.3888 384.611 100 394 100C403.389 100 411 92.3888 411 83V45H432V83C432 103.987 414.987 121 394 121C393.795 121 393.589 120.994 393.385 120.991C393.387 120.991 393.389 120.992 393.392 120.992L391.382 121.043C390.973 121.043 390.573 121.026 390.173 121.026H380.246C378.371 121.026 376.87 122.529 376.87 124.426C376.87 126.323 378.371 127.834 380.246 127.834H407.96C421.313 127.834 432.097 138.695 432.098 152.142C432.098 165.588 421.313 176.45 407.96 176.45H383.729V155.55H407.96C409.844 155.55 411.344 154.03 411.344 152.142C411.344 150.253 409.843 148.734 407.96 148.734H380.246C370.311 148.734 361.417 142.615 357.8 133.349L357.716 133.13C354.199 123.846 356.583 113.421 363.734 106.689L364.056 106.398C364.062 106.406 364.068 106.414 364.074 106.422C359.016 99.9678 356 91.836 356 83V45H377V83Z" fill="#001B3C"/><path d="M189 83C189 92.3888 196.611 100 206 100C215.389 100 223 92.3888 223 83V45H244V83C244 103.987 226.987 121 206 121C185.013 121 168 103.987 168 83V45H189V83Z" fill="#001B3C"/><path d="M302.557 53.3031L287.717 68.1901C285.602 66.0682 282.425 65.4224 279.616 66.5798C276.798 67.7289 275.001 70.4546 275.001 73.4488V121H254V45H275.001V46.04C277.451 45.3942 279.934 45 282.467 45C290.024 45 297.256 47.9941 302.557 53.3031Z" fill="#001B3C"/><path d="M341.5 99.0078L351.5 116.508C345 121.508 341.558 122.508 334 122.508C320.033 122.508 307 111.508 307 94.1913C307 76.8749 307 0.0078125 307 0.0078125H328.001V94.1913C328.001 97.1855 329.798 99.9113 332.616 101.06C335.425 102.218 339.385 101.13 341.5 99.0078Z" fill="#001B3C"/><path d="M105 49.0078C110.115 46.4445 115.889 45 122 45C142.987 45 160 62.0132 160 83V121H139V83C139 73.6112 131.389 66 122 66C112.611 66 105 73.6112 105 83V121H84V0H105V49.0078Z" fill="#001B3C"/><rect x="432" y="120.557" width="22" height="22" transform="rotate(-45 432 120.557)" fill="#5057FF"/><path d="M75 65H24C21.7909 65 20 66.7909 20 69C20 71.2091 21.7909 73 24 73H52C65.2548 73 76 83.7452 76 97C76 110.255 65.2548 121 52 121H1V101H52C54.2091 101 56 99.2091 56 97C56 94.7909 54.2091 93 52 93H24C10.7452 93 0 82.2548 0 69C0 55.7452 10.7452 45 24 45H75V65Z" fill="#001B3C"/></svg>
+</footer>
+</body>
+</html>

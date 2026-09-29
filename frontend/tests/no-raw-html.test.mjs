@@ -53,9 +53,8 @@ function check(found, allowed, extra = () => null) {
 }
 
 const ALLOWED_SINKS = [
-  ['src/utils/html.ts', 'el.innerHTML = typeof markup', 'setHTML itself: escapes strings, and RawHTML only comes from `html`'],
-  ['src/utils/html.ts', 'template.innerHTML = markup.value', 'toElement itself: RawHTML only'],
-  ['src/components/app/QrModal.astro', 'preview.innerHTML = qrSvg(url)', 'numbers and fixed colours; no text from the URL'],
+  ['src/utils/html.ts', 'el.innerHTML = trusted(', 'setHTML itself: through the Trusted Types policy, escaping all but RawHTML'],
+  ['src/utils/html.ts', 'template.innerHTML = trusted(', 'toElement itself: through the Trusted Types policy, escaping all but RawHTML'],
 ];
 
 test('raw HTML sinks are only the allowlisted, static ones', () => {
@@ -67,7 +66,10 @@ test('raw HTML sinks are only the allowlisted, static ones', () => {
 });
 
 test('raw() only wraps string literals, or an icon', () => {
-  const allowed = [['src/utils/icons.ts', 'return raw(iconSvg(name, className, strokeWidth))', 'the icon helper: our own SVG']];
+  const allowed = [
+    ['src/utils/icons.ts', 'return raw(iconSvg(name, className, strokeWidth))', 'the icon helper: our own SVG'],
+    ['src/components/app/QrModal.astro', 'setHTML(preview, raw(qrSvg(url)))', 'our own SVG: module coordinates, a path and fixed colours; never text from the link'],
+  ];
   const calls = [...occurrences(/\braw\(/)].filter((o) => o.file !== 'src/utils/html.ts');
   const literal = /\braw\((['"])[^'"$]*\1\)/g;
   const loose = calls.filter((o) => o.text.replace(literal, '').match(/\braw\(/));
@@ -80,7 +82,14 @@ test('href and src built from a URL go through safeUrl', () => {
   const attr = /\b(?:href|src)="\$\{(?!safeUrl\()[^}]*(?:url|image)[^}]*\}/i;
   // Set on an element: a.href = …, img.src = ….
   const prop = /\.(?:href|src)\s*=(?!\s*safeUrl\()[^;]*(?:url|image)/i;
-  const allowed = [['src/utils/qr.ts', 'img.src = url;', 'a blob: URL from URL.createObjectURL, for the PNG export']];
+  const allowed = [
+    ['src/utils/qr.ts', 'img.src = url;', 'a blob: URL from URL.createObjectURL, for the PNG export'],
+    // Phase 3.12: the avatar is fetched with the bearer header, so it's shown from blob: URLs.
+    ['src/utils/avatar-cropper.ts', 'img.src = url;', 'a blob: URL from URL.createObjectURL, of the file being cropped'],
+    ['src/components/settings/AccountPanel.astro', 'if (url) avatarImage.src = url;', 'a blob: URL from avatarUrl()'],
+    ['src/layouts/AppLayout.astro', 'photo.src = url;', 'a blob: URL from avatarUrl()'],
+    ['src/pages/styleguide.astro', 'photo.src = URL.createObjectURL(square);', 'a blob: URL of the cropped sample'],
+  ];
   const problems = check([...occurrences(attr), ...occurrences(prop)], allowed);
   assert.deepEqual(problems, [], 'Wrap it in safeUrl(…): http and https only.\n' + problems.join('\n'));
 });
@@ -90,9 +99,20 @@ test('set:html is build-time only, with our own markup', () => {
     ['src/components/ui/Icon.astro', 'set:html={iconSvg(name, className, strokeWidth)}', 'icons, at build time'],
     ['src/pages/styleguide.astro', 'set:html={pill(', 'specimens with literal tag names, at build time'],
     ['src/components/manual/ManualArticle.astro', 'set:html={body}', 'the manual: our own Markdown, rendered and filled at build time'],
+    ['src/layouts/BaseLayout.astro', 'set:html={PROTECTED_GUARD}', 'a constant from src/inline-scripts.mjs, allowed by its CSP hash'],
+    ['src/layouts/BaseLayout.astro', 'set:html={GUEST_GUARD}', 'a constant from src/inline-scripts.mjs, allowed by its CSP hash'],
+    ['src/pages/dashboard/settings.astro', 'set:html={SETTINGS_TAB_FROM_HASH}', 'a constant from src/inline-scripts.mjs, allowed by its CSP hash'],
   ];
   // The styleguide has many specimens: one entry covers them all.
   const found = [...occurrences(/set:html/)];
   const problems = check(found, allowed);
   assert.deepEqual(problems, [], 'set:html renders raw markup:\n' + problems.join('\n'));
+});
+
+test('one Trusted Types policy, in html.ts', () => {
+  // Phase 6.3: the CSP allows one policy (shurly-html). Its createHTML passes markup through,
+  // which is only safe behind setHTML and toElement: a policy anywhere else could mint
+  // TrustedHTML from anything.
+  const found = [...occurrences(/\bcreatePolicy\s*\(/)].filter((o) => o.file !== 'src/utils/html.ts');
+  assert.deepEqual(found.map((o) => `${o.file}:${o.line}  ${o.text}`), [], 'Render through setHTML / toElement (src/utils/html.ts) instead');
 });

@@ -1,5 +1,10 @@
 # Implementation Tasks - Rebrandly Insights
 
+> **Historical task list (November 2025)**, from the Lambda-era plan. Shurly moved to ECS Express behind an ALB
+> before the first deploy (decided 2026-04-26), so its SAM template and API Gateway throttling no longer apply;
+> rate limits are app-level (6.3). Current status: [`ROADMAP.md`](ROADMAP.md); how it deploys:
+> [`DEPLOYMENT.md`](../DEPLOYMENT.md).
+
 **Based on**: REBRANDLY_API_ANALYSIS.md
 **Created**: 2025-11-09
 **Target**: Enhance Shurly before AWS deployment

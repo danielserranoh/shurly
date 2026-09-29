@@ -1,5 +1,6 @@
 """Pytest configuration and fixtures."""
 
+import atexit
 import os
 import uuid
 
@@ -29,24 +30,47 @@ from server.core.models import (  # noqa: E402, F401 - Import all models for SQL
 )
 from server.utils import rate_limit  # noqa: E402
 
-# Use in-memory SQLite for testing with proper configuration
-SQLALCHEMY_DATABASE_URL = "sqlite:///:memory:"
+# The suite's database: in-memory SQLite by default, fast. TEST_SUITE_ON_POSTGRES=1 runs it on
+# PostgreSQL instead, as production runs (CI's `test-postgres` job), where SQLite would hide a 500
+# only PostgreSQL gives: a database of this run's own on TEST_DATABASE_URL's server, one per process
+# (so one per xdist worker too), dropped when the process ends, whatever happened to the run.
+SUITE_ON_POSTGRES = os.getenv("TEST_SUITE_ON_POSTGRES") == "1"
 
-# Create engine with StaticPool to keep the in-memory database alive
-engine = create_engine(
-    SQLALCHEMY_DATABASE_URL,
-    connect_args={"check_same_thread": False},
-    poolclass=StaticPool,  # Keep single connection alive for in-memory DB
-    hide_parameters=True,  # as the app's engine (server/core/__init__.py)
-)
+if SUITE_ON_POSTGRES:
+    _server = os.getenv("TEST_DATABASE_URL")
+    if not _server:
+        raise RuntimeError("TEST_SUITE_ON_POSTGRES=1 needs TEST_DATABASE_URL: a PostgreSQL server.")
+    _admin = create_engine(_server, isolation_level="AUTOCOMMIT")
+    SUITE_DATABASE = f"shurly_suite_{uuid.uuid4().hex[:12]}"
+    with _admin.connect() as _conn:
+        _conn.execute(text(f'CREATE DATABASE "{SUITE_DATABASE}"'))
+    engine = create_engine(
+        make_url(_server).set(database=SUITE_DATABASE),
+        hide_parameters=True,  # as the app's engine (server/core/__init__.py)
+    )
 
+    @atexit.register
+    def _drop_suite_database() -> None:
+        engine.dispose()
+        with _admin.connect() as conn:
+            conn.execute(text(f'DROP DATABASE IF EXISTS "{SUITE_DATABASE}" WITH (FORCE)'))
+        _admin.dispose()
 
-# Enable foreign keys for SQLite
-@event.listens_for(engine, "connect")
-def set_sqlite_pragma(dbapi_conn, connection_record):
-    cursor = dbapi_conn.cursor()
-    cursor.execute("PRAGMA foreign_keys=ON")
-    cursor.close()
+else:
+    # Create engine with StaticPool to keep the in-memory database alive
+    engine = create_engine(
+        "sqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,  # Keep single connection alive for in-memory DB
+        hide_parameters=True,  # as the app's engine (server/core/__init__.py)
+    )
+
+    # Enable foreign keys for SQLite
+    @event.listens_for(engine, "connect")
+    def set_sqlite_pragma(dbapi_conn, connection_record):
+        cursor = dbapi_conn.cursor()
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.close()
 
 
 @compiles(UUID, "sqlite")
@@ -63,6 +87,9 @@ Base.metadata.create_all(bind=engine)
 
 # Phase 6.3 — the rate limits count in the test database too.
 rate_limit.session_factory = TestingSessionLocal
+
+# Phase 8.4 — no real geolocation database in tests (tests/test_geolocation.py makes its own).
+settings.geoip_database = ""
 
 
 def pytest_addoption(parser):

@@ -9,7 +9,8 @@ Phase 5.2 layers two filters on top of the bare auto-generation:
   * `EXCLUDED_ROUTE_MAPS` — routes that are auto-generated but useless (or
     actively harmful) as MCP tools: the public redirect path, the tracking
     pixel, robots.txt, the bare landing, the readiness/liveness probes, and
-    the legacy `/api/v1/stats/*` surface that was superseded by `/analytics/*`.
+    what only the person should do (organization changes, passwords, API keys, signing
+    in with a password).
   * `MCP_TOOL_NAMES` — strips the verbose `_api_v1_<path>_<method>` suffix
     from FastAPI-generated operationIds so LLM-facing tool names read like
     `create_short_url` instead of `create_short_url_api_v1_urls_post`.
@@ -21,21 +22,22 @@ Auth (Phase 5.4) and deployment (Phase 5.5) are still pending.
 from __future__ import annotations
 
 import os
+from typing import Annotated
 
 from fastmcp import FastMCP
 from fastmcp.server.providers.openapi import MCPType, RouteMap
+from pydantic import Field
 
 # Module level, not inside `_register_curated_tools`: with postponed annotations
 # fastmcp resolves the tools' parameter types against this module's globals.
 from server.utils.access import Visibility
+from server.utils.bounds import INT4_MAX, INT4_MIN
 
 # Routes that exist in the FastAPI app but should NOT be MCP tools.
 #
 # Public-facing infrastructure: an LLM driving the API has no business
 # fetching the redirect path or the email pixel — those are end-user surfaces.
-# Probes return health, not data the model can reason about. The legacy
-# `/api/v1/stats/*` namespace was superseded by `/api/v1/analytics/*` and is
-# kept only for backward compat with old clients.
+# Probes return health, not data the model can reason about.
 EXCLUDED_ROUTE_MAPS: list[RouteMap] = [
     # Public unversioned routes (Phase 3.10.x) — the redirect path, tracking
     # pixel, base landing, and robots.txt are user-facing, not API surfaces.
@@ -45,8 +47,24 @@ EXCLUDED_ROUTE_MAPS: list[RouteMap] = [
     RouteMap(pattern=r"^/\{short_code\}/track$", mcp_type=MCPType.EXCLUDE),
     # Health probes — orchestrator-only, not LLM-facing.
     RouteMap(pattern=r"^/api/v1/health(/.*)?$", mcp_type=MCPType.EXCLUDE),
-    # Legacy stats namespace — superseded by /api/v1/analytics/*.
-    RouteMap(pattern=r"^/api/v1/stats(/.*)?$", mcp_type=MCPType.EXCLUDE),
+    # Phase 3.16 — every visit of a period as a file: an assistant pages through
+    # `list_url_visits` instead of pulling the whole CSV into its context.
+    RouteMap(
+        pattern=r"^/api/v1/analytics/urls/\{short_code\}/visits\.csv$",
+        mcp_type=MCPType.EXCLUDE,
+    ),
+    # ROADMAP 3.10.4 — orphan visits by the path tried: the curated `list_orphan_visits_grouped`
+    # is the MCP's grouping, the same one.
+    RouteMap(
+        pattern=r"^/api/v1/analytics/orphan-visits/grouped$",
+        mcp_type=MCPType.EXCLUDE,
+    ),
+    # Phase 3.17 — a campaign's recipients as a file, the same way: `list_campaign_recipients`
+    # pages through them.
+    RouteMap(
+        pattern=r"^/api/v1/analytics/campaigns/\{campaign_id\}/recipients\.csv$",
+        mcp_type=MCPType.EXCLUDE,
+    ),
     # Phase 3.14.2 — role changes, removals and ownership handovers stay out of the
     # MCP: an assistant that reads untrusted text (link titles, fetched pages) could
     # be talked into "make X an owner". Reading the organization is fine.
@@ -65,9 +83,29 @@ EXCLUDED_ROUTE_MAPS: list[RouteMap] = [
     # and only the signed-in person sets or removes a password: the same untrusted
     # text could talk an assistant into it.
     RouteMap(pattern=r"^/api/v1/auth/google/.*$", mcp_type=MCPType.EXCLUDE),
+    # Phase 3.12 — the avatar is an image upload and an image back (PUT, GET, DELETE):
+    # of no use to an assistant, and someone's picture is theirs to change.
+    RouteMap(pattern=r"^/api/v1/auth/me/avatar$", mcp_type=MCPType.EXCLUDE),
+    # Phase 6.4 — a browser's error report: for the web app's own use, never an assistant's.
+    RouteMap(pattern=r"^/api/v1/client-errors$", mcp_type=MCPType.EXCLUDE),
     RouteMap(
         methods=["PUT", "DELETE"],
         pattern=r"^/api/v1/auth/password$",
+        mcp_type=MCPType.EXCLUDE,
+    ),
+    # Phase 6.3 — so is managing the API key. Talked into "generate a new API key", an
+    # assistant would get the new key in its context (why /auth/me no longer returns
+    # it), and the key the person uses would stop working.
+    RouteMap(
+        methods=["POST"], pattern=r"^/api/v1/auth/api-key/generate$", mcp_type=MCPType.EXCLUDE
+    ),
+    RouteMap(methods=["DELETE"], pattern=r"^/api/v1/auth/api-key$", mcp_type=MCPType.EXCLUDE),
+    # Phase 6.3 — and signing in with a password, or changing it: `login` would put a
+    # JWT in the assistant's context, and both take a password from it. The MCP is
+    # already signed in, so neither does anything there that the person needs.
+    RouteMap(
+        methods=["POST"],
+        pattern=r"^/api/v1/auth/(login|change-password)$",
         mcp_type=MCPType.EXCLUDE,
     ),
 ]
@@ -85,11 +123,8 @@ MCP_TOOL_NAMES: dict[str, str] = {
     # Auth. `register` is a tool only with ALLOW_PASSWORD_SIGNUP on at startup (local
     # development, Phase 3.13.2); otherwise its route is out of the schema.
     "register_api_v1_auth_register_post": "register",
-    "login_api_v1_auth_login_post": "login",
     "get_current_user_info_api_v1_auth_me_get": "get_current_user_info",
-    "change_password_api_v1_auth_change_password_post": "change_password",
-    "generate_api_key_api_v1_auth_api_key_generate_post": "generate_api_key",
-    "revoke_api_key_api_v1_auth_api_key_delete": "revoke_api_key",
+    "update_my_profile_api_v1_auth_me_profile_patch": "update_my_profile",
     # Organization (Phase 3.14.2) — read-only; changes are excluded above
     "get_organization_api_v1_organization_get": "get_organization",
     "list_organization_members_api_v1_organization_members_get": "list_organization_members",
@@ -123,8 +158,24 @@ MCP_TOOL_NAMES: dict[str, str] = {
     "get_url_daily_stats_api_v1_analytics_urls__short_code__daily_get": "get_url_daily_stats",
     "get_url_weekly_stats_api_v1_analytics_urls__short_code__weekly_get": "get_url_weekly_stats",
     "get_url_geo_stats_api_v1_analytics_urls__short_code__geo_get": "get_url_geo_stats",
+    # Phase 3.16 — per-link analytics, as on Shlink's link page.
+    "get_url_totals_api_v1_analytics_urls__short_code__totals_get": "get_url_totals",
+    "get_url_timeseries_api_v1_analytics_urls__short_code__timeseries_get": "get_url_timeseries",
+    "get_url_breakdown_api_v1_analytics_urls__short_code__breakdown_get": "get_url_breakdown",
+    "list_url_visits_api_v1_analytics_urls__short_code__visits_get": "list_url_visits",
     "get_campaign_summary_api_v1_analytics_campaigns__campaign_id__summary_get": "get_campaign_summary",
     "get_campaign_users_api_v1_analytics_campaigns__campaign_id__users_get": "get_campaign_users",
+    # Phase 3.17 — per-campaign analytics.
+    "get_campaign_totals_api_v1_analytics_campaigns__campaign_id__totals_get": "get_campaign_totals",
+    "get_campaign_timeseries_api_v1_analytics_campaigns__campaign_id__timeseries_get": (
+        "get_campaign_timeseries"
+    ),
+    "get_campaign_breakdown_api_v1_analytics_campaigns__campaign_id__breakdown_get": (
+        "get_campaign_breakdown"
+    ),
+    "list_campaign_recipients_api_v1_analytics_campaigns__campaign_id__recipients_get": (
+        "list_campaign_recipients"
+    ),
     "get_orphan_visits_api_v1_analytics_orphan_visits_get": "get_orphan_visits",
     # Tags
     "list_tags_api_v1_tags_get": "list_tags",
@@ -268,13 +319,15 @@ def _register_curated_tools(server: FastMCP) -> None:
         description=(
             "Create a redirect rule on a short URL using named condition "
             "args (device, language, browser, query_param/query_value, "
-            "before_date, after_date). At least one condition is required."
+            "before_date, after_date). At least one condition is required. "
+            "`domain` picks the link when its code exists on several domains."
         ),
     )
     def add_redirect_rule(
         short_code: str,
         target_url: str,
-        priority: int = 0,
+        domain: str | None = None,
+        priority: Annotated[int, Field(ge=INT4_MIN, le=INT4_MAX)] = 0,
         device: str | None = None,
         language: str | None = None,
         browser: str | None = None,
@@ -291,6 +344,7 @@ def _register_curated_tools(server: FastMCP) -> None:
                 resolve_current_user(db),
                 short_code=short_code,
                 target_url=target_url,
+                domain=domain,
                 priority=priority,
                 device=device,
                 language=language,
@@ -305,12 +359,14 @@ def _register_curated_tools(server: FastMCP) -> None:
         name="get_url_analytics_summary",
         description=(
             "One-shot analytics for a short URL: totals, daily series, and "
-            "top countries. Avoids three separate calls to overview/daily/geo."
+            "top countries. Avoids three separate calls to overview/daily/geo. "
+            "`domain` picks the link when its code exists on several domains."
         ),
     )
     def get_url_analytics_summary(
         short_code: str,
-        days: int = 7,
+        domain: str | None = None,
+        days: Annotated[int, Field(ge=1, le=90)] = 7,  # what curated.py checks
         include_bots: bool = False,
     ) -> dict:
         from server.core import SessionLocal
@@ -320,6 +376,7 @@ def _register_curated_tools(server: FastMCP) -> None:
                 db,
                 resolve_current_user(db),
                 short_code=short_code,
+                domain=domain,
                 days=days,
                 include_bots=include_bots,
             )
@@ -332,8 +389,8 @@ def _register_curated_tools(server: FastMCP) -> None:
         ),
     )
     def list_orphan_visits_grouped(
-        since_days: int = 30,
-        limit_groups: int = 20,
+        since_days: Annotated[int, Field(ge=1, le=365)] = 30,  # what curated.py checks
+        limit_groups: Annotated[int, Field(ge=1, le=200)] = 20,
     ) -> dict:
         from server.core import SessionLocal
 

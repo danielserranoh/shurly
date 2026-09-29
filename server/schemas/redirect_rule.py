@@ -6,11 +6,17 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator
 
+from server.utils.bounds import INT4_MAX, INT4_MIN
 from server.utils.url import is_valid_url
 
 
 class RedirectRuleCreate(BaseModel):
-    priority: int = Field(0, description="Lower value = evaluated first")
+    priority: int = Field(
+        0,
+        ge=INT4_MIN,
+        le=INT4_MAX,
+        description="Lower value = evaluated first; a negative one runs before the default 0",
+    )
     conditions: list[dict[str, Any]] = Field(
         ..., description="List of {type, value, ...} dicts ANDed together"
     )
@@ -25,7 +31,7 @@ class RedirectRuleCreate(BaseModel):
 
 
 class RedirectRuleUpdate(BaseModel):
-    priority: int | None = None
+    priority: int | None = Field(None, ge=INT4_MIN, le=INT4_MAX)
     conditions: list[dict[str, Any]] | None = None
     target_url: str | None = None
 

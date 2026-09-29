@@ -59,13 +59,15 @@ CSS classes (in `global.css`): `btn` (+ `btn-primary | accent | secondary | ghos
 
 Astro components (`frontend/src/components/`): `brand/Logo`, `ui/Icon` (Lucide), `ui/PageHeader`,
 `ui/StatCard`, `ui/EmptyState`, `ui/Modal`, `ui/ProBadge`, `ui/PasswordField`, `ui/GoogleLogo`,
+`ui/AvatarCropper` (the photo's crop dialog), `ui/Pager` (Previous and Next under a paged list),
 `illustrations/Illustration` (11 line illustrations), `app/EditLinkModal`, `app/QrModal`,
 `app/VisibilityToggle` (the "Personal" switch of the create flows).
 
 Rendered in TypeScript (`frontend/src/utils/`): link card (`links.ts`), campaign card
 (`campaigns.ts`), tag pill and tag picker (`tags.ts`, `tag-input.ts`), charts (`charts.ts`),
 toasts, confirm dialogs and copy feedback (`ui.ts`), who's looking and locked controls
-(`viewer.ts`). Every interpolation goes through the escaping `html` template tag (`html.ts`).
+(`viewer.ts`), the avatar and its crop (`avatar.ts`, `avatar-cropper.ts`, `avatar-crop.ts`), a campaign's recipients
+(`recipients.ts`, logic in `recipients-view.ts`). Every interpolation goes through the escaping `html` template tag (`html.ts`).
 
 ## Patterns
 
@@ -73,6 +75,8 @@ toasts, confirm dialogs and copy feedback (`ui.ts`), who's looking and locked co
   in place. The spinner is a pinging brand-blue dot.
 - **Empty.** Illustration, one sentence on what goes here, and the action that fills it.
   "No results" is a different state from "nothing yet" and offers a way to clear the filters.
+- **First run.** A new member's list already shows the team's links, so the empty state isn't where they start:
+  for an account's first 14 days, the dashboard opens with a welcome card and where to start, until it's dismissed.
 - **Errors, by severity.** Field problems appear inline under the field (focus moves to the first one, and
   collapsed sections open). Form-level API errors go in an alert inside the form. Background or
   async failures show a toast. A page that fails to load gets an error state with **Try again**.
@@ -87,6 +91,14 @@ toasts, confirm dialogs and copy feedback (`ui.ts`), who's looking and locked co
   isn't where you're looking (auto-copy after quick create, bulk copy).
 - **Toasts** appear top-right under the header: 4 s, or 6 s for errors.
 - **Dialogs** fade and scale in and become bottom sheets under 640 px. **Menus** use the Popover API.
+- **Photos.** An avatar is the first name's initial (the email's without one) until there's a photo. A
+  photo is picked or dropped, then placed in the crop dialog: drag or arrow keys to move it; wheel, pinch,
+  slider or + and − to zoom. The circle is always covered: zooming out stops when the photo's short side
+  fills it, and it can't be dragged off. It's saved as a 512 px square from the dialog, which stays open
+  to show an error.
+- **Paging.** The links and the campaigns come 20 at a time, with the pager under the list: "Showing 21–40 of 57",
+  Previous and Next, and `?page=` in the address so a reload or a shared link keeps the place. It hides while
+  the list fits on one page.
 - **Keyboard.** `N` opens a new link and `/` focuses search. Every control has a visible focus ring
   (ink ring + blue halo).
 - **Responsive.** Desktop-first, checked at 1440 and 390 px. Under `md` the nav moves into a menu dialog.
@@ -100,7 +112,8 @@ yet (pricing reads "announced soon") and the API has no billing, so nothing is e
    everyone, including the ones the Plan tab lists under Pro (social preview editing, API & MCP).
 2. Pro-only controls are visible but disabled, marked with a `ProBadge` or lock icon and a tooltip saying
    what Pro adds ("Longer ranges come with Pro"). Features that aren't built yet use `ProBadge label="Coming soon"`.
-   Examples: analytics ranges beyond 7 days, QR brand colours and logo, click notifications.
+   Examples: the Analytics page's ranges beyond 7 days across all links (a link's own page has 30 and 90 days and
+   custom ranges, free), QR brand colours and logo, click notifications.
 3. The copy says "Unlock with Pro". It never says "Upgrade now!", and it never uses a blocking modal.
 
 ## Charts
@@ -109,6 +122,21 @@ One series in `brand-400`, Griddo blue (validated for contrast and colour-vision
 or thinner with a 4 px rounded data end. Grid lines are hairlines. Only the maximum is
 labelled, and every mark has a hover/focus tooltip. Each chart has a **Table** toggle
 showing the same data. Stat numbers use the UI sans, not the display face.
+
+**Donuts** show shares of one total (operating systems, browsers, devices) in the same one hue: four
+blues from the brand ramp, light and dark in turn so neighbours never look alike (`brand-400`, `800`,
+`300`, `600`), then a grey tail (`ink-400`): the fifth item, or *Other* for everything past the top four.
+White gaps separate the slices, and the total sits in the hole. The legend is what screen readers read,
+counts and percents included; **Show numbers** only shows them on screen. Hovering a slice or a key, or
+focusing a key, lights it up and puts its share in the hole. The table lists every item, not grouped,
+with whole-percent shares that add up to 100, and the legend's percents are the table's.
+
+**Bar lists** rank counts with long labels (countries, referrers): the value at the bar tip, the full
+label on hover when it's cut. Past a limit the rest wait behind **Show all N**.
+
+**Sortable tables** (a campaign's recipients): the headers that sort are buttons with `aria-sort`. The
+first press sorts the most first (a link A to Z), the next flips it. Phones have no headers: the table
+becomes stacked rows, and a **Sort by** select offers the same sorts by name.
 
 ## Decisions on the brief's open questions (§11)
 

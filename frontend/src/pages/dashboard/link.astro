@@ -5,6 +5,7 @@ import StatCard from '@/components/ui/StatCard.astro';
 import EmptyState from '@/components/ui/EmptyState.astro';
 import EditLinkModal from '@/components/app/EditLinkModal.astro';
 import QrModal from '@/components/app/QrModal.astro';
+import AnalyticsSection from '@/components/app/AnalyticsSection.astro';
 import { BROWSERS, DEVICES, LANGUAGES } from '@/utils/rules';
 ---
 
@@ -66,34 +67,18 @@ import { BROWSERS, DEVICES, LANGUAGES } from '@/utils/rules';
       </div>
     </div>
 
-    <!-- KPIs -->
-    <section aria-label="Summary" class="mt-8 grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
-      <StatCard label="Clicks, all time" stat="total" icon="click" accent />
-      <StatCard label="Last 7 days" stat="week" icon="activity" />
-      <StatCard label="Last 8 weeks" stat="weeks" icon="trending" />
+    <!-- All-time numbers (3.16: /totals) -->
+    <section aria-label="All time" class="mt-8 grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
+      <StatCard label="Clicks, all time" stat="clicks" icon="click" accent />
+      <StatCard label="Email opens, all time" stat="opens" icon="mail-open" />
+      <StatCard label="Countries" stat="countries" icon="globe" />
       <StatCard label="Last click" stat="last" icon="clock" />
     </section>
 
-    <div class="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
-      <!-- Activity chart -->
-      <section class="card p-5 sm:p-6" aria-labelledby="activity-title">
-        <div class="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h2 id="activity-title" class="font-semibold text-ink-950">Clicks</h2>
-            <p class="text-sm text-ink-500" data-activity-sub>Per day, last 7 days</p>
-          </div>
-          <div class="flex items-center gap-2">
-            <div class="segmented" role="radiogroup" aria-label="Period">
-              <label><input type="radio" name="period" value="daily" checked /><span>7 days</span></label>
-              <label><input type="radio" name="period" value="weekly" /><span>8 weeks</span></label>
-            </div>
-            <button type="button" class="btn btn-ghost btn-sm" data-table-toggle aria-pressed="false"><Icon name="list" /><span data-label>Table</span></button>
-          </div>
-        </div>
-        <div class="mt-6" data-chart></div>
-        <div class="mt-4 max-h-80 overflow-auto rounded-xl border border-line" data-table hidden></div>
-      </section>
+    <!-- Analytics for a period (3.16) -->
+    <AnalyticsSection visits exportCsv />
 
+    <div class="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
       <!-- Social preview -->
       <section class="card overflow-hidden" aria-labelledby="preview-title">
         <div class="flex items-center justify-between px-5 pt-5 pb-4">
@@ -108,16 +93,6 @@ import { BROWSERS, DEVICES, LANGUAGES } from '@/utils/rules';
         </div>
         <div class="border-t border-line" data-og-card></div>
       </section>
-    </div>
-
-    <div class="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
-      <!-- Countries -->
-      <section class="card p-5 sm:p-6" aria-labelledby="geo-title">
-        <h2 id="geo-title" class="font-semibold text-ink-950">Top countries</h2>
-        <p class="text-sm text-ink-500">Last 30 days</p>
-        <div class="mt-5" data-geo></div>
-      </section>
-
       <!-- Tracking -->
       <section class="card p-5 sm:p-6" aria-labelledby="track-title">
         <h2 id="track-title" class="font-semibold text-ink-950">Track email opens</h2>
@@ -190,28 +165,30 @@ import { BROWSERS, DEVICES, LANGUAGES } from '@/utils/rules';
 </AppLayout>
 
 <script>
-  import { apiGet, ApiError, errorMessage } from '@/utils/api';
-  import { barList, bindChartTableToggle, columnChart, dataTable, sparkline } from '@/utils/charts';
+  import { apiPost, ApiError, errorMessage } from '@/utils/api';
+  import { initAnalytics, type AnalyticsControls } from '@/utils/analytics-section';
   import { clearErrors, setFieldError } from '@/utils/forms';
   import { formatDate, formatDateTime, formatNumber, fromLocalInput, hostname, isValidHttpUrl, linkTitle, normalizeUrlInput, parseDate, pluralize, prettyUrl } from '@/utils/format';
   import { html, safeUrl, setHTML } from '@/utils/html';
   import { icon } from '@/utils/icons';
+  import { downloadVisits, getBreakdown, getTimeseries, getTotals, getVisits } from '@/utils/link-analytics';
   import { openLinkEditor } from '@/utils/link-editor';
   import { campaignHref, deleteLink, getLink, linkBadges, linkThumb, openQr } from '@/utils/links';
+  import { linkApi } from '@/utils/link-address';
   import { createRule, deleteRule, listRules, renderRule } from '@/utils/rules';
   import { tagPill } from '@/utils/tags';
   import { confirmDialog, copyWithFeedback, hydrateTimes, setLoading, toast } from '@/utils/ui';
-  import { apiPost } from '@/utils/api';
-  import { canChange, creatorName, getViewer, installLockedControls, lockControl, onForbidden, type Viewer } from '@/utils/viewer';
-  import type { CampaignListResponse, DailyStatsResponse, GeoStatsResponse, PreviewMetadata, RedirectRule, RuleCondition, RuleConditionType, ShortLink, WeeklyStatsResponse } from '@/utils/types';
+  import { canChange, creatorEmailBehindName, creatorName, getViewer, installLockedControls, lockControl, onForbidden, type Viewer } from '@/utils/viewer';
+  import type { LinkTotals, PreviewMetadata, RedirectRule, RuleCondition, RuleConditionType, ShortLink } from '@/utils/types';
 
-  const code = new URLSearchParams(location.search).get('code') ?? '';
+  // Phase 8.3 — a link is its code and its domain. Without `?domain=` (an old bookmark),
+  // the default domain's link answers; after that, the loaded link addresses itself.
+  const params = new URLSearchParams(location.search);
+  const code = params.get('code') ?? '';
+  const domain = params.get('domain');
   const $ = <T extends HTMLElement = HTMLElement>(sel: string) => document.querySelector<T>(sel)!;
   let link: ShortLink;
-  let daily: DailyStatsResponse | null = null;
-  let weekly: WeeklyStatsResponse | null = null;
   let rules: RedirectRule[] = [];
-  let period: 'daily' | 'weekly' = 'daily';
   let viewer: Viewer | null = null;
   /** The viewer may change this link (its creator, or an admin or owner for the organization's). */
   const changeable = () => canChange(link, viewer);
@@ -240,7 +217,7 @@ import { BROWSERS, DEVICES, LANGUAGES } from '@/utils/rules';
     dest.title = link.original_url;
     setHTML(
       $('[data-meta]'),
-      html`<span class="inline-flex items-center gap-1.5">${icon('calendar', 'size-3.5')}Created ${formatDate(link.created_at)}${creatorName(link, viewer) ? ` by ${creatorName(link, viewer)}` : ''}</span>
+      html`<span class="inline-flex items-center gap-1.5" ${creatorEmailBehindName(link, viewer) ? html`title="${creatorEmailBehindName(link, viewer)}"` : ''}>${icon('calendar', 'size-3.5')}Created ${formatDate(link.created_at)}${creatorName(link, viewer) ? ` by ${creatorName(link, viewer)}` : ''}</span>
         <span class="inline-flex items-center gap-1.5">${icon('pencil', 'size-3.5')}Updated <time data-relative datetime="${link.updated_at}"></time></span>
         ${link.valid_since ? html`<span class="inline-flex items-center gap-1.5">${icon('calendar-clock', 'size-3.5')}Live from ${formatDateTime(link.valid_since)}</span>` : ''}
         ${link.valid_until ? html`<span class="inline-flex items-center gap-1.5">${icon('timer', 'size-3.5')}Expires ${formatDateTime(link.valid_until)}</span>` : ''}
@@ -261,14 +238,7 @@ import { BROWSERS, DEVICES, LANGUAGES } from '@/utils/rules';
         $('[data-user-data]'),
         html`${Object.entries(link.user_data ?? {}).map(([k, v]) => html`<span class="badge badge-outline"><span class="text-ink-500">${k}</span> ${v}</span>`)}`,
       );
-      if (link.campaign_id) {
-        apiGet<CampaignListResponse>('/api/v1/campaigns?limit=100')
-          .then((r) => {
-            const c = r.campaigns.find((x) => x.id === link.campaign_id);
-            if (c) a.textContent = c.name;
-          })
-          .catch(() => {});
-      }
+      if (link.campaign_name) a.textContent = link.campaign_name;
     }
     // Shown as text, to paste into an email's HTML.
     const pixel = link.short_url ? `<img src="${safeUrl(link.short_url)}/track" width="1" height="1" alt="" style="display:none">` : '';
@@ -282,65 +252,31 @@ import { BROWSERS, DEVICES, LANGUAGES } from '@/utils/rules';
     }
   }
 
-  // ------------------------------------------------------------------ Stats & chart
-  function setStat(key: string, value: string, hint?: string | ReturnType<typeof html>) {
+  // ------------------------------------------------------------------ All-time numbers (3.16: /totals)
+  // Everything under "Analytics" is for a period: src/utils/analytics-section.ts, fed by this link's routes.
+  let totals: LinkTotals | null = null;
+  let analytics: AnalyticsControls | null = null;
+
+  function setStat(key: string, value: string, hint: string) {
     $(`[data-stat="${key}"]`).textContent = value;
-    const el = $(`[data-stat-hint="${key}"]`);
-    if (hint === undefined) return;
-    if (typeof hint === 'string') el.textContent = hint;
-    else setHTML(el, hint);
+    $(`[data-stat-hint="${key}"]`).textContent = hint;
   }
 
-  function renderStats() {
-    setStat('total', formatNumber(link.click_count), link.click_count ? 'Real people — bots excluded' : 'Share it to get the first one');
-    if (daily) setStat('week', formatNumber(daily.total_clicks), html`<span class="flex items-center justify-between gap-2"><span>Per day</span>${sparkline(daily.stats.map((s) => s.clicks), 72, 20)}</span>`);
-    if (weekly) {
-      const s = weekly.stats;
-      const last = s[s.length - 1]?.clicks ?? 0;
-      const prev = s[s.length - 2]?.clicks ?? 0;
-      const delta = prev ? Math.round(((last - prev) / prev) * 100) : null;
-      setStat(
-        'weeks',
-        formatNumber(weekly.total_clicks),
-        delta === null ? 'Weekly totals' : html`<span class="${delta >= 0 ? 'text-brand-800' : 'text-ink-600'} font-medium">${delta >= 0 ? '+' : ''}${delta}%</span> this week vs last`,
-      );
+  function renderTotals() {
+    if (!totals) {
+      for (const key of ['clicks', 'opens', 'countries', 'last']) setStat(key, '—', 'Couldn’t load this');
+      return;
     }
-    if (parseDate(link.last_click_at)) {
-      setHTML($('[data-stat="last"]'), html`<time data-relative datetime="${link.last_click_at}"></time>`);
-      $('[data-stat-hint="last"]').textContent = formatDateTime(link.last_click_at);
+    setStat('clicks', formatNumber(totals.clicks), totals.clicks ? 'Real people — bots excluded' : 'Share it to get the first one');
+    setStat('opens', formatNumber(totals.opens), totals.opens ? 'Apple Mail opens some on its own' : 'Add the tracking image to an email');
+    setStat('countries', formatNumber(totals.countries), totals.countries ? 'Where its clicks came from' : 'None known yet');
+    if (parseDate(totals.last_click_at)) {
+      setHTML($('[data-stat="last"]'), html`<time data-relative datetime="${totals.last_click_at}"></time>`);
+      $('[data-stat-hint="last"]').textContent = formatDateTime(totals.last_click_at);
       hydrateTimes($('[data-stat="last"]'));
     } else setStat('last', 'Never', 'No clicks yet');
-  }
-
-  function renderChart() {
-    const chartEl = $('[data-chart]');
-    const tableEl = $('[data-table]');
-    if (period === 'daily' && daily) {
-      const today = new Date().toISOString().slice(0, 10);
-      const rows = daily.stats.map((s) => {
-        const d = new Date(`${s.date}T12:00:00`);
-        return {
-          label: s.date === today ? 'Today' : d.toLocaleDateString('en-US', { weekday: 'short' }),
-          value: s.clicks,
-          title: d.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' }),
-        };
-      });
-      $('[data-activity-sub]').textContent = 'Per day, last 7 days';
-      columnChart(chartEl, rows, { ariaLabel: `Clicks per day for the last 7 days. Total ${daily.total_clicks}.`, height: 240 });
-      setHTML(tableEl, dataTable(rows.map((r) => ({ label: r.title, value: r.value })), ['Day', 'Clicks']));
-    } else if (period === 'weekly' && weekly) {
-      const rows = weekly.stats.map((s) => {
-        const d = new Date(`${s.week_start}T12:00:00`);
-        return {
-          label: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-          value: s.clicks,
-          title: `Week of ${d.toLocaleDateString('en-US', { month: 'long', day: 'numeric' })}`,
-        };
-      });
-      $('[data-activity-sub]').textContent = 'Per week, last 8 weeks';
-      columnChart(chartEl, rows, { ariaLabel: `Clicks per week for the last 8 weeks. Total ${weekly.total_clicks}.`, height: 240 });
-      setHTML(tableEl, dataTable(rows.map((r) => ({ label: r.title, value: r.value })), ['Week', 'Clicks']));
-    }
+    analytics?.setOpens(totals.opens > 0);
+    analytics?.setZone(totals.timezone);
   }
 
   // ------------------------------------------------------------------ Social preview
@@ -369,9 +305,9 @@ import { BROWSERS, DEVICES, LANGUAGES } from '@/utils/rules';
   async function refreshPreview(btn?: HTMLButtonElement | null) {
     if (btn) setLoading(btn, true, '');
     try {
-      const meta = await apiPost<PreviewMetadata>(`/api/v1/urls/${encodeURIComponent(code)}/refresh-preview`);
+      const meta = await apiPost<PreviewMetadata>(linkApi(link, '/refresh-preview'));
       link = { ...link, og_title: meta.og_title, og_description: meta.og_description, og_image_url: meta.og_image_url, og_fetched_at: meta.fetched_at };
-      link = await getLink(code);
+      link = await getLink(link);
       renderPreview(meta);
       renderHeader();
       toast('Preview refreshed', 'success', { description: meta.has_custom_preview ? 'Fields you set yourself were kept.' : undefined });
@@ -379,23 +315,6 @@ import { BROWSERS, DEVICES, LANGUAGES } from '@/utils/rules';
       toast('Couldn’t refresh the preview', 'error', { description: errorMessage(err) });
     } finally {
       if (btn) setLoading(btn, false);
-    }
-  }
-
-  // ------------------------------------------------------------------ Geo
-  function renderGeo(geo: GeoStatsResponse | null) {
-    const el = $('[data-geo]');
-    if (!geo || geo.stats.length === 0) {
-      setHTML(el, html`<div class="flex items-start gap-3 rounded-xl bg-ink-50 p-4 text-sm text-ink-600"><span class="mt-0.5 text-ink-400">${icon('globe', 'size-4')}</span><p>No location data for these clicks yet. Countries show up here when location lookup is available for the visits.</p></div>`);
-      return;
-    }
-    const items = geo.stats.slice(0, 6).map((g) => ({ label: g.country, value: g.clicks }));
-    setHTML(el, barList(items));
-    if (geo.stats.length > 6) {
-      const more = document.createElement('p');
-      more.className = 'mt-4 text-xs text-ink-500';
-      more.textContent = `+ ${pluralize(geo.stats.length - 6, 'more country', 'more countries')}`;
-      el.append(more);
     }
   }
 
@@ -458,7 +377,7 @@ import { BROWSERS, DEVICES, LANGUAGES } from '@/utils/rules';
     setLoading(btn, true, 'Saving…');
     try {
       const priority = rules.length ? Math.max(...rules.map((r) => r.priority)) + 1 : 0;
-      rules = [...rules, await createRule(code, { priority, conditions: [condition], target_url: target })];
+      rules = [...rules, await createRule(link, { priority, conditions: [condition], target_url: target })];
       renderRules();
       ruleForm.hidden = true;
       toast('Rule added', 'success');
@@ -472,7 +391,7 @@ import { BROWSERS, DEVICES, LANGUAGES } from '@/utils/rules';
     const btn = (e.target as HTMLElement).closest<HTMLElement>('[data-delete-rule]');
     if (!btn) return;
     const id = btn.dataset.deleteRule!;
-    const ok = await confirmDialog({ title: 'Delete this rule?', body: 'Visitors it matched will go to the regular destination.', confirmLabel: 'Delete rule', danger: true, onConfirm: () => deleteRule(code, id) });
+    const ok = await confirmDialog({ title: 'Delete this rule?', body: 'Visitors it matched will go to the regular destination.', confirmLabel: 'Delete rule', danger: true, onConfirm: () => deleteRule(link, id) });
     if (ok) {
       rules = rules.filter((r) => r.id !== id);
       renderRules();
@@ -488,7 +407,6 @@ import { BROWSERS, DEVICES, LANGUAGES } from '@/utils/rules';
     link = updated;
     renderHeader();
     renderPreview();
-    renderStats();
   };
   $('[data-edit]').addEventListener('click', () => openLinkEditor(link, onSaved));
   $('[data-edit-og]').addEventListener('click', () => openLinkEditor(link, onSaved, 'og'));
@@ -504,20 +422,13 @@ import { BROWSERS, DEVICES, LANGUAGES } from '@/utils/rules';
       body: `${prettyUrl(link.short_url)} will stop working for everyone who has it${link.click_count ? `, and its ${pluralize(link.click_count, 'click')} of history will be deleted` : ''}. This can’t be undone.`,
       confirmLabel: 'Delete link',
       danger: true,
-      onConfirm: () => deleteLink(code),
+      onConfirm: () => deleteLink(link),
     });
     if (ok) {
       sessionStorage.setItem('shurly_flash', 'Link deleted');
       location.href = '/dashboard/';
     }
   });
-  document.querySelectorAll<HTMLInputElement>('input[name="period"]').forEach((r) =>
-    r.addEventListener('change', () => {
-      period = r.value as 'daily' | 'weekly';
-      renderChart();
-    }),
-  );
-  bindChartTableToggle($<HTMLButtonElement>('[data-table-toggle]'), $('[data-chart]'), $('[data-table]'));
 
   // ------------------------------------------------------------------ Load
   async function load() {
@@ -527,7 +438,7 @@ import { BROWSERS, DEVICES, LANGUAGES } from '@/utils/rules';
       return;
     }
     try {
-      [link, viewer] = await Promise.all([getLink(code), getViewer()]);
+      [link, viewer] = await Promise.all([getLink({ short_code: code, domain }), getViewer()]);
     } catch (err) {
       $('#loading').hidden = true;
       $('#not-found').hidden = false;
@@ -537,24 +448,28 @@ import { BROWSERS, DEVICES, LANGUAGES } from '@/utils/rules';
       }
       return;
     }
+    // Name the link's domain in the address, so a reload or a shared URL finds this link.
+    if (link.domain && !domain) {
+      const query = new URLSearchParams(location.search);
+      query.set('domain', link.domain);
+      history.replaceState(null, '', `${location.pathname}?${query}${location.hash}`);
+    }
     renderHeader();
     renderPreview();
-    renderStats();
     $('#loading').hidden = true;
     $('#content').hidden = false;
 
-    const enc = encodeURIComponent(code);
-    const [d, w, g, r] = await Promise.allSettled([
-      apiGet<DailyStatsResponse>(`/api/v1/analytics/urls/${enc}/daily`),
-      apiGet<WeeklyStatsResponse>(`/api/v1/analytics/urls/${enc}/weekly`),
-      apiGet<GeoStatsResponse>(`/api/v1/analytics/urls/${enc}/geo?days=30`),
-      listRules(code),
-    ]);
-    daily = d.status === 'fulfilled' ? d.value : null;
-    weekly = w.status === 'fulfilled' ? w.value : null;
-    renderStats();
-    renderChart();
-    renderGeo(g.status === 'fulfilled' ? g.value : null);
+    analytics = initAnalytics({
+      timeseries: (period, groupBy) => getTimeseries(link, period, groupBy),
+      breakdown: (period) => getBreakdown(link, period, 'clicks'),
+      visits: (period, type, page) => getVisits(link, period, type, page),
+      exportVisits: (period, counted) =>
+        downloadVisits(link, period, counted ? `${link.short_code}-visits-${counted.from}-${counted.to}.csv` : `${link.short_code}-visits.csv`),
+    });
+
+    const [t, r] = await Promise.allSettled([getTotals(link), listRules(link)]);
+    totals = t.status === 'fulfilled' ? t.value : null;
+    renderTotals();
     rules = r.status === 'fulfilled' ? r.value : [];
     renderRules();
   }

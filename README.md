@@ -123,6 +123,7 @@ CORS_ORIGINS=["http://localhost:4232","http://localhost:3000"]
 
 # Phase 3.9 / 3.10 settings (all optional, sensible defaults shown)
 ANONYMIZE_REMOTE_ADDR=true                 # Truncate IPv4→/24, IPv6→/64
+GEOIP_DATABASE=data/dbip-country-lite.mmdb # A visit's country (scripts/fetch_geoip.py); empty: off
 TRUSTED_PROXIES=[]                         # CIDR allowlist for X-Forwarded-For
 DISABLE_TRACK_PARAM=nostat                 # Query string that suppresses logging
 SHORT_URL_MODE=loose                       # "loose" lowercases codes/slugs
@@ -274,8 +275,7 @@ shurly/
 │   │   ├── urls.py                # URL CRUD + redirect + /robots.txt + tracking pixel
 │   │   ├── campaigns.py           # Campaign CRUD + CSV upload
 │   │   ├── analytics.py           # Stats endpoints (daily / weekly / geo / overview / orphans)
-│   │   ├── tags.py                # Tag CRUD + URL tagging
-│   │   └── statistics.py          # Legacy (deprecated)
+│   │   └── tags.py                # Tag CRUD + URL tagging
 │   ├── core/
 │   │   ├── auth.py                # JWT + bcrypt helpers (with 72-byte truncation shim)
 │   │   ├── config.py              # Settings: CORS, GDPR, redirect, multi-domain, …
@@ -355,13 +355,19 @@ full versioning policy.
   `api_key_prefix`: whether there's an API key and how it starts, never the key (Phase 6.3)
 - `PUT /api/v1/auth/password` · `DELETE /api/v1/auth/password` — set or remove the password
   (signed-in sessions only, Phase 3.13.3)
-- `POST /api/v1/auth/change-password`
+- `POST /api/v1/auth/change-password` — with the current password (signed-in sessions only)
 - `POST /api/v1/auth/register` — off unless `ALLOW_PASSWORD_SIGNUP` (local development only)
 - `POST /api/v1/auth/api-key/generate` — returns `{api_key, scope}` (Phase 3.9.6), the only time
-  the key is shown: Shurly keeps its SHA-256 hash (Phase 6.3)
+  the key is shown: Shurly keeps its SHA-256 hash (Phase 6.3). Signed-in sessions only
 - `DELETE /api/v1/auth/api-key`
 
 ### URL Shortening
+
+A link is its code and its domain (Phase 8.3): one code can name links on several domains. Every route
+below that takes `{short_code}`, the analytics and the rules included, also takes `?domain=`. Without
+it, the default domain's link answers, then the other domains' by hostname. Each link comes with its
+`domain`, and its `short_url` is on that domain.
+
 - `POST /api/v1/urls` — auto-generated 6-char code
 - `POST /api/v1/urls/custom` — user-supplied slug
 - `GET /api/v1/urls` — list (supports `tags=`, `tag_filter=any|all`, `q=` search, repeatable `url_type=`, pagination); each item carries `click_count`
@@ -372,7 +378,7 @@ full versioning policy.
 - `GET /api/v1/urls/{short_code}/preview` — OG metadata
 - `POST /api/v1/urls/{short_code}/refresh-preview`
 - `PATCH /api/v1/urls/{short_code}/tags`
-- `POST /api/v1/urls/bulk/tags`
+- `POST /api/v1/urls/bulk/tags` — `links: [{short_code, domain}]`, or `short_codes` (one link per code, by the default rule)
 
 ### Redirect Rules (Phase 3.10.2)
 - `GET /api/v1/urls/{short_code}/rules`
@@ -401,10 +407,38 @@ All analytics endpoints exclude bot and pixel hits by default. Pass
 - `GET /api/v1/analytics/overview` — totals + 7-day timeline + top URLs
 - `GET /api/v1/analytics/urls/{short_code}/daily` — last 7 days
 - `GET /api/v1/analytics/urls/{short_code}/weekly` — last 8 weeks
-- `GET /api/v1/analytics/urls/{short_code}/geo` — by country
+- `GET /api/v1/analytics/urls/{short_code}/geo` — by country, over a period's local days like the breakdown,
+  "Unknown" included; `days` is its old `period`
+
+Per-link analytics as on Shlink's link page (Phase 3.16, contract in ROADMAP 3.16.1):
+- They take a period, `?period=N` (the last N local days, default 30) or `?from=&to=` (at most 731 days), with
+  `tz` and `domain`.
+- Visits are clicks, email opens (pixel hits) or bots'. `type=clicks|opens|bots|all` picks the kind.
+- Opens overcount: Apple Mail Privacy Protection loads the pixel when a message arrives, read or not.
+
+- `GET /api/v1/analytics/urls/{short_code}/totals` — all time: clicks, opens, countries, the last click
+- `GET /api/v1/analytics/urls/{short_code}/timeseries` — clicks and opens by day, week or month, hour
+  of day and day of week
+- `GET /api/v1/analytics/urls/{short_code}/breakdown` — by OS, browser, device, referrer and country, with
+  shares
+- `GET /api/v1/analytics/urls/{short_code}/visits` — the visits, newest first, 20 a page: never an IP, a user
+  agent or a full referrer
+- `GET /api/v1/analytics/urls/{short_code}/visits.csv` — every visit of the period, with its user agent, never
+  an IP. Not an MCP tool
 - `GET /api/v1/analytics/campaigns/{campaign_id}/summary` — totals + top performers
 - `GET /api/v1/analytics/campaigns/{campaign_id}/users` — per-URL stats (CSV-friendly)
+- `GET /api/v1/analytics/campaigns/{campaign_id}/totals` — all time: recipients, clicks, opens, Clicked and Opened
+  (recipients with at least one), the click and open rates, countries, the last click (Phase 3.17)
+- `GET /api/v1/analytics/campaigns/{campaign_id}/timeseries` and `…/breakdown` — a link's series and breakdown
+  (Phase 3.16), over all the campaign's links, for a period
+- `GET /api/v1/analytics/campaigns/{campaign_id}/recipients` — all time, for following up with people: each
+  recipient's CSV row, clicks, opens, first and last click and last open. Filtered (`clicked`, `opened`, `none`),
+  searched, sorted and paged, with the `counts` each filter gives. Shown to whom `/users` is
+- `GET /api/v1/analytics/campaigns/{campaign_id}/recipients.csv` — the same, every row. Not an MCP tool
 - `GET /api/v1/analytics/orphan-visits` — typo'd / unknown codes (Phase 3.10.4)
+- `GET /api/v1/analytics/orphan-visits/grouped` — the same by the path tried, over a period and paged: how often,
+  the first and last hit, and "did you mean": the links you see that it's one edit from. Never an IP, a user
+  agent or a referrer. Not an MCP tool: `list_orphan_visits_grouped` is its MCP side
 
 ### Public / unversioned
 - `GET /{short_code}` — Redirect (302 by default; honors validity window, max-visits, redirect rules)
@@ -474,6 +508,8 @@ Note: Update the Docker configuration with environment variables for production 
 - **SQL injection**: SQLAlchemy ORM, parameterized queries throughout
 - **Authorization**: user-scoped resources for URLs / campaigns / tags
 - **GDPR by default**: visitor IPs anonymized at insert (`/24` IPv4, `/64` IPv6); toggle with `ANONYMIZE_REMOTE_ADDR`
+- **Countries from the stored address**: a visit's country (an ISO code) is looked up in process, from the anonymized
+  address when anonymization is on, so the lookup never sees more than what's kept; nothing but the country is stored
 - **Trusted-proxy allowlist**: `X-Forwarded-For` is **never** trusted unless the request source is in `TRUSTED_PROXIES` (CIDRs)
 - **SSRF-safe link previews**: the Open Graph fetcher only requests http(s) URLs whose host resolves exclusively to public addresses (no loopback, private, link-local/cloud metadata), re-checks every redirect hop (max 5), and connects to the checked IP so DNS rebinding can't swap it; `OG_FETCH_ALLOW_PRIVATE=true` relaxes this for local development only
 - **Default-deny crawlability**: short URLs are excluded from `/robots.txt` unless explicitly marked `crawlable=true`
@@ -482,12 +518,13 @@ Note: Update the Docker configuration with environment variables for production 
 
 ## Production Deployment
 
-See [DEPLOYMENT.md](DEPLOYMENT.md) for the full AWS Lambda + RDS guide. Pre-flight
-checklist:
+See [DEPLOYMENT.md](DEPLOYMENT.md) for the full ECS Express + RDS guide, and
+[docs/AWS_ECS_DEPLOYMENT.md](docs/AWS_ECS_DEPLOYMENT.md) for the operational playbook. Every environment variable,
+with its default and meaning, is in [docs/ENVIRONMENT.md](docs/ENVIRONMENT.md). Pre-flight checklist:
 
 1. Set a strong `JWT_SECRET_KEY` (`openssl rand -hex 32`)
 2. Configure CORS origins as a JSON array string
-3. **Configure `TRUSTED_PROXIES`** with your ALB / CloudFront / API Gateway source CIDRs — without it, `X-Forwarded-For` is ignored and visit IPs will be the proxy's
+3. **Configure `TRUSTED_PROXIES`** with your ALB / CloudFront source CIDRs — without it, `X-Forwarded-For` is ignored and visit IPs will be the proxy's
 4. Confirm `ANONYMIZE_REMOTE_ADDR=true` matches your privacy policy (default ON)
 5. Pick `REDIRECT_STATUS_CODE` (302 = analytics-friendly; 301 = SEO-friendly but cached)
 6. Pick `REDIRECT_CACHE_LIFETIME` (0 = every hit reaches backend; >0 = `Cache-Control: public, max-age=N`)
@@ -510,3 +547,7 @@ checklist:
 ## License
 
 MIT
+
+IP geolocation by [DB-IP](https://db-ip.com), from its IP to Country Lite database, licensed under
+[CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). The image fetches it at build time
+(`scripts/fetch_geoip.py`); it isn't in this repository.

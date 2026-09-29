@@ -1,7 +1,8 @@
 # Shurly on AWS ECS Express — Operational Playbook
 
 > **Audience:** anyone deploying, operating, or debugging Shurly in production.
-> **Scope:** ECS Express on Fargate in `griddo-main` (eu-south-2), serving `s.griddo.io`.
+> **Scope:** ECS Express on Fargate in `griddo-main` (eu-south-2), serving `shurly.griddo.io` (the API and the
+> MCP; the frontend from 4.10) and `s.griddo.io` (test links until the Phase 8 cutover), both on ALB rule 12.
 >
 > This document is a complement to [`DEPLOYMENT.md`](../DEPLOYMENT.md), not a replacement:
 > - `DEPLOYMENT.md` is the **step-by-step walkthrough** for deploying from scratch.
@@ -15,7 +16,7 @@
 
 ```
 ┌────────────────────────────────────────────────────────────────────┐
-│  Production: s.griddo.io                                           │
+│  Production: shurly.griddo.io (API, MCP), s.griddo.io (links)      │
 │  Account:    griddo-main (686255983646)  /  Region: eu-south-2     │
 │                                                                    │
 │  ECS service:        shurly-api  (cluster: default)                │
@@ -24,7 +25,7 @@
 │  ALB:                ecs-express-gateway-alb-d37ca364              │
 │  Listener:           …8d6cb22fed5c0e8b/f182b836d7cff456            │
 │  Express priority:   4         (auto-managed by Express Mode)      │
-│  Custom rule:        priority 12  → s.griddo.io                    │
+│  Custom rule:        priority 12  → shurly.griddo.io, s.griddo.io  │
 │  Lambda rule-sync:   ecs-alb-rule-sync                             │
 │  CloudWatch logs:    /aws/ecs/default/shurly-api-5fdb              │
 │                                                                    │
@@ -35,12 +36,12 @@
 
 | Need | Command |
 |---|---|
-| Deploy from local | `AWS_PROFILE=griddo-main ./scripts/deploy_ecs.sh` |
-| Deploy from CI | `git push origin main` (auto via GitHub Actions) |
+| Deploy | Merge to `main`: GitHub Actions ships the new image and keeps the live environment |
+| Create the service (first deploy only) | `AWS_PROFILE=griddo-main ./scripts/deploy_ecs.sh`. It stops once the service exists: run against it, it would replace the live environment |
 | View logs | `aws logs tail /aws/ecs/default/shurly-api-5fdb --follow --region eu-south-2 --profile griddo-main` |
 | Force redeploy | `aws ecs update-express-gateway-service --service-arn $(aws ecs list-services ... --query "serviceArns[?contains(@,'shurly-api')] \| [0]" -o text) --force-new-deployment` |
 | Trigger Lambda sync | `aws lambda invoke --function-name ecs-alb-rule-sync --payload '{}' /dev/stdout` |
-| Smoke health | `curl https://s.griddo.io/api/v1/health` |
+| Smoke health | `curl https://shurly.griddo.io/api/v1/health` (its `commit` is the image serving; the deploy's smoke test waits for it) |
 
 ---
 
@@ -49,11 +50,13 @@
 ```
             ┌──────────────────────────────────────────┐
             │                                          │
-   user ────►  https://s.griddo.io/<short_code>        │
+   user ────►  https://shurly.griddo.io/api/…, /mcp/   │
+            │  https://s.griddo.io/<short_code>        │
    (any HTTP client; browser, curl, MCP, ...)         │
             │                                          │
             │   DNS (Route 53 in griddo-production):   │
-            │     s.griddo.io  ALIAS A  →  shared ALB  │
+            │     shurly.griddo.io  ALIAS A → ALB      │
+            │     s.griddo.io       ALIAS A → ALB      │
             │                                          │
             └────────────────┬─────────────────────────┘
                              │
@@ -64,6 +67,7 @@
    │                                                             │
    │  HTTPS listener (port 443):                                 │
    │   • cert *.ecs.eu-south-2.on.aws  (auto from Express Mode)  │
+   │   • cert shurly.griddo.io          (manual, ACM)            │
    │   • cert s.griddo.io               (manual, ACM)            │
    │   • cert go.griddo.io              (Shlink — coexists)      │
    │   • cert links.griddo.io           (Shlink web client)      │
@@ -75,7 +79,7 @@
    │   priority 10  go.griddo.io    → shlink-api active TG    │  │
    │   priority 11  links.griddo.io → shlink-web active TG    │  │
    │   priority 12  s.griddo.io     → shurly-api active TG    │  │  follows priority 4
-   │                                                          │  │  via ecs-alb-rule-sync
+   │                shurly.griddo.io (same rule)              │  │  via ecs-alb-rule-sync
    │  Default rule: 404                                       │  │  Lambda
    └──────────────────────────────────────────────────────────┼──┘
                                                               │
@@ -84,8 +88,8 @@
                   FAILED; follows the rollout — see            │
                   infra/ecs-alb-rule-sync/README.md)            │
                   Reads weights of priority 4, replicates ──────┘
-                  to priority 12 so blue/green keeps
-                  s.griddo.io healthy through deploys.
+                  to priority 12 so blue/green keeps both
+                  hosts healthy through deploys.
                              │
                              ▼ (the active TG points to)
             ┌─────────────────────────────────────────────────┐
@@ -192,10 +196,11 @@ Defensive choice for production hygiene; pain during the iteration loop when you
 A `.env` line like `CORS_ORIGINS=["a", "b"]` makes bash try to execute `"a", "b"]` as a command. Even when bash silently absorbs partial assignments, the inner quotes get stripped: `CORS_ORIGINS=[a]` instead of `["a"]`. JSON-decode at runtime fails. Single-quote the entire value:
 
 ```
-CORS_ORIGINS='["https://shurl.griddo.io","http://localhost:4232"]'
+CORS_ORIGINS='["https://shurly.griddo.io","http://localhost:4232"]'
 ```
 
 The single quotes prevent any shell expansion or quote-stripping. The application sees a valid JSON string and parses it correctly.
+Which origins production needs is in [`DEPLOYMENT.md`](../DEPLOYMENT.md) § CORS: none once the frontend shares the API's host (4.10).
 
 ### 9. Bash heredoc + JSON template = quoting hell
 
@@ -241,7 +246,7 @@ aws ecs describe-services --cluster default --services shurly-api  # full info
 
 Express Mode rotates active/standby target groups during deploys. The custom-domain rule (priority 12) you created with `setup_custom_domain.sh` points at a specific TG ARN. After Express Mode flips, that TG goes from 100% weight to 0% and your custom domain returns 503.
 
-The `ecs-alb-rule-sync` Lambda solves this: triggered by the EventBridge `SERVICE_DEPLOYMENT_COMPLETED` event, it reads the current weights of the Express Mode rule (priority 4) and replicates them onto the custom rule (priority 12). The mapping lives in `RULE_SYNC_MAP` in `alb-rule-sync.py` (in the Shlink repo); update it whenever you wire a new service.
+The `ecs-alb-rule-sync` Lambda solves this: triggered by EventBridge on the service's deployment state changes, it reads the current weights of the Express Mode rule (priority 4) and replicates them onto the custom rule (priority 12). Since 27 Sep 2026 it follows each rollout from `SERVICE_DEPLOYMENT_IN_PROGRESS` instead of syncing once on `COMPLETED`, which removed a ~1 min 503 per deploy. The mapping lives in `RULE_SYNC_MAP` in `alb-rule-sync.py`, whose source is now in this repo ([`infra/ecs-alb-rule-sync/`](../infra/ecs-alb-rule-sync/README.md)); update it whenever you wire a new service.
 
 For Shurly: `"4": "12"` is the entry. Lambda confirmed working with `["Synced priority 12 with 4"]`.
 
@@ -301,7 +306,7 @@ Expected output: `["Synced priority 12 with 4"]` or `["No changes needed"]`.
 **C. DNS hasn't propagated.** Less common but possible right after `setup_custom_domain.sh`.
 
 ```bash
-dig s.griddo.io +short  # should return the ALB's IPs
+dig shurly.griddo.io +short  # and s.griddo.io: both should return the ALB's IPs
 ```
 
 If empty, wait 60s and try again. Route 53 propagation is normally <30s but can spike.
@@ -365,14 +370,10 @@ aws lambda get-function --function-name ecs-alb-rule-sync \
 # (download via the URL, unzip, inspect alb-rule-sync.py)
 ```
 
-Should include `"4": "12"` for Shurly. If missing, edit and redeploy:
-
-```bash
-cd ~/Documents/Cowork/Griddo/Marketing\ \&\ Comms/WebAnalytics/ga-gtm
-zip alb-rule-sync.zip alb-rule-sync.py
-aws lambda update-function-code --region eu-south-2 --profile griddo-main \
-    --function-name ecs-alb-rule-sync --zip-file fileb://alb-rule-sync.zip
-```
+Should include `"4": "12"` for Shurly. If missing, edit `RULE_SYNC_MAP` in
+[`infra/ecs-alb-rule-sync/alb-rule-sync.py`](../infra/ecs-alb-rule-sync/alb-rule-sync.py) and redeploy it as its
+[README](../infra/ecs-alb-rule-sync/README.md) § Deploy says. The Lambda serves Shlink's rules too, so a change
+there changes their routing as well.
 
 ### Auto-deploy from GitHub Actions failed
 
@@ -387,13 +388,15 @@ Common: AWS_DEPLOY_ROLE_ARN secret missing or pointing at a deleted role; OIDC t
 
 ## Operational runbook
 
-### Deploy from local
+### Create the service (first deploy only)
 
 ```bash
 AWS_PROFILE=griddo-main ./scripts/deploy_ecs.sh
 ```
 
-The script handles the entire build → push → roll-out cycle. Run it from the project root with a populated `.env` (see `.env.production.example`).
+The script builds and pushes the image, then creates the service. Run it from the project root with a populated `.env` (see `.env.production.example`).
+
+**It stops once the service exists**, before building anything. An update would send the container it builds, whose environment holds only the variables the script knows, and drop every setting added on the service since (sign in with Google, the MCP's OAuth, …). New images go out through the CI deploy below; settings change on the live service ([`DEPLOYMENT.md`](../DEPLOYMENT.md) § Settings).
 
 ### Deploy from CI
 
@@ -469,9 +472,9 @@ Useful for re-applying env vars after `update-express-gateway-service --primary-
 ### Rotate the JWT secret
 
 1. `JWT_SECRET_KEY=$(openssl rand -hex 32)` — new value.
-2. Update the env var in the `.env` AND the ECS service's primary container env.
-3. `./scripts/deploy_ecs.sh` (or push to main).
-4. **All existing JWTs become invalid.** Clients must log in again.
+2. Set it in the live service's environment ([`DEPLOYMENT.md`](../DEPLOYMENT.md) § Settings). Changing the
+   environment starts a deployment. `scripts/deploy_ecs.sh` won't do it: it only creates the service.
+3. **All existing JWTs become invalid.** Clients must log in again.
 
 For zero-downtime rotation, you'd need to support two keys briefly — not implemented today.
 
@@ -488,7 +491,7 @@ aws rds wait db-instance-available --region eu-south-2 --profile griddo-main \
     --db-instance-identifier shurly-db
 ```
 
-Then update `.env` and redeploy. Existing tasks die when their connections are reset; new tasks pick up the new password.
+Then set `DB_PASSWORD` in the live service's environment ([`DEPLOYMENT.md`](../DEPLOYMENT.md) § Settings), which starts a deployment. Existing tasks die when their connections are reset; new tasks pick up the new password.
 
 ### Scale up/down
 
@@ -601,6 +604,6 @@ Considered after Phase 4 went live (2026-04-27). Lightsail Containers is **genui
 - **Standby TG** — the other one, weight=0. Used during blue/green to bring up the new version before switching weights.
 - **Auto-host** — Express Mode auto-generated hostname `sh-<32-hex>.ecs.<region>.on.aws`. Reachable for testing without setting up a custom domain.
 - **Custom rule** — manually-created ALB rule (priority 10+) that maps a custom domain to a service's active TG.
-- **Rule-sync Lambda** — `ecs-alb-rule-sync`, fires on `SERVICE_DEPLOYMENT_COMPLETED`, replicates active TG weights from the Express Mode rule to the custom rule.
+- **Rule-sync Lambda** — `ecs-alb-rule-sync` ([`infra/ecs-alb-rule-sync/`](../infra/ecs-alb-rule-sync/README.md)), follows each deployment from `SERVICE_DEPLOYMENT_IN_PROGRESS` (one more pass on `COMPLETED` or `FAILED`), replicates active TG weights from the Express Mode rule to the custom rule.
 - **Circuit breaker** — ECS deployment safeguard that stops launching tasks after N consecutive failures, sets `desiredCount=0`. Reset by `update-express-gateway-service --scaling-target`.
 - **Cross-account profile** — AWS CLI profile that resolves to a different account. Shurly uses `griddo-main` for service operations and `griddo-production` for DNS writes.

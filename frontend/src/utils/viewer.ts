@@ -4,8 +4,9 @@
 // and a 403 that gets through is shown like any other error.
 
 import { ApiError, apiGet } from './api';
-import { html, type RawHTML } from './html';
+import { html, setHTML, type RawHTML } from './html';
 import { icon } from './icons';
+import { personName } from './people';
 import { toast } from './ui';
 import type { Organization, OrgRole, User, Visibility } from './types';
 
@@ -21,10 +22,33 @@ export function getMe(): Promise<User> {
   return me;
 }
 
-/** Fetch /auth/me again, e.g. after the password was set or removed. */
-export function refreshMe(): Promise<User> {
+/**
+ * Fetch /auth/me again, e.g. after the password or the profile changed. The app header
+ * repaints from it (`shurly:me`).
+ */
+export async function refreshMe(): Promise<User> {
   me = null;
-  return getMe();
+  const user = await getMe();
+  window.dispatchEvent(new CustomEvent<User>('shurly:me', { detail: user }));
+  return user;
+}
+
+/**
+ * Under a chart of days: when the viewer has no time zone, say the days are in UTC and where
+ * to set one. The API counts days in the profile's zone (server/utils/local_days.py).
+ */
+export async function showDaysZoneHint(el: HTMLElement | null): Promise<void> {
+  if (!el) return;
+  const me = await getMe().catch(() => null);
+  const inUtc = me !== null && !me.profile?.timezone;
+  if (inUtc) setHTML(el, html`Days are in UTC. Set your time zone in <a class="link" href="/dashboard/settings/#account">Settings → Account</a>.`);
+  el.hidden = !inUtc;
+}
+
+/** The letter in the avatar circle: the first name's, or the email's without one. */
+export function initialOf(email: string, firstName?: string | null): string {
+  const [first] = [...(firstName?.trim() || email)];
+  return (first ?? '?').toUpperCase();
 }
 
 /** The viewer's organization, or null when they don't belong to one (a 404). Fetched once per page. */
@@ -76,6 +100,9 @@ export async function getViewer(): Promise<Viewer | null> {
 interface Owned {
   visibility: Visibility;
   created_by_email: string | null;
+  /** Phase 3.12: the creator's name, where the response carries it (campaigns; links later). */
+  created_by_first_name?: string | null;
+  created_by_last_name?: string | null;
 }
 
 export function isCreator(item: Owned, viewer: Viewer | null): boolean {
@@ -91,10 +118,17 @@ export function canChange(item: Owned, viewer: Viewer | null): boolean {
   return item.visibility === 'organization' && (viewer.role === 'admin' || viewer.role === 'owner');
 }
 
-/** "you", or the creator's email; null when the API didn't say. */
+/** "you", the creator's name, or their email without one; null when the API didn't say. */
 export function creatorName(item: Owned, viewer: Viewer | null): string | null {
   if (!item.created_by_email) return null;
-  return isCreator(item, viewer) ? 'you' : item.created_by_email;
+  if (isCreator(item, viewer)) return 'you';
+  return personName({ email: item.created_by_email, first_name: item.created_by_first_name, last_name: item.created_by_last_name });
+}
+
+/** The creator's email when `creatorName` shows their name instead: for a tooltip. */
+export function creatorEmailBehindName(item: Owned, viewer: Viewer | null): string | null {
+  const shown = creatorName(item, viewer);
+  return shown && shown !== 'you' && shown !== item.created_by_email ? item.created_by_email : null;
 }
 
 /** What the create form's "Personal" switch (components/app/VisibilityToggle.astro) asks for. */

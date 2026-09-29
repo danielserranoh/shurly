@@ -10,7 +10,7 @@ the person removed first.
 import uuid as uuid_pkg
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, contains_eager
 
 from server.core import get_db
 from server.core.auth import get_current_user
@@ -26,6 +26,7 @@ from server.schemas.organization import (
 )
 from server.schemas.responses import get_responses
 from server.utils import organization as org_service
+from server.utils.people import names
 
 organization_router = APIRouter()
 
@@ -44,10 +45,17 @@ def _http_error(exc: org_service.OrganizationError) -> HTTPException:
     return HTTPException(status_code=_STATUS[type(exc)], detail=str(exc))
 
 
+def _names(user: User) -> dict:
+    """Phase 3.12 — first and last name from the profile; None without one."""
+    first, last = names(user)
+    return {"first_name": first, "last_name": last}
+
+
 def _member_response(membership: OrganizationMember) -> MemberResponse:
     return MemberResponse(
         user_id=membership.user_id,
         email=membership.user.email,
+        **_names(membership.user),
         role=membership.role,
         joined_at=membership.joined_at,
     )
@@ -84,6 +92,8 @@ def list_organization_members(
     members = (
         db.query(OrganizationMember)
         .join(User, User.id == OrganizationMember.user_id)
+        # The users from the join, their profiles in one more query: none per member.
+        .options(contains_eager(OrganizationMember.user).selectinload(User.profile))
         .filter(OrganizationMember.organization_id == membership.organization_id)
         .order_by(User.email)
         .all()
@@ -173,7 +183,9 @@ def list_removed_members(
     except org_service.OrganizationError as exc:
         raise _http_error(exc) from exc
     return [
-        RemovedMember(user_id=user.id, email=user.email, links=links, campaigns=campaigns)
+        RemovedMember(
+            user_id=user.id, email=user.email, **_names(user), links=links, campaigns=campaigns
+        )
         for user, links, campaigns in rows
     ]
 

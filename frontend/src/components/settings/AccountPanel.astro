@@ -1,4 +1,5 @@
 ---
+import AvatarCropper from '@/components/ui/AvatarCropper.astro';
 import Icon from '@/components/ui/Icon.astro';
 import GoogleLogo from '@/components/ui/GoogleLogo.astro';
 import PasswordField from '@/components/ui/PasswordField.astro';
@@ -6,22 +7,73 @@ import SettingsSection from './SettingsSection.astro';
 ---
 
 <div class="grid gap-10">
-  <SettingsSection id="profile-title" title="Profile" description="How you log in to Shurly.">
-    <div class="card overflow-hidden">
-      <div class="grid gap-1.5 p-5 sm:p-6">
-        <label for="profile-email" class="label">Email</label>
-        <div class="skeleton h-12 w-full rounded-xl sm:max-w-md" data-profile-skeleton aria-hidden="true"></div>
-        <div class="relative sm:max-w-md" data-profile-field hidden>
-          <input id="profile-email" type="email" class="input input-lg pr-11" readonly aria-describedby="profile-email-hint" data-profile-email />
-          <span class="pointer-events-none absolute inset-y-0 right-4 flex items-center text-ink-400"><Icon name="lock" /></span>
+  <SettingsSection id="profile-title" title="Profile" description="Your photo and name, where you work from, and how you log in.">
+    <!-- POST: submitted before the script loads, the fields must not end up in the URL -->
+    <form class="card overflow-hidden" data-profile-form method="post" novalidate aria-labelledby="profile-title">
+      <div class="grid gap-5 p-5 sm:p-6">
+        <!-- Phase 3.12: the photo. Saved on its own, from the crop dialog; the file never reaches the form -->
+        <div class="-m-2 flex items-center gap-4 rounded-xl border-2 border-dashed border-transparent p-2 transition-colors data-dragging:border-brand-400 data-dragging:bg-brand-50" data-avatar-block>
+          <span class="relative grid size-16 shrink-0 place-items-center overflow-hidden rounded-full bg-ink-950 text-2xl font-semibold text-brand-300">
+            <span data-avatar-initial aria-hidden="true"></span>
+            <img class="absolute inset-0 size-full object-cover" alt="Your photo" data-avatar-image hidden />
+          </span>
+          <div class="grid min-w-0 gap-1.5">
+            <div class="flex flex-wrap items-center gap-2">
+              <button type="button" class="btn btn-secondary btn-sm" data-avatar-pick disabled><Icon name="upload" />Upload photo</button>
+              <button type="button" class="btn btn-ghost btn-sm" data-avatar-remove hidden>Remove</button>
+            </div>
+            <p class="hint">JPEG, PNG or WebP, up to 10 MB. Or drop it here.</p>
+            <p class="field-error" role="alert" data-avatar-error hidden></p>
+          </div>
+          <input type="file" accept="image/jpeg,image/png,image/webp" hidden data-avatar-file />
         </div>
-        <p id="profile-email-hint" class="hint">That’s how you log in. To change it, ask your Shurly admin.</p>
+        <div data-form-alert hidden></div>
+        <!-- Disabled until the account loads (Save too): nothing typed is overwritten, nothing saved is cleared -->
+        <fieldset class="grid min-w-0 items-start gap-5 sm:grid-cols-2" data-profile-fields disabled>
+          <div class="grid gap-1.5">
+            <label for="profile-first-name" class="label">First name</label>
+            <input id="profile-first-name" name="first_name" class="input input-lg" autocomplete="given-name" maxlength="100" aria-describedby="profile-first-name-error" />
+            <p id="profile-first-name-error" class="field-error" data-error-for="first_name" hidden></p>
+          </div>
+          <div class="grid gap-1.5">
+            <label for="profile-last-name" class="label">Last name</label>
+            <input id="profile-last-name" name="last_name" class="input input-lg" autocomplete="family-name" maxlength="100" aria-describedby="profile-last-name-error" />
+            <p id="profile-last-name-error" class="field-error" data-error-for="last_name" hidden></p>
+          </div>
+          <div class="grid gap-1.5">
+            <label for="profile-country" class="label">Country</label>
+            <select id="profile-country" name="country" class="select input-lg" autocomplete="country" aria-describedby="profile-country-error">
+              <option value="">Not set</option>
+            </select>
+            <p id="profile-country-error" class="field-error" data-error-for="country" hidden></p>
+          </div>
+          <div class="grid gap-1.5">
+            <label for="profile-timezone" class="label">Time zone</label>
+            <select id="profile-timezone" name="timezone" class="select input-lg" aria-describedby="profile-timezone-hint profile-timezone-error">
+              <option value="">Not set</option>
+            </select>
+            <p id="profile-timezone-hint" class="hint" data-timezone-hint hidden>From this browser. Save to keep it.</p>
+            <p id="profile-timezone-error" class="field-error" data-error-for="timezone" hidden></p>
+          </div>
+        </fieldset>
+        <div class="grid gap-1.5">
+          <label for="profile-email" class="label">Email</label>
+          <div class="skeleton h-12 w-full rounded-xl sm:max-w-md" data-profile-skeleton aria-hidden="true"></div>
+          <div class="relative sm:max-w-md" data-profile-field hidden>
+            <input id="profile-email" type="email" class="input input-lg pr-11" readonly aria-describedby="profile-email-hint" data-profile-email />
+            <span class="pointer-events-none absolute inset-y-0 right-4 flex items-center text-ink-400"><Icon name="lock" /></span>
+          </div>
+          <p id="profile-email-hint" class="hint">That’s how you log in. To change it, ask your Shurly admin.</p>
+        </div>
       </div>
-      <p class="flex items-center gap-2 border-t border-line bg-ink-50/60 px-5 py-3 text-sm text-ink-600 sm:px-6">
-        <Icon name="calendar" class="size-4 shrink-0 text-ink-400" />
-        <span data-member-since><span class="skeleton inline-block h-4 w-48 align-middle"></span></span>
-      </p>
-    </div>
+      <div class="flex flex-wrap items-center justify-end gap-x-4 gap-y-3 border-t border-line bg-ink-50/60 px-5 py-3 sm:px-6">
+        <p class="mr-auto flex items-center gap-2 text-sm text-ink-600">
+          <Icon name="calendar" class="size-4 shrink-0 text-ink-400" />
+          <span data-member-since><span class="skeleton inline-block h-4 w-48 align-middle"></span></span>
+        </p>
+        <button type="submit" class="btn btn-primary" data-profile-submit disabled>Save profile</button>
+      </div>
+    </form>
   </SettingsSection>
 
   <SettingsSection id="password-title" title="Password" description="Optional when you sign in with Google. Pick something long that you don’t use anywhere else.">
@@ -63,19 +115,25 @@ import SettingsSection from './SettingsSection.astro';
       </div>
     </div>
   </SettingsSection>
+
+  <AvatarCropper />
 </div>
 
 <script>
-  import { ApiError, apiDelete, apiPut } from '@/utils/api';
+  import timezoneData from '@/data/timezones.json';
+  import { ApiError, apiDelete, apiPatch, apiPut, errorMessage } from '@/utils/api';
+  import { avatarFileProblem, avatarUrl, removeAvatar, uploadAvatar } from '@/utils/avatar';
+  import { cropAvatar } from '@/utils/avatar-cropper';
   import { applyApiError, clearErrors, setFieldError } from '@/utils/forms';
   import { formatDate } from '@/utils/format';
   import { startGoogleSignIn } from '@/utils/google-signin';
   import { html, setHTML } from '@/utils/html';
   import { icon } from '@/utils/icons';
   import { confirmDialog, setLoading, toast } from '@/utils/ui';
-  import { refreshMe } from '@/utils/viewer';
+  import { countryOptions, onlyZone, pickerZone, zoneLabel, zonesFor } from '@/utils/timezones';
+  import { initialOf, refreshMe } from '@/utils/viewer';
   import { currentUser } from './store';
-  import type { User } from '@/utils/types';
+  import type { Profile, User } from '@/utils/types';
 
   // ---------------------------------------------------------------- Profile
   const emailInput = document.querySelector<HTMLInputElement>('[data-profile-email]')!;
@@ -90,6 +148,189 @@ import SettingsSection from './SettingsSection.astro';
     document.querySelector<HTMLElement>('[data-profile-field]')!.hidden = false;
     document.querySelector<HTMLElement>('[data-member-since]')!.textContent =
       `Member since ${formatDate(user.created_at, { month: 'long', day: 'numeric', year: 'numeric' })}`;
+  });
+
+  // ---------------------------------------------------------------- Name, country, time zone (Phase 3.12)
+  // The pickers offer what the API keeps as is (src/data/timezones.json, from its tzdata).
+  // Without a saved time zone, this browser's is picked, for the person to save.
+  const profileForm = document.querySelector<HTMLFormElement>('[data-profile-form]')!;
+  const profileFields = profileForm.querySelector<HTMLFieldSetElement>('[data-profile-fields]')!;
+  const profileSubmit = profileForm.querySelector<HTMLButtonElement>('[data-profile-submit]')!;
+  const firstName = profileForm.elements.namedItem('first_name') as HTMLInputElement;
+  const lastName = profileForm.elements.namedItem('last_name') as HTMLInputElement;
+  const country = profileForm.elements.namedItem('country') as HTMLSelectElement;
+  const timezone = profileForm.elements.namedItem('timezone') as HTMLSelectElement;
+  const timezoneHint = profileForm.querySelector<HTMLElement>('[data-timezone-hint]')!;
+  const pickedCountry = () => country.value || null;
+
+  country.append(...countryOptions(timezoneData).map(([code, name]) => new Option(name, code)));
+
+  /** The picked country's time zones, with `selected` picked. One saved outside them (through the API) stays on offer. */
+  function renderZones(selected: string | null) {
+    const zones = zonesFor(timezoneData, pickedCountry());
+    const offered = selected && !zones.includes(selected) ? [selected, ...zones] : zones;
+    const now = new Date();
+    timezone.replaceChildren(new Option('Not set', ''), ...offered.map((zone) => new Option(zoneLabel(zone, now), zone)));
+    timezone.value = selected ?? '';
+  }
+
+  // This browser's time zone, while none is saved.
+  let suggestedZone: string | null = null;
+  const showSuggestion = () => (timezoneHint.hidden = !suggestedZone || timezone.value !== suggestedZone);
+
+  function fillProfile(profile: Profile | undefined, { suggestZone }: { suggestZone: boolean }) {
+    firstName.value = profile?.first_name ?? '';
+    lastName.value = profile?.last_name ?? '';
+    country.value = profile?.country ?? '';
+    suggestedZone = suggestZone && !profile?.timezone ? pickerZone(timezoneData, Intl.DateTimeFormat().resolvedOptions().timeZone) : null;
+    renderZones(profile?.timezone ?? suggestedZone);
+    showSuggestion();
+  }
+
+  let profileShown = false;
+  currentUser.subscribe((user) => {
+    // Once: reading the account again (after a password change) mustn't undo what's being typed.
+    if (profileShown) return;
+    profileShown = true;
+    fillProfile(user.profile, { suggestZone: true });
+    profileFields.disabled = false;
+    profileSubmit.disabled = false;
+  });
+
+  // Another country: keep the time zone if it's one of the country's; else its only one,
+  // or this browser's when it's one of them.
+  country.addEventListener('change', () => {
+    const zones = zonesFor(timezoneData, pickedCountry());
+    const kept = zones.includes(timezone.value) ? timezone.value : null;
+    const suggested = suggestedZone && zones.includes(suggestedZone) ? suggestedZone : null;
+    renderZones(kept ?? onlyZone(timezoneData, pickedCountry()) ?? suggested);
+    showSuggestion();
+  });
+  timezone.addEventListener('change', showSuggestion);
+
+  profileForm.addEventListener('input', (e) => {
+    const t = e.target as HTMLInputElement;
+    if (t.getAttribute('aria-invalid')) setFieldError(profileForm, t.name, null);
+  });
+
+  profileForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    clearErrors(profileForm);
+    setLoading(profileSubmit, true, 'Saving…');
+    let saved: Profile;
+    try {
+      // The API trims the names, and takes a blank one for none.
+      saved = await apiPatch<Profile>('/api/v1/auth/me/profile', {
+        first_name: firstName.value,
+        last_name: lastName.value,
+        country: pickedCountry(),
+        timezone: timezone.value || null,
+      });
+    } catch (err) {
+      setLoading(profileSubmit, false);
+      applyApiError(profileForm, err);
+      return;
+    }
+    setLoading(profileSubmit, false);
+    fillProfile(saved, { suggestZone: false });
+    toast('Profile saved', 'success');
+    await refresh(); // the header's initial comes from the first name
+  });
+
+  // ---------------------------------------------------------------- Photo (Phase 3.12)
+  // Picked or dropped, checked, cropped in the dialog and saved from there. The image comes
+  // from the API as a blob (it needs the bearer header), shown from an object URL.
+  const avatarBlock = document.querySelector<HTMLElement>('[data-avatar-block]')!;
+  const avatarImage = avatarBlock.querySelector<HTMLImageElement>('[data-avatar-image]')!;
+  const avatarInitial = avatarBlock.querySelector<HTMLElement>('[data-avatar-initial]')!;
+  const avatarPick = avatarBlock.querySelector<HTMLButtonElement>('[data-avatar-pick]')!;
+  const avatarRemove = avatarBlock.querySelector<HTMLButtonElement>('[data-avatar-remove]')!;
+  const avatarFile = avatarBlock.querySelector<HTMLInputElement>('[data-avatar-file]')!;
+  const avatarError = avatarBlock.querySelector<HTMLElement>('[data-avatar-error]')!;
+  let shownVersion: string | null = null;
+
+  async function showAvatar(version: string | null | undefined) {
+    shownVersion = version ?? null;
+    avatarRemove.hidden = !shownVersion;
+    const url = await avatarUrl(shownVersion);
+    if (shownVersion !== (version ?? null)) return; // a newer one came meanwhile
+    avatarImage.hidden = !url;
+    if (url) avatarImage.src = url;
+    else avatarImage.removeAttribute('src');
+  }
+
+  function showAvatarError(message: string | null) {
+    avatarError.textContent = message ?? '';
+    avatarError.hidden = !message;
+  }
+
+  currentUser.subscribe((user) => {
+    avatarInitial.textContent = initialOf(user.email, user.profile?.first_name);
+    void showAvatar(user.profile?.avatar_version);
+    avatarPick.disabled = false;
+  });
+
+  async function takePhoto(file: File | undefined) {
+    showAvatarError(null);
+    if (!file) return;
+    const problem = avatarFileProblem(file);
+    if (problem) {
+      showAvatarError(problem);
+      return;
+    }
+    try {
+      const saved = await cropAvatar(file, async (square) => {
+        const profile = await uploadAvatar(square);
+        await showAvatar(profile.avatar_version);
+      });
+      if (!saved) return;
+    } catch (err) {
+      showAvatarError(errorMessage(err));
+      return;
+    }
+    toast('Photo saved', 'success');
+    await refresh(); // the header shows it too
+  }
+
+  avatarPick.addEventListener('click', () => avatarFile.click());
+  avatarFile.addEventListener('change', () => {
+    const file = avatarFile.files?.[0];
+    avatarFile.value = ''; // the same file can be picked again
+    void takePhoto(file);
+  });
+
+  // Drop a file on the photo block.
+  const dragging = (on: boolean) => avatarBlock.toggleAttribute('data-dragging', on);
+  avatarBlock.addEventListener('dragover', (e) => {
+    if (avatarPick.disabled || !e.dataTransfer?.types.includes('Files')) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+    dragging(true);
+  });
+  avatarBlock.addEventListener('dragleave', (e) => {
+    if (!avatarBlock.contains(e.relatedTarget as Node | null)) dragging(false);
+  });
+  avatarBlock.addEventListener('drop', (e) => {
+    if (avatarPick.disabled) return;
+    e.preventDefault();
+    dragging(false);
+    void takePhoto(e.dataTransfer?.files[0]);
+  });
+
+  avatarRemove.addEventListener('click', async () => {
+    showAvatarError(null);
+    setLoading(avatarRemove, true, 'Removing…');
+    try {
+      await removeAvatar();
+    } catch (err) {
+      setLoading(avatarRemove, false);
+      showAvatarError(errorMessage(err));
+      return;
+    }
+    setLoading(avatarRemove, false);
+    await showAvatar(null);
+    toast('Photo removed', 'success');
+    await refresh();
   });
 
   // ---------------------------------------------------------------- Password (Phase 3.13.3)

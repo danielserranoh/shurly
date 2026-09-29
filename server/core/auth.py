@@ -21,6 +21,8 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 # HTTP Bearer token scheme
 security = HTTPBearer()
+# For routes anyone may call that still want to know who's calling, when someone is.
+optional_security = HTTPBearer(auto_error=False)
 
 # bcrypt has a hard 72-byte input limit. bcrypt 5+ refuses longer inputs instead
 # of silently truncating, so we truncate explicitly. Truncating at byte boundary
@@ -203,6 +205,19 @@ def get_current_user(
         raise _inactive_error()
 
     return user
+
+
+def get_optional_user(
+    credentials: HTTPAuthorizationCredentials | None = Depends(optional_security),
+    db: Session = Depends(get_db),
+) -> User | None:
+    """The active account a request's token is for, or None: no token, or one that doesn't check
+    out. Never an error, for routes anyone may call (a browser's error report)."""
+    if credentials is None:
+        return None
+    token = credentials.credentials
+    user = get_user_by_jwt(db, token) if _looks_like_jwt(token) else get_user_by_api_key(db, token)
+    return user if user is not None and user.is_active else None
 
 
 def get_signed_in_session(

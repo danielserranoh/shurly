@@ -62,7 +62,8 @@ const steps = ['Details', 'Recipients', 'Review', 'Create'];
       <div class="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 id="s2-title" class="text-lg font-semibold text-ink-950">Who’s it for?</h2>
-          <p class="mt-1 text-sm text-ink-500">A CSV with a header row. Each row becomes one personalized link.</p>
+          <!-- A new tab: leaving the wizard would lose what's typed so far -->
+          <p class="mt-1 text-sm text-ink-500">A CSV with a header row. Each row becomes one personalized link. <a class="link" href="/manual/make-a-campaign/" target="_blank" rel="noopener">How campaigns work<span class="sr-only"> (opens in a new tab)</span></a></p>
         </div>
         <button type="button" class="btn btn-ghost btn-sm" data-sample><Icon name="download" />Sample CSV</button>
       </div>

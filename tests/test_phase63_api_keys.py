@@ -35,10 +35,8 @@ class TestGenerate:
         db_session.refresh(test_user)
         assert test_user.api_key_hash == hashlib.sha256(key.encode()).hexdigest()
         assert test_user.api_key_prefix == key[:12]
-        (plaintext, stored_hash) = db_session.execute(
-            text("SELECT api_key, api_key_hash FROM users")
-        ).one()
-        assert plaintext is None and key not in stored_hash
+        row = db_session.execute(text("SELECT * FROM users")).mappings().one()
+        assert not [column for column, value in row.items() if key in str(value)]
 
     def test_the_key_signs_in(self, client, test_user, auth_headers):
         key = _generate(client, auth_headers)
@@ -51,6 +49,18 @@ class TestGenerate:
 
         assert _me(client, old).status_code == 401
         assert _me(client, new).status_code == 200
+
+    def test_an_api_key_cannot_make_a_new_one(self, client, auth_headers):
+        """A leaked key mustn't mint its own replacement, ending the owner's."""
+        key = _generate(client, auth_headers)
+
+        response = client.post(
+            "/api/v1/auth/api-key/generate", headers={"Authorization": f"Bearer {key}"}
+        )
+
+        assert response.status_code == 403
+        assert "API key" in response.json()["detail"]
+        assert _me(client, key).status_code == 200
 
     def test_revoking_ends_it(self, client, db_session, test_user, auth_headers):
         key = _generate(client, auth_headers)
@@ -169,10 +179,77 @@ def test_migration_0007_moves_every_key_to_its_hash(pg_engine):
             ),
             {"key": legacy},
         )
-        command.upgrade(config, "head")
+        command.upgrade(config, "0007")
 
     with pg_engine.connect() as conn:
         row = conn.execute(text("SELECT api_key, api_key_hash, api_key_prefix FROM users")).one()
     assert row == (None, hashlib.sha256(legacy.encode()).hexdigest(), legacy[:12])
     with sessionmaker(bind=pg_engine)() as db:
         assert get_user_by_api_key(db, legacy).email == "smoke@griddo.io"
+
+
+def test_the_model_no_longer_maps_the_plaintext_column():
+    """0011 drops users.api_key while this release still serves: nothing may name it."""
+    from server.core.models import User
+
+    assert "api_key" not in User.__table__.columns
+
+
+def test_this_release_works_once_0011_drops_the_plaintext_column(pg_engine, monkeypatch):
+    """
+    Rolling deploys: 0011 drops users.api_key at the next release's startup, while this
+    release's task still serves. The ORM names every mapped column in its SELECTs and
+    INSERTs, so this release must not map it. Signing in, an API key, /me, the MCP
+    (which loads the user itself, in ShurlyTokenVerifier) and revoking, without it.
+    """
+    pytest.importorskip("fastmcp")
+    import json
+
+    from fastapi.testclient import TestClient
+    from sqlalchemy.orm import sessionmaker
+
+    from main import create_app
+    from mcp_server.server import build_mcp_auth
+    from server.core import get_db
+    from server.core.auth import hash_password
+    from server.core.migrations import run_migrations
+    from server.core.models import User
+    from server.utils import rate_limit
+
+    run_migrations(pg_engine)
+    with pg_engine.begin() as conn:
+        conn.execute(text("ALTER TABLE users DROP COLUMN api_key"))  # what 0011 will do
+
+    sessions = sessionmaker(bind=pg_engine)
+    with sessions() as db:
+        db.add(User(email="ana@griddo.io", password_hash=hash_password("right-password-1")))
+        db.commit()
+
+    def _db():
+        with sessions() as db:
+            yield db
+
+    monkeypatch.setattr(rate_limit, "session_factory", sessions)
+    app = create_app(mcp_auth=build_mcp_auth(session_factory=sessions))
+    app.dependency_overrides[get_db] = _db
+    with TestClient(app) as client:
+        login = {"email": "ana@griddo.io", "password": "right-password-1"}
+        jwt = {
+            "authorization": f"Bearer {client.post('/api/v1/auth/login', json=login).json()['access_token']}"
+        }
+        key = client.post("/api/v1/auth/api-key/generate", headers=jwt).json()["api_key"]
+        with_key = {"authorization": f"Bearer {key}"}
+
+        assert client.get("/api/v1/auth/me", headers=with_key).json()["has_api_key"] is True
+        call = {"name": "get_current_user_info", "arguments": {}}
+        mcp = client.post(
+            "/mcp/",
+            json={"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": call},
+            headers={**with_key, "accept": "application/json, text/event-stream"},
+        )
+        assert mcp.status_code == 200, mcp.text
+        data = next(line[6:] for line in mcp.text.splitlines() if line.startswith("data: "))
+        assert (
+            json.loads(json.loads(data)["result"]["content"][0]["text"])["email"] == "ana@griddo.io"
+        )
+        assert client.delete("/api/v1/auth/api-key", headers=jwt).status_code == 200

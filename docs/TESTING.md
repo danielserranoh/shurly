@@ -5,11 +5,13 @@ This guide provides comprehensive instructions for testing the Shurly URL shorte
 ## Table of Contents
 
 1. [Local Setup](#local-setup)
-2. [Functional Testing Checklist](#functional-testing-checklist)
-3. [UX Testing Scenarios](#ux-testing-scenarios)
-4. [API Testing](#api-testing)
-5. [Edge Cases & Error Handling](#edge-cases--error-handling)
-6. [Performance Testing](#performance-testing)
+2. [The backend's tests](#the-backends-tests)
+3. [End-to-end tests](#end-to-end-tests)
+4. [Functional Testing Checklist](#functional-testing-checklist)
+5. [UX Testing Scenarios](#ux-testing-scenarios)
+6. [API Testing](#api-testing)
+7. [Edge Cases & Error Handling](#edge-cases--error-handling)
+8. [Performance Testing](#performance-testing)
 
 ---
 
@@ -102,13 +104,79 @@ npm install
 # Start dev server
 npm run dev
 
-# Frontend will be at http://localhost:4321
+# Frontend will be at http://localhost:4232
 ```
 
 #### 5. Verify Setup
 
 - Backend: http://localhost:8000/docs (should show Swagger UI)
-- Frontend: http://localhost:4321 (should show landing page)
+- Frontend: http://localhost:4232 (should show landing page)
+
+---
+
+## The backend's tests
+
+`uv run pytest` runs the suite on an in-memory SQLite database: fast, and the default. PostgreSQL, which
+production runs, refuses things SQLite takes (a `GROUP BY` on a `json` column, a NUL character in text), so CI
+runs the suite on it too. Locally, on any PostgreSQL server (`docker compose up -d db`):
+
+```bash
+# The migration and PostgreSQL tests, which skip without a server
+TEST_DATABASE_URL=postgresql+psycopg2://postgres:postgres@localhost:5432/postgres uv run pytest
+
+# The whole suite on PostgreSQL (CI's `test-postgres` job): a database made for the run, dropped at its end
+TEST_DATABASE_URL=postgresql+psycopg2://postgres:postgres@localhost:5432/postgres TEST_SUITE_ON_POSTGRES=1 uv run pytest
+```
+
+A run that's killed rather than ended leaves its `shurly_suite_…` database behind: drop it by hand.
+
+---
+
+## End-to-end tests
+
+Phase 6.1. Playwright drives the production build of the frontend in Chromium, against the real API on a real
+PostgreSQL. CI runs them on every push and pull request (the `e2e` job of `.github/workflows/test.yml`).
+
+- **The API** is `tests/e2e/app.py`: the app, with the pytest suite's fake Google (`tests/fake_google.py`) in
+  place of Google's page and endpoints, and no link previews fetched. Signing in goes through the real flow
+  (`/auth/google/start`, the callback, the one-time code); the fake's page answers at once, for
+  `e2e.owner@griddo.io`, the organization's first account and so its owner. The wrapper refuses to start without
+  `E2E=1` (Playwright sets it) or with a `DB_HOST` other than `localhost`, `127.0.0.1` or `::1`. It isn't in
+  `main.py`, and the image never copies `tests/` (`tests/test_e2e_guard.py` checks the dockerfile).
+- **The pages** are built into `frontend/dist-e2e/` with `PUBLIC_API_URL` pointing at the test API, so they carry
+  the production Content-Security-Policy and Trusted Types. Chromium only: it's the browser that enforces
+  Trusted Types.
+- **Every test fails** on a CSP or Trusted Types violation, an uncaught error in a page, a 5xx from the API, or a
+  request to any host but this machine: fonts, analytics, anything (`frontend/e2e/fixtures.ts`).
+  `harness.spec.ts` breaks each rule once to show it's caught, and that the page reports it to the API.
+
+To run them, on a throwaway database:
+
+```bash
+docker run -d --name shurly-e2e-pg -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=shurly_e2e \
+  -p 127.0.0.1:55433:5432 postgres:17
+cd frontend
+npx playwright install chromium   # once; or set E2E_CHANNEL=chrome to use your Google Chrome
+DB_HOST=127.0.0.1 DB_PORT=55433 DB_USER=postgres DB_PASSWORD=postgres DB_NAME=shurly_e2e npm run e2e
+```
+
+Playwright builds the pages, starts the API on `127.0.0.1:18000` and the pages on `127.0.0.1:14321` (both
+ports must be free), signs in once (`e2e/auth.setup.ts`), runs `e2e/*.spec.ts` one at a time, and stops both
+servers. The API's log is `frontend/e2e/.logs/api.log`; a failed test leaves a screenshot in
+`frontend/test-results/`. Add `--headed` or `--ui` to watch.
+
+Writing a spec: import `test` and `expect` from `e2e/fixtures.ts`, never from `@playwright/test`, so the rules
+apply. Make what the spec tests the way a person would; make what it only needs through the API, as the owner
+(the `ownerApi` fixture). `e2e/helpers.ts` has a person's click and email open (straight to the API, with a
+browser's user agent), picking an option of a segmented control, and a downloaded CSV's lines. Wait on what the
+page shows, never on time, and give each spec data of its own: a run shares one database.
+
+Accessibility: `e2e/a11y.spec.ts` runs axe on the landing, login, dashboard, link, campaign and Settings pages and
+the manual, once their content is in, on a desktop and on a phone (390 px, where the menu is a dialog, checked
+open). A moderate, serious or critical issue fails the test (`IMPACTS`); a minor one doesn't. Fix what it finds, or
+add it to the spec's `ALLOWED` list with a reason and the issue that will fix it; never turn a rule off. axe leaves
+some contrast undecided (text over a gradient, a translucent panel or a scroll fade, SVG text, anything under a
+dialog): check those by hand against the design system's inks.
 
 ---
 

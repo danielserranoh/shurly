@@ -55,3 +55,6 @@ tests/
 # Misc
 .DS_Store
 *.log
+
+# Phase 8.4 — a developer's geolocation database: the image fetches its own
+data/

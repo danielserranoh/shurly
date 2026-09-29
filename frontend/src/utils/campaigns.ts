@@ -1,27 +1,25 @@
 // Campaigns: API actions and card rendering.
 
-import { apiDelete, apiDownload, apiGet, apiPatch, apiPost } from './api';
+import { apiDelete, apiDownload, apiGet, apiPatch, apiPost, qs } from './api';
 import { formatDate, prettyUrl } from './format';
 import { html, safeUrl, type RawHTML } from './html';
 import { icon } from './icons';
 import { campaignHref } from './links';
 import { tagPill } from './tags';
-import { canChange, creatorName, lockedMenuAttrs, personalBadge, type Viewer } from './viewer';
-import type { Campaign, CampaignListResponse, CampaignSummary, CampaignUsersResponse, CreateCampaignRequest, Tag } from './types';
+import { canChange, creatorEmailBehindName, creatorName, lockedMenuAttrs, personalBadge, type Viewer } from './viewer';
+import type { Campaign, CampaignListResponse, CampaignSummary, CreateCampaignRequest, Tag } from './types';
 
-export const listCampaigns = () => apiGet<CampaignListResponse>('/api/v1/campaigns?limit=100');
+/** A page of the campaigns, newest first, and how many there are (`total`). */
+export const listCampaigns = (skip: number, limit: number) => apiGet<CampaignListResponse>(`/api/v1/campaigns${qs({ skip, limit })}`);
 export const getCampaign = (id: string) => apiGet<Campaign>(`/api/v1/campaigns/${encodeURIComponent(id)}`);
 export const createCampaign = (data: CreateCampaignRequest) => apiPost<Campaign>('/api/v1/campaigns', data);
 export const deleteCampaign = (id: string) => apiDelete(`/api/v1/campaigns/${encodeURIComponent(id)}`);
 export const setCampaignTags = (id: string, tagIds: string[]) =>
   apiPatch<{ campaign_id: string; tags: Tag[] }>(`/api/v1/campaigns/${encodeURIComponent(id)}/tags`, { tag_ids: tagIds });
 export const campaignSummary = (id: string) => apiGet<CampaignSummary>(`/api/v1/analytics/campaigns/${encodeURIComponent(id)}/summary`);
-export const campaignRecipients = (id: string) => apiGet<CampaignUsersResponse>(`/api/v1/analytics/campaigns/${encodeURIComponent(id)}/users`);
 
 export const exportCampaignLinks = (c: Pick<Campaign, 'id' | 'name'>) =>
   apiDownload(`/api/v1/campaigns/${encodeURIComponent(c.id)}/export`, `${slug(c.name)}-links.csv`);
-export const exportCampaignReport = (c: Pick<Campaign, 'id' | 'name'>) =>
-  apiDownload(`/api/v1/analytics/campaigns/${encodeURIComponent(c.id)}/users?format=csv`, `${slug(c.name)}-clicks.csv`);
 
 function slug(name: string): string {
   return name.toLowerCase().normalize('NFKD').replace(/[^\w]+/g, '-').replace(/^-|-$/g, '') || 'campaign';
@@ -38,6 +36,8 @@ export function columnChips(columns: string[], max = 4): RawHTML {
 export function renderCampaignCard(c: Campaign, viewer: Viewer | null = null): RawHTML {
   const menuId = `campaign-menu-${c.id}`;
   const creator = creatorName(c, viewer);
+  const creatorEmail = creatorEmailBehindName(c, viewer);
+  // Under "Created …": on phones "by …" takes a line of its own, as it truncated beside "View campaign".
   const locked = canChange(c, viewer) ? '' : lockedMenuAttrs('campaign');
   return html`<li class="card card-interactive flex flex-col gap-4 p-5" data-campaign="${c.id}">
     <div class="flex items-start gap-3">
@@ -62,7 +62,7 @@ export function renderCampaignCard(c: Campaign, viewer: Viewer | null = null): R
     <dl class="grid grid-cols-3 gap-2 rounded-xl bg-ink-50 px-4 py-3">
       <div><dt class="text-xs text-ink-500">Recipients</dt><dd class="mt-0.5 text-lg font-semibold text-ink-950">${c.url_count}</dd></div>
       <div><dt class="text-xs text-ink-500">Clicks</dt><dd class="mt-0.5 text-lg font-semibold text-ink-950" data-clicks><span class="skeleton inline-block h-5 w-8 align-middle"></span></dd></div>
-      <div><dt class="text-xs text-ink-500">Opened</dt><dd class="mt-0.5 text-lg font-semibold text-ink-950" data-ctr><span class="skeleton inline-block h-5 w-10 align-middle"></span></dd></div>
+      <div><dt class="text-xs text-ink-500">Clicked</dt><dd class="mt-0.5 text-lg font-semibold text-ink-950" data-ctr><span class="skeleton inline-block h-5 w-10 align-middle"></span></dd></div>
     </dl>
     <div data-meter class="-mt-1"></div>
 
@@ -72,7 +72,7 @@ export function renderCampaignCard(c: Campaign, viewer: Viewer | null = null): R
     ${c.tags?.length ? html`<div class="flex flex-wrap gap-1.5">${c.tags.map((t) => tagPill(t))}</div>` : ''}
 
     <div class="mt-auto flex items-center justify-between gap-3 border-t border-line pt-3 text-xs text-ink-500">
-      <span class="min-w-0 truncate">Created ${formatDate(c.created_at)}${creator ? ` by ${creator}` : ''}</span>
+      <span class="min-w-0 sm:truncate" ${creatorEmail ? html`title="${creatorEmail}"` : ''}>Created ${formatDate(c.created_at)}${creator ? html`<span class="max-sm:block max-sm:truncate"> by ${creator}</span>` : ''}</span>
       <a class="inline-flex shrink-0 items-center gap-1 font-semibold text-ink-900 hover:text-ink-950" href="${campaignHref(c.id)}">View campaign ${icon('arrow-right', 'size-3.5')}</a>
     </div>
   </li>`;

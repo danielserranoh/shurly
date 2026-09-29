@@ -1,5 +1,6 @@
 import json
 from typing import Any
+from urllib.parse import urlsplit
 
 from pydantic import SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -58,9 +59,23 @@ class Settings(BaseSettings):
     # only if a downstream legal review approves storing full addresses.
     anonymize_remote_addr: bool = True
 
+    # Phase 8.4 — DB-IP's IP to Country Lite database (CC BY 4.0), fetched into the image by
+    # scripts/fetch_geoip.py; a visit's country comes from it (server/utils/geo.py). Empty
+    # turns lookups off; a missing file means no country, never a failed redirect.
+    geoip_database: str = "data/dbip-country-lite.mmdb"
+
     # Phase 3.9.6 — Trust boundaries for X-Forwarded-For. Empty list (default) = never
-    # trust X-F-F. Set this to your ALB/CloudFront/API-GW source CIDR list in prod.
+    # trust X-F-F. Set this to the ALB's CIDR in prod; CloudFront isn't listed here, see
+    # cloudfront_origin_secrets below.
     trusted_proxies: list[str] = []
+
+    # Phase 6.3 — behind CloudFront (shurly.griddo.io, 4.10) the client IP comes from
+    # CloudFront-Viewer-Address, believed only on a request that carries one of these
+    # values in CLOUDFRONT_ORIGIN_HEADER, a custom origin header the distribution adds.
+    # Two values while the secret rotates, each at least 32 characters. Empty (the
+    # default): X-Forwarded-For, as before (`client_ip`, server/utils/network.py).
+    cloudfront_origin_secrets: list[SecretStr] = []
+    cloudfront_origin_header: str = "X-Origin-Verify"
 
     # Phase 3.9.6 — Visit-suppression query param ("nostat" by default). When the
     # redirect handler sees this param it skips Visitor logging entirely. Useful for QA.
@@ -131,15 +146,18 @@ class Settings(BaseSettings):
     # the ALB and each per-IP limit becomes one limit for everybody.
     # POST /auth/login: every attempt runs a bcrypt check.
     rate_limit_login_per_ip: int = 20
-    # Failed password logins per address, per 15 minutes; the right password counts
-    # for nothing. Anyone can lock an address's password route for the window;
-    # signing in with Google stays open.
+    # Failed password checks per address, per 15 minutes: logins, and the current password
+    # given to change or set one. The right password counts for nothing. Anyone can lock
+    # an address's password login for the window; signing in with Google stays open.
     rate_limit_login_failures_per_account: int = 10
     # Google's and the MCP's sign-in pages and endpoints: each writes a row.
     rate_limit_sign_in_per_ip: int = 30
     # /mcp/register and /mcp/token: claude.ai calls them from Anthropic's addresses,
     # shared by everybody, so this one is generous.
     rate_limit_mcp_clients_per_ip: int = 60
+    # Browser error reports (POST /api/v1/client-errors): anyone may send them, signed in
+    # or not. The web app sends 5 at most per page it loads.
+    rate_limit_client_errors_per_ip: int = 30
 
     @property
     def mcp_oauth_configured(self) -> bool:
@@ -183,21 +201,38 @@ class Settings(BaseSettings):
             raise ValueError("redirect_status_code must be one of 301, 302, 307, 308")
         return v
 
+    # Shlink's "invalid short URL" redirect: where a short link that doesn't lead anywhere (no
+    # such code, not live yet, expired or used up) sends everyone, as a 302 that isn't cached.
+    # Empty (default): people get a page, anything else the JSON, with its 404 or 410.
+    invalid_short_url_redirect: str = ""
+
+    @field_validator("invalid_short_url_redirect")
+    @classmethod
+    def _validate_invalid_short_url_redirect(cls, v: str) -> str:
+        if v:
+            parts = urlsplit(v)
+            if parts.scheme not in ("http", "https") or not parts.netloc:
+                raise ValueError("invalid_short_url_redirect must be an absolute http(s) URL")
+        return v
+
     # SSRF guard for the Open Graph fetcher. Destination URLs are user-supplied, so link
     # previews refuse any host that resolves to a loopback, private, link-local (cloud
     # metadata) or otherwise non-public address. Set true ONLY in local development to
     # preview pages served from localhost — never in production.
     og_fetch_allow_private: bool = False
 
-    # Lambda/AWS settings
-    is_lambda: bool = False  # Set to True when running in Lambda
-    db_pool_size: int = 10  # Smaller for Lambda (2-5), larger for local (10)
-    db_max_overflow: int = 20  # Smaller for Lambda (5), larger for local (20)
+    # Database connections, per task
+    db_pool_size: int = 10  # Connections kept open
+    db_max_overflow: int = 20  # Opened beyond the pool, under load
     db_pool_recycle: int = 3600  # Recycle connections after 1 hour
     db_ssl_mode: str = "prefer"  # Use "require" for RDS SSL
 
     @field_validator(
-        "cors_origins", "trusted_proxies", "mcp_oauth_allowed_redirect_uris", mode="before"
+        "cors_origins",
+        "trusted_proxies",
+        "mcp_oauth_allowed_redirect_uris",
+        "cloudfront_origin_secrets",
+        mode="before",
     )
     @classmethod
     def parse_string_list(cls, v: Any) -> list[str]:
@@ -213,6 +248,14 @@ class Settings(BaseSettings):
                     return [item.strip() for item in v.split(",") if item.strip()]
                 return [v]
         return v
+
+    @field_validator("cloudfront_origin_secrets")
+    @classmethod
+    def long_enough(cls, secrets: list[SecretStr]) -> list[SecretStr]:
+        """Whoever guesses one chooses the address they're counted and logged under."""
+        if any(len(secret.get_secret_value()) < 32 for secret in secrets):
+            raise ValueError("each CLOUDFRONT_ORIGIN_SECRETS value needs at least 32 characters")
+        return secrets
 
     # Tags configuration
     predefined_tags: dict[str, dict] = {

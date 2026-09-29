@@ -16,6 +16,20 @@ export interface User {
   /** Phase 3.13: how the account signs in. Absent from APIs older than Google sign-in. */
   has_password?: boolean;
   has_google?: boolean;
+  /** Phase 3.12. Absent from APIs older than the profile. */
+  profile?: Profile;
+}
+
+/** Phase 3.12: each field is null until the person sets it. */
+export interface Profile {
+  first_name: string | null;
+  last_name: string | null;
+  /** ISO 3166-1 alpha-2, e.g. "ES". */
+  country: string | null;
+  /** IANA name, e.g. "Atlantic/Canary". */
+  timezone: string | null;
+  /** Changes with each upload; null without an avatar. Absent from APIs older than the avatar. */
+  avatar_version?: string | null;
 }
 
 export interface LoginResponse {
@@ -42,6 +56,8 @@ export interface ShortLink {
   id: string;
   short_code: string;
   short_url: string | null;
+  /** Phase 8.3: the link's domain; one code can name links on several. Absent from older APIs. */
+  domain?: string | null;
   original_url: string;
   url_type: URLType;
   title: string | null;
@@ -58,12 +74,17 @@ export interface ShortLink {
   tags: Tag[];
   click_count: number;
   campaign_id: string | null;
+  /** Its campaign's name, for a campaign link. */
+  campaign_name?: string | null;
   user_data: Record<string, string> | null;
   created_at: string;
   updated_at: string;
   warning?: string | null;
   visibility: Visibility;
   created_by_email: string | null;
+  /** Phase 3.12: the creator's name, from their profile; null without one, absent from older APIs. */
+  created_by_first_name?: string | null;
+  created_by_last_name?: string | null;
 }
 
 export interface LinkListResponse {
@@ -135,6 +156,9 @@ export interface Campaign {
   urls?: CampaignLink[] | null;
   visibility: Visibility;
   created_by_email: string | null;
+  /** Phase 3.12: the creator's name, from their profile; null without one, absent from older APIs. */
+  created_by_first_name?: string | null;
+  created_by_last_name?: string | null;
 }
 
 export interface CampaignListResponse {
@@ -166,12 +190,16 @@ export interface DailyStatsResponse {
   short_code: string;
   stats: DailyStat[];
   total_clicks: number;
+  /** The IANA zone the days are counted in: the viewer's, else UTC. Absent from older APIs. */
+  timezone?: string;
 }
 
 export interface WeeklyStatsResponse {
   short_code: string;
   stats: WeeklyStat[];
   total_clicks: number;
+  /** The IANA zone the days are counted in: the viewer's, else UTC. Absent from older APIs. */
+  timezone?: string;
 }
 
 export interface GeoStat {
@@ -184,6 +212,154 @@ export interface GeoStatsResponse {
   stats: GeoStat[];
   total_clicks: number;
   period_days: number;
+}
+
+// ---------------------------------------------------------------------------
+// Phase 3.16 — a link's analytics (ROADMAP 3.16.1, the contract)
+// ---------------------------------------------------------------------------
+
+/** What every period-bound response starts with: the range counted, after `period` or clipping. */
+export interface CountedRange {
+  from: string;
+  to: string;
+  timezone: string;
+}
+
+/** A link's responses name it. */
+export interface LinkIdentity {
+  short_code: string;
+  domain: string | null;
+}
+
+/** A campaign's responses name it (3.17). */
+export interface CampaignIdentity {
+  campaign_id: string;
+  campaign_name: string;
+}
+
+export type AnalyticsRange = LinkIdentity & CountedRange;
+
+/** A visit is one kind: a click, an email open (the pixel), or a bot's. */
+export type VisitKind = 'click' | 'open' | 'bot';
+/** The filter of /breakdown, /visits and /visits.csv. */
+export type VisitType = 'clicks' | 'opens' | 'bots' | 'all';
+
+/** GET …/totals: the all-time numbers. */
+export interface LinkTotals {
+  short_code: string;
+  domain: string | null;
+  timezone: string;
+  clicks: number;
+  opens: number;
+  countries: number;
+  last_click_at: string | null;
+}
+
+/** GET …/timeseries, a link's or a campaign's: the same shape. */
+export interface Timeseries extends CountedRange {
+  group_by: 'day' | 'week' | 'month';
+  clicks: number;
+  opens: number;
+  stats: Array<{ start: string; end: string; clicks: number; opens: number }>;
+  hour_of_day: Array<{ hour: number; clicks: number; opens: number }>;
+  day_of_week: Array<{ day: number; clicks: number; opens: number }>;
+}
+
+export interface BreakdownEntry {
+  name: string;
+  count: number;
+  /** 0–1, four decimals. */
+  share: number;
+}
+
+/** GET …/breakdown, a link's or a campaign's. */
+export interface Breakdown extends CountedRange {
+  type: VisitType;
+  total: number;
+  os: BreakdownEntry[];
+  browsers: BreakdownEntry[];
+  devices: BreakdownEntry[];
+  referrers: BreakdownEntry[];
+  /** ISO codes, and "Unknown". */
+  countries: BreakdownEntry[];
+}
+
+export interface LinkVisit {
+  visited_at: string;
+  kind: VisitKind;
+  country: string;
+  browser: string;
+  os: string;
+  device: string;
+  referrer: string;
+}
+
+/** GET …/visits: a link's only (a campaign has none, on purpose). */
+export interface Visits extends CountedRange {
+  type: VisitType;
+  total: number;
+  page: number;
+  page_size: number;
+  pages: number;
+  visits: LinkVisit[];
+}
+
+export interface LinkTimeseries extends Timeseries, LinkIdentity {}
+export interface LinkBreakdown extends Breakdown, LinkIdentity {}
+export interface LinkVisits extends Visits, LinkIdentity {}
+
+// ---------------------------------------------------------------------------
+// Phase 3.17 — a campaign's analytics (ROADMAP 3.17.1, the contract)
+// ---------------------------------------------------------------------------
+
+/** GET …/campaigns/{id}/totals: all time. Rates are 0–1. */
+export interface CampaignTotals extends CampaignIdentity {
+  timezone: string;
+  recipients: number;
+  clicks: number;
+  opens: number;
+  /** Recipients with at least one click. */
+  clicked: number;
+  /** Recipients with at least one email open that isn't a bot's. */
+  opened: number;
+  click_rate: number;
+  open_rate: number;
+  countries: number;
+  last_click_at: string | null;
+}
+
+export interface CampaignTimeseries extends Timeseries, CampaignIdentity {}
+export interface CampaignBreakdown extends Breakdown, CampaignIdentity {}
+
+/** A row of `/recipients`: one per personalized link, all time. Times are local, null without one. */
+export interface CampaignRecipient {
+  short_code: string;
+  short_url: string;
+  domain: string | null;
+  user_data: Record<string, string>;
+  clicks: number;
+  opens: number;
+  first_click_at: string | null;
+  last_click_at: string | null;
+  last_open_at: string | null;
+}
+
+export type RecipientFilterName = 'all' | 'clicked' | 'opened' | 'none';
+
+/** GET …/recipients: a page of them, filtered, searched and sorted by the API. */
+export interface CampaignRecipients extends CampaignIdentity {
+  timezone: string;
+  filter: RecipientFilterName;
+  q: string;
+  sort: 'clicks' | 'opens' | 'last_click' | 'code';
+  order: 'asc' | 'desc';
+  total: number;
+  page: number;
+  page_size: number;
+  pages: number;
+  recipients: CampaignRecipient[];
+  /** How many match each filter, honouring `q` but not `filter`: the counts on the filter's options. */
+  counts?: Record<RecipientFilterName, number>;
 }
 
 export interface CampaignRecipientStat {
@@ -204,6 +380,8 @@ export interface CampaignSummary {
   click_through_rate: number; // % of links clicked at least once
   top_performers: CampaignRecipientStat[];
   daily_timeline: DailyStat[];
+  /** The IANA zone the days are counted in: the viewer's, else UTC. Absent from older APIs. */
+  timezone?: string;
 }
 
 export interface CampaignUsersResponse {
@@ -216,6 +394,7 @@ export interface CampaignUsersResponse {
 export interface TopLink {
   short_code: string;
   short_url?: string;
+  domain?: string;
   title?: string | null;
   original_url: string;
   url_type: URLType;
@@ -230,21 +409,39 @@ export interface OverviewStats {
   recent_clicks_7d: number;
   top_urls: TopLink[];
   recent_activity: DailyStat[];
+  /** The IANA zone the days are counted in: the viewer's, else UTC. Absent from older APIs. */
+  timezone?: string;
 }
 
-export interface OrphanVisit {
-  id: string;
-  type: 'base_url' | 'invalid_short_url' | 'regular_404';
+// "Typos & broken links" (ROADMAP 3.10.4): orphan visits by the path tried, from the API.
+
+/** A link the path was probably meant for: one edit away, or the same code but for case. */
+export interface OrphanSuggestion {
+  short_code: string;
+  domain: string;
+  short_url: string;
+  title: string | null;
+}
+
+export interface OrphanGroup {
   attempted_path: string;
-  ip: string | null;
-  user_agent: string | null;
-  referer: string | null;
-  created_at: string | null;
+  visits: number;
+  first_seen: string;
+  last_seen: string;
+  /** Up to 3, the likeliest first. */
+  did_you_mean: OrphanSuggestion[];
 }
 
-export interface OrphanVisitsResponse {
-  total: number;
-  items: OrphanVisit[];
+export interface OrphanGroupsResponse {
+  from: string;
+  to: string;
+  timezone: string;
+  total_visits: number;
+  total_paths: number;
+  page: number;
+  page_size: number;
+  pages: number;
+  groups: OrphanGroup[];
 }
 
 // Redirect rules (Phase 3.10.2)
@@ -296,6 +493,9 @@ export interface Organization {
 export interface OrgMember {
   user_id: string;
   email: string;
+  /** Phase 3.12: from their profile; null without one, absent from older APIs. */
+  first_name?: string | null;
+  last_name?: string | null;
   role: OrgRole;
   joined_at: string;
 }
@@ -310,6 +510,9 @@ export interface AdoptedLinks {
 export interface RemovedMember {
   user_id: string;
   email: string;
+  /** Phase 3.12: from their profile; null without one, absent from older APIs. */
+  first_name?: string | null;
+  last_name?: string | null;
   /** Personal links, a campaign's included: what adopt-personal-links would move. */
   links: number;
   campaigns: number;
