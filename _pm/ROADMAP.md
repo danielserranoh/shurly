@@ -1252,14 +1252,18 @@ Their `click_through_rate` stays a percentage, 0 to 100.
 `list_campaign_recipients`. `/recipients.csv` is excluded.
 
 ### 3.17.2 API (Agent 1)
-- [ ] 3.16's routes become functions over a query of visits: a link's, or a campaign's links', joined on
-      `urls.campaign_id` rather than a list of ids
-- [ ] PR 1: `/totals`, `/timeseries` and `/breakdown`
+- [x] 3.16's routes become functions over a query of visits: a link's, or a campaign's links', joined on
+      `urls.campaign_id` rather than a list of ids. A subquery, `url_id IN (SELECT id FROM urls WHERE campaign_id = …)`
+- [x] PR 1: `/totals`, `/timeseries` and `/breakdown`. `/summary`, `/users` and the new routes decide who sees a
+      campaign with one function (`_visible_campaign_or_404`)
 - [ ] PR 2: `/recipients` and `/recipients.csv`, all time. Each link is joined to its visits' totals (clicks, opens,
       first and last click, last open), and every recipient is kept with zeros. Then `filter`, `q`, `sort` and the
       page are all done in SQL
 - [ ] MCP: the tool names, `/recipients.csv` excluded, `EXPECTED_TOOLS`. README endpoints and CHANGELOG
 - [ ] Timings on PostgreSQL: a campaign of 2,000 recipients with 20k visits
+      - PR 1 (2026-09-29), among 1,600 other recipients with 80k visits: `/totals` in 16 ms, `/timeseries` in 28,
+        a 90-day `/breakdown` in 28 (33 for every kind); the legacy `/summary` in 87. No index on
+        `urls.campaign_id` needed at that size
 
 ### 3.17.3 Page (Agent 2)
 - [ ] Agent 2 breaks it down:

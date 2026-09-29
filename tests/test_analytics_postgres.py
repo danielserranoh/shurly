@@ -142,3 +142,47 @@ def test_a_links_analytics_on_postgresql(pg_client, pg_session):
         ("ES", 20),
         ("Unknown", 20),
     ]
+
+
+def test_a_campaigns_analytics_on_postgresql(pg_client, pg_session):
+    """Phase 3.17 — a campaign's routes on PostgreSQL: its links' visits, through a subquery."""
+    user = User(email="owner@example.com", password_hash=hash_password("secret123"), is_active=True)
+    pg_session.add(user)
+    pg_session.flush()
+    campaign = Campaign(
+        name="Q4", original_url="https://example.org", csv_columns=["name"], created_by=user.id
+    )
+    pg_session.add(campaign)
+    pg_session.flush()
+    domain = get_or_create_default_domain(pg_session)
+    for i, name in enumerate(("Ana", "Luis", "Marta")):
+        url = URL(
+            short_code=f"pg317{i}",
+            original_url="https://example.org",
+            url_type=URLType.CAMPAIGN,
+            campaign_id=campaign.id,
+            user_data={"name": name},
+            created_by=user.id,
+            domain_id=domain.id,
+        )
+        pg_session.add(url)
+        pg_session.flush()
+        for pixel in [False] * (2 - i) + [True] * i:  # Ana 2 clicks, Luis 1 and 1, Marta 2 opens
+            pg_session.add(
+                Visitor(
+                    url_id=url.id,
+                    short_code=url.short_code,
+                    ip="203.0.113.0",
+                    is_pixel=pixel,
+                    visited_at=datetime.utcnow(),
+                )
+            )
+    pg_session.commit()
+    headers = {"Authorization": f"Bearer {create_access_token(data={'sub': user.email})}"}
+    base = f"/api/v1/analytics/campaigns/{campaign.id}"
+
+    totals = pg_client.get(f"{base}/totals", headers=headers).json()
+    assert (totals["recipients"], totals["clicked"], totals["opened"]) == (3, 2, 2)
+    assert (totals["clicks"], totals["opens"], totals["click_rate"]) == (3, 3, 0.6667)
+    for route in ("timeseries?group_by=month", "breakdown?type=all"):
+        assert pg_client.get(f"{base}/{route}", headers=headers).status_code == 200, route

@@ -150,7 +150,9 @@ class WeekdayCounts(BaseModel):
     opens: int
 
 
-class TimeseriesResponse(LinkPeriodResponse):
+class SeriesFields(BaseModel):
+    """A series of clicks and opens: a link's (3.16) or a campaign's (3.17)."""
+
     group_by: str
     clicks: int
     opens: int
@@ -159,13 +161,19 @@ class TimeseriesResponse(LinkPeriodResponse):
     day_of_week: list[WeekdayCounts]
 
 
+class TimeseriesResponse(LinkPeriodResponse, SeriesFields):
+    pass
+
+
 class BreakdownItem(BaseModel):
     name: str = Field(description='The value, or "Unknown"; a referrer\'s is "Direct" without one')
     count: int
     share: float = Field(description="`count` over the response's `total`, 0 to 1, 4 decimals")
 
 
-class BreakdownResponse(LinkPeriodResponse):
+class BreakdownFields(BaseModel):
+    """Visits of a kind by OS, browser, device, referrer and country: a link's or a campaign's."""
+
     type: str = Field(description="The kind of visit counted: clicks, opens, bots or all")
     total: int
     os: list[BreakdownItem]
@@ -173,6 +181,10 @@ class BreakdownResponse(LinkPeriodResponse):
     devices: list[BreakdownItem]
     referrers: list[BreakdownItem]
     countries: list[BreakdownItem]
+
+
+class BreakdownResponse(LinkPeriodResponse, BreakdownFields):
+    pass
 
 
 class VisitRow(BaseModel):
@@ -194,3 +206,41 @@ class VisitsResponse(LinkPeriodResponse):
     page_size: int
     pages: int
     visits: list[VisitRow]
+
+
+# Phase 3.17 — per-campaign analytics (ROADMAP 3.17.1).
+
+
+class CampaignPeriodResponse(BaseModel):
+    """What every per-campaign response over a period starts with: the campaign, and the range."""
+
+    campaign_id: str
+    campaign_name: str
+    first: date = Field(alias="from", description="The first local day counted")
+    last: date = Field(alias="to", description="The last local day counted: today at the latest")
+    timezone: str = Field(description="The IANA time zone the days are counted in")
+
+
+class CampaignTotalsResponse(BaseModel):
+    """A campaign's all-time numbers, for the header of its page."""
+
+    campaign_id: str
+    campaign_name: str
+    timezone: str = Field(description="The IANA time zone `last_click_at` is given in")
+    recipients: int = Field(description="Its links: one per recipient, a row of its CSV")
+    clicks: int
+    opens: int = Field(description="Hits on its links' email pixels that aren't a bot's")
+    clicked: int = Field(description="Clicked: the recipients with at least one click")
+    opened: int = Field(description="Opened: the recipients with at least one pixel open")
+    click_rate: float = Field(description="clicked ÷ recipients, 0 to 1, 4 decimals")
+    open_rate: float = Field(description="opened ÷ recipients, 0 to 1, 4 decimals")
+    countries: int = Field(description="How many distinct countries its clicks came from")
+    last_click_at: datetime | None = Field(description="The latest click, or null")
+
+
+class CampaignTimeseriesResponse(CampaignPeriodResponse, SeriesFields):
+    pass
+
+
+class CampaignBreakdownResponse(CampaignPeriodResponse, BreakdownFields):
+    pass

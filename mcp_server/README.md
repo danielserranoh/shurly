@@ -195,7 +195,7 @@ claude mcp add --transport http shurly https://shurly.griddo.io/mcp/ \
 ## Auto-generated tool surface (Phase 5.2)
 
 Phase 5.1 produced 47 raw tools — every FastAPI route, verbatim. Phase 5.2
-filters and renames that set down to **40 LLM-facing tools** with clean names.
+filters and renames that set down to **43 LLM-facing tools** with clean names.
 
 Two filters live in `mcp_server/server.py`:
 
@@ -209,11 +209,12 @@ Two filters live in `mcp_server/server.py`:
   (`create_short_url_api_v1_urls_post`) to clean MCP tool names
   (`create_short_url`).
 
-The surface is now **40 tools**: auth (2), organization (2), URL CRUD + tagging +
-previews (11), redirect rules (4), campaigns (6), analytics (11), tags (4). Phase 3.11
+The surface is now **43 tools**: auth (2), organization (2), URL CRUD + tagging +
+previews (11), redirect rules (4), campaigns (6), analytics (14), tags (4). Phase 3.11
 added `get_url` and `fetch_url_metadata` to the original 36; Phase 3.14.2 added
 `get_organization` and `list_organization_members`; Phase 3.16 added `get_url_totals`,
-`get_url_timeseries`, `get_url_breakdown` and `list_url_visits` (not the visits' CSV). `register` left in Phase 3.13.2
+`get_url_timeseries`, `get_url_breakdown` and `list_url_visits` (not the visits' CSV); Phase 3.17
+added `get_campaign_totals`, `get_campaign_timeseries` and `get_campaign_breakdown`. `register` left in Phase 3.13.2
 (it's a tool only with `ALLOW_PASSWORD_SIGNUP` on, for local development), and
 `generate_api_key`, `revoke_api_key`, `login` and `change_password` in Phase 6.3.
 
@@ -264,7 +265,7 @@ The pure logic lives in `mcp_server/curated.py` (takes `db: Session` and
 `mcp_server/server.py` open a `SessionLocal` per call and resolve the
 caller with `resolve_current_user(db)` (Phase 5.4).
 
-Total tool surface: **44 tools** (40 auto-generated + 4 curated). The 5.2 contract test (`tests/test_phase52_mcp_tools.py`) and
+Total tool surface: **47 tools** (43 auto-generated + 4 curated). The 5.2 contract test (`tests/test_phase52_mcp_tools.py`) and
 the 5.3 logic tests (`tests/test_phase53_curated_tools.py`) together pin
 the surface.
 
