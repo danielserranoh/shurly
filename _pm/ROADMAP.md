@@ -1833,6 +1833,10 @@ case-insensitively.
       behaves like Shlink's strict mode. Pin it with a test so lookups never get lowercased by accident → the
       import keeps codes verbatim; `test_answers_on_its_domain_with_its_exact_code` pins the redirect
 - [ ] `loose` → case-insensitive lookup on that domain before the cutover
+- [ ] If wanted after that decision, for Shurly's own `loose` mode: an exact match first, then a case-insensitive
+      fallback only when exactly one link matches. Not plain lowercasing: imported codes stay exact, so `AbC12` and
+      `abc12` can both exist (the pin above). Today `/ABC123` is an orphan visit even when `abc123` exists, and
+      "Typos & broken links" suggests `abc123` for it (3.10.4). Not coded until the user decides
 
 ### 8.3 Finish multi-domain (3.10.1 shipped the model only)
 - [ ] `Domain` row for `go.griddo.io`
