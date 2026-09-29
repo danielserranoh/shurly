@@ -7,6 +7,7 @@ once, and never a failed redirect.
 """
 
 import json
+import time
 
 import pytest
 from fastapi.testclient import TestClient
@@ -20,9 +21,9 @@ from server.utils import geo
 from server.utils.domain import get_or_create_default_domain
 
 
-def write_database(path, networks: dict[str, str]):
-    """A tiny DB-IP-shaped country database: network → ISO code."""
-    writer = MMDBWriter(ip_version=6, ipv4_compatible=True, database_type="DBIP-Country-Lite")
+def write_database(path, networks: dict[str, str], database_type: str = "DBIP-Country-Lite"):
+    """A tiny country database, DB-IP's shape by default: network → ISO code."""
+    writer = MMDBWriter(ip_version=6, ipv4_compatible=True, database_type=database_type)
     for network, code in networks.items():
         writer.insert_network(IPSet([network]), {"country": {"iso_code": code}})
     writer.to_db_file(str(path))
@@ -148,3 +149,68 @@ class TestWithoutADatabase:
 
         assert db_session.query(Visitor).one().country is None
         assert _events(capsys, "geo.database_missing") == []
+
+
+class TestGeoLite2AndItsFallback:
+    """GEOIP_DATABASE is MaxMind's GeoLite2 City; GEOIP_FALLBACK_DATABASE, DB-IP's, when it
+    isn't there. What opened is logged, with its age, and a GeoLite2 copy past 25 days too:
+    MaxMind's licence wants it replaced within 30 of an update."""
+
+    @pytest.fixture
+    def databases(self, tmp_path, monkeypatch):
+        geolite = write_database(
+            tmp_path / "GeoLite2-City.mmdb", {"203.0.113.0/24": "ES"}, "GeoLite2-City"
+        )
+        dbip = write_database(tmp_path / "dbip.mmdb", {"203.0.113.0/24": "PT"})
+        monkeypatch.setattr(settings, "geoip_database", str(geolite))
+        monkeypatch.setattr(settings, "geoip_fallback_database", str(dbip))
+        geo.reset()
+        yield geolite, dbip
+        geo.reset()
+
+    def test_geolite2_first(self, databases, capsys):
+        assert geo.country_of("203.0.113.0") == "ES"
+        (event,) = _events(capsys, "geo.database_opened")
+        assert (event["path"], event["database_type"]) == (str(databases[0]), "GeoLite2-City")
+        assert event["age_days"] < 1 and event["built"]
+        assert "primary" not in event
+
+    def test_dbip_when_geolite2_isnt_there(self, databases, monkeypatch, capsys):
+        monkeypatch.setattr(settings, "geoip_database", str(databases[0]) + ".gone")
+        geo.reset()
+
+        assert geo.country_of("203.0.113.0") == "PT"
+        (event,) = _events(capsys, "geo.database_opened")
+        assert event["path"] == str(databases[1])
+        # Why it's DB-IP: the task's log says which file didn't open.
+        assert event["primary"] == str(databases[0]) + ".gone"
+        assert event["primary_error"] == "FileNotFoundError"
+
+    def test_neither(self, databases, monkeypatch, capsys):
+        monkeypatch.setattr(settings, "geoip_database", "/nowhere/a.mmdb")
+        monkeypatch.setattr(settings, "geoip_fallback_database", "/nowhere/b.mmdb")
+        geo.reset()
+
+        assert geo.country_of("203.0.113.0") is None
+        (event,) = _events(capsys, "geo.database_missing")
+        assert (event["path"], event["fallback"]) == ("/nowhere/a.mmdb", "/nowhere/b.mmdb")
+        assert event["error"] == event["fallback_error"] == "FileNotFoundError"
+
+    def test_a_geolite2_copy_past_25_days_is_logged(self, databases, monkeypatch, capsys):
+        monkeypatch.setattr(geo, "_now", lambda: time.time() + 26 * 86400)
+        geo.reset()
+
+        geo.country_of("203.0.113.0")
+
+        (event,) = _events(capsys, "geo.database_stale")
+        assert event["path"] == str(databases[0]) and event["age_days"] > 25
+
+    def test_dbip_is_never_stale(self, databases, monkeypatch, capsys):
+        """DB-IP's licence has no such rule."""
+        monkeypatch.setattr(settings, "geoip_database", str(databases[1]))
+        monkeypatch.setattr(geo, "_now", lambda: time.time() + 90 * 86400)
+        geo.reset()
+
+        geo.country_of("203.0.113.0")
+
+        assert _events(capsys, "geo.database_stale") == []

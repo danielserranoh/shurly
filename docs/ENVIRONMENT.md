@@ -64,7 +64,8 @@ Reviewed on 2026-09-29. **Update this reference in the same PR as any new or cha
 | `TRUSTED_PROXIES` | (empty) | The CIDRs whose `X-Forwarded-For` is believed: the ALB's. Empty: never believed, and each per-IP rate limit becomes one limit for everybody behind the ALB |
 | `CLOUDFRONT_ORIGIN_SECRETS` | (empty) | Behind CloudFront, the value its custom origin header carries, proving `CloudFront-Viewer-Address` is CloudFront's. Two while rotating, each at least 32 characters. A secret |
 | `CLOUDFRONT_ORIGIN_HEADER` | `X-Origin-Verify` | That header's name |
-| `GEOIP_DATABASE` | `data/dbip-country-lite.mmdb` | DB-IP's country database, which gives a visit its country (the image build fetches it). Empty turns lookups off |
+| `GEOIP_DATABASE` | `data/GeoLite2-City.mmdb` | MaxMind's GeoLite2 City, which gives a visit its country (the image build fetches it, with MaxMind's credentials). Empty turns lookups off |
+| `GEOIP_FALLBACK_DATABASE` | `data/dbip-country-lite.mmdb` | DB-IP's country database, used when `GEOIP_DATABASE`'s file isn't there. The image build fetches it too |
 
 ### Short links and redirects
 
@@ -124,6 +125,7 @@ Each is a count per window, and `0` turns it off. The per-IP ones need `TRUSTED_
 | Variable | Default | What it does |
 |---|---|---|
 | `GIT_SHA` | `unknown` | The source commit, reported by `GET /api/v1/health`. The image build sets it |
+| `BUILD_ID` | `unknown` | The deploy run that built the image, reported by `GET /api/v1/health` too: the weekly rebuild keeps the commit, so the smoke test waits for this as well. The image build sets it |
 | `MCP_DISABLE_MOUNT` | (unset) | `1` doesn't mount the MCP at `/mcp`, without a rebuild: for an incident |
 | `MCP_DISABLE_AUTH` | (unset) | `1` runs the MCP without its sign-in. For local stdio development only, never in production |
 | `MCP_SERVER_NAME` | `shurly` | The MCP server's name, as clients see it |
@@ -135,6 +137,8 @@ Each is a count per window, and `0` turns it off. The per-IP ones need `TRUSTED_
 |---|---|---|
 | `SHLINK_URL` | (unset) | The Shlink export's source: Shlink's address (`server/tools/shlink`) |
 | `SHLINK_API_KEY` | (unset) | Its API key. Only ever sent in its header: never written or printed. A secret |
+| `MAXMIND_ACCOUNT_ID` | (unset) | MaxMind's account ID, for `scripts/fetch_geoip.py` to download GeoLite2 City. The deploy job gives it to the image build as a BuildKit secret, from the GitHub secret of the same name |
+| `MAXMIND_LICENSE_KEY` | (unset) | Its licence key, the same way. Sent to MaxMind only: never written or printed. A secret |
 
 ## Tests
 
