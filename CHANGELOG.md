@@ -26,6 +26,13 @@ implementation lifecycle and is independent of the URL version segment.
 
 ## [Unreleased]
 
+### Fixed — the Analytics page's Pro card, and its typos' window
+- **"Go deeper" no longer says a link's own views are coming with Pro.** Each link's page already has the last 30
+  or 90 days, dates you pick, and its visits as a CSV, free (paywall rule 1). The card says so, and points to Top
+  links and Links. Only what isn't built is "Coming soon": longer ranges across all your links, and live stats.
+- **"Typos & broken links" shows its window in its header, "Last 30 days"**, and says the range above doesn't
+  change it. Under a range row reading "Last 7 days", it looked like a contradiction.
+
 ### Added — "Typos & broken links" suggests from every link, a page at a time
 - **The analytics page grouped the newest 500 orphan visits itself,** and its "did you mean" looked only at the
   newest 100 links. Both now come from the API, over the last 30 days: every path tried, 10 at a time, with the

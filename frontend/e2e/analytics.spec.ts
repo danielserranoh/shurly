@@ -59,3 +59,18 @@ test('ten paths at a time, with Next and Previous', async ({ page, ownerApi, req
   await page.getByRole('button', { name: 'Previous', exact: true }).click();
   await expect(paths.first()).toHaveText(first);
 });
+
+test("each section says its window, and the Pro card promises only what isn't built", async ({ page }) => {
+  await page.goto('/dashboard/analytics/');
+  // The range row scopes the summary and the chart; "Typos & broken links" keeps 30 days of its own.
+  const typos = page.getByRole('region', { name: 'Typos & broken links' });
+  await expect(typos.getByText('Last 30 days', { exact: true })).toBeVisible();
+  await expect(typos).toContainText('The range above doesn’t change this list.');
+
+  // Paywall rule 1 (DESIGN_SYSTEM.md): what a link's page already has, free, is never "coming with Pro".
+  const card = page.locator('section', { hasText: 'Go deeper' });
+  await expect(card).toContainText('Each link’s page already has the last 30 or 90 days, dates you pick, and its visits as a CSV.');
+  await expect(card.getByRole('link', { name: 'Links', exact: true })).toHaveAttribute('href', '/dashboard/');
+  // What isn't built is "Coming soon", and says what Pro adds (rule 2).
+  await expect(card.locator('p', { has: page.locator('.badge-pro') })).toHaveText('Coming soon Longer ranges across all your links, and live stats, come with Pro.');
+});
