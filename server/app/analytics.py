@@ -54,6 +54,7 @@ from server.schemas.analytics import (
     WeeklyStats,
     WeeklyStatsResponse,
 )
+from server.schemas.datetimes import utc_isoformat
 from server.schemas.responses import get_responses
 from server.utils.access import (
     LinkDomain,
@@ -1634,7 +1635,7 @@ def get_orphan_visits(
                 "ip": r.ip,
                 "user_agent": r.user_agent,
                 "referer": r.referer,
-                "created_at": r.created_at.isoformat() if r.created_at else None,
+                "created_at": utc_isoformat(r.created_at),  # UTC, with Z like the rest
             }
             for r in rows
         ],

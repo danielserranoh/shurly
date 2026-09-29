@@ -1682,6 +1682,11 @@ added there; Claude Code gets by with `--header`.
 - [ ] Check it end to end: Claude Code (`claude mcp add --transport http …`, sign-in in the browser) and a
       claude.ai custom connector → in production (2026-09-28) the metadata documents and the 401 with
       `resource_metadata` are verified; nobody has completed a sign-in from claude.ai or Claude Code yet
+  - [x] Found from claude.ai (2026-09-30): every tool answer with a date was rejected, "does not match format
+        date-time" (the API wrote naive UTC, without an offset), so `create_short_url` made the link and the
+        assistant never got its code → every datetime the API returns is UTC with `Z`, or the analytics' local
+        time with its offset (`server/schemas/datetimes.py`); `tests/test_mcp_output_dates.py` calls every tool
+        and validates its output against its outputSchema, date-time enforced
 
 ### 5.9 MCP install guide, in the app and in the user manual 🔎 R9
 **Decided (2026-09-27):** the app explains how to install the MCP, and the user manual carries the same instructions.

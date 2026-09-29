@@ -26,6 +26,30 @@ implementation lifecycle and is independent of the URL version segment.
 
 ## [Unreleased]
 
+### Fixed — MCP tools returned dates without a time zone
+- **MCP tools returned dates without a time zone, which claude.ai rejects:** `create_short_url` made the link, and
+  then claude.ai threw the whole answer away ("`created_at` does not match format date-time"), so the assistant
+  never got the short code; `list_urls`, `get_url` and every other tool with a date in its answer failed the same
+  way. A tool's outputSchema comes from the API's OpenAPI schema, which says `"format": "date-time"`, and RFC 3339
+  needs an offset there: the API wrote naive UTC, `2026-09-29T22:04:42.082199`. It now writes
+  `2026-09-29T22:04:42.082199Z`.
+- **The curated tools say it too:** `create_campaign_from_rows`, `add_redirect_rule` and
+  `list_orphan_visits_grouped` give their dates in UTC with `Z`, and so does `GET /api/v1/analytics/orphan-visits`.
+- **A test calls every MCP tool** through the in-process server on seeded data and validates its answer against its
+  outputSchema, date-time checked (`tests/test_mcp_output_dates.py`). Another fails on a response model's datetime
+  field that isn't one of the two shared types, `UtcDateTime` or `LocalDateTime` (`server/schemas/datetimes.py`).
+
+### Changed — the API's datetimes carry `Z`
+- **Every UTC datetime in the API's JSON now ends in `Z`**: `created_at`, `updated_at`, `joined_at`,
+  `og_fetched_at`, `last_click_at`, `valid_since`, `valid_until`, a preview's `fetched_at` and a campaign user's
+  `last_clicked`. The same moment as before, which was UTC already, written as RFC 3339 says. It's an additive,
+  compatible change to the format: a client that took the old value as UTC reads the same instant, and the web
+  app's dates show as they did ("Created Sep 29, 2026").
+- **The per-link and per-campaign analytics (3.16, 3.17) are unchanged:** their times are local, with the zone's
+  offset (`2026-09-30T03:34:42+05:30`), and never turned into `Z`.
+- **What the API accepts is unchanged:** `valid_since` and `valid_until` are read with or without an offset, as
+  before. The CSV exports keep their text as it was.
+
 ### Security — only `main` can deploy to production
 - **The backend deploy runs in the GitHub environment `production`**, which allows the `main` branch only,
   and the AWS deploy role (`github-actions-shurly-deploy`) trusts that environment alone. Until now the job's

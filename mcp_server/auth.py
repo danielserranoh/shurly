@@ -26,6 +26,7 @@ Two integration points:
 
 from __future__ import annotations
 
+import uuid
 from datetime import timedelta
 from typing import TYPE_CHECKING
 
@@ -111,6 +112,11 @@ def resolve_current_user(db) -> User:
     user_id = access.claims.get("user_id") if access.claims else None
     if user_id is None:
         raise PermissionError("Access token missing user_id claim.")
+    try:
+        # A UUID, not the claim's string: SQLite's UUID column (the test suite's) can't bind one.
+        user_id = uuid.UUID(str(user_id))
+    except ValueError as exc:
+        raise PermissionError("Access token has an invalid user_id claim.") from exc
     user = db.query(User).filter(User.id == user_id).first()
     if user is None or not user.is_active:
         raise PermissionError("User no longer exists or is inactive.")

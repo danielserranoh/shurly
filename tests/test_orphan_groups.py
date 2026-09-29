@@ -302,12 +302,13 @@ def test_the_mcp_tool_groups_the_same_way_and_suggests_too(
     ]
     assert (result["total_visits"], result["distinct_paths"]) == (5, 3)
     abc = result["groups"][0]
-    assert abc["first_seen"] == (NOW - timedelta(days=2)).isoformat()
-    assert abc["last_seen"] == (NOW - timedelta(minutes=1)).isoformat()
+    # UTC, with Z like the API's datetimes (strict MCP clients reject a date-time without an offset).
+    assert abc["first_seen"] == (NOW - timedelta(days=2)).isoformat() + "Z"
+    assert abc["last_seen"] == (NOW - timedelta(minutes=1)).isoformat() + "Z"
     assert abc["did_you_mean"] == page["groups"][0]["did_you_mean"]
     # Its samples stay as they were (their IPs are a decision pending): the newest 3.
     assert [s["created_at"] for s in abc["samples"]] == [
-        (NOW - age).isoformat()
+        (NOW - age).isoformat() + "Z"
         for age in (timedelta(minutes=1), timedelta(hours=3), timedelta(days=2))
     ]
     assert abc["samples"][0]["ip"] == IP

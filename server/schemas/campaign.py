@@ -1,11 +1,11 @@
 """Schemas for campaign management."""
 
-from datetime import datetime
 from typing import TYPE_CHECKING
 from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator
 
+from server.schemas.datetimes import UtcDateTime
 from server.utils.access import Visibility
 from server.utils.url import is_valid_url
 
@@ -51,7 +51,7 @@ class CampaignURLResponse(BaseModel):
     short_url: str | None = None
     domain: str | None = None  # Phase 8.3 — the link's domain; see URLResponse
     user_data: dict | None = None
-    created_at: datetime
+    created_at: UtcDateTime
 
     model_config = {"from_attributes": True}
 
@@ -70,7 +70,7 @@ class CampaignResponse(BaseModel):
     original_url: str
     csv_columns: list[str]
     url_count: int
-    created_at: datetime
+    created_at: UtcDateTime
     tags: list[TagResponse] = []
     urls: list[CampaignURLResponse] | None = None  # Only included in detail view
     # Phase 3.14.3 — whose it is
