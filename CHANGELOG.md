@@ -35,8 +35,15 @@ implementation lifecycle and is independent of the URL version segment.
   (a test reads the dockerfile).
 - **Every test fails** on a Content-Security-Policy or Trusted Types violation, an uncaught error in a page, a 5xx
   from the API, or a request to any other host.
-- **The first specs:** signing in and out; a link from the dashboard to its page: its all-time numbers, the tabs,
-  the periods (a custom range refused, then applied) and the CSV of its visits.
+- **The specs:**
+  - signing in and out;
+  - a link from the dashboard's list to its page: its all-time numbers, the tabs, the periods (a custom range
+    refused, then applied) and the CSV of its visits;
+  - a campaign from the wizard to who clicked: Clicked and each filter's count, a sort, the Clicked filter, two
+    recipients' links copied at once, and the recipients' CSV;
+  - Settings: the profile saved and the header's initial following it, and the tabs by keyboard;
+  - a phone (390 px): a link's tabs, and a campaign's recipients sorted from "Sort by";
+  - the public pages, and the 404 page for an unknown address.
 
 ### Removed — the `IS_LAMBDA` setting
 - **A leftover of the Lambda deploy**, which the ECS deploy never sets. It made short URLs `https://DEFAULT_DOMAIN`
