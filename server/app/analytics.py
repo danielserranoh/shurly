@@ -4,7 +4,6 @@ from bisect import bisect_right
 from collections import Counter
 from datetime import date, datetime, timedelta
 from typing import Annotated, Literal
-from uuid import UUID as UUIDType
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
@@ -45,7 +44,12 @@ from server.schemas.analytics import (
     WeeklyStatsResponse,
 )
 from server.schemas.responses import get_responses
-from server.utils.access import LinkDomain, find_url, viewer
+from server.utils.access import (
+    LinkDomain,
+    viewer,
+    visible_campaign_or_404,
+    visible_url_or_404,
+)
 from server.utils.csv_export import stream_csv
 from server.utils.domain import normalize_hostname
 from server.utils.local_days import (
@@ -60,14 +64,6 @@ from server.utils.network import UNKNOWN_IP
 from server.utils.profile import clean_timezone
 from server.utils.url import build_short_url, link_hostname, link_short_url
 from server.utils.visit_facets import country_label, families, kind_of, referrer_host
-
-
-def _visible_url_or_404(db: Session, user: User, short_code: str, domain: str | None) -> URL:
-    """Phase 8.3 — the link a code names on `domain`, or the default rule (`find_url`)."""
-    url = find_url(db, viewer(db, user), short_code, domain)
-    if not url:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="URL not found")
-    return url
 
 
 def _distinct_visitors():
@@ -312,32 +308,6 @@ def _breakdown_fields(visits: SAQuery, period: Period, visit_type: str) -> dict:
     }
 
 
-def _visible_campaign_or_404(db: Session, user: User, campaign_id: str) -> Campaign:
-    """
-    A campaign the viewer can see (Phase 3.14.3): their organization's, whatever their role, or
-    their own personal one. 400 for an id that isn't a UUID, 404 otherwise. Every campaign
-    route decides with this, so `/recipients` shows `user_data` to exactly whom `/users` does.
-    """
-    try:
-        campaign_uuid = UUIDType(campaign_id)
-    except ValueError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid campaign ID format",
-        ) from exc
-    campaign = (
-        db.query(Campaign)
-        .filter(Campaign.id == campaign_uuid, viewer(db, user).sees(Campaign))
-        .first()
-    )
-    if not campaign:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Campaign not found",
-        )
-    return campaign
-
-
 def _campaign_period_fields(campaign: Campaign, period: Period) -> dict:
     """What every per-campaign response over a period starts with."""
     return {
@@ -534,7 +504,7 @@ def get_url_daily_stats(
     - **404**: URL not found, or someone else's personal link
     """
     # Verify the user can see the URL (Phase 3.14.3 — the organization's, or their own)
-    url = _visible_url_or_404(db, current_user, short_code, domain)
+    url = visible_url_or_404(db, current_user, short_code, domain)
 
     # The last 7 days where the viewer is, today included. Keyed on the link, never its code:
     # the same code can name links on two domains.
@@ -591,7 +561,7 @@ def get_url_weekly_stats(
     - **404**: URL not found, or someone else's personal link
     """
     # Verify the user can see the URL (Phase 3.14.3 — the organization's, or their own)
-    url = _visible_url_or_404(db, current_user, short_code, domain)
+    url = visible_url_or_404(db, current_user, short_code, domain)
 
     # 8 seven-day weeks where the viewer is, the last ending today (it used to end yesterday).
     days = LocalDays.of(current_user, tz)
@@ -659,7 +629,7 @@ def get_url_geo_stats(
     - **404**: URL not found, or someone else's personal link
     """
     # Verify the user can see the URL (Phase 3.14.3 — the organization's, or their own)
-    url = _visible_url_or_404(db, current_user, short_code, domain)
+    url = visible_url_or_404(db, current_user, short_code, domain)
 
     cutoff_date = datetime.utcnow() - timedelta(days=days)
 
@@ -726,7 +696,7 @@ def get_url_totals(
     - **last_click_at**: its latest click, in `tz`, else your profile's zone, else UTC; null
       without one. Unlike the link's `last_click_at`, bots and crawler previews don't count
     """
-    url = _visible_url_or_404(db, current_user, short_code, domain)
+    url = visible_url_or_404(db, current_user, short_code, domain)
     days = LocalDays.of(current_user, tz)
     totals = _click_totals(_link_visits(db, url), days)
     return LinkTotalsResponse(
@@ -771,7 +741,7 @@ def get_url_timeseries(
     `to`, at most 731 days. Bots count in neither. Opens overcount: Apple Mail Privacy
     Protection loads the pixel, like every image, when a message arrives, read or not.
     """
-    url = _visible_url_or_404(db, current_user, short_code, domain)
+    url = visible_url_or_404(db, current_user, short_code, domain)
     return TimeseriesResponse(
         **_period_fields(url, period), **_series(_link_visits(db, url), period, group_by)
     )
@@ -810,7 +780,7 @@ def get_url_breakdown(
     `to`, at most 731 days. Opens overcount: Apple Mail Privacy Protection loads the pixel, like
     every image, when a message arrives, read or not.
     """
-    url = _visible_url_or_404(db, current_user, short_code, domain)
+    url = visible_url_or_404(db, current_user, short_code, domain)
     return BreakdownResponse(
         **_period_fields(url, period),
         **_breakdown_fields(_link_visits(db, url), period, visit_type),
@@ -850,7 +820,7 @@ def list_url_visits(
     `to`, at most 731 days. Opens overcount: Apple Mail Privacy Protection loads the pixel,
     like every image, when a message arrives, read or not.
     """
-    url = _visible_url_or_404(db, current_user, short_code, domain)
+    url = visible_url_or_404(db, current_user, short_code, domain)
     visits = _in_period(_link_visits(db, url), period, visit_type)
     total = visits.with_entities(func.count(Visitor.id)).scalar()
     rows = (
@@ -897,7 +867,7 @@ def export_url_visits(
     The list's columns plus the raw user agent: never an IP. Every cell is spreadsheet-safe.
     Not an MCP tool: an assistant pages through `list_url_visits` instead.
     """
-    url = _visible_url_or_404(db, current_user, short_code, domain)
+    url = visible_url_or_404(db, current_user, short_code, domain)
     # Read before the response streams: the session is the request's.
     rows = _in_period(_link_visits(db, url), period, visit_type).with_entities(*_SHOWN)
     rows = rows.order_by(*_NEWEST_FIRST).all()
@@ -945,7 +915,7 @@ def get_campaign_summary(
     - **404**: Campaign not found, or someone else's personal campaign
     """
     # The organization's, or their own (Phase 3.14.3): every campaign route decides alike.
-    campaign = _visible_campaign_or_404(db, current_user, campaign_id)
+    campaign = visible_campaign_or_404(db, current_user, campaign_id)
     campaign_uuid = campaign.id
 
     # Get all URLs for this campaign
@@ -1068,7 +1038,7 @@ def get_campaign_users(
     - **404**: Campaign not found, or someone else's personal campaign
     """
     # The organization's, or their own (Phase 3.14.3): every campaign route decides alike.
-    campaign = _visible_campaign_or_404(db, current_user, campaign_id)
+    campaign = visible_campaign_or_404(db, current_user, campaign_id)
     campaign_uuid = campaign.id
 
     # Get all URLs with their visit stats
@@ -1172,7 +1142,7 @@ def get_campaign_totals(
 
     The same campaigns as `/users`: the organization's, whatever your role, and your own.
     """
-    campaign = _visible_campaign_or_404(db, current_user, campaign_id)
+    campaign = visible_campaign_or_404(db, current_user, campaign_id)
     days = LocalDays.of(current_user, tz)
     recipients = db.query(func.count(URL.id)).filter(URL.campaign_id == campaign.id).scalar()
     totals = _click_totals(_campaign_visits(db, campaign), days)
@@ -1212,7 +1182,7 @@ def get_campaign_timeseries(
     `to`, at most 731 days. Bots count in neither. Opens overcount: Apple Mail Privacy
     Protection loads the pixel, like every image, when a message arrives, read or not.
     """
-    campaign = _visible_campaign_or_404(db, current_user, campaign_id)
+    campaign = visible_campaign_or_404(db, current_user, campaign_id)
     return CampaignTimeseriesResponse(
         **_campaign_period_fields(campaign, period),
         **_series(_campaign_visits(db, campaign), period, group_by),
@@ -1247,7 +1217,7 @@ def get_campaign_breakdown(
     `to`, at most 731 days. Opens overcount: Apple Mail Privacy Protection loads the pixel,
     like every image, when a message arrives, read or not.
     """
-    campaign = _visible_campaign_or_404(db, current_user, campaign_id)
+    campaign = visible_campaign_or_404(db, current_user, campaign_id)
     return CampaignBreakdownResponse(
         **_campaign_period_fields(campaign, period),
         **_breakdown_fields(_campaign_visits(db, campaign), period, visit_type),
@@ -1300,7 +1270,7 @@ def list_campaign_recipients(
     The same campaigns, and so the same names and emails, as `/users`: the organization's,
     whatever your role, and your own.
     """
-    campaign = _visible_campaign_or_404(db, current_user, campaign_id)
+    campaign = visible_campaign_or_404(db, current_user, campaign_id)
     days = LocalDays.of(current_user, tz)
     rows, counts = _recipients(db, campaign, q, recipient_filter, sort, order)
     total = rows.order_by(None).with_entities(func.count(URL.id)).scalar()
@@ -1346,7 +1316,7 @@ def export_campaign_recipients(
     short URL, clicks, opens, first and last click and last open. Every cell is
     spreadsheet-safe: `user_data` comes from people's CSVs. Not an MCP tool.
     """
-    campaign = _visible_campaign_or_404(db, current_user, campaign_id)
+    campaign = visible_campaign_or_404(db, current_user, campaign_id)
     days = LocalDays.of(current_user, tz)
     # Read before the response streams: the session is the request's.
     rows, _ = _recipients(db, campaign, q, recipient_filter, sort, order)

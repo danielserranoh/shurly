@@ -38,6 +38,33 @@ implementation lifecycle and is independent of the URL version segment.
 - **The first specs:** signing in and out; a link from the dashboard to its page: its all-time numbers, the tabs,
   the periods (a custom range refused, then applied) and the CSV of its visits.
 
+### Security — a crawler's preview of a campaign link no longer carries its recipient's data
+- **When a recipient shared their campaign link, the social network's crawler got their data.** The preview page
+  that `GET /{short_code}` gives crawlers (LinkedIn, WhatsApp, Slack…) sent them on to the personalized destination,
+  whose query holds the recipient's CSV row (`user_data`), their name or email included.
+- **The preview's refresh target is now the destination without that row.** It's the target the redirect rules
+  pick, plus what the shared address itself forwards, which is already public. No meta tag ever carried the row.
+- **People still get their personalized redirect, unchanged.** A forwarded parameter still wins a clash with the
+  row, as before.
+- Found by the personal-data audit (`docs/PERSONAL_DATA.md`, finding 1).
+
+### Security — who sees people's data, route by route
+- **`docs/PERSONAL_DATA.md`** lists every route and MCP tool: what people's data it returns (recipients' CSV rows and
+  activity, visits, addresses, accounts), who sees it, and the guard in the code that decides.
+- **`tests/test_personal_data_inventory.py` keeps it true.** It fails when:
+  - a route or tool has no row;
+  - a row's guard isn't in its code;
+  - the MCP column isn't the tools;
+  - people's data goes to anyone without "(by design)".
+
+  So a new route can't widen who sees people's data without saying so in the same PR.
+- **One lookup for a link and one for a campaign** (`visible_url_or_404`, `visible_campaign_or_404`, in
+  `server/utils/access.py`). Each had two copies, in the link and campaign routes and in the analytics. The rules are
+  the same, and every route answers as it did.
+- **Two questions for the user are marked "decision pending":** a campaign link's visits one by one, and orphan
+  visits' IPs.
+- **One finding, not fixed yet:** a crawler's preview of a campaign link carries its recipient's data. See the doc.
+
 ### Added — a campaign's analytics (Phase 3.17)
 - **The campaign page's header numbers are all-time and about people** (`/totals`):
   - **Clicked:** the recipients who clicked their link, as a share of all of them;
