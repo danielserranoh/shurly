@@ -1,5 +1,8 @@
 // Phase 7.1 — the manual, from where it's needed: Help in the account menu, "How to read this" in a link's and a
-// campaign's analytics (to their section), and "How campaigns work" in the campaign wizard.
+// campaign's analytics (to their section), and "How campaigns work" in the campaign wizard. And Send feedback (5.6.1),
+// an email to the team with the page's path, never its query.
+
+import { devices } from '@playwright/test';
 
 import { expect, test } from './fixtures';
 
@@ -41,4 +44,35 @@ test('the campaign wizard links to how campaigns work, where the CSV comes in', 
   await expect(manual).toHaveURL(/\/manual\/make-a-campaign\/$/);
   await expect(manual.getByRole('heading', { level: 1 })).toHaveText('Make a campaign from a CSV');
   await expect(page.getByLabel('Campaign name')).toHaveValue('E2E help');
+});
+
+/** The mailto: link's parts: the address, the subject and the body. */
+function mailOf(href: string | null) {
+  const mail = new URL(href ?? '');
+  return { protocol: mail.protocol, to: mail.pathname, subject: mail.searchParams.get('subject'), body: mail.searchParams.get('body') ?? '' };
+}
+
+test('Send feedback in the account menu writes to the team, with the page but never its query', async ({ page, ownerApi }) => {
+  const made = await ownerApi.post('/api/v1/urls', { data: { url: `https://example.com/e2e-feedback/${Date.now()}` } });
+  const { short_code: code } = (await made.json()) as { short_code: string };
+  await page.goto(`/dashboard/link/?code=${code}`);
+  await page.getByRole('button', { name: 'Account menu' }).click();
+
+  const href = await page.locator('#user-menu').getByRole('link', { name: 'Send feedback' }).getAttribute('href');
+  expect(mailOf(href)).toMatchObject({ protocol: 'mailto:', to: 'support@griddo.io', subject: 'Shurly feedback' });
+  expect(mailOf(href).body).toContain('Page: /dashboard/link/');
+  expect(href).not.toContain(code);
+});
+
+test.describe('on a phone', () => {
+  const { defaultBrowserType: _browser, ...pixel } = devices['Pixel 7'];
+  test.use({ ...pixel, viewport: { width: 390, height: 844 } });
+
+  test("the menu's Send feedback too", async ({ page }) => {
+    await page.goto('/dashboard/settings/');
+    await page.getByRole('button', { name: 'Open menu' }).click();
+    const href = await page.getByRole('dialog', { name: 'Menu' }).getByRole('link', { name: 'Send feedback' }).getAttribute('href');
+    expect(mailOf(href)).toMatchObject({ protocol: 'mailto:', to: 'support@griddo.io', subject: 'Shurly feedback' });
+    expect(mailOf(href).body).toContain('Page: /dashboard/settings/');
+  });
 });
