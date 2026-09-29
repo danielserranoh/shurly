@@ -185,6 +185,8 @@ System creates:
 - [x] GET /api/analytics/urls/{short_code}/weekly - Weekly clicks (last 8 weeks)
       → 8 seven-day weeks ending today (they ended yesterday until 3.12.8)
 - [x] GET /api/analytics/urls/{short_code}/geo - Geographic distribution (with configurable days)
+      → since 2026-09-29, the period's local days and "Unknown" too, so its total is the breakdown's; `days` still
+      works, as `period`, up to 731 (`tests/test_geo_stats.py`)
 - [x] GET /api/analytics/campaigns/{id}/summary
   - [x] Total clicks, unique IPs, click-through rate
   - [x] Top 5 performing URLs

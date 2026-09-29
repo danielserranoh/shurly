@@ -407,7 +407,8 @@ All analytics endpoints exclude bot and pixel hits by default. Pass
 - `GET /api/v1/analytics/overview` — totals + 7-day timeline + top URLs
 - `GET /api/v1/analytics/urls/{short_code}/daily` — last 7 days
 - `GET /api/v1/analytics/urls/{short_code}/weekly` — last 8 weeks
-- `GET /api/v1/analytics/urls/{short_code}/geo` — by country
+- `GET /api/v1/analytics/urls/{short_code}/geo` — by country, over a period's local days like the breakdown,
+  "Unknown" included; `days` is its old `period`
 
 Per-link analytics as on Shlink's link page (Phase 3.16, contract in ROADMAP 3.16.1):
 - They take a period, `?period=N` (the last N local days, default 30) or `?from=&to=` (at most 731 days), with

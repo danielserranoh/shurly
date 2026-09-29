@@ -26,6 +26,18 @@ implementation lifecycle and is independent of the URL version segment.
 
 ## [Unreleased]
 
+### Fixed — a link's clicks by country count the same clicks as its breakdown
+- **`GET /api/v1/analytics/urls/{short_code}/geo`,** the MCP's `get_url_geo_stats`, left out every click with no
+  country. It also counted the last N × 24 hours in UTC, where the rest of the analytics count the viewer's local
+  days. So its total could differ from the link's breakdown for the same days.
+- **Now it counts as the breakdown does:** the period's local days, with "Unknown" for a click with no country. Its
+  total is the breakdown's. The response keeps its shape, `period_days` is the days counted, and the CSV counts
+  "Unknown" too.
+- **It takes a period like the other routes:** `period`, or `from` and `to`, and `tz`. `days` still works, as the
+  old `period`:
+  - past 731 days, the longest a period is, it counts the last 731, since the cap wins;
+  - with `period` or `from`/`to` too, it's a 422.
+
 ### Added — "Typos & broken links" suggests from every link, a page at a time
 - **The analytics page grouped the newest 500 orphan visits itself,** and its "did you mean" looked only at the
   newest 100 links. Both now come from the API, over the last 30 days: every path tried, 10 at a time, with the
