@@ -1,12 +1,12 @@
 """Authentication schemas."""
 
-from datetime import datetime
 from uuid import UUID
 
 from pydantic import BaseModel, EmailStr, Field, field_validator
 from pydantic_core import PydanticCustomError
 
 from server.core.auth import BCRYPT_MAX_BYTES
+from server.schemas.datetimes import UtcDateTime
 from server.schemas.profile import ProfileResponse
 
 
@@ -56,7 +56,7 @@ class UserResponse(BaseModel):
     id: UUID
     email: str
     is_active: bool
-    created_at: datetime
+    created_at: UtcDateTime
     # Phase 6.3 — whether there's an API key and how it starts, never the key: it's
     # shown once, by /api-key/generate. (This answer reaches an assistant through the
     # MCP's get_current_user_info.)

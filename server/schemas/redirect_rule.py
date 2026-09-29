@@ -1,11 +1,11 @@
 """Schemas for Phase 3.10.2 dynamic redirect rules."""
 
-from datetime import datetime
 from typing import Any
 from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator
 
+from server.schemas.datetimes import UtcDateTime
 from server.utils.bounds import INT4_MAX, INT4_MIN
 from server.utils.url import is_valid_url
 
@@ -49,6 +49,6 @@ class RedirectRuleResponse(BaseModel):
     priority: int
     conditions: list[dict[str, Any]]
     target_url: str
-    created_at: datetime
+    created_at: UtcDateTime
 
     model_config = {"from_attributes": True}

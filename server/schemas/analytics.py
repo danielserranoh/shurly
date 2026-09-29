@@ -1,8 +1,10 @@
 """Schemas for analytics endpoints."""
 
-from datetime import date, datetime
+from datetime import date
 
 from pydantic import BaseModel, Field
+
+from server.schemas.datetimes import LocalDateTime, UtcDateTime
 
 
 class DailyStats(BaseModel):
@@ -63,7 +65,7 @@ class CampaignUserStat(BaseModel):
     short_code: str
     clicks: int
     unique_ips: int
-    last_clicked: datetime | None = None
+    last_clicked: UtcDateTime | None = None
 
 
 class CampaignUsersResponse(BaseModel):
@@ -128,7 +130,7 @@ class LinkTotalsResponse(BaseModel):
     clicks: int = Field(description="Every click, as `click_count`")
     opens: int = Field(description="Hits on its email tracking pixel that aren't a bot's")
     countries: int = Field(description="How many distinct countries its clicks came from")
-    last_click_at: datetime | None = Field(description="The latest click, or null")
+    last_click_at: LocalDateTime | None = Field(description="The latest click, or null")
 
 
 class TimeseriesBucket(BaseModel):
@@ -209,7 +211,7 @@ class BreakdownResponse(LinkPeriodResponse, BreakdownFields):
 class VisitRow(BaseModel):
     """One visit, as the list shows it: never an IP, a user agent or a full referrer."""
 
-    visited_at: datetime = Field(description="Local, with the zone's offset, to the second")
+    visited_at: LocalDateTime = Field(description="Local, with the zone's offset, to the second")
     kind: str = Field(description="click, open or bot")
     country: str = Field(description='An ISO code, or "Unknown"')
     browser: str
@@ -254,7 +256,7 @@ class CampaignTotalsResponse(BaseModel):
     click_rate: float = Field(description="clicked ÷ recipients, 0 to 1, 4 decimals")
     open_rate: float = Field(description="opened ÷ recipients, 0 to 1, 4 decimals")
     countries: int = Field(description="How many distinct countries its clicks came from")
-    last_click_at: datetime | None = Field(description="The latest click, or null")
+    last_click_at: LocalDateTime | None = Field(description="The latest click, or null")
 
 
 class CampaignTimeseriesResponse(CampaignPeriodResponse, SeriesFields):
@@ -274,9 +276,9 @@ class RecipientRow(BaseModel):
     user_data: dict = Field(description="The recipient's row of the campaign's CSV")
     clicks: int
     opens: int
-    first_click_at: datetime | None
-    last_click_at: datetime | None
-    last_open_at: datetime | None
+    first_click_at: LocalDateTime | None
+    last_click_at: LocalDateTime | None
+    last_open_at: LocalDateTime | None
 
 
 class RecipientCounts(BaseModel):
@@ -321,8 +323,8 @@ class OrphanGroup(BaseModel):
 
     attempted_path: str
     visits: int
-    first_seen: datetime = Field(description="Local, with the zone's offset, to the second")
-    last_seen: datetime = Field(description="Local, with the zone's offset, to the second")
+    first_seen: LocalDateTime = Field(description="Local, with the zone's offset, to the second")
+    last_seen: LocalDateTime = Field(description="Local, with the zone's offset, to the second")
     did_you_mean: list[OrphanSuggestion] = Field(
         description="Up to 3 links the viewer sees, the likeliest first; none for a path no "
         "code could be (longer than a code, or with a character no code has)"
