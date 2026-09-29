@@ -76,6 +76,7 @@ Reviewed on 2026-09-29. **Update this reference in the same PR as any new or cha
 | `DISABLE_TRACK_PARAM` | `nostat` | A query parameter that makes a redirect log no visit: for QA |
 | `REDIRECT_STATUS_CODE` | `302` | `301`, `302`, `307` or `308`. `301` is cached by browsers, so visits go uncounted |
 | `REDIRECT_CACHE_LIFETIME` | `0` | Seconds a redirect may be cached. `0` sends `private, max-age=0`, so every visit reaches the API |
+| `INVALID_SHORT_URL_REDIRECT` | (empty) | Where a short link that doesn't lead anywhere sends everyone: no such code, not live yet, expired or used up. Shlink's setting of the same name. An absolute http(s) URL, or the app won't start. A 302 that isn't cached; an unknown code is still an orphan visit. Empty: a page for people, JSON for the rest, with the 404 or 410 |
 | `OG_FETCH_ALLOW_PRIVATE` | `false` | Let link previews fetch private and loopback addresses. Local development only: it opens the preview fetcher to SSRF |
 
 ### Organization and sign-in
