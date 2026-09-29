@@ -99,13 +99,16 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
 
 # Single uvicorn worker is plenty for the per-task concurrency we need; ECS
 # Express scales horizontally by adding tasks, not by adding workers per task.
-# `--proxy-headers` lets uvicorn honor X-Forwarded-* set by the ALB; the actual
-# trust decision still goes through TRUSTED_PROXIES in server/utils/network.py.
+# `--no-proxy-headers` (Phase 6.3): the app alone reads X-Forwarded-For and
+# X-Forwarded-Proto, and only from TRUSTED_PROXIES (server/utils/network.py).
+# uvicorn's proxy headers, on by default, replace the connection's address before
+# the app runs; with `--forwarded-allow-ips "*"`, as here until 2026-09-29, by the
+# leftmost X-Forwarded-For entry, which the client writes: anyone could choose
+# their address. Never turn them back on.
 # `--no-access-log`: RequestIdMiddleware writes each request's `http.request`
 # JSON line (Phase 5.6.0), so uvicorn's own line would only duplicate it.
 CMD ["uvicorn", "main:app", \
      "--host", "0.0.0.0", \
      "--port", "8000", \
-     "--proxy-headers", \
-     "--forwarded-allow-ips", "*", \
+     "--no-proxy-headers", \
      "--no-access-log"]

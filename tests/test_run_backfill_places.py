@@ -15,7 +15,7 @@ from pathlib import Path
 import pytest
 
 from tests import test_run_shlink_import as shared
-from tests.test_run_shlink_import import LIVE, NETWORK, NEW_TD, SECRETS, _calls
+from tests.test_run_shlink_import import LIVE, NETWORK, NEW_TD, SECRETS, SERVICE_TD, _calls
 
 SCRIPT = Path(__file__).resolve().parent.parent / "scripts" / "run_backfill_places.sh"
 
@@ -61,6 +61,25 @@ def test_the_task_is_the_live_services_container_and_no_role(aws):
 
     run = json.loads((aws / "run-task.json").read_text())
     assert (run["network"], run["task_definition"]) == (NETWORK, NEW_TD)
+    described = [call for call in _calls(aws) if call[:2] == ["ecs", "describe-task-definition"]]
+    assert [call[call.index("--task-definition") + 1] for call in described] == [SERVICE_TD]
+
+
+def test_it_stops_during_a_rollout(aws):
+    deployments = [
+        {
+            "status": "PRIMARY",
+            "taskDefinition": SERVICE_TD + "-new",
+            "networkConfiguration": NETWORK,
+        },
+        {"status": "ACTIVE", "taskDefinition": SERVICE_TD, "networkConfiguration": NETWORK},
+    ]
+
+    result = _run(aws, FAKE_DEPLOYMENTS=json.dumps(deployments))
+
+    assert result.returncode == 1
+    assert "deployment" in result.stderr
+    assert not [call for call in _calls(aws) if call[:2] == ["ecs", "run-task"]]
 
 
 def test_its_output_from_cloudwatch_and_no_secret(aws):

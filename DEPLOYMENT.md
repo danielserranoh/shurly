@@ -771,6 +771,8 @@ The resolver (`server/utils/network.py::resolve_client_ip`) checks the request's
 
 Behind CloudFront (`shurly.griddo.io`, Phase 4.10) the client IP comes from `CloudFront-Viewer-Address` instead, on requests that prove they came through the distribution: § Frontend hosting, "Client IPs behind CloudFront". Don't add CloudFront's ranges here.
 
+**uvicorn's proxy headers stay off** (`--no-proxy-headers` in the dockerfile's CMD). They're on by default, and they replace the connection's address before the app sees the request. Until 2026-09-29 the image ran them with `--forwarded-allow-ips "*"`, which takes the leftmost `X-Forwarded-For` entry, the one the client writes. So on `s.griddo.io` anyone could choose their address: the per-IP rate limits counted it, and visits stored it, with its country and city. Never turn them back on, and don't add `--forwarded-allow-ips`. The app reads `X-Forwarded-Proto` itself, from `TRUSTED_PROXIES` only (`ForwardedProtoMiddleware`), so what Starlette builds from the scheme, like a trailing-slash redirect, stays `https` behind the ALB. `tests/test_phase63_forwarded_headers.py` runs the real uvicorn with the CMD's flags.
+
 ## Rate limits (Phase 6.3)
 
 What anyone can call is limited per client IP, counted in the database (`rate_limits`) so both tasks share the counts: the password login (every attempt runs a bcrypt check, on the tasks that also serve redirects) and the Google and MCP sign-in endpoints (each request writes a row). Redirects, anything signed in and CORS preflights are never limited.
@@ -1176,7 +1178,7 @@ address (§ GDPR posture). An empty `GEOIP_DATABASE` turns lookups off. GeoLite2
   - It looks each up as the redirect does, from the stored address, and fills only what's empty. A city goes only
     where the visit's country is empty or agrees. It skips Shlink's imported visits, which have no address.
   - A dry run first, which reports counts and writes nothing. Then `--for-real`, typing the service's name back.
-    Running it twice is harmless.
+    Running it twice is harmless. Not during a rollout: the script stops until there's one deployment.
   - It needs no task role, since it reads nothing from AWS. Its output goes to the service's log group, in
     streams `backfill-places/…`, and the task definition made for it is deleted at the end.
   - Run it after the release that brings cities, once GeoLite2 City is in the image: with DB-IP's file only, it
@@ -1199,7 +1201,12 @@ store, never in the repository.
 
 `scripts/run_shlink_import.sh` runs the import in production's network, against the private RDS, with the live
 service's own image and environment. It makes a task definition for the run from the live one, and deletes it at
-the end, whatever happened. The task has two containers, sharing a volume:
+the end, whatever happened.
+- The live one is the service's PRIMARY deployment's: ECS Express leaves the service's own `taskDefinition`
+  empty. While a rollout is in progress there are two deployments, and the script stops: run it once the
+  rollout is done (`scripts/one_off_task.sh`, shared with the backfill).
+
+The task has two containers, sharing a volume:
 
 - **`fetch`**, the AWS CLI's image (`public.ecr.aws/aws-cli/aws-cli`), copies the snapshot and the review from a
   private bucket into the volume. It uses the task role `shurly-shlink-import`, which can read that one prefix

@@ -1511,6 +1511,10 @@ for this.
   - [x] AWS, with the distribution (2026-09-29): the custom origin header, HTTPS to the origin, the origin request policy
         AllViewerAndCloudFrontHeaders-2022-06 and the task's `CLOUDFRONT_ORIGIN_SECRETS` (DEPLOYMENT.md § Frontend
         hosting); optionally the per-host ALB rules
+  - [x] uvicorn's proxy headers off (`--no-proxy-headers`): with `--forwarded-allow-ips "*"` it replaced the
+        client's address with the leftmost `X-Forwarded-For` entry before the app ran, so on `s.griddo.io` anyone
+        could choose theirs (found in production 2026-09-29). The app reads `X-Forwarded-Proto` itself, from
+        `TRUSTED_PROXIES` only (`tests/test_phase63_forwarded_headers.py`, the real uvicorn with the CMD's flags)
   - [x] Provable in production without logging an IP: each `http.request` line says how its client IP was found,
         `client_ip_source` (`cloudfront`, `xff` or `socket`), with its `host`, and CloudWatch counts them by host
         (DEPLOYMENT.md § Client IPs behind CloudFront; `tests/test_client_ip_source.py`). A clean `429` from one
