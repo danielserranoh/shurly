@@ -11,8 +11,10 @@ interface Props {
   exportCsv?: boolean;
 }
 const { visits = false, exportCsv = false } = Astro.props;
-// The manual's section for this page: a link's page is the one with Visits.
-const help = `/manual/read-your-analytics/#${visits ? 'a-links-page' : 'a-campaigns-page'}`;
+// A link's page is the one with Visits; a campaign's has none.
+const forCampaign = !visits;
+// The manual's section for this page.
+const help = `/manual/read-your-analytics/#${forCampaign ? 'a-campaigns-page' : 'a-links-page'}`;
 
 const tabs: Array<{ key: string; label: string; icon: IconName }> = [
   { key: 'time', label: 'By time', icon: 'calendar' },
@@ -165,20 +167,36 @@ const donuts = [
     </div>
   </div>
 
-  <!-- By location: countries -->
+  <!-- By location: countries, and cities (8.4) -->
   <div role="tabpanel" id="panel-location" aria-labelledby="tab-location" class="p-5 sm:p-6" hidden>
     <div data-panel-error hidden></div>
-    <section data-panel-body aria-labelledby="countries-title">
-      <div class="flex items-start justify-between gap-3">
-        <div>
-          <h3 id="countries-title" class="font-semibold text-ink-950">Countries</h3>
-          <p class="text-sm text-ink-500">Countries from GeoLite data by <a class="link" href="https://www.maxmind.com" target="_blank" rel="noopener">MaxMind</a>, and <a class="link" href="https://db-ip.com" target="_blank" rel="noopener">DB-IP</a>. Unknown: clicks neither could place, or from before countries were recorded.</p>
+    <div data-panel-body class="grid gap-x-10 gap-y-8 lg:grid-cols-2">
+      <section aria-labelledby="countries-title">
+        <div class="flex items-start justify-between gap-3">
+          <div>
+            <h3 id="countries-title" class="font-semibold text-ink-950">Countries</h3>
+            <p class="text-sm text-ink-500">Countries from GeoLite data by <a class="link" href="https://www.maxmind.com" target="_blank" rel="noopener">MaxMind</a>, and <a class="link" href="https://db-ip.com" target="_blank" rel="noopener">DB-IP</a>. Unknown: clicks neither could place, or from before countries were recorded.</p>
+          </div>
+          <button type="button" class="btn btn-ghost btn-sm" data-table-toggle="countries" aria-pressed="false"><Icon name="list" /><span data-label>Table</span></button>
         </div>
-        <button type="button" class="btn btn-ghost btn-sm" data-table-toggle="countries" aria-pressed="false"><Icon name="list" /><span data-label>Table</span></button>
-      </div>
-      <div class="mt-5" data-chart="countries"></div>
-      <div class="mt-4 max-h-80 overflow-auto rounded-xl border border-line" data-table="countries" hidden></div>
-    </section>
+        <div class="mt-5" data-chart="countries"></div>
+        <div class="mt-4 max-h-80 overflow-auto rounded-xl border border-line" data-table="countries" hidden></div>
+      </section>
+      <!-- Hidden on a campaign link's page: its visits are one recipient's, so the API gives no cities -->
+      <section aria-labelledby="cities-title" data-cities hidden>
+        <div class="flex items-start justify-between gap-3">
+          <div>
+            <h3 id="cities-title" class="font-semibold text-ink-950">Cities</h3>
+            <p class="text-sm text-ink-500">
+              Cities from GeoLite data by <a class="link" href="https://www.maxmind.com" target="_blank" rel="noopener">MaxMind</a>. Unknown: clicks it couldn’t place in a city, or from before cities were recorded.{forCampaign && ' Other cities: those fewer than 5 recipients clicked from, grouped so that no one’s city shows.'}
+            </p>
+          </div>
+          <button type="button" class="btn btn-ghost btn-sm" data-table-toggle="cities" aria-pressed="false"><Icon name="list" /><span data-label>Table</span></button>
+        </div>
+        <div class="mt-5" data-chart="cities"></div>
+        <div class="mt-4 max-h-80 overflow-auto rounded-xl border border-line" data-table="cities" hidden></div>
+      </section>
+    </div>
   </div>
 
   <!-- Visits: one row each, newest first (a link's page only) -->

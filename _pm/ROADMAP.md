@@ -32,9 +32,9 @@ Order agreed in the 2026-09-27 review; confirm each item before starting it.
 6. **Internal dogfood** with the frontend and the MCP (5.6).
 7. **Replace Shlink on `go.griddo.io`** (Phase 8): after the dogfood and error alerting (6.4). Done on `dev`: a
    link is its code and its domain (8.3); exporting, reviewing and importing Shlink's links and visits, and a
-   visit's country (8.4). Left: running the import in production (8.4: the one-off task is ready; its bucket
-   and IAM are made by hand), a visit's city (8.4), the `go.griddo.io` domain row and switching the default to
-   it (8.3), error alerting (6.4), and the cutover (8.5).
+   visit's country and city (8.4). Left: running the import in production (8.4: the one-off task is ready; its
+   bucket and IAM are made by hand), filling older visits' cities there once GeoLite2 City serves (8.4), the
+   `go.griddo.io` domain row and switching the default to it (8.3), error alerting (6.4), and the cutover (8.5).
 
 Also landed on 2026-09-28, outside this list: the account profile (3.12: name, country, time zone and a photo;
 people by name in Settings → Organization and "Created by"), analytics days in the viewer's time zone (3.12.8),
@@ -1000,7 +1000,8 @@ Clicks and email opens are shown separately. The page today has 7 days, 8 weeks 
 screens are `design/shlink-*.png` (local only, not in git: they show a real link's visits).
 
 **Split (2026-09-29):** the API is Agent 1's, the page Agent 2's, built in parallel against the contract below,
-which follows Agent 2's approved layout. Cities wait for the user's decision and aren't designed here.
+which follows Agent 2's approved layout. Cities came later, with the user's decision (8.4): a card next to the
+countries.
 
 ### 3.16.1 The contract
 
@@ -1161,7 +1162,7 @@ and every link on it would pay for the header's numbers.
       countries, last click
 - [x] By time: clicks or email opens by day, week or month, and by hour and weekday, each with its table
 - [x] By context: OS, browser and device donuts, and referrers (top 10, then Show all). By location: countries,
-      Unknown last
+      Unknown last, and cities (8.4)
 - [x] Visits: clicks, email opens, bots or all; a table on wide screens, stacked rows on phones; 20 a page
 - [x] Export CSV: `/visits.csv` for the period, every kind
 - [x] Check it against the real routes once Agent 1's two PRs land, at 1440 and 390 px, empty periods included
@@ -1310,7 +1311,8 @@ Their `click_through_rate` stays a percentage, 0 to 100.
 - [x] The header from `/totals`: Clicked and Opened (a share of the recipients, with a meter; Apple Mail's automatic
       opens noted), Recipients, Clicks. "Opened" (it meant clicked) became "Clicked", on the page and the campaigns list
 - [x] The period and the charts: the link page's Analytics section, now one component for both pages
-      (`AnalyticsSection.astro`, `analytics-section.ts`), with no Visits tab and no export
+      (`AnalyticsSection.astro`, `analytics-section.ts`), with no Visits tab and no export. Its cities (8.4) say
+      what Other cities is
 - [x] Recipients, all time: the table and phone rows (#122) on `/recipients`. The API filters (with `counts` on the
       filter's options), searches, sorts and pages; ticks survive a page change; Export CSV (`/recipients.csv`)
 - [x] A development-only mock (`&mock`, `src/utils/campaign-analytics-mock.ts`), which the build's dev-only check
@@ -1964,7 +1966,12 @@ the import can be re-run.
         from 5 of its links, the rest "Other cities" (3.17.1; one recipient's day can't name their city).
         `python -m server.tools.backfill_places`, run by `scripts/run_backfill_places.sh`; the one-off tasks
         share `scripts/one_off_task.sh`
-  - [ ] The Location tab shows them (after the API)
+  - [x] The Location tab shows them: Cities next to Countries on a link's and a campaign's pages, and none on a
+        campaign link's (its `cities` is null). "Valencia, Spain", since two Valencias are two; Other cities, then
+        Unknown, last. The credit is MaxMind's alone (DB-IP has no cities), and a campaign's says what Other cities
+        is. Checked on seeded cities at 1440 and 390 px; `e2e/cities.spec.ts`, and axe on the tab
+  - [ ] In production: the release that brings GeoLite2 City, then the backfill (DEPLOYMENT.md § Geolocation
+        data, a dry run first)
 
 ### 8.5 Cutover
 - [ ] Freeze link creation in Shlink; final delta export + import

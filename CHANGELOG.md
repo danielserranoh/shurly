@@ -26,6 +26,17 @@ implementation lifecycle and is independent of the URL version segment.
 
 ## [Unreleased]
 
+### Added — cities on the Location tab (8.4)
+- **A link's and a campaign's By location tab lists cities,** next to the countries, as a chart and a table. A city
+  shows with its country ("Valencia, Spain"), since two Valencias are two places. Other cities, then Unknown, come
+  last, whatever their counts.
+- **A campaign's says what Other cities is:** those fewer than 5 recipients clicked from, grouped so that no one's
+  city shows. A campaign link's page has no cities, as the API gives it none.
+- **The credit is MaxMind's alone:** the cities come from GeoLite2 City. DB-IP, credited under the countries, has
+  no cities.
+- **The manual's "Read your analytics"** says what a city is, where the visitor's connection is registered, and a
+  campaign's rule.
+
 ### Added — each request's log line says how its client IP was found (6.3)
 - **`http.request` lines carry `client_ip_source` and `host`.** The source is `cloudfront` (the viewer address, on a
   request with the distribution's secret), `xff` (`X-Forwarded-For`, from a trusted proxy) or `socket` (the
