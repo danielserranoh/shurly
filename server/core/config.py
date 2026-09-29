@@ -59,10 +59,10 @@ class Settings(BaseSettings):
     # only if a downstream legal review approves storing full addresses.
     anonymize_remote_addr: bool = True
 
-    # Phase 8.4 — the geolocation database a visit's country comes from (server/utils/geo.py),
-    # fetched into the image by scripts/fetch_geoip.py: MaxMind's GeoLite2 City, else DB-IP's
-    # IP to Country Lite (CC BY 4.0), the fallback, countries only. Empty turns lookups off;
-    # neither file means no country, never a failed redirect.
+    # Phase 8.4 — the geolocation database a visit's country and city come from
+    # (server/utils/geo.py), fetched into the image by scripts/fetch_geoip.py: MaxMind's GeoLite2
+    # City, else DB-IP's IP to Country Lite (CC BY 4.0), the fallback, countries only. Empty turns
+    # lookups off; neither file means no country, never a failed redirect.
     geoip_database: str = "data/GeoLite2-City.mmdb"
     geoip_fallback_database: str = "data/dbip-country-lite.mmdb"
 

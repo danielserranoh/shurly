@@ -1083,7 +1083,9 @@ Dates are local: dates as `YYYY-MM-DD`, and moments as ISO 8601 with the zone's 
  "browsers":  [{"name": "Chrome", "count": 20, "share": 0.5882}, …],
  "devices":   [{"name": "desktop", "count": 25, "share": 0.7353}, …],
  "referrers": [{"name": "www.linkedin.com", "count": 18, "share": 0.5294}, {"name": "Direct", "count": 15, "share": 0.4412}, …],
- "countries": [{"name": "ES", "count": 25, "share": 0.7353}, …, {"name": "Unknown", "count": 2, "share": 0.0588}]}
+ "countries": [{"name": "ES", "count": 25, "share": 0.7353}, …, {"name": "Unknown", "count": 2, "share": 0.0588}],
+ "cities":    [{"name": "Madrid", "country": "ES", "count": 12, "share": 0.3529}, …,
+               {"name": "Unknown", "country": null, "count": 4, "share": 0.1176}]}
 ```
 
 - Every value is listed, by count and then name. `share` is the count over `total`, from 0 to 1 with 4 decimals,
@@ -1098,6 +1100,9 @@ Dates are local: dates as `YYYY-MM-DD`, and moments as ISO 8601 with the zone's 
 - A referrer is its host, lowercased: `www.linkedin.com`, or `com.linkedin.android` for the app
   (`android-app://…`). Never its path or query.
 - A country is an ISO code, as elsewhere; the page shows its name.
+- A city (8.4) is its English name, from GeoLite2 City, with its country's ISO code: two Valencias are two items.
+  "Unknown", with a null country, is a visit without one. Only ever counted: `/visits` and its CSV have no city.
+  `cities` is null for a campaign link, whose visits are one named recipient's.
 
 **`GET …/visits?type=clicks&page=1&page_size=20`**
 
@@ -1222,7 +1227,10 @@ Every response starts with the same fields. `/totals` and `/recipients` have no 
 - `countries` and `last_click_at` are as for a link.
 
 **`GET …/timeseries?group_by=day|week|month`** and **`GET …/breakdown?type=…`** have a link's shapes (3.16.1), over
-all the campaign's links.
+all the campaign's links. But the breakdown's `cities` (8.4) name a city only when its visits in the period came from
+at least 5 of the campaign's links, 5 recipients. The rest are summed as `{"name": "Other cities", "country": null}`,
+and the total and the shares stay whole. Otherwise a day on which one recipient clicked would name their city, since
+`/recipients` says who clicked when. The countries are as for a link.
 
 **`GET …/recipients?filter=all&q=&sort=clicks&order=desc&page=1&page_size=50`**: all time, for following up with
 people (who clicked, who hasn't). It takes no period: the period scopes the charts only. It takes `tz`, for its times.
@@ -1779,10 +1787,10 @@ live in `mcp_server/README.md`, written for developers. There is no user manual 
         so dropping it while a task of that release serves fails every user query mid-rollout. A test drops it by
         hand and runs this release against it: signing in, an API key, `/me`, the MCP, revoking
         (`tests/test_phase63_api_keys.py`)
-  - [ ] Migration `0011` drops `users.api_key` and `ix_users_api_key`, and the drift test's `_PENDING_DROP` goes:
+  - [ ] Migration `0012` drops `users.api_key` and `ix_users_api_key`, and the drift test's `_PENDING_DROP` goes:
         **only after the release that stopped mapping it is in production**, since until then a running task still
-        names the column. It takes `0011`, after `0010` (the `last_click_at` repair, 2026-09-29), which took the
-        number it had been given
+        names the column. It takes `0012`: `0010` (the `last_click_at` repair) and `0011` (a visit's city, 8.4)
+        took the numbers it had been given (2026-09-29)
   - [x] The MCP can't generate or revoke a key: talked into it by untrusted text, an assistant would get
         the new key in its context. Nor `login` or `change_password`: no password or JWT passes through an
         assistant (`EXCLUDED_ROUTE_MAPS`, pinned by `tests/test_phase52_mcp_tools.py`)
@@ -1937,11 +1945,15 @@ the import can be re-run.
         DB-IP's countries, which stay as the fallback. MaxMind's EULA wants a copy replaced within 30 days of an
         update → the deploy runs every Monday too, one deploy at a time; the job fails when the key is set but
         GeoLite2 wasn't fetched; `geo.database_stale` past 25 days; old images expire after 30 days (ECR's
-        lifecycle rule, in DEPLOYMENT.md § Geolocation data, applied by hand). Credits in `NOTICE`
-  - [ ] `Visitor.city` (migration 0011), from the stored, anonymized address; `cities` in the link's and the
+        lifecycle rule, in DEPLOYMENT.md § Geolocation data: applied 2026-09-29). Credits in `NOTICE`.
+        MaxMind's GitHub secrets exist (2026-09-29): the release after 1a carries GeoLite2
+  - [x] `Visitor.city` (migration 0011), from the stored, anonymized address; `cities` in the link's and the
         campaign's breakdowns (3.16, 3.17), "Unknown" counted; never a single campaign link's, never per visit.
         The Shlink import maps `visitLocation.cityName`. A one-off backfill fills null cities and countries from
-        the stored addresses, nulls only, as a one-off task like the import's
+        the stored addresses, nulls only, as a one-off task like the import's → a campaign's names a city only
+        from 5 of its links, the rest "Other cities" (3.17.1; one recipient's day can't name their city).
+        `python -m server.tools.backfill_places`, run by `scripts/run_backfill_places.sh`; the one-off tasks
+        share `scripts/one_off_task.sh`
   - [ ] The Location tab shows them (after the API)
 
 ### 8.5 Cutover

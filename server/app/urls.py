@@ -47,7 +47,7 @@ from server.utils.access import LinkDomain, find_urls, viewer, visible_url_or_40
 from server.utils.bounds import MAX_SKIP
 from server.utils.columns import fit, stored_referer, stored_user_agent
 from server.utils.domain import get_or_create_default_domain, resolve_domain_for_host
-from server.utils.geo import country_of
+from server.utils.geo import place_of
 from server.utils.negotiation import prefers_html
 from server.utils.network import UNKNOWN_IP, visit_ip
 from server.utils.opengraph import fetch_opengraph_metadata, is_social_media_crawler
@@ -1166,13 +1166,15 @@ def tracking_pixel(short_code: str, request: Request, db: Session = Depends(get_
     # under DISABLE_TRACK_PARAM, since the whole point of the endpoint is to log).
     visit_user_agent = request.headers.get("user-agent")
     stored_ip = visit_ip(request)
+    # Phase 8.4 — from the stored address: anonymized, when that's on.
+    place = place_of(stored_ip)
     db.add(
         Visitor(
             url_id=url.id,
             short_code=short_code,
             ip=fit(stored_ip or UNKNOWN_IP, Visitor.ip),
-            # Phase 8.4 — from the stored address: anonymized, when that's on.
-            country=country_of(stored_ip),
+            country=place.country,
+            city=fit(place.city, Visitor.city),
             user_agent=stored_user_agent(visit_user_agent),
             referer=stored_referer(request.headers.get("referer")),
             is_bot=ua_is_bot(visit_user_agent),  # from the whole user agent
@@ -1379,11 +1381,13 @@ def redirect_short_url(short_code: str, request: Request, db: Session = Depends(
     # Phase 3.9.6: only honor X-Forwarded-For from trusted proxies (CIDR allowlist).
     visit_user_agent = request.headers.get("user-agent")
     stored_ip = visit_ip(request)
+    place = place_of(stored_ip)  # Phase 8.4 — from the stored address
     visit = Visitor(
         url_id=url.id,
         short_code=short_code,
         ip=fit(stored_ip or UNKNOWN_IP, Visitor.ip),
-        country=country_of(stored_ip),  # Phase 8.4 — from the stored address
+        country=place.country,
+        city=fit(place.city, Visitor.city),
         user_agent=stored_user_agent(visit_user_agent),
         referer=stored_referer(request.headers.get("referer")),
         is_bot=ua_is_bot(visit_user_agent),  # from the whole user agent

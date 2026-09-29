@@ -22,6 +22,8 @@ class Visitor(Base):
     # Visit metadata
     ip = Column(String(50), nullable=False)
     country = Column(String(100), nullable=True)  # ISO 3166-1 alpha-2 (Phase 8.4), e.g. "US"
+    # Phase 8.4 — its English name, from GeoLite2 City, e.g. "Zaragoza". Never shown per visit.
+    city = Column(String(128), nullable=True)
     user_agent = Column(Text, nullable=True)
     referer = Column(Text, nullable=True)
 
