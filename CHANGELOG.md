@@ -44,6 +44,7 @@ implementation lifecycle and is independent of the URL version segment.
   the tags, Ana's company, the link preview (tufts.edu, "Undergraduate admissions") and the custom back-half
   (`…/tufts-proposal`). Northwind and Globex stay.
 - The hero's card is padded like the page's gutter on phones, so `s.griddo.io/q4-tufts` fits at 390px.
+- **The login page's feed** tells the same story: "Tufts University opened “Q4 proposal”".
 
 ### Added — each request's log line says how its client IP was found (6.3)
 - **`http.request` lines carry `client_ip_source` and `host`.** The source is `cloudfront` (the viewer address, on a

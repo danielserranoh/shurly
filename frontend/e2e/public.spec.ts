@@ -39,3 +39,10 @@ test("the landing's mock is Griddo's proposal for Tufts, told the same way throu
   await expect(hero).toContainText('/q4-tufts');
   await expect(page.locator('body')).not.toContainText(/acme/i);
 });
+
+test("the login page's feed tells the landing's story", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 }); // the feed shows on wide screens only
+  await page.goto('/login/');
+  await expect(page.locator('aside')).toContainText('Tufts University opened “Q4 proposal”');
+  await expect(page.locator('body')).not.toContainText(/acme/i);
+});
