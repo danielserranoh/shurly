@@ -129,7 +129,7 @@ PostgreSQL. CI runs them on every push and pull request (the `e2e` job of `.gith
   Trusted Types.
 - **Every test fails** on a CSP or Trusted Types violation, an uncaught error in a page, a 5xx from the API, or a
   request to any host but this machine: fonts, analytics, anything (`frontend/e2e/fixtures.ts`).
-  `harness.spec.ts` breaks each rule once to show it's caught.
+  `harness.spec.ts` breaks each rule once to show it's caught, and that the page reports it to the API.
 
 To run them, on a throwaway database:
 
