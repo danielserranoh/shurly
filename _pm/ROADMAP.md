@@ -226,6 +226,9 @@ System creates:
 
 ### 3.3 Campaign Management ✅
 - [x] Campaigns list page
+  - [x] 20 at a time (2026-09-29), with the links page's pager (`components/ui/Pager.astro`) and `?page=`. Since
+        a page was capped at 100 (6.2, PR #26), it showed the newest 100 and never the rest. A campaign link's page
+        names its campaign from the link (`campaign_name`), not from those 100
 - [x] Create campaign wizard
   - [x] Step 1: Campaign info (name, original URL)
   - [x] Step 2: Upload CSV (paste + preview)

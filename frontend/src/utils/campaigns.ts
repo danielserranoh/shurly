@@ -1,6 +1,6 @@
 // Campaigns: API actions and card rendering.
 
-import { apiDelete, apiDownload, apiGet, apiPatch, apiPost } from './api';
+import { apiDelete, apiDownload, apiGet, apiPatch, apiPost, qs } from './api';
 import { formatDate, prettyUrl } from './format';
 import { html, safeUrl, type RawHTML } from './html';
 import { icon } from './icons';
@@ -9,7 +9,8 @@ import { tagPill } from './tags';
 import { canChange, creatorEmailBehindName, creatorName, lockedMenuAttrs, personalBadge, type Viewer } from './viewer';
 import type { Campaign, CampaignListResponse, CampaignSummary, CreateCampaignRequest, Tag } from './types';
 
-export const listCampaigns = () => apiGet<CampaignListResponse>('/api/v1/campaigns?limit=100');
+/** A page of the campaigns, newest first, and how many there are (`total`). */
+export const listCampaigns = (skip: number, limit: number) => apiGet<CampaignListResponse>(`/api/v1/campaigns${qs({ skip, limit })}`);
 export const getCampaign = (id: string) => apiGet<Campaign>(`/api/v1/campaigns/${encodeURIComponent(id)}`);
 export const createCampaign = (data: CreateCampaignRequest) => apiPost<Campaign>('/api/v1/campaigns', data);
 export const deleteCampaign = (id: string) => apiDelete(`/api/v1/campaigns/${encodeURIComponent(id)}`);

@@ -111,6 +111,12 @@ class URL(Base):
         return "personal" if self.organization_id is None else "organization"
 
     @property
+    def campaign_name(self) -> str | None:
+        """A campaign link's campaign, by name. Lists eager-load `campaign`, or this costs a
+        query per link."""
+        return self.campaign.name if self.campaign else None
+
+    @property
     def created_by_email(self) -> str | None:
         """Lists eager-load `creator`, or this costs a query per link."""
         return self.creator.email if self.creator else None

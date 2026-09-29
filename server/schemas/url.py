@@ -206,6 +206,7 @@ class URLResponse(BaseModel):
 
     # Phase 3.11 — campaign linkage + personalization data (null for standard/custom URLs)
     campaign_id: UUID | None = None
+    campaign_name: str | None = None  # its campaign's name, whichever campaign it is
     user_data: dict | None = None
 
     # Tags
