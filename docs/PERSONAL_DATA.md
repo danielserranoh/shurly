@@ -60,7 +60,7 @@ of the same module that the route calls.
 | `GET /api/v1/analytics/campaigns/{campaign_id}/timeseries` | **visits**, counted over all its recipients | who can see the campaign | `visible_campaign_or_404` | `get_campaign_timeseries` |
 | `GET /api/v1/analytics/campaigns/{campaign_id}/totals` | **visits**, counted over all its recipients | who can see the campaign | `visible_campaign_or_404` | `get_campaign_totals` |
 | `GET /api/v1/analytics/campaigns/{campaign_id}/users` | **recipients' rows** and **recipients' activity**: every recipient's `user_data`, clicks and last click | who can see the campaign | `visible_campaign_or_404` | `get_campaign_users` |
-| `GET /api/v1/analytics/orphan-visits` | **addresses**: the anonymized IP, user agent and referrer of each hit on an unknown code | any signed-in account: they belong to no organization. **Decision pending:** whether the IPs should be shown | `get_current_user` | `get_orphan_visits` |
+| `GET /api/v1/analytics/orphan-visits` | **addresses**: the anonymized IP, user agent and referrer of each hit on an unknown code | any signed-in account: they belong to no organization. **Kept (2026-09-29):** the IPs are shown, to revisit after the dogfood | `get_current_user` | `get_orphan_visits` |
 | `GET /api/v1/analytics/orphan-visits/grouped` | none: the paths tried on unknown codes, counted, their first and last hit, and the links each may have meant. Never an IP, a user agent or a referrer | any signed-in account: they belong to no organization. The links suggested are the caller's to see | `get_current_user`, `viewer` | excluded |
 | `GET /api/v1/analytics/overview` | **visits**, counted: totals, and the top links by code (a campaign link's clicks are one recipient's) | the links the caller can see | `sees` | `get_overview_stats` |
 | `GET /api/v1/analytics/urls/{short_code}/breakdown` | **visits**, counted. On a campaign link, one recipient's | who can see the link | `visible_url_or_404` | `get_url_breakdown` |
@@ -68,8 +68,8 @@ of the same module that the route calls.
 | `GET /api/v1/analytics/urls/{short_code}/geo` | **visits**, counted. On a campaign link, one recipient's | who can see the link | `visible_url_or_404` | `get_url_geo_stats` |
 | `GET /api/v1/analytics/urls/{short_code}/timeseries` | **visits**, counted. On a campaign link, one recipient's | who can see the link | `visible_url_or_404` | `get_url_timeseries` |
 | `GET /api/v1/analytics/urls/{short_code}/totals` | **visits**, counted. On a campaign link, one recipient's | who can see the link | `visible_url_or_404` | `get_url_totals` |
-| `GET /api/v1/analytics/urls/{short_code}/visits` | **visits**, one by one: time, kind, country, browser, OS, device, referrer host. Never an IP, a user agent or a full referrer | who can see the link. **Decision pending:** whether a campaign link's, one recipient's, should be listed | `visible_url_or_404` | `list_url_visits` |
-| `GET /api/v1/analytics/urls/{short_code}/visits.csv` | **visits**, one by one, as the list, plus each visit's user agent. Never an IP | who can see the link. **Decision pending:** whether a campaign link's, one recipient's, should be listed | `visible_url_or_404` | excluded |
+| `GET /api/v1/analytics/urls/{short_code}/visits` | **visits**, one by one: time, kind, country, browser, OS, device, referrer host. Never an IP, a user agent or a full referrer | who can see the link. **Kept (2026-09-29):** a campaign link's, one recipient's, are listed too, to revisit after the dogfood | `visible_url_or_404` | `list_url_visits` |
+| `GET /api/v1/analytics/urls/{short_code}/visits.csv` | **visits**, one by one, as the list, plus each visit's user agent. Never an IP | who can see the link. **Kept (2026-09-29):** a campaign link's, one recipient's, are listed too, to revisit after the dogfood | `visible_url_or_404` | excluded |
 | `GET /api/v1/analytics/urls/{short_code}/weekly` | **visits**, counted. On a campaign link, one recipient's | who can see the link | `visible_url_or_404` | `get_url_weekly_stats` |
 | `DELETE /api/v1/auth/api-key` | none | the caller | `get_current_user` | excluded |
 | `POST /api/v1/auth/api-key/generate` | **own account**: a new API key, shown once | the caller, signed in (not with an API key) | `get_signed_in_session` | excluded |
@@ -152,13 +152,13 @@ Each also runs behind `POST /mcp/`, the MCP's sign-in.
 | Route | People's data it returns | Who sees it | Guard | MCP |
 |---|---|---|---|---|
 | MCP `get_url_analytics_summary` | **visits**, counted, and how many distinct addresses. On a campaign link, one recipient's | who can see the link | `find_url` | curated |
-| MCP `list_orphan_visits_grouped` | **addresses**: the anonymized IPs, user agents and referrers of each path's newest 3 hits on unknown codes, with the paths' counts, first and last hit, and the links each may have meant | any account: they belong to no organization. The links suggested are the caller's to see. **Decision pending:** whether the IPs should be shown | `RequireAuthMiddleware`, `viewer` | curated |
+| MCP `list_orphan_visits_grouped` | **addresses**: the anonymized IPs, user agents and referrers of each path's newest 3 hits on unknown codes, with the paths' counts, first and last hit, and the links each may have meant | any account: they belong to no organization. The links suggested are the caller's to see. **Kept (2026-09-29):** the IPs are shown, to revisit after the dogfood | `RequireAuthMiddleware`, `viewer` | curated |
 | MCP `create_campaign_from_rows` | **own account**: the new campaign | any account | `viewer` | curated |
 | MCP `add_redirect_rule` | none | who can change the link | `find_url`, `can_change` | curated |
 
-## Decisions pending
+## Decisions kept, to revisit
 
-These rows record a question for the user, not a verdict:
+These were questions for the user. On 2026-09-29 both were kept as they are, to revisit after the dogfood:
 - **A campaign link's visits, one by one** (`/visits`, `/visits.csv`). A campaign link is one recipient's, so its visits
   are what one named person did, when, and from where. The campaign-level routes never list visits (3.17.1), but a
   campaign link's own do, like any link's.

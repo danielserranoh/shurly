@@ -1094,9 +1094,106 @@ Three commands, `python -m server.tools.shlink export | review | import`, each f
 store, never in the repository.
 
 - **The import writes to the database the `DB_*` settings name.** Always run it with `--dry-run` first.
-- **How it runs against the private RDS is still open (decision B, ROADMAP 8.4).** The recommendation is a one-off
-  ECS task running the same image. Until that's decided, rehearse locally against a restored copy.
+- **In production it runs as a one-off ECS task** (decision B): `scripts/run_shlink_import.sh`, below.
 - **With `--visits`,** imported visits carry ip "unknown". Unique-visitor counts cover the cutover onward only.
+
+### The import as a one-off ECS task (decision B)
+
+`scripts/run_shlink_import.sh` runs the import in production's network, against the private RDS, with the live
+service's own image and environment. It makes a task definition for the run from the live one, and deletes it at
+the end, whatever happened. The task has two containers, sharing a volume:
+
+- **`fetch`**, the AWS CLI's image (`public.ecr.aws/aws-cli/aws-cli`), copies the snapshot and the review from a
+  private bucket into the volume. It uses the task role `shurly-shlink-import`, which can read that one prefix
+  and nothing else. The app's image stays as it is, without an AWS SDK.
+- **`import`**, Shurly's image, runs `python -m server.tools.shlink import` from those files, once `fetch` has
+  succeeded. It's a **dry run** unless the script is given `--for-real`, and then you type the owner's email to
+  confirm.
+- **Output:** both write to the service's CloudWatch log group (`/aws/ecs/default/shurly-api-5fdb`, kept 60
+  days), in the streams `shlink-import/fetch/<task>` and `shlink-import/import/<task>`. The script waits for the
+  task and prints both. The import's report carries counts, codes and destinations, not visits.
+- **Secrets:** the task definition carries the service's environment, `DB_PASSWORD` included, as the live one
+  does. The script sends it to AWS and never prints it; its local copy lives in a private temporary directory
+  that's removed at the end.
+
+**Made once, by hand** (the script creates nothing lasting): a private bucket, and the task role.
+
+The bucket, e.g. `shurly-imports-<account id>` in `eu-south-2`: Block Public Access on (all four), default
+encryption SSE-S3, no versioning, so that an expired object is gone. Its policy refuses anything but TLS:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [{
+    "Sid": "TlsOnly", "Effect": "Deny", "Principal": "*", "Action": "s3:*",
+    "Resource": ["arn:aws:s3:::shurly-imports-<account id>", "arn:aws:s3:::shurly-imports-<account id>/*"],
+    "Condition": {"Bool": {"aws:SecureTransport": "false"}}
+  }]
+}
+```
+
+And a lifecycle rule, since snapshots hold personal data:
+
+```json
+{"Rules": [{"ID": "ExpireSnapshots", "Status": "Enabled", "Filter": {"Prefix": ""}, "Expiration": {"Days": 7}}]}
+```
+
+The task role `shurly-shlink-import`. Its trust policy:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [{
+    "Effect": "Allow", "Principal": {"Service": "ecs-tasks.amazonaws.com"}, "Action": "sts:AssumeRole",
+    "Condition": {"StringEquals": {"aws:SourceAccount": "<account id>"}}
+  }]
+}
+```
+
+Its only permissions, on the one prefix (`shlink/` here: the script's `--prefix` goes under it):
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {"Effect": "Allow", "Action": "s3:ListBucket", "Resource": "arn:aws:s3:::shurly-imports-<account id>",
+     "Condition": {"StringLike": {"s3:prefix": ["shlink/*"]}}},
+    {"Effect": "Allow", "Action": "s3:GetObject", "Resource": "arn:aws:s3:::shurly-imports-<account id>/shlink/*"}
+  ]
+}
+```
+
+Whoever runs the script needs, besides reading the service (`ecs:ListServices`, `ecs:DescribeServices`,
+`ecs:DescribeTaskDefinition`): `ecs:RegisterTaskDefinition`, `ecs:DeregisterTaskDefinition`,
+`ecs:DeleteTaskDefinitions`, `ecs:RunTask`, `ecs:DescribeTasks`; `iam:PassRole` on `shurly-shlink-import` and on
+the service's execution role (`ecsTaskExecutionRole`); `s3:PutObject` and `s3:ListBucket` on the prefix, to upload;
+and `logs:FilterLogEvents` on the log group. The task needs the internet, for `public.ecr.aws`, which the
+service's own network already has. If it ever reaches ECR through VPC endpoints only, copy the AWS CLI image into
+the account's ECR and set `AWS_CLI_IMAGE`.
+
+**A run:**
+
+```bash
+# 1. The files, from `export` and `review` (server/tools/shlink/README.md)
+aws s3 cp _exchange/shlink-go.griddo.io-….snapshot.json \
+    s3://shurly-imports-<account id>/shlink/2026-10-01/snapshot.json --profile griddo-main
+aws s3 cp _exchange/shlink-go.griddo.io-….review.csv \
+    s3://shurly-imports-<account id>/shlink/2026-10-01/review.csv --profile griddo-main
+
+# 2. A dry run: everything, the report, then rolled back
+scripts/run_shlink_import.sh --bucket shurly-imports-<account id> --prefix shlink/2026-10-01 \
+    --as owner@griddo.io --visits
+
+# 3. Read the report. Then for real (it asks for the owner's email)
+scripts/run_shlink_import.sh --bucket shurly-imports-<account id> --prefix shlink/2026-10-01 \
+    --as owner@griddo.io --visits --for-real
+
+# 4. The files go: now, or in 7 days by the lifecycle rule
+aws s3 rm --recursive s3://shurly-imports-<account id>/shlink/2026-10-01/ --profile griddo-main
+```
+
+The script checks both files are there before it makes anything. `tests/test_run_shlink_import.py` runs it
+against a fake `aws`. On the first real run, read the dry run's report before going on.
 
 ## Routine operations
 
