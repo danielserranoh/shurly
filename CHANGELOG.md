@@ -26,6 +26,14 @@ implementation lifecycle and is independent of the URL version segment.
 
 ## [Unreleased]
 
+### Changed — CI's actions, a major each, in one PR (Dependabot's first run)
+- **checkout v7, setup-python v7, setup-node v7, cache v6, codecov-action v7 and configure-aws-credentials v6.**
+  They're mostly the move to the Node 24 runtime, which GitHub's runners have. None of the inputs we pass changed,
+  and configure-aws-credentials keeps its OIDC inputs and its `sts.amazonaws.com` audience.
+- **codecov's input is `files`:** v7 no longer reads `file` ("Unexpected input(s) 'file'").
+- **Dependabot now opens one weekly PR for the actions, majors included,** where its first run opened six
+  (#175–#180). Python's majors still come one per PR.
+
 ### Changed — what builds the image is pinned too (6.3)
 - **The base image and uv are pinned by digest.** The dockerfile names `python:3.11-slim@sha256:…`, which is the
   digest production already runs, and `ghcr.io/astral-sh/uv:0.11.1@sha256:…` in place of `:latest`.

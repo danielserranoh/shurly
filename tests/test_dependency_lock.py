@@ -53,9 +53,11 @@ def test_dependabot_bumps_uv_the_actions_and_the_images_weekly_against_dev():
     for update in updates.values():
         assert update["target-branch"] == "dev"
         assert update["schedule"]["interval"] == "weekly"
-    for ecosystem in ("uv", "github-actions"):
-        (group,) = updates[ecosystem]["groups"].values()
-        assert (group["patterns"], group["update-types"]) == (["*"], ["minor", "patch"])
+    # Python: minor and patch grouped, each major on its own. Actions: everything in one PR.
+    (python,) = updates["uv"]["groups"].values()
+    assert (python["patterns"], python["update-types"]) == (["*"], ["minor", "patch"])
+    (actions,) = updates["github-actions"]["groups"].values()
+    assert actions == {"patterns": ["*"]}
     # The base image's digest, weekly; a new Python, or a new uv, is a change of its own.
     ignored = {
         rule["dependency-name"]: rule.get("update-types") for rule in updates["docker"]["ignore"]
