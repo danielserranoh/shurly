@@ -34,6 +34,8 @@ implementation lifecycle and is independent of the URL version segment.
 - **A new password can be at most 72 bytes,** what bcrypt reads. Register, set and change answer a 422: "Too long:
   a password can be at most 72 bytes. That's 72 characters of plain text, and fewer with accented letters or
   emoji, which take more than one byte each." Until now the end of a longer password was silently ignored.
+- **Settings' new-password hint says it too:** "At least 8 characters · at most 72, fewer with accents or emoji".
+  It checks the 8 as you type; the 72 is the API's to check.
 - **Signing in still reads a password's first 72 bytes,** as the old code hashed it, so one set longer before
   still works.
 
