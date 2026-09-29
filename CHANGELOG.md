@@ -37,6 +37,14 @@ implementation lifecycle and is independent of the URL version segment.
 - **The manual's "Read your analytics"** says what a city is, where the visitor's connection is registered, and a
   campaign's rule.
 
+### Changed — the landing's example is Griddo's proposal for Tufts University
+- **The hero's link carries Griddo's logo,** the white "G" on navy (`public/logos/logo-griddo-g-s-w.svg`), in place
+  of the lettered tile.
+- **Acme Corp is Tufts University** across the landing's mocks: the hero's card, its short link (`…/q4-tufts`),
+  the tags, Ana's company, the link preview (tufts.edu, "Undergraduate admissions") and the custom back-half
+  (`…/tufts-proposal`). Northwind and Globex stay.
+- The hero's card is padded like the page's gutter on phones, so `s.griddo.io/q4-tufts` fits at 390px.
+
 ### Added — each request's log line says how its client IP was found (6.3)
 - **`http.request` lines carry `client_ip_source` and `host`.** The source is `cloudfront` (the viewer address, on a
   request with the distribution's secret), `xff` (`X-Forwarded-For`, from a trusted proxy) or `socket` (the
