@@ -74,23 +74,35 @@ class TestTheImageNeverCopiesTests:
 
 
 class TestTheWrapperStartsOnlyOnPurpose:
-    LOCAL = {"E2E": "1", "DB_HOST": "localhost"}
+    @pytest.fixture
+    def environ(self, monkeypatch):
+        """Sets the variables the guard reads; None unsets one."""
+
+        def set_to(**values):
+            for name, value in values.items():
+                if value is None:
+                    monkeypatch.delenv(name, raising=False)
+                else:
+                    monkeypatch.setenv(name, value)
+
+        return set_to
 
     @pytest.mark.parametrize("host", ["localhost", "127.0.0.1", "::1"])
-    def test_it_starts_with_e2e_and_a_local_database(self, host):
-        refuse_unless_local({"E2E": "1", "DB_HOST": host})
+    def test_it_starts_with_e2e_and_a_local_database(self, environ, host):
+        environ(E2E="1", DB_HOST=host)
+        refuse_unless_local()
 
     @pytest.mark.parametrize("value", [None, "", "0", "true"])
-    def test_it_refuses_without_e2e_1(self, value):
-        environ = {"DB_HOST": "localhost"} if value is None else {**self.LOCAL, "E2E": value}
+    def test_it_refuses_without_e2e_1(self, environ, value):
+        environ(E2E=value, DB_HOST="localhost")
         with pytest.raises(SystemExit, match="E2E=1"):
-            refuse_unless_local(environ)
+            refuse_unless_local()
 
     @pytest.mark.parametrize("host", [None, "", "db", "shurly.abc123.eu-west-1.rds.amazonaws.com"])
-    def test_it_refuses_a_database_that_isnt_local(self, host):
-        environ = {"E2E": "1"} if host is None else {"E2E": "1", "DB_HOST": host}
+    def test_it_refuses_a_database_that_isnt_local(self, environ, host):
+        environ(E2E="1", DB_HOST=host)
         with pytest.raises(SystemExit, match="local"):
-            refuse_unless_local(environ)
+            refuse_unless_local()
 
     def test_importing_it_refuses_before_the_app_is_built(self):
         env = {k: v for k, v in os.environ.items() if k not in {"E2E", "DB_HOST"}}

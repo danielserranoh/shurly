@@ -23,7 +23,7 @@ from urllib.parse import urlencode
 
 from tests.e2e.guard import refuse_unless_local
 
-refuse_unless_local(os.environ)
+refuse_unless_local()
 
 from fastapi import HTTPException, Request  # noqa: E402
 from fastapi.responses import RedirectResponse  # noqa: E402
