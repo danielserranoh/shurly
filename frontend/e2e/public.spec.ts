@@ -27,3 +27,15 @@ test('an unknown address gets the 404 page', async ({ page }) => {
   expect(response?.status()).toBe(404);
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('This page took a wrong turn.');
 });
+
+test("the landing's mock is Griddo's proposal for Tufts, told the same way throughout", async ({ page }) => {
+  await page.goto('/');
+  const hero = page.locator('[data-hero]');
+  // Griddo's logo, from this site: the harness fails the test on anything from another host or against the CSP.
+  const logo = hero.locator('img[src="/logos/logo-griddo-g-s-w.svg"]');
+  await expect(logo).toBeVisible();
+  await expect.poll(() => logo.evaluate((img: HTMLImageElement) => img.naturalWidth)).toBeGreaterThan(0);
+  await expect(hero).toContainText('Q4 proposal — Tufts University');
+  await expect(hero).toContainText('/q4-tufts');
+  await expect(page.locator('body')).not.toContainText(/acme/i);
+});
