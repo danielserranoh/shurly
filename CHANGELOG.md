@@ -26,6 +26,18 @@ implementation lifecycle and is independent of the URL version segment.
 
 ## [Unreleased]
 
+### Fixed — a visit stores at most 1024 characters of user agent and 2048 of referrer
+- **The columns take any length,** so a scanner could store tens of KB of header on every hit, up to what the
+  load balancer lets through. Real user agents and referrers are a few hundred characters.
+- **Now a visit keeps the first 1024 characters of its user agent and the first 2048 of its referrer.** That's
+  clicks, email opens, orphan visits and the Shlink import alike.
+- **Only what's stored is cut.** Bot detection and the redirect rules read the whole header first, so no visit is
+  told apart differently.
+- **The breakdown parses the stored user agent.** A real one keeps its families once cut, padding and all. Only a
+  user agent whose telling words all come after its first 1024 characters would parse differently there, and its
+  bot flag was set from the whole of it.
+- No migration: the columns stay as they are, and rows already stored keep their headers.
+
 ### Fixed — a NUL character in a request is a 400 or a 422, not a 500
 - **PostgreSQL can't hold a NUL character (U+0000) in text,** while SQLite, which the tests run on, can. So every
   request carrying one answered 500 in production, including:

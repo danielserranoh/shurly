@@ -1715,6 +1715,9 @@ live in `mcp_server/README.md`, written for developers. There is no user manual 
         the short-link host's `/%00` included. A 400 for the path or query and a 422 for a JSON body, before any
         route (`server/utils/nul.py`), and a safety net for psycopg2's refusal. `tests/test_nul_characters.py` runs
         the requests that did on PostgreSQL
+  - [x] Headers stored in a Text column (2026-09-29): a visit keeps at most 1024 characters of user agent and 2048
+        of referrer, clicks, opens, orphan visits and the Shlink import alike (`server/utils/columns.py`). Bot
+        detection and the rules read the whole header first (`tests/test_stored_headers.py`)
   - [x] Numbers (2026-09-29): every integer a request carries has a maximum, and a minimum of 0 or more
         unless a negative means something (a rule's priority). Six query parameters and two body fields
         had none, and an absurd value answered 500 (`server/utils/bounds.py`). The MCP's curated tools
