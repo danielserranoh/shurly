@@ -10,6 +10,7 @@ test('a new member is welcomed, with where to start, until they dismiss it', asy
   await expect(welcome).toBeVisible();
   await expect(welcome).toContainText('Links you make belong to Griddo'); // the organization, by its name
   await expect(welcome.getByRole('link', { name: 'Track a campaign' })).toHaveAttribute('href', '/dashboard/campaigns/create/');
+  await expect(welcome.getByRole('link', { name: 'How campaigns work' })).toHaveAttribute('href', '/manual/make-a-campaign/');
   await expect(welcome.getByRole('link', { name: 'Connect Claude' })).toHaveAttribute('href', '/dashboard/settings/#api');
 
   await welcome.getByRole('button', { name: 'Dismiss' }).click();
