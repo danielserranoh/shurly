@@ -54,8 +54,12 @@ import Pager from '@/components/ui/Pager.astro';
       </section>
 
       <section class="card p-5 sm:p-6" aria-labelledby="orphans-title">
-        <h2 id="orphans-title" class="flex items-center gap-2 font-semibold text-ink-950">Typos & broken links</h2>
-        <p class="text-sm text-ink-500">Short links people tried in the last 30 days that don’t exist — often a typo on something printed.</p>
+        <!-- Its own window: the range row above scopes the summary and the chart, not this list -->
+        <div class="flex items-center justify-between gap-3">
+          <h2 id="orphans-title" class="font-semibold text-ink-950">Typos & broken links</h2>
+          <span class="badge badge-outline shrink-0"><Icon name="calendar" class="size-3.5" />Last 30 days</span>
+        </div>
+        <p class="text-sm text-ink-500">Short links people tried that don’t exist, often a typo on something printed. The range above doesn’t change this list.</p>
         <ul class="mt-5 grid gap-2" data-orphans></ul>
         <Pager />
       </section>
@@ -63,9 +67,11 @@ import Pager from '@/components/ui/Pager.astro';
 
     <section class="mt-6 flex flex-col gap-4 rounded-2xl border border-dashed border-ink-300 bg-white p-5 sm:flex-row sm:items-center">
       <span class="grid size-10 shrink-0 place-items-center rounded-xl bg-ink-950 text-brand-300"><Icon name="line-chart" class="size-5" /></span>
+      <!-- Paywall rule 1: what a link's page already has is free, never "coming with Pro" (DESIGN_SYSTEM.md) -->
       <div class="flex-1">
-        <p class="flex items-center gap-2 font-semibold text-ink-950">Go deeper <ProBadge /></p>
-        <p class="mt-0.5 text-sm text-ink-500">30 and 90-day views, custom ranges, every click exported and live stats are coming with Pro.</p>
+        <p class="font-semibold text-ink-950">Go deeper</p>
+        <p class="mt-0.5 text-sm text-ink-500">Each link’s page already has the last 30 or 90 days, dates you pick, and its visits as a CSV. Open one from Top links or <a class="link" href="/dashboard/">Links</a>.</p>
+        <p class="mt-2 flex items-baseline gap-2 text-sm text-ink-500"><ProBadge label="Coming soon" class="shrink-0" />{' '}Longer ranges across all your links, and live stats, come with Pro.</p>
       </div>
     </section>
   </div>
