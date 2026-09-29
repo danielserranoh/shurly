@@ -85,13 +85,15 @@ implementation lifecycle and is independent of the URL version segment.
   - Settings: the profile saved and the header's initial following it, and the tabs by keyboard;
   - a phone (390 px): a link's tabs, and a campaign's recipients sorted from "Sort by";
   - the public pages, and the 404 page for an unknown address.
-- **Accessibility:** axe checks the landing, login, dashboard, link, campaign and Settings pages. A serious or
-  critical issue fails the test.
+- **Accessibility:** axe checks the landing, login, dashboard, link, campaign and Settings pages. A moderate,
+  serious or critical issue fails the test.
 
-### Fixed — a long search, and the login page's small print
+### Fixed — a long search, and the landing and login pages' contrast and landmarks
 - **The recipients' search takes up to 200 characters**, as the API does. A longer paste got an error instead of
   results; the rest is now cut off as it's pasted.
 - **The times in the login page's example feed are readable**: over 6:1 against its dark panel, from about 3:1.
+- **The landing page has a main landmark, and the login page's logo and small print sit in its header and
+  footer**, so a screen reader can go straight to each part of either page.
 
 ### Removed — the `IS_LAMBDA` setting
 - **A leftover of the Lambda deploy**, which the ECS deploy never sets. It made short URLs `https://DEFAULT_DOMAIN`

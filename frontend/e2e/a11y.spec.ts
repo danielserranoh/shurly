@@ -1,5 +1,5 @@
-// Phase 6.1 — accessibility: axe on the pages people use most, once their content is in, serious and critical
-// issues only. What it finds gets fixed, or allowed below with a reason and the issue that will fix it: never a
+// Phase 6.1 — accessibility: axe on the pages people use most, once their content is in: moderate, serious and
+// critical issues. What it finds gets fixed, or allowed below with a reason and the issue that will fix it: never a
 // rule turned off.
 
 import AxeBuilder from '@axe-core/playwright';
@@ -20,13 +20,16 @@ interface Allowed {
 /** Known issues, each until its issue is fixed. */
 const ALLOWED: Allowed[] = [];
 
-async function expectNoSeriousIssues(page: Page, name: string) {
+/** Every impact but minor: moderate takes in landmarks, headings' order and the like. */
+const IMPACTS = ['moderate', 'serious', 'critical'];
+
+async function expectNoIssues(page: Page, name: string) {
   const { violations } = await new AxeBuilder({ page }).analyze();
   const found = violations
-    .filter((v) => v.impact === 'serious' || v.impact === 'critical')
+    .filter((v) => IMPACTS.includes(v.impact ?? ''))
     .flatMap((v) => v.nodes.map((node) => ({ rule: v.id, impact: v.impact, target: node.target.join(' '), summary: node.failureSummary ?? v.help })))
     .filter((f) => !ALLOWED.some((a) => a.page === name && a.rule === f.rule && a.target === f.target));
-  expect(found, `axe on ${name}: serious or critical issues`).toEqual([]);
+  expect(found, `axe on ${name}: ${IMPACTS.join(', ')} issues`).toEqual([]);
 }
 
 test.describe('signed out', () => {
@@ -35,13 +38,13 @@ test.describe('signed out', () => {
   test('the landing page', async ({ page }) => {
     await page.goto('/');
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
-    await expectNoSeriousIssues(page, 'landing');
+    await expectNoIssues(page, 'landing');
   });
 
   test('the login page', async ({ page }) => {
     await page.goto('/login/');
     await expect(page.getByRole('button', { name: 'Sign in with Google' })).toBeVisible();
-    await expectNoSeriousIssues(page, 'login');
+    await expectNoIssues(page, 'login');
   });
 });
 
@@ -59,14 +62,14 @@ test.describe('signed in', () => {
     await aLinkWithVisits(ownerApi, request);
     await page.goto('/dashboard/');
     await expect(page.locator('li[data-link]').first()).toBeVisible();
-    await expectNoSeriousIssues(page, 'dashboard');
+    await expectNoIssues(page, 'dashboard');
   });
 
   test("a link's page", async ({ page, ownerApi, request }) => {
     const code = await aLinkWithVisits(ownerApi, request);
     await page.goto(`/dashboard/link/?code=${code}`);
     await expect(page.locator('[data-range]')).toContainText('1 click');
-    await expectNoSeriousIssues(page, 'link');
+    await expectNoIssues(page, 'link');
   });
 
   test("a campaign's page", async ({ page, ownerApi, request }) => {
@@ -81,12 +84,12 @@ test.describe('signed in', () => {
     await page.goto(`/dashboard/campaign/?id=${id}`);
     await expect(page.locator('[data-recipients] tbody tr')).toHaveCount(2);
     await expect(page.locator('[data-stat="clicks"]')).toHaveText('1');
-    await expectNoSeriousIssues(page, 'campaign');
+    await expectNoIssues(page, 'campaign');
   });
 
   test('Settings', async ({ page }) => {
     await page.goto('/dashboard/settings/');
     await expect(page.getByRole('button', { name: 'Save profile' })).toBeEnabled();
-    await expectNoSeriousIssues(page, 'settings');
+    await expectNoIssues(page, 'settings');
   });
 });

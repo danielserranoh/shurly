@@ -32,7 +32,9 @@ const year = new Date().getFullYear();
     </div>
   </header>
 
-  <slot />
+  <main id="main">
+    <slot />
+  </main>
 
   <footer class="border-t border-line bg-white">
     <div class="mx-auto grid grid-cols-1 max-w-6xl gap-10 px-4 py-14 sm:px-6 md:grid-cols-[1.4fr_1fr_1fr]">
