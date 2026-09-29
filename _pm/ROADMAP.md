@@ -1582,6 +1582,10 @@ records which tools get used, how often, or how they fail.
 - [x] Tests: `tests/test_phase560_usage_log.py` (14)
 
 #### 5.6.1 Rollout and signal capture
+- [x] New members get a welcome on the dashboard for their first 14 days, until they dismiss it: where to start
+      (shorten a link, a campaign from a CSV, connecting Claude). Links are the organization's (3.14), so a new
+      member's list shows the team's links and the empty state never greets them; the old card needed a `?welcome=`
+      that nothing set since the register page went (3.13)
 - [ ] Roll out to the Griddo team: 3–5 internal users, with the frontend and the MCP.
 - [ ] Capture for 2–4 weeks: tool invocation counts (which tools get used vs ignored), tool error rates, average call duration.
 - [ ] Capture qualitatively: which workflows feel smooth in chat, which feel awkward (e.g. CSV import, charts).

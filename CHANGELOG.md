@@ -26,6 +26,14 @@ implementation lifecycle and is independent of the URL version segment.
 
 ## [Unreleased]
 
+### Added — a welcome for new members (the dogfood, 5.6)
+- **For an account's first 14 days, the dashboard opens with a welcome card**, until it's dismissed on that browser:
+  - links belong to the organization, by its name, so the team sees them; personal ones on purpose;
+  - where to start: paste a link below; track a campaign from a CSV; connect Claude.
+- **Why:** links are the organization's (3.14), so a new member's list shows the team's links and the "first link"
+  empty state never greets them. The old card needed a `?welcome=` that nothing set since the register page went
+  (3.13).
+
 ### Fixed — the Analytics page's Pro card, and its typos' window
 - **"Go deeper" no longer says a link's own views are coming with Pro.** Each link's page already has the last 30
   or 90 days, dates you pick, and its visits as a CSV, free (paywall rule 1). The card says so, and points to Top
