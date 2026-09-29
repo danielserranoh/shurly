@@ -113,6 +113,15 @@ for (const { device, options } of DEVICES) {
         await expectNoIssues(page, 'settings');
       });
 
+      if (device === 'desktop') {
+        test('the account menu', async ({ page }) => {
+          await page.goto('/dashboard/');
+          await page.getByRole('button', { name: 'Account menu' }).click();
+          await expect(page.locator('#user-menu')).toBeVisible();
+          await expectNoIssues(page, 'account menu');
+        });
+      }
+
       if (device === 'phone') {
         test('the menu', async ({ page }) => {
           await page.goto('/dashboard/');
