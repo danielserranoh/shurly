@@ -20,17 +20,15 @@ Order agreed in the 2026-09-27 review; confirm each item before starting it.
 2. ✅ **Organization and roles** (3.14): links belong to the organization by default; owner, admin and member.
    Done: API, MCP and frontend (Settings → Organization, the personal toggle, who created each link, removed
    people). Left: two owners from day one, once people have signed up.
-3. **Frontend hosting** (4.10): S3 + CloudFront; AWS steps run with SSO. The deploy workflow is ready and runs on
-   merges to `main` that touch the frontend, but skips until the AWS side exists (`FRONTEND_BUCKET` unset), as it
-   did for release #81.
+3. ✅ **Frontend hosting** (4.10): S3 + CloudFront, live on `https://shurly.griddo.io` since 2026-09-29. The deploy
+   workflow publishes the frontend on merges to `main` that touch it.
 4. **Identity**: sign in with Google Workspace, for the web (3.13) and the MCP (5.8). One Google project covers
    both. The code of both is done (3.13's backend and frontend, 5.8), and in production since release #81
    (2026-09-28) on `shurly.griddo.io`, which the deploy's smoke test checks. The MCP's Google sign-in is live.
-   Left: the web's sign-in, which needs the hosted frontend (the sign-in ends on its `/login/`, 4.10), and the
-   end-to-end checks (3.13.6, 5.8).
+   The frontend is hosted since 2026-09-29, and `/api/v1/auth/google/start` sends people to Google with the right
+   callback. Left: a person completing the web sign-in in production, and the end-to-end checks (3.13.6, 5.8).
 5. ✅ **MCP install guide**, in the app and in the user manual (5.9): `/manual/install-mcp/` and Settings → API &
-   MCP. Its address comes from the build: `https://shurly.griddo.io/mcp/` once 4.10's production build sets
-   `PUBLIC_API_URL`.
+   MCP. Its address comes from the build: `https://shurly.griddo.io/mcp/` in production's.
 6. **Internal dogfood** with the frontend and the MCP (5.6).
 7. **Replace Shlink on `go.griddo.io`** (Phase 8): after the dogfood and error alerting (6.4). Done on `dev`: a
    link is its code and its domain (8.3); exporting, reviewing and importing Shlink's links and visits, and a
@@ -857,14 +855,16 @@ Until then `POST /auth/register` stays reachable through the public API and its 
 ### 3.13.5 Frontend
 - [x] "Sign in with Google" on the login page; the register page goes
 - [x] Settings → Account: the password section of 3.13.3
-- [ ] Needs the frontend hosted (4.10)
+- [x] Needs the frontend hosted (4.10) → on `https://shurly.griddo.io` since 2026-09-29
 
 ### 3.13.6 Verification
 - [x] Tests (TDD) against a faked Google: `hd` and `email_verified` enforced, `state` checked, first sign-in
       creates the user and the membership, matching by `sub` after an email change, one-time code single use and
       short-lived, passwords set only while signed in, register gone → `tests/test_phase3132_google_sign_in.py`
       and `tests/test_phase3133_passwords.py`, on `tests/fake_google.py` (real RS256 tokens, no network)
-- [ ] End to end against the real Google project with a Griddo account
+- [ ] A person completes the web sign-in in production, with a Griddo account → the frontend is hosted and
+      `/api/v1/auth/google/start` redirects to Google with the right callback (2026-09-29); nobody has completed a
+      sign-in end to end yet
 
 ---
 
@@ -1322,7 +1322,7 @@ Their `click_through_rate` stays a percentage, 0 to 100.
 
 ---
 
-## Phase 4: AWS Deployment (ECS Express on griddo-main) — backend ✅ · frontend pending (4.10)
+## Phase 4: AWS Deployment (ECS Express on griddo-main) — backend ✅ · frontend ✅ (4.10, 2026-09-29)
 
 **Status:** live at `https://s.griddo.io` since **2026-04-27** (first deploy, PRs #7–#11). `main` is
 production: every merge auto-deploys through `deploy-backend.yml`. The lessons from the rollout, the
