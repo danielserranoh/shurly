@@ -1707,8 +1707,9 @@ live in `mcp_server/README.md`, written for developers. There is no user manual 
     that isn't the tools.
   - One lookup each, in `server/utils/access.py`: `visible_url_or_404` and `visible_campaign_or_404`. The two copies of
     each are gone, with no change of behaviour.
-  - [ ] (b) At runtime, for every route that returns recipients' rows or activity, or visits: an outsider gets a 404
-        and an organization member a 200
+  - [x] (b) At runtime, for every route that returns recipients' rows or activity, or visits: an outsider gets a 404
+        and an organization member a 200 (`tests/test_personal_data_access.py`, 20 routes, read from the table). A
+        personal campaign stays its creator's
   - [x] Finding 1: a crawler's preview of a campaign link carried its recipient's `user_data` in its refresh URL.
         Now it never does; people's redirect is unchanged (2026-09-29)
   - Decisions pending, with the user: a campaign link's visits one by one; orphan visits' IPs
@@ -1759,7 +1760,9 @@ live in `mcp_server/README.md`, written for developers. There is no user manual 
 - [x] User manual for dashboard: starts with the MCP install page (5.9), which lives in the frontend → `/manual/`, Markdown in `frontend/src/content/manual/`
 - [ ] Architecture diagram
 - [ ] Database schema diagram
-- [ ] Environment variables reference
+- [x] Environment variables reference → [docs/ENVIRONMENT.md](../docs/ENVIRONMENT.md) (2026-09-29): every variable
+      Shurly reads, with its default and meaning, never a production value. `tests/test_environment_reference.py`
+      fails on a setting without a row or with another default, a variable read anywhere without a row, and a stale row
 
 ### 7.2 Operational Runbook
 - [ ] How to add new users → self-service sign-up for `@griddo.io`: signing in with Google makes the account

@@ -515,8 +515,8 @@ Note: Update the Docker configuration with environment variables for production 
 ## Production Deployment
 
 See [DEPLOYMENT.md](DEPLOYMENT.md) for the full ECS Express + RDS guide, and
-[docs/AWS_ECS_DEPLOYMENT.md](docs/AWS_ECS_DEPLOYMENT.md) for the operational playbook. Pre-flight
-checklist:
+[docs/AWS_ECS_DEPLOYMENT.md](docs/AWS_ECS_DEPLOYMENT.md) for the operational playbook. Every environment variable,
+with its default and meaning, is in [docs/ENVIRONMENT.md](docs/ENVIRONMENT.md). Pre-flight checklist:
 
 1. Set a strong `JWT_SECRET_KEY` (`openssl rand -hex 32`)
 2. Configure CORS origins as a JSON array string

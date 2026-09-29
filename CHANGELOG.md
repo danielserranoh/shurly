@@ -38,6 +38,20 @@ implementation lifecycle and is independent of the URL version segment.
 - **The first specs:** signing in and out; a link from the dashboard to its page: its all-time numbers, the tabs,
   the periods (a custom range refused, then applied) and the CSV of its visits.
 
+### Removed — the `IS_LAMBDA` setting
+- **A leftover of the Lambda deploy**, which the ECS deploy never sets. It made short URLs `https://DEFAULT_DOMAIN`
+  even with `DEFAULT_DOMAIN=localhost`. A non-local `DEFAULT_DOMAIN` already does that, so short URLs don't change.
+  An `IS_LAMBDA` left in an environment is now ignored.
+
+### Added — every environment variable, in one reference (ROADMAP 7.1)
+- **`docs/ENVIRONMENT.md`** lists every variable Shurly reads, with its default and what it does. That's the
+  backend's settings, what the backend, its tools and its tests read directly, and what the frontend's build reads.
+  It has defaults only, never a production value.
+- **`tests/test_environment_reference.py` keeps it true.** It fails when:
+  - a setting has no row, or another default than its row;
+  - a variable read anywhere (`os.getenv`, `os.environ`, or `PUBLIC_*` in the frontend) has no row;
+  - a row names nothing.
+
 ### Security — a crawler's preview of a campaign link no longer carries its recipient's data
 - **When a recipient shared their campaign link, the social network's crawler got their data.** The preview page
   that `GET /{short_code}` gives crawlers (LinkedIn, WhatsApp, Slack…) sent them on to the personalized destination,
@@ -58,6 +72,11 @@ implementation lifecycle and is independent of the URL version segment.
   - people's data goes to anyone without "(by design)".
 
   So a new route can't widen who sees people's data without saying so in the same PR.
+- **`tests/test_personal_data_access.py` checks it at runtime.** It covers every GET that returns recipients' rows,
+  their activity, or visits (20 routes, read from the table):
+  - an outsider from another organization gets a 404, and never sees the data in a list;
+  - a plain member gets it;
+  - a personal campaign stays its creator's.
 - **One lookup for a link and one for a campaign** (`visible_url_or_404`, `visible_campaign_or_404`, in
   `server/utils/access.py`). Each had two copies, in the link and campaign routes and in the analytics. The rules are
   the same, and every route answers as it did.
