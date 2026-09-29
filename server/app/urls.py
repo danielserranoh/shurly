@@ -73,16 +73,28 @@ redirect_router = APIRouter()  # Separate router for redirect endpoint
 # Initialize Jinja2 templates for preview page
 templates = Jinja2Templates(directory="server/templates")
 
-# ROADMAP 3.9.2 — what a person's browser gets for a short link that doesn't lead anywhere. The
-# page's one <style> block is allowed by its hash, taken from the page as it's served, so an edit
-# to the CSS can't leave it unstyled. The block has no Jinja: every `reason` gives the same one.
+# ROADMAP 3.9.2 — the pages the short-link host serves come with a strict CSP: nothing but their
+# one <style> block, allowed by its hash. The hash is taken from the page as it's served, so an
+# edit to the CSS can't leave it unstyled; the block has no Jinja, so any render gives it.
 UNAVAILABLE_PAGE = "link_unavailable.html"
+PREVIEW_PAGE = "preview.html"
 
 
 def _style_hash(template: str) -> str:
-    served = templates.env.get_template(template).render(reason="unknown")
+    served = templates.env.get_template(template).render()
     style = re.search(r"<style>(.*?)</style>", served, re.S).group(1)
     return "sha256-" + base64.b64encode(hashlib.sha256(style.encode()).digest()).decode()
+
+
+# A crawler's preview loads nothing but its style: the OG image is a meta tag the crawler fetches
+# itself, and the meta refresh and the link to the destination aren't loads a CSP governs.
+PREVIEW_HEADERS = {
+    "Content-Security-Policy": (
+        f"default-src 'none'; style-src '{_style_hash(PREVIEW_PAGE)}'; base-uri 'none'; "
+        "form-action 'none'; frame-ancestors 'none'"
+    ),
+    "Cache-Control": "public, max-age=300",  # 5 minutes
+}
 
 
 UNAVAILABLE_HEADERS = {
@@ -1198,6 +1210,20 @@ def robots_txt(db: Session = Depends(get_db)) -> str:
     return "\n".join(lines) + "\n"
 
 
+@redirect_router.get(
+    "/favicon.ico", status_code=status.HTTP_204_NO_CONTENT, include_in_schema=False
+)
+def favicon() -> Response:
+    """
+    Browsers ask every host for its icon. The short-link host has none: a 204, cached a week.
+    Here, and not left to `/{short_code}`, where it would be an orphan visit in "Typos & broken
+    links" each time. The pages it serves say so too (`<link rel="icon" href="data:,">`).
+    """
+    return Response(
+        status_code=status.HTTP_204_NO_CONTENT, headers={"Cache-Control": "public, max-age=604800"}
+    )
+
+
 def _with_query(destination: str, params: dict) -> str:
     """`destination`, with `params` appended to its query."""
     if not params:
@@ -1318,7 +1344,7 @@ def redirect_short_url(short_code: str, request: Request, db: Session = Depends(
         # it, with what the shared address itself forwards; people get the personalized redirect.
         return templates.TemplateResponse(
             request,
-            "preview.html",
+            PREVIEW_PAGE,
             {
                 "og_title": url.og_title or url.title or url.original_url,
                 "og_description": url.og_description or f"Visit {url.original_url}",
@@ -1327,7 +1353,7 @@ def redirect_short_url(short_code: str, request: Request, db: Session = Depends(
                 "short_url": build_short_url(short_code, domain.hostname),
                 "destination_url": _with_query(destination, forwarded),
             },
-            headers={"Cache-Control": "public, max-age=300"},  # Cache for 5 min
+            headers=PREVIEW_HEADERS,
         )
 
     # Phase 3.10.6 — pull configured status + cache header for each redirect path.

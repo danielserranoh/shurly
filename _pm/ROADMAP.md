@@ -476,6 +476,8 @@ System creates:
   `server/templates/link_unavailable.html` with the same 404 or 410; everything else the JSON. Not yet active is
   the no-such-link page, as its 404 always was. A strict CSP allows the page's one style block by hash, taken
   from the page as served (`tests/test_unavailable_link.py`)
+- [x] The short-link host's other answers (2026-09-29): `/favicon.ico` is a 204 cached a week, never an orphan
+  visit; a crawler's preview page has the same strict CSP (`tests/test_short_link_host_pages.py`)
 - [ ] Future CLI / scheduled Lambda for `delete-expired` (deferred to Phase 6 — bundled with the post-launch optimization sweep)
 
 ### 3.9.3 Bot Detection in Analytics ✅
