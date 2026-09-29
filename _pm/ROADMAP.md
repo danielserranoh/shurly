@@ -584,7 +584,7 @@ System creates:
     deleted, inserted, replaced or swapped with its neighbour), or the same code but for case. One indexed
     lookup per path; none for a path no code could be (longer than 20, or a character no code has)
   - The MCP's `list_orphan_visits_grouped` uses it, and stops loading every row. Its samples keep their IPs:
-    a decision pending (`docs/PERSONAL_DATA.md`)
+    kept (2026-09-29), to revisit after the dogfood (`docs/PERSONAL_DATA.md`)
 
 ### 3.10.5 CSV Export for Analytics ✅
 - [x] Add `?format=csv` to visit / analytics endpoints
@@ -1763,7 +1763,8 @@ live in `mcp_server/README.md`, written for developers. There is no user manual 
         personal campaign stays its creator's
   - [x] Finding 1: a crawler's preview of a campaign link carried its recipient's `user_data` in its refresh URL.
         Now it never does; people's redirect is unchanged (2026-09-29)
-  - Decisions pending, with the user: a campaign link's visits one by one; orphan visits' IPs
+  - The user's two decisions, a campaign link's visits one by one and orphan visits' IPs: both kept (2026-09-29),
+    to revisit after the dogfood
 - [ ] Environment secrets audit (DB password and JWT secret are plain task env vars; Secrets Manager is the planned move)
   - [ ] The Google OAuth client's secret (3.13.2, `GOOGLE_CLIENT_SECRET`) in Secrets Manager
 - [x] SSRF guard on the Open Graph fetcher (PR #21, see CHANGELOG § Security)
@@ -1917,8 +1918,11 @@ the import can be re-run.
       conflict instead of suffixing like the custom-code path does → `python -m server.tools.shlink import`
       (`server/tools/shlink/README.md`): owned by the organization, as an owner; a link Shurly can't take stops
       it too, unless the review drops it; a later snapshot adds only newer visits (the cutover's delta)
-  - [ ] How it runs in production: it writes to the private RDS. Decision B, with the user: a one-off ECS task
-        (recommended) or ECS Exec (needs an ECS task role with SSM permissions; `deploy_ecs.sh` sets none)
+  - [x] How it runs in production: it writes to the private RDS. Decision B, with the user: a one-off ECS task
+        (recommended) or ECS Exec (needs an ECS task role with SSM permissions; `deploy_ecs.sh` sets none) →
+        a one-off ECS task (decided 2026-09-29): `scripts/run_shlink_import.sh`, the live service's image,
+        environment and network, and a task role that reads one S3 prefix. Dry run unless `--for-real`.
+        DEPLOYMENT.md has the runbook and the IAM, to make once by hand
 - [x] Fill `Visitor.country` for Shurly's own visits (geolocation: 2.x's deferred "IP geolocation service
       integration"). Nothing fills it today, so once Shlink's history is imported the geo view shows only that
       history, and would mislead → the ISO code, from DB-IP's IP to Country Lite (CC BY 4.0, no account),
