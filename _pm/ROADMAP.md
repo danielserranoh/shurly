@@ -25,8 +25,8 @@ Order agreed in the 2026-09-27 review; confirm each item before starting it.
 4. **Identity**: sign in with Google Workspace, for the web (3.13) and the MCP (5.8). One Google project covers
    both. The code of both is done (3.13's backend and frontend, 5.8), and in production since release #81
    (2026-09-28) on `shurly.griddo.io`, which the deploy's smoke test checks. The MCP's Google sign-in is live.
-   The frontend is hosted since 2026-09-29, and `/api/v1/auth/google/start` sends people to Google with the right
-   callback. Left: a person completing the web sign-in in production, and the end-to-end checks (3.13.6, 5.8).
+   The frontend is hosted since 2026-09-29, and a person completed the web sign-in there that day (3.13.6).
+   Left: the MCP's end-to-end check, from Claude Code and a claude.ai connector (5.8).
 5. ✅ **MCP install guide**, in the app and in the user manual (5.9): `/manual/install-mcp/` and Settings → API &
    MCP. Its address comes from the build: `https://shurly.griddo.io/mcp/` in production's.
 6. **Internal dogfood** with the frontend and the MCP (5.6).
@@ -862,9 +862,8 @@ Until then `POST /auth/register` stays reachable through the public API and its 
       creates the user and the membership, matching by `sub` after an email change, one-time code single use and
       short-lived, passwords set only while signed in, register gone → `tests/test_phase3132_google_sign_in.py`
       and `tests/test_phase3133_passwords.py`, on `tests/fake_google.py` (real RS256 tokens, no network)
-- [ ] A person completes the web sign-in in production, with a Griddo account → the frontend is hosted and
-      `/api/v1/auth/google/start` redirects to Google with the right callback (2026-09-29); nobody has completed a
-      sign-in end to end yet
+- [x] A person completes the web sign-in in production, with a Griddo account → 2026-09-29: the user signed in
+      with Google on `https://shurly.griddo.io` and saved their profile
 
 ---
 
