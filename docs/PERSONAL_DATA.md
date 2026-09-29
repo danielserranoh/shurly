@@ -194,6 +194,10 @@ These were questions for the user. On 2026-09-29 both were kept as they are, to 
      internal address. The per-IP rate limits could be dodged the same way.
    - Now the app alone reads the header, from the right, and only from `TRUSTED_PROXIES` (DEPLOYMENT.md §
      Trusted-Proxy Configuration). Visits stored before keep what they have.
+   - Verified in production on 2026-09-29, after hotfix #174:
+     - 22 bad logins on `s.griddo.io`, each with a new forged `X-Forwarded-For`, and the 21st is a `429`: the
+       limit counts the real address;
+     - CloudWatch shows `client_ip_source` reading `xff` there, where it had read `socket`.
 3. **`PATCH /api/v1/campaigns/{campaign_id}/tags` answers a malformed id with another 400 message**
    (`Invalid campaign ID: …`, where the others say `Invalid campaign ID format`). It's left as it is: this audit
    changes no behaviour.
