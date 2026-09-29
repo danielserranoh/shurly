@@ -53,6 +53,12 @@ EXCLUDED_ROUTE_MAPS: list[RouteMap] = [
         pattern=r"^/api/v1/analytics/urls/\{short_code\}/visits\.csv$",
         mcp_type=MCPType.EXCLUDE,
     ),
+    # ROADMAP 3.10.4 — orphan visits by the path tried: the curated `list_orphan_visits_grouped`
+    # is the MCP's grouping, the same one.
+    RouteMap(
+        pattern=r"^/api/v1/analytics/orphan-visits/grouped$",
+        mcp_type=MCPType.EXCLUDE,
+    ),
     # Phase 3.17 — a campaign's recipients as a file, the same way: `list_campaign_recipients`
     # pages through them.
     RouteMap(

@@ -61,6 +61,7 @@ of the same module that the route calls.
 | `GET /api/v1/analytics/campaigns/{campaign_id}/totals` | **visits**, counted over all its recipients | who can see the campaign | `visible_campaign_or_404` | `get_campaign_totals` |
 | `GET /api/v1/analytics/campaigns/{campaign_id}/users` | **recipients' rows** and **recipients' activity**: every recipient's `user_data`, clicks and last click | who can see the campaign | `visible_campaign_or_404` | `get_campaign_users` |
 | `GET /api/v1/analytics/orphan-visits` | **addresses**: the anonymized IP, user agent and referrer of each hit on an unknown code | any signed-in account: they belong to no organization. **Decision pending:** whether the IPs should be shown | `get_current_user` | `get_orphan_visits` |
+| `GET /api/v1/analytics/orphan-visits/grouped` | none: the paths tried on unknown codes, counted, their first and last hit, and the links each may have meant. Never an IP, a user agent or a referrer | any signed-in account: they belong to no organization. The links suggested are the caller's to see | `get_current_user`, `viewer` | excluded |
 | `GET /api/v1/analytics/overview` | **visits**, counted: totals, and the top links by code (a campaign link's clicks are one recipient's) | the links the caller can see | `sees` | `get_overview_stats` |
 | `GET /api/v1/analytics/urls/{short_code}/breakdown` | **visits**, counted. On a campaign link, one recipient's | who can see the link | `visible_url_or_404` | `get_url_breakdown` |
 | `GET /api/v1/analytics/urls/{short_code}/daily` | **visits**, counted. On a campaign link, one recipient's | who can see the link | `visible_url_or_404` | `get_url_daily_stats` |
@@ -149,7 +150,7 @@ Each also runs behind `POST /mcp/`, the MCP's sign-in.
 | Route | People's data it returns | Who sees it | Guard | MCP |
 |---|---|---|---|---|
 | MCP `get_url_analytics_summary` | **visits**, counted, and how many distinct addresses. On a campaign link, one recipient's | who can see the link | `find_url` | curated |
-| MCP `list_orphan_visits_grouped` | **addresses**: the anonymized IPs, user agents and referrers of hits on unknown codes, grouped | any account: they belong to no organization. **Decision pending:** whether the IPs should be shown | `RequireAuthMiddleware` | curated |
+| MCP `list_orphan_visits_grouped` | **addresses**: the anonymized IPs, user agents and referrers of each path's newest 3 hits on unknown codes, with the paths' counts, first and last hit, and the links each may have meant | any account: they belong to no organization. The links suggested are the caller's to see. **Decision pending:** whether the IPs should be shown | `RequireAuthMiddleware`, `viewer` | curated |
 | MCP `create_campaign_from_rows` | **own account**: the new campaign | any account | `viewer` | curated |
 | MCP `add_redirect_rule` | none | who can change the link | `find_url`, `can_change` | curated |
 

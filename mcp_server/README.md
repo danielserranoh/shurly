@@ -256,7 +256,10 @@ Like every tool that takes a link's code, these two take a `domain` too (Phase 8
 code can name links on several domains, and without it the default domain's link answers.
 - **`list_orphan_visits_grouped`** — clusters orphan visits by
   `attempted_path` so typo patterns are obvious instead of paginating
-  through a flat event log.
+  through a flat event log. Each path comes with its first and last hit,
+  and `did_you_mean`: the caller's links it's one edit from. It's the
+  analytics page's grouping (`server/utils/orphans.py`), over every kind
+  of orphan visit, with the newest 3 hits of each path as samples.
 
 Like the API, they act with the caller's role (Phase 3.14.3): the
 organization's links and the caller's personal ones are visible, and changing

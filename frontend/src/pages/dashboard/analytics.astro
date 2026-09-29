@@ -4,6 +4,7 @@ import PageHeader from '@/components/ui/PageHeader.astro';
 import StatCard from '@/components/ui/StatCard.astro';
 import Icon from '@/components/ui/Icon.astro';
 import ProBadge from '@/components/ui/ProBadge.astro';
+import Pager from '@/components/ui/Pager.astro';
 ---
 
 <AppLayout title="Analytics" section="analytics">
@@ -54,8 +55,9 @@ import ProBadge from '@/components/ui/ProBadge.astro';
 
       <section class="card p-5 sm:p-6" aria-labelledby="orphans-title">
         <h2 id="orphans-title" class="flex items-center gap-2 font-semibold text-ink-950">Typos & broken links</h2>
-        <p class="text-sm text-ink-500">Short links people tried that don’t exist — often a typo on something printed.</p>
+        <p class="text-sm text-ink-500">Short links people tried in the last 30 days that don’t exist — often a typo on something printed.</p>
         <ul class="mt-5 grid gap-2" data-orphans></ul>
+        <Pager />
       </section>
     </div>
 
@@ -70,17 +72,18 @@ import ProBadge from '@/components/ui/ProBadge.astro';
 </AppLayout>
 
 <script>
-  import { apiGet, saveBlob } from '@/utils/api';
+  import { apiGet, qs, saveBlob } from '@/utils/api';
   import { barList, bindChartTableToggle, columnChart, dataTable, sparkline } from '@/utils/charts';
   import { todayIn } from '@/utils/days';
   import { toCsv } from '@/utils/csv';
   import { formatDateTime, formatNumber, hostname, pluralize, prettyUrl } from '@/utils/format';
   import { html, setHTML } from '@/utils/html';
   import { icon } from '@/utils/icons';
-  import { linkHref, listLinks } from '@/utils/links';
+  import { linkHref } from '@/utils/links';
+  import { renderPager } from '@/utils/paging';
   import { hydrateTimes, toast } from '@/utils/ui';
   import { showDaysZoneHint } from '@/utils/viewer';
-  import type { OrphanVisitsResponse, OverviewStats } from '@/utils/types';
+  import type { OrphanGroupsResponse, OverviewStats } from '@/utils/types';
 
   const $ = <T extends HTMLElement = HTMLElement>(sel: string) => document.querySelector<T>(sel)!;
   const root = $('#analytics');
@@ -140,61 +143,56 @@ import ProBadge from '@/components/ui/ProBadge.astro';
     );
   }
 
-  // Levenshtein distance for "did you mean" suggestions on orphan visits.
-  function distance(a: string, b: string): number {
-    const dp = Array.from({ length: a.length + 1 }, (_, i) => [i, ...Array(b.length).fill(0)]);
-    for (let j = 1; j <= b.length; j++) dp[0][j] = j;
-    for (let i = 1; i <= a.length; i++)
-      for (let j = 1; j <= b.length; j++)
-        dp[i][j] = Math.min(dp[i - 1][j] + 1, dp[i][j - 1] + 1, dp[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
-    return dp[a.length][b.length];
-  }
+  // "Typos & broken links": the paths tried on unknown codes in the last 30 days, most tried first, a page at
+  // a time. "Did you mean" is the API's, against every link you can see (ROADMAP 3.10.4).
+  const ORPHAN_DAYS = 30;
+  const ORPHAN_PAGE_SIZE = 10;
+  const orphanPager = $('#pagination');
+  let orphanPage = 1;
 
   async function loadOrphans() {
     const list = $('[data-orphans]');
     try {
-      const [orphans, links] = await Promise.all([
-        apiGet<OrphanVisitsResponse>('/api/v1/analytics/orphan-visits?limit=500'),
-        listLinks({ limit: 100 }).catch(() => ({ urls: [], total: 0 })),
-      ]);
-      const groups = new Map<string, { count: number; last: string | null }>();
-      orphans.items
-        .filter((o) => o.type === 'invalid_short_url')
-        .forEach((o) => {
-          const g = groups.get(o.attempted_path) ?? { count: 0, last: null };
-          g.count += 1;
-          if (o.created_at && (!g.last || o.created_at > g.last)) g.last = o.created_at;
-          groups.set(o.attempted_path, g);
-        });
-      const codes = links.urls.map((u) => u.short_code);
-      const sorted = [...groups.entries()].sort((a, b) => b[1].count - a[1].count).slice(0, 6);
-      if (!sorted.length) {
+      const res = await apiGet<OrphanGroupsResponse>(
+        `/api/v1/analytics/orphan-visits/grouped${qs({ period: ORPHAN_DAYS, page: orphanPage, page_size: ORPHAN_PAGE_SIZE })}`,
+      );
+      if (!res.groups.length && orphanPage > 1) {
+        orphanPage = 1;
+        return loadOrphans();
+      }
+      renderPager(orphanPager, orphanPage, ORPHAN_PAGE_SIZE, res.total_paths, res.groups.length);
+      if (!res.groups.length) {
         setHTML(list, html`<li class="flex items-center gap-3 rounded-xl bg-brand-50 p-4 text-sm text-brand-900">${icon('circle-check', 'size-4 text-brand-700')}No broken links. Everyone’s landing where they should.</li>`);
         return;
       }
       setHTML(
         list,
-        html`${sorted.map(([path, g]) => {
-          const attempted = path.replace(/^\//, '').toLowerCase();
-          const best = codes
-            .map((c) => ({ c, d: distance(attempted, c.toLowerCase()) }))
-            .filter((x) => x.d > 0 && x.d <= 2)
-            .sort((a, b) => a.d - b.d)[0];
+        html`${res.groups.map((g) => {
+          const best = g.did_you_mean[0];
           return html`<li class="flex items-center gap-3 rounded-xl border border-line p-3">
             <span class="grid size-8 shrink-0 place-items-center rounded-lg bg-amber-50 text-amber-700">${icon('link-off')}</span>
             <div class="min-w-0 flex-1">
-              <p class="shortlink truncate text-sm text-ink-900">${path}</p>
-              <p class="truncate text-xs text-ink-500">${best ? html`Did you mean <a class="link" href="${linkHref(best.c)}">/${best.c}</a>? · ` : ''}${g.last ? html`last <time data-relative datetime="${g.last}" title="${formatDateTime(g.last)}"></time>` : ''}</p>
+              <p class="shortlink truncate text-sm text-ink-900">${g.attempted_path}</p>
+              <p class="truncate text-xs text-ink-500">${best ? html`Did you mean <a class="link" href="${linkHref(best.short_code, best.domain)}" title="${best.short_url}">/${best.short_code}</a>? · ` : ''}last <time data-relative datetime="${g.last_seen}" title="${formatDateTime(g.last_seen)}"></time></p>
             </div>
-            <span class="badge badge-warn">${pluralize(g.count, 'try', 'tries')}</span>
+            <span class="badge badge-warn">${pluralize(g.visits, 'try', 'tries')}</span>
           </li>`;
         })}`,
       );
       hydrateTimes(list);
     } catch {
+      orphanPager.hidden = true;
       setHTML(list, html`<li class="rounded-xl bg-ink-50 p-4 text-sm text-ink-500">Couldn’t load broken-link attempts.</li>`);
     }
   }
+  orphanPager.querySelector('[data-prev]')!.addEventListener('click', () => {
+    orphanPage = Math.max(1, orphanPage - 1);
+    loadOrphans();
+  });
+  orphanPager.querySelector('[data-next]')!.addEventListener('click', () => {
+    orphanPage += 1;
+    loadOrphans();
+  });
 
   $('[data-export]').addEventListener('click', () => {
     if (!overview) return;
