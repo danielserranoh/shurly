@@ -49,9 +49,8 @@ frontend/test-results/
 .DS_Store
 Thumbs.db
 
-# uv
+# uv (uv.lock is committed: CI and the image install exactly it)
 .uv/
-uv.lock
 
 # Ruff
 .ruff_cache/

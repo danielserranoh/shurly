@@ -89,10 +89,17 @@ CREATE DATABASE shurly;
 #### Install Dependencies
 
 ```bash
-uv sync
+uv sync --extra dev --extra mcp
 ```
 
-This will create a virtual environment and install all Python dependencies.
+This creates a virtual environment with exactly the versions in `uv.lock`, the tests' and the linter's (`dev`) and
+the MCP's (`mcp`) included. `uv.lock` is committed: CI, the deploy and the image install exactly it.
+
+- **Add a dependency:** `uv add <package>` (`--optional dev` for a tool), then commit `pyproject.toml` and `uv.lock`.
+- **Bump one:** `uv lock --upgrade-package <package>`, run the tests, then commit `uv.lock`.
+- **Every week** Dependabot opens a PR against `dev` with the minor and patch bumps, grouped
+  (`.github/dependabot.yml`). A major is a PR of its own.
+- CI runs `uv sync --locked`, which fails when `pyproject.toml` changed without `uv.lock`: run `uv lock`.
 
 #### Configure Environment
 

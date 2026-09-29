@@ -371,6 +371,13 @@ That's the only secret needed. No `AWS_ACCESS_KEY_ID`, no `AWS_SECRET_ACCESS_KEY
 
 `deploy-backend.yml` deploys on every push to `main`. `main` is branch-protected (a PR with passing tests), so a commit that lands there has already passed that gate. It also runs by hand from the Actions tab (`workflow_dispatch`), for a rollback or a redeploy.
 
+**Dependencies are pinned** by the committed `uv.lock`.
+- The deploy job runs `uv sync --locked`, and the image `uv sync --frozen`, so a release installs what its PR's CI
+  tested.
+- The Monday rebuild (§ Geolocation data) changes no Python dependency, and a rollback rebuilds what shipped.
+- New versions arrive only through Dependabot's weekly PR against `dev` (`.github/dependabot.yml`: uv and the
+  workflows' actions, minor and patch grouped), which is QA'd and released like any other.
+
 ---
 
 ## Frontend hosting (Phase 4.10)
@@ -898,10 +905,10 @@ and has no supported way to change them: the consent page, its errors, the error
 (`server/templates/mcp_consent.html` and `mcp_error.html`), once, when the Google provider is built.
 fastmcp keeps the flow: the CSRF token, the cookies and the redirect checks.
 
-- **Upgrades.** The deploy job installs the newest fastmcp 4.x (`uv.lock` isn't committed). The pages
+- **Upgrades.** `uv.lock` pins fastmcp, and a new version arrives in Dependabot's weekly PR. The pages
   were checked against 4.0.6 to 4.0.10.
-  - If a later version renames or moves a renderer, `tests/test_phase58_mcp_pages.py` fails in the
-    same job, before the image is built.
+  - If a later version renames or moves a renderer, `tests/test_phase58_mcp_pages.py` fails in that PR's
+    CI, before anything is merged.
   - If it gets past that, the app refuses to start (`check_fastmcp`), rather than show FastMCP's pages.
   - Either way, update `pages.py` for that version.
 - **Consent every time.** `require_authorization_consent` keeps fastmcp's default, so no answer is
