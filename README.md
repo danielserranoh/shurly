@@ -2,6 +2,10 @@
 
 A modern, full-stack URL shortener with analytics and campaign management, built with FastAPI and Astro.
 
+It runs at **<https://shurly.griddo.io>** since 2026-09-29: the web app, the API (`/api/v1/`) and the MCP (`/mcp/`).
+To connect Claude to it, see [docs/setup_mcpclient.md](docs/setup_mcpclient.md), or the manual's
+[Connect Claude to Shurly](https://shurly.griddo.io/manual/install-mcp/).
+
 ## Features
 
 - **URL Shortening**: Auto-generated 6-char codes, custom slugs, or campaign bulk
@@ -128,15 +132,19 @@ GEOIP_FALLBACK_DATABASE=data/dbip-country-lite.mmdb # DB-IP's, when GeoLite2 Cit
 TRUSTED_PROXIES=[]                         # CIDR allowlist for X-Forwarded-For
 DISABLE_TRACK_PARAM=nostat                 # Query string that suppresses logging
 SHORT_URL_MODE=loose                       # "loose" lowercases codes/slugs
-DEFAULT_DOMAIN=shurl.griddo.io             # Seeded at startup
+DEFAULT_DOMAIN=shurl.griddo.io             # Short links' host, seeded at startup: a placeholder (below)
 REDIRECT_STATUS_CODE=302                   # 301 / 302 / 307 / 308
 REDIRECT_CACHE_LIFETIME=0                  # Seconds; 0 = no-cache
 OG_FETCH_ALLOW_PRIVATE=false               # true only to preview localhost pages in dev
 ```
 
+`DEFAULT_DOMAIN`'s default, `shurl.griddo.io`, is a placeholder that doesn't resolve. Production's short links are
+on `s.griddo.io` (`go.griddo.io` after the Shlink cutover, ROADMAP 8.5), set on the ECS service.
+
 #### Initialize the Database
 
-The database tables will be created automatically when you start the application. SQLAlchemy will create all necessary tables based on the models.
+The app runs its Alembic migrations (`server/migrations/`) when it starts, so the tables are created and kept up to
+date by starting it.
 
 #### Run the Backend
 
