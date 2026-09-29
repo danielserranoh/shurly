@@ -36,6 +36,11 @@ implementation lifecycle and is independent of the URL version segment.
   - people's data goes to anyone without "(by design)".
 
   So a new route can't widen who sees people's data without saying so in the same PR.
+- **`tests/test_personal_data_access.py` checks it at runtime.** It covers every GET that returns recipients' rows,
+  their activity, or visits (20 routes, read from the table):
+  - an outsider from another organization gets a 404, and never sees the data in a list;
+  - a plain member gets it;
+  - a personal campaign stays its creator's.
 - **One lookup for a link and one for a campaign** (`visible_url_or_404`, `visible_campaign_or_404`, in
   `server/utils/access.py`). Each had two copies, in the link and campaign routes and in the analytics. The rules are
   the same, and every route answers as it did.

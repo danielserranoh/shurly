@@ -1701,8 +1701,9 @@ live in `mcp_server/README.md`, written for developers. There is no user manual 
     that isn't the tools.
   - One lookup each, in `server/utils/access.py`: `visible_url_or_404` and `visible_campaign_or_404`. The two copies of
     each are gone, with no change of behaviour.
-  - [ ] (b) At runtime, for every route that returns recipients' rows or activity, or visits: an outsider gets a 404
-        and an organization member a 200
+  - [x] (b) At runtime, for every route that returns recipients' rows or activity, or visits: an outsider gets a 404
+        and an organization member a 200 (`tests/test_personal_data_access.py`, 20 routes, read from the table). A
+        personal campaign stays its creator's
   - [ ] Finding 1: a crawler's preview of a campaign link carries its recipient's `user_data` in its refresh URL.
         Proposed: leave it out of the preview
   - Decisions pending, with the user: a campaign link's visits one by one; orphan visits' IPs

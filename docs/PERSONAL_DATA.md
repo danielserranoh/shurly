@@ -8,6 +8,14 @@ Reviewed on 2026-09-29. **Update this table in the same PR as any route change.*
 
 So a new route can't widen who sees people's data without saying so here.
 
+`tests/test_personal_data_access.py` checks the table at runtime, for every GET whose row returns recipients' rows,
+their activity, or visits:
+- an outsider, signed in from another organization, gets a 404, and never sees the organization's data in a list;
+- a plain member gets it;
+- someone's personal campaign stays theirs.
+
+It reads the routes from this table, so a new row is checked as soon as it says what its route returns.
+
 This is about what goes *out*: what a route returns, not what Shurly records. What a visit records is in
 `server/core/models/visitor.py`. The IPs are anonymized when stored (`ANONYMIZE_REMOTE_ADDR`).
 
