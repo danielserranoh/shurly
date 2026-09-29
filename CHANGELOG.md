@@ -40,6 +40,12 @@ implementation lifecycle and is independent of the URL version segment.
 - `tests/test_suite_database.py` checks the suite runs on the database it was asked for, so the job can't quietly
   run on SQLite.
 
+### Added — how people join, get their roles and leave (a runbook, 7.2)
+- **`DEPLOYMENT.md` § People: joining, roles and leaving**, for the rollout to the team (5.6.1): what to set before
+  anyone joins; that anyone on the Workspace domain who has the address can sign in, and what Google has to vouch
+  for; what members, admins and owners can do; what removing someone closes and what happens to their links; and
+  the rollout, step by step. Each statement is checked against the code.
+
 ### Fixed — a visit stores at most 1024 characters of user agent and 2048 of referrer
 - **The columns take any length,** so a scanner could store tens of KB of header on every hit, up to what the
   load balancer lets through. Real user agents and referrers are a few hundred characters.
