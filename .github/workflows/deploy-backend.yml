@@ -4,9 +4,16 @@ name: Deploy Backend to ECS
 # passing tests, so by the time a commit lands here the deploy gate has already
 # been crossed. workflow_dispatch is preserved for manual deploys (rollback,
 # debugging, deploying to a non-prod env when we add one).
+#
+# Phase 8.4 — and every Monday: MaxMind's GeoLite2 licence wants the copy the image carries
+# replaced within 30 days of an update. A scheduled run rebuilds main's current commit, as it
+# stands (the default branch is main), with this week's databases, and deploys it: the smoke
+# test still checks it's that commit. DEPLOYMENT.md § Geolocation data.
 on:
   push:
     branches: [main]
+  schedule:
+    - cron: '0 5 * * 1'
   workflow_dispatch:
     inputs:
       environment:
@@ -25,6 +32,12 @@ on:
 permissions:
   id-token: write
   contents: read
+
+# One deploy at a time: a scheduled run and a push to main rolling out side by side could land
+# the older commit last. A run waits for the one in progress; a newer run replaces a waiting one.
+concurrency:
+  group: deploy-backend
+  cancel-in-progress: false
 
 env:
   AWS_REGION: eu-south-2
@@ -77,18 +90,35 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Geolocation data (Phase 8.4)
+        env:
+          MAXMIND_ACCOUNT_ID: ${{ secrets.MAXMIND_ACCOUNT_ID }}
+          MAXMIND_LICENSE_KEY: ${{ secrets.MAXMIND_LICENSE_KEY }}
         run: |
-          # The image's geoip stage fetches DB-IP's country database, and the build below
-          # reuses it from this builder's cache. It never fails the build, so a release
-          # without it shows here, on the run's page, as well as in CloudWatch.
-          docker buildx build --target geoip-data --output type=local,dest=geoip-data .
+          # The image's geoip stage fetches MaxMind's GeoLite2 City (with these build secrets,
+          # never in a layer or this log) and DB-IP's countries, and the build below reuses it
+          # from this builder's cache, the same run. The fetch never fails the build, so it's
+          # checked here: without GeoLite2 there are no cities, and a scheduled run that ships
+          # no fresh copy would leave last week's to age past MaxMind's 30 days.
+          docker buildx build --target geoip-data --output type=local,dest=geoip-data \
+            --secret id=maxmind_account_id,env=MAXMIND_ACCOUNT_ID \
+            --secret id=maxmind_license_key,env=MAXMIND_LICENSE_KEY \
+            --build-arg GEOIP_REFRESH="$GITHUB_RUN_ID" .
+          if [ -n "$MAXMIND_LICENSE_KEY" ] && [ ! -s geoip-data/GeoLite2-City.mmdb ]; then
+            echo "::error title=No GeoLite2 City::MaxMind's database couldn't be fetched (scripts/fetch_geoip.py prints why, above). Nothing is deployed."
+            exit 1
+          fi
+          if [ -z "$MAXMIND_LICENSE_KEY" ]; then
+            echo "::warning title=No MaxMind credentials::MAXMIND_ACCOUNT_ID and MAXMIND_LICENSE_KEY aren't set: countries only, from DB-IP, and no cities."
+          fi
           if [ ! -s geoip-data/dbip-country-lite.mmdb ]; then
-            echo "::warning title=No geolocation data::The image ships without DB-IP's country database: visits will have no country until the next release (scripts/fetch_geoip.py)."
+            echo "::warning title=No DB-IP fallback::The image ships without DB-IP's country database, the fallback (scripts/fetch_geoip.py)."
           fi
 
       - name: Build and push image (multi-arch)
         env:
           REGISTRY: ${{ steps.ecr-login.outputs.registry }}
+          MAXMIND_ACCOUNT_ID: ${{ secrets.MAXMIND_ACCOUNT_ID }}
+          MAXMIND_LICENSE_KEY: ${{ secrets.MAXMIND_LICENSE_KEY }}
         run: |
           # Tag = <short-sha>-<run-id>. Short SHA keeps it traceable to the
           # source commit; run id makes the tag unique per workflow run so
@@ -103,6 +133,10 @@ jobs:
           docker buildx build \
             --platform linux/amd64,linux/arm64 \
             --build-arg GIT_SHA="$GITHUB_SHA" \
+            --build-arg BUILD_ID="$GITHUB_RUN_ID" \
+            --build-arg GEOIP_REFRESH="$GITHUB_RUN_ID" \
+            --secret id=maxmind_account_id,env=MAXMIND_ACCOUNT_ID \
+            --secret id=maxmind_license_key,env=MAXMIND_LICENSE_KEY \
             --tag "$IMAGE_URI" \
             --push \
             .
@@ -211,18 +245,21 @@ jobs:
         # It now follows the rollout from IN_PROGRESS, so the switch should
         # already have happened when this runs. The retries stay as a margin.
         # A 200 alone proves nothing (the old image answers 200 too); wait for
-        # /health to report the commit we just built.
+        # /health to report the commit we just built, and this run's build: the
+        # weekly run (Phase 8.4) rebuilds the commit that's already serving.
         run: |
           PUBLIC_HOST="shurly.griddo.io"
-          echo "Waiting for https://${PUBLIC_HOST}/api/v1/health to report commit ${GITHUB_SHA::8}"
+          echo "Waiting for https://${PUBLIC_HOST}/api/v1/health to report commit ${GITHUB_SHA::8}, build ${GITHUB_RUN_ID}"
           for i in $(seq 1 30); do
-            SERVING=$(curl -sS --max-time 10 "https://${PUBLIC_HOST}/api/v1/health" | jq -r '.commit // "none"' 2>/dev/null || echo "unreachable")
-            if [ "$SERVING" = "$GITHUB_SHA" ]; then
+            HEALTH=$(curl -sS --max-time 10 "https://${PUBLIC_HOST}/api/v1/health" 2>/dev/null) || HEALTH='{"commit": "unreachable"}'
+            SERVING=$(echo "$HEALTH" | jq -r '.commit // "none"' 2>/dev/null || echo "unreachable")
+            BUILD=$(echo "$HEALTH" | jq -r '.build // "none"' 2>/dev/null || echo "unreachable")
+            if [ "$SERVING" = "$GITHUB_SHA" ] && [ "$BUILD" = "$GITHUB_RUN_ID" ]; then
               echo "✓ New image is serving (attempt $i)"
               exit 0
             fi
-            echo "[$i/30] serving: ${SERVING::11} — waiting for ${GITHUB_SHA::8}"
+            echo "[$i/30] serving: ${SERVING::11}, build ${BUILD} — waiting for ${GITHUB_SHA::8}, build ${GITHUB_RUN_ID}"
             sleep 10
           done
-          echo "::error::The rollout completed, but 5 min later ${PUBLIC_HOST} still serves ${SERVING::11}, not ${GITHUB_SHA::8}. The public-host rule (priority 12) was not synced — check the ecs-alb-rule-sync Lambda's logs."
+          echo "::error::The rollout completed, but 5 min later ${PUBLIC_HOST} still serves ${SERVING::11} (build ${BUILD}), not ${GITHUB_SHA::8} (build ${GITHUB_RUN_ID}). The public-host rule (priority 12) was not synced — check the ecs-alb-rule-sync Lambda's logs."
           exit 1

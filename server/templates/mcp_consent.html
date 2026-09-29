@@ -1,0 +1,171 @@
+<!doctype html>
+{#- Shurly's consent page for its MCP server, in place of fastmcp's: an app (an MCP client, such as Claude) asks to
+    act as the person. fastmcp keeps the security; this page only shows what it's given.
+    - `client_name` is untrusted: anyone can register a client under any name. It's autoescaped, never |safe, and
+      the page doesn't vouch for it. The verified domain, when there is one, and the callback address are what to check.
+    - The form, its hidden fields and the two buttons are fastmcp's contract: they post back to this address.
+    - One <style> block, with no Jinja in it, and no style attributes, so the CSP allows it by hash. No scripts, fonts
+      or images from anywhere: the logo and the icons are inline. -#}
+{%- set loopback = redirect_uri.startswith(("http://localhost:", "http://localhost/", "http://127.0.0.1:", "http://127.0.0.1/", "http://[::1]:", "http://[::1]/")) %}
+<html lang="en" data-shurly-page="consent">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<meta name="color-scheme" content="light">
+<link rel="icon" href="data:,">
+<title>Connect an app to Shurly</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+body {
+  margin: 0;
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  padding: 48px 16px;
+  background: #faf9f6;
+  color: #001b3c;
+  font: 16px/1.6 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+main {
+  width: 100%;
+  max-width: 480px;
+  padding: 32px 28px 28px;
+  background: #fff;
+  border: 1px solid #e0e6ef;
+  border-radius: 18px;
+  box-shadow: 0 1px 2px rgba(0, 27, 60, 0.05);
+}
+.logo { display: block; width: auto; height: 26px; margin-bottom: 28px; }
+h1 {
+  margin: 0 0 8px;
+  font-size: 22px;
+  line-height: 1.3;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  overflow-wrap: anywhere;
+}
+h1 strong { font-weight: 700; }
+p { margin: 0; color: #425b7c; }
+.verified {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 16px;
+  padding: 8px 12px;
+  border: 1px solid #a7f3d0;
+  border-radius: 10px;
+  background: #ecfdf5;
+  color: #065f46;
+  font-size: 14px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+.verified svg { flex: none; width: 16px; height: 16px; }
+.verified strong { font-weight: 600; }
+.callback {
+  margin-top: 16px;
+  padding: 14px 16px;
+  border: 1px solid #e0e6ef;
+  border-radius: 12px;
+  background: #f8fafc;
+}
+.callback h2 { margin: 0 0 4px; font-size: 13px; line-height: 1.4; font-weight: 600; color: #425b7c; }
+.uri {
+  color: #001b3c;
+  font: 15px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  overflow-wrap: anywhere;
+}
+.callback .hint { margin-top: 10px; font-size: 14px; line-height: 1.5; }
+details { font-size: 14px; }
+summary {
+  width: fit-content;
+  padding: 2px 0;
+  border-radius: 4px;
+  color: #2a476e;
+  font-weight: 600;
+  cursor: pointer;
+}
+.more { margin-top: 16px; }
+.more dl { display: grid; gap: 10px; margin: 10px 0 0; }
+.more dt { color: #5c708c; font-size: 13px; }
+.more dd { margin: 0; color: #001b3c; overflow-wrap: anywhere; }
+.mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; font-size: 13px; }
+.actions { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 24px; }
+button {
+  min-height: 44px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 10px;
+  font: 600 15px/1.2 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  cursor: pointer;
+}
+.allow { background: #5057ff; color: #fff; box-shadow: 0 1px 2px rgba(0, 27, 60, 0.05), inset 0 -1px 0 rgba(0, 27, 60, 0.12); }
+.allow:hover { background: #4344e5; }
+.deny { background: #fff; color: #022958; box-shadow: 0 1px 2px rgba(0, 27, 60, 0.05), inset 0 0 0 1px #c9d2df; }
+.deny:hover { background: #f8fafc; }
+.next { margin-top: 14px; color: #5c708c; font-size: 14px; text-align: center; }
+:focus-visible { outline: 2px solid #001b3c; outline-offset: 2px; }
+footer { width: 100%; max-width: 480px; padding: 0 4px; color: #5c708c; }
+footer summary { margin: 0 auto; color: #425b7c; }
+footer details[open] summary { margin-bottom: 8px; }
+footer p { font-size: 14px; line-height: 1.55; }
+footer p + p { margin-top: 8px; }
+a { color: #001b3c; text-decoration: underline; text-decoration-color: #5057ff; text-decoration-thickness: 2px; text-underline-offset: 3px; }
+a:hover { color: #3030a0; }
+@media (max-width: 480px) {
+  body { padding: 32px 16px; }
+  main { padding: 24px 20px 20px; }
+  h1 { font-size: 20px; }
+  .uri { font-size: 14px; }
+}
+</style>
+</head>
+<body>
+<main>
+  <svg class="logo" viewBox="0 0 463.11 176.45" fill="none" role="img" aria-label="Shurly"><title>Shurly</title><path fill-rule="evenodd" clip-rule="evenodd" d="M377 83C377 92.3888 384.611 100 394 100C403.389 100 411 92.3888 411 83V45H432V83C432 103.987 414.987 121 394 121C393.795 121 393.589 120.994 393.385 120.991C393.387 120.991 393.389 120.992 393.392 120.992L391.382 121.043C390.973 121.043 390.573 121.026 390.173 121.026H380.246C378.371 121.026 376.87 122.529 376.87 124.426C376.87 126.323 378.371 127.834 380.246 127.834H407.96C421.313 127.834 432.097 138.695 432.098 152.142C432.098 165.588 421.313 176.45 407.96 176.45H383.729V155.55H407.96C409.844 155.55 411.344 154.03 411.344 152.142C411.344 150.253 409.843 148.734 407.96 148.734H380.246C370.311 148.734 361.417 142.615 357.8 133.349L357.716 133.13C354.199 123.846 356.583 113.421 363.734 106.689L364.056 106.398C364.062 106.406 364.068 106.414 364.074 106.422C359.016 99.9678 356 91.836 356 83V45H377V83Z" fill="#001B3C"/><path d="M189 83C189 92.3888 196.611 100 206 100C215.389 100 223 92.3888 223 83V45H244V83C244 103.987 226.987 121 206 121C185.013 121 168 103.987 168 83V45H189V83Z" fill="#001B3C"/><path d="M302.557 53.3031L287.717 68.1901C285.602 66.0682 282.425 65.4224 279.616 66.5798C276.798 67.7289 275.001 70.4546 275.001 73.4488V121H254V45H275.001V46.04C277.451 45.3942 279.934 45 282.467 45C290.024 45 297.256 47.9941 302.557 53.3031Z" fill="#001B3C"/><path d="M341.5 99.0078L351.5 116.508C345 121.508 341.558 122.508 334 122.508C320.033 122.508 307 111.508 307 94.1913C307 76.8749 307 0.0078125 307 0.0078125H328.001V94.1913C328.001 97.1855 329.798 99.9113 332.616 101.06C335.425 102.218 339.385 101.13 341.5 99.0078Z" fill="#001B3C"/><path d="M105 49.0078C110.115 46.4445 115.889 45 122 45C142.987 45 160 62.0132 160 83V121H139V83C139 73.6112 131.389 66 122 66C112.611 66 105 73.6112 105 83V121H84V0H105V49.0078Z" fill="#001B3C"/><rect x="432" y="120.557" width="22" height="22" transform="rotate(-45 432 120.557)" fill="#5057FF"/><path d="M75 65H24C21.7909 65 20 66.7909 20 69C20 71.2091 21.7909 73 24 73H52C65.2548 73 76 83.7452 76 97C76 110.255 65.2548 121 52 121H1V101H52C54.2091 101 56 99.2091 56 97C56 94.7909 54.2091 93 52 93H24C10.7452 93 0 82.2548 0 69C0 55.7452 10.7452 45 24 45H75V65Z" fill="#001B3C"/></svg>
+  <h1><strong>{{ client_name }}</strong> wants to use your Shurly account</h1>
+  <p>If you allow it, it acts as you: it can see and change everything your account can, like your links, campaigns and their clicks.</p>
+  {%- if verified_domain %}
+  <p class="verified"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="m16 9-5.5 5.5L8 12"/></svg><span>Verified domain: <strong>{{ verified_domain }}</strong></span></p>
+  {%- endif %}
+  <section class="callback" aria-labelledby="callback-title">
+    <h2 id="callback-title">Shurly will send your access to</h2>
+    <p class="uri">{{ redirect_uri }}</p>
+    <p class="hint">
+      {%- if loopback %}A localhost address is a program on this computer, like Claude Code. {% endif -%}
+      Allow only if you just connected Shurly from your MCP client and you recognize this address.
+    </p>
+  </section>
+  <details class="more">
+    <summary>App details</summary>
+    <dl>
+      <div><dt>Client ID</dt><dd class="mono">{{ client_id }}</dd></div>
+      <div><dt>Scopes</dt><dd>{% if scopes %}{{ scopes | join(", ") }}{% else %}None requested{% endif %}</dd></div>
+    </dl>
+  </details>
+  <form method="post" action="">
+    <input type="hidden" name="txn_id" value="{{ txn_id }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="submit" value="true">
+    <div class="actions">
+      <button type="submit" name="action" value="deny" class="deny">Deny</button>
+      <button type="submit" name="action" value="approve" class="allow">Allow</button>
+    </div>
+  </form>
+  <p class="next">Allow, and you’ll sign in with your work Google account next.</p>
+</main>
+<footer>
+  <details>
+    <summary>Why am I seeing this?</summary>
+    <p>An app asked to connect to your Shurly account through Shurly’s MCP server, and Shurly asks you before anything connects. If you didn’t just connect an app, deny it.</p>
+    <p><a href="{{ manual_url }}">How connecting Claude to Shurly works</a></p>
+  </details>
+</footer>
+</body>
+</html>

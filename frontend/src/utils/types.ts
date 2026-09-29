@@ -282,6 +282,15 @@ export interface Breakdown extends CountedRange {
   referrers: BreakdownEntry[];
   /** ISO codes, and "Unknown". */
   countries: BreakdownEntry[];
+  /**
+   * Phase 8.4: English names, each with its country's code. "Unknown" and a campaign's "Other cities" have none.
+   * Null for a campaign link (one recipient's visits); absent from an API before 8.4.
+   */
+  cities?: CityEntry[] | null;
+}
+
+export interface CityEntry extends BreakdownEntry {
+  country: string | null;
 }
 
 export interface LinkVisit {

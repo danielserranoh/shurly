@@ -26,6 +26,92 @@ implementation lifecycle and is independent of the URL version segment.
 
 ## [Unreleased]
 
+### Changed — the MCP's sign-in pages are Shurly's, not FastMCP's (5.8)
+- **The consent page and every error the MCP sign-in can show are Shurly's.** No FastMCP name or logo, and
+  nothing loaded from gofastmcp.com. They come from `server/templates/mcp_consent.html` and `mcp_error.html`.
+  - fastmcp still runs the flow: the CSRF token, the cookies and the redirect checks.
+  - `mcp_server/pages.py` points its four page renderers at ours, when the Google provider is built.
+- **An error page shows a reason from a fixed set, never text from the request.** fastmcp's callback page put
+  the URL's `error_description` on screen, so a crafted link could show anyone's words under our domain.
+- **An exception from the token exchange with Google isn't shown any more.** The page gives a generic reason,
+  and `mcp.sign_in_error` logs a scrubbed line. Every error page logs its `page` and `reason`.
+- **Every HTML page under `/mcp` gets headers.** A CSP allowing only the templates' styles, by hash;
+  `X-Frame-Options: DENY`, `no-store`, `no-referrer`, `nosniff` and `noindex`.
+  - Before, the callback's errors had no `X-Frame-Options`, and no page had a cache or referrer policy.
+  - No `form-action`, on purpose: it would break the redirects that end at Claude.
+- **A fastmcp upgrade can't bring FastMCP's pages back unnoticed.** `tests/test_phase58_mcp_pages.py` pins
+  what the pages must keep: the client's name, the verified domain, the exact callback, the form and its
+  fields, Allow and Deny, consent every time. The app refuses to start if a renderer moved.
+
+### Added — cities on the Location tab (8.4)
+- **A link's and a campaign's By location tab lists cities,** next to the countries, as a chart and a table. A city
+  shows with its country ("Valencia, Spain"), since two Valencias are two places. Other cities, then Unknown, come
+  last, whatever their counts.
+- **A campaign's says what Other cities is:** those fewer than 5 recipients clicked from, grouped so that no one's
+  city shows. A campaign link's page has no cities, as the API gives it none.
+- **The credit is MaxMind's alone:** the cities come from GeoLite2 City. DB-IP, credited under the countries, has
+  no cities.
+- **The manual's "Read your analytics"** says what a city is, where the visitor's connection is registered, and a
+  campaign's rule.
+
+### Changed — the landing's example is Griddo's proposal for Tufts University
+- **The hero's link carries Griddo's logo,** the white "G" on navy (`public/logos/logo-griddo-g-s-w.svg`), in place
+  of the lettered tile.
+- **Acme Corp is Tufts University** across the landing's mocks: the hero's card, its short link (`…/q4-tufts`),
+  the tags, Ana's company, the link preview (tufts.edu, "Undergraduate admissions") and the custom back-half
+  (`…/tufts-proposal`). Northwind and Globex stay.
+- The hero's card is padded like the page's gutter on phones, so `s.griddo.io/q4-tufts` fits at 390px.
+- **The login page's feed** tells the same story: "Tufts University opened “Q4 proposal”".
+
+### Added — each request's log line says how its client IP was found (6.3)
+- **`http.request` lines carry `client_ip_source` and `host`.** The source is `cloudfront` (the viewer address, on a
+  request with the distribution's secret), `xff` (`X-Forwarded-For`, from a trusted proxy) or `socket` (the
+  connection's peer). The IP itself is never logged.
+- **So production can show the rate limits count people, not CloudFront's edges.** `shurly.griddo.io` should read
+  `cloudfront` only, and `s.griddo.io` `xff`. DEPLOYMENT.md § Client IPs behind CloudFront has the query, and what
+  each other answer means.
+- `client_ip_and_source` (`server/utils/network.py`) decides both. `client_ip`, which the rate limits and the visit
+  log use, is unchanged.
+- DEPLOYMENT's first-deploy check no longer claims that 21 failed logins show the IP is yours. From one client they
+  can't, since CloudFront reuses its connections. The source can.
+
+### Added — a visit's city, in the breakdowns (8.4)
+- **A visit's city is stored** (`visits.city`, migration `0011`): its English name, from GeoLite2 City, looked up
+  from the stored, anonymized address like its country. Nothing else about the place: no region, postcode or
+  coordinates.
+- **A link's and a campaign's breakdowns list `cities`**, each with its country's ISO code, and "Unknown" (country
+  null) for the visits without one. A city only ever goes out counted:
+  - A campaign link's breakdown has `"cities": null`, since its visits are one named recipient's.
+  - A campaign's names a city only when its visits in the period came from at least 5 of its links. The rest are
+    summed as "Other cities". Otherwise a day on which one recipient clicked would name their city.
+  - `/visits` and its CSV have no city.
+- **The Shlink import brings `visitLocation.cityName`,** and never the coordinates.
+- **`python -m server.tools.backfill_places`** fills in older visits' empty countries and cities from their stored
+  address. It fills only what's empty, and a city only where the country agrees.
+  - In production, `scripts/run_backfill_places.sh` runs it as a one-off ECS task, a dry run first.
+  - It and the Shlink import's runner share `scripts/one_off_task.sh`.
+- **Migration numbers:** `0011` is the city, so `users.api_key`'s drop takes `0012`.
+
+### Added — GeoLite2 City in the image, kept within MaxMind's 30 days (8.4)
+- **The image carries MaxMind's GeoLite2 City**, the data for a visit's city, which comes next. A visit's country
+  now comes from it too. DB-IP's country database stays as the fallback (`GEOIP_FALLBACK_DATABASE`), and the
+  image grows by about 65 MB.
+- **It's fetched with MaxMind's account ID and licence key,** the GitHub secrets `MAXMIND_ACCOUNT_ID` and
+  `MAXMIND_LICENSE_KEY`, which the deploy job hands to the build as BuildKit secrets. They're in no image layer,
+  build argument or log line. The key goes to MaxMind only, never to the storage MaxMind's download redirects to.
+- **The deploy runs every Monday at 05:00 UTC,** rebuilding main's current commit: MaxMind's licence wants a copy
+  replaced within 30 days of an update. One deploy runs at a time, so a push during the weekly run waits.
+- **It's checked at every step.**
+  - The download must match MaxMind's SHA-256, place 8.8.8.8 in the US and be under 25 days old.
+  - The deploy fails, and deploys nothing, when the key is set but GeoLite2 City wasn't fetched.
+  - The app logs what it opened and its age (`geo.database_opened`), why it fell back to DB-IP, and
+    `geo.database_stale` past 25 days.
+- **`/api/v1/health` reports its `build`,** the deploy run that made the image. The smoke test waits for it as well
+  as the commit, because the weekly image has the same commit as the one it replaces.
+- **ECR's lifecycle rule** that expires images older than 30 days, and so their copies of GeoLite2, is in
+  DEPLOYMENT.md § Geolocation data, to apply by hand.
+- **Credits:** `NOTICE`, the README and the countries card credit MaxMind's GeoLite data and DB-IP.
+
 ### Fixed — the image has its country database again (a hotfix, 8.4)
 - **The release's image shipped without DB-IP's country database.** The build got a 403 for this month's file
   and for last month's, because download.db-ip.com refuses Python's default User-Agent. Visits saved since then
@@ -380,7 +466,7 @@ implementation lifecycle and is independent of the URL version segment.
   `?nostat` hit. The Shlink import counted Shlink's potential bots the same way; it doesn't anymore.
 - **Migration `0010` repairs what's stored:** each link's latest click, or nothing. Data only, in two
   statements. During the rollout, the previous release can still set a bot's time. So `users.api_key`'s drop
-  takes `0011`.
+  takes `0012` (`0011` is a visit's city, 8.4).
 - **Unique visitors don't count an unknown address.** Every visit imported from Shlink has ip "unknown" (it
   exposes none), and so does a visit whose address Shurly couldn't read. They made one extra "visitor" in the
   overview, a campaign's summary, top performers and users, and the MCP's link summary. So unique-visitor counts
@@ -693,7 +779,7 @@ implementation lifecycle and is independent of the URL version segment.
   running this one, mid-rollout: signing in, every authenticated call, the MCP.
 - This release doesn't map it. A PostgreSQL test drops the column by hand and runs this release against the result:
   signing in, generating an API key, `/me`, an MCP tool call with the key, revoking.
-- The release after drops it, in migration `0011` (0009 is the avatar, 3.12; 0010 repairs `last_click_at`). Until then the migration drift test ignores exactly that column
+- The release after drops it, in migration `0012` (0009 is the avatar, 3.12; 0010 repairs `last_click_at`; 0011 is a visit's city, 8.4). Until then the migration drift test ignores exactly that column
   and its index, and a guard fails once they're gone.
 
 ### Security — the client IP behind CloudFront (Phase 6.3)

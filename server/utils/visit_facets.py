@@ -14,6 +14,7 @@ from server.utils.user_agent import parse_user_agent
 
 UNKNOWN = "Unknown"
 DIRECT = "Direct"  # no referrer
+OTHER_CITIES = "Other cities"  # Phase 8.4 — a campaign's cities too few of its links came from
 
 # The parser names versions ("macOS 10.15.7", "Android 14", "iOS (iPad)"): charts show families.
 _OS_FAMILIES = ("Windows", "macOS", "iOS", "Android", "Linux", "Chrome OS")

@@ -2,6 +2,10 @@
 
 A modern, full-stack URL shortener with analytics and campaign management, built with FastAPI and Astro.
 
+It runs at **<https://shurly.griddo.io>** since 2026-09-29: the web app, the API (`/api/v1/`) and the MCP (`/mcp/`).
+To connect Claude to it, see [docs/setup_mcpclient.md](docs/setup_mcpclient.md), or the manual's
+[Connect Claude to Shurly](https://shurly.griddo.io/manual/install-mcp/).
+
 ## Features
 
 - **URL Shortening**: Auto-generated 6-char codes, custom slugs, or campaign bulk
@@ -123,19 +127,24 @@ CORS_ORIGINS=["http://localhost:4232","http://localhost:3000"]
 
 # Phase 3.9 / 3.10 settings (all optional, sensible defaults shown)
 ANONYMIZE_REMOTE_ADDR=true                 # Truncate IPv4→/24, IPv6→/64
-GEOIP_DATABASE=data/dbip-country-lite.mmdb # A visit's country (scripts/fetch_geoip.py); empty: off
+GEOIP_DATABASE=data/GeoLite2-City.mmdb     # A visit's country (scripts/fetch_geoip.py); empty: off
+GEOIP_FALLBACK_DATABASE=data/dbip-country-lite.mmdb # DB-IP's, when GeoLite2 City isn't there
 TRUSTED_PROXIES=[]                         # CIDR allowlist for X-Forwarded-For
 DISABLE_TRACK_PARAM=nostat                 # Query string that suppresses logging
 SHORT_URL_MODE=loose                       # "loose" lowercases codes/slugs
-DEFAULT_DOMAIN=shurl.griddo.io             # Seeded at startup
+DEFAULT_DOMAIN=shurl.griddo.io             # Short links' host, seeded at startup: a placeholder (below)
 REDIRECT_STATUS_CODE=302                   # 301 / 302 / 307 / 308
 REDIRECT_CACHE_LIFETIME=0                  # Seconds; 0 = no-cache
 OG_FETCH_ALLOW_PRIVATE=false               # true only to preview localhost pages in dev
 ```
 
+`DEFAULT_DOMAIN`'s default, `shurl.griddo.io`, is a placeholder that doesn't resolve. Production's short links are
+on `s.griddo.io` (`go.griddo.io` after the Shlink cutover, ROADMAP 8.5), set on the ECS service.
+
 #### Initialize the Database
 
-The database tables will be created automatically when you start the application. SQLAlchemy will create all necessary tables based on the models.
+The app runs its Alembic migrations (`server/migrations/`) when it starts, so the tables are created and kept up to
+date by starting it.
 
 #### Run the Backend
 
@@ -419,8 +428,8 @@ Per-link analytics as on Shlink's link page (Phase 3.16, contract in ROADMAP 3.1
 - `GET /api/v1/analytics/urls/{short_code}/totals` — all time: clicks, opens, countries, the last click
 - `GET /api/v1/analytics/urls/{short_code}/timeseries` — clicks and opens by day, week or month, hour
   of day and day of week
-- `GET /api/v1/analytics/urls/{short_code}/breakdown` — by OS, browser, device, referrer and country, with
-  shares
+- `GET /api/v1/analytics/urls/{short_code}/breakdown` — by OS, browser, device, referrer, country and city,
+  with shares. No cities for a campaign link (Phase 8.4)
 - `GET /api/v1/analytics/urls/{short_code}/visits` — the visits, newest first, 20 a page: never an IP, a user
   agent or a full referrer
 - `GET /api/v1/analytics/urls/{short_code}/visits.csv` — every visit of the period, with its user agent, never
@@ -430,7 +439,8 @@ Per-link analytics as on Shlink's link page (Phase 3.16, contract in ROADMAP 3.1
 - `GET /api/v1/analytics/campaigns/{campaign_id}/totals` — all time: recipients, clicks, opens, Clicked and Opened
   (recipients with at least one), the click and open rates, countries, the last click (Phase 3.17)
 - `GET /api/v1/analytics/campaigns/{campaign_id}/timeseries` and `…/breakdown` — a link's series and breakdown
-  (Phase 3.16), over all the campaign's links, for a period
+  (Phase 3.16), over all the campaign's links, for a period. A city is named only from 5 of its links; the rest
+  are "Other cities" (Phase 8.4)
 - `GET /api/v1/analytics/campaigns/{campaign_id}/recipients` — all time, for following up with people: each
   recipient's CSV row, clicks, opens, first and last click and last open. Filtered (`clicked`, `opened`, `none`),
   searched, sorted and paged, with the `counts` each filter gives. Shown to whom `/users` is
@@ -548,6 +558,9 @@ with its default and meaning, is in [docs/ENVIRONMENT.md](docs/ENVIRONMENT.md). 
 
 MIT
 
-IP geolocation by [DB-IP](https://db-ip.com), from its IP to Country Lite database, licensed under
-[CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). The image fetches it at build time
-(`scripts/fetch_geoip.py`); it isn't in this repository.
+This product includes GeoLite Data created by MaxMind, available from
+[https://www.maxmind.com](https://www.maxmind.com), under the
+[GeoLite EULA](https://www.maxmind.com/en/geolite2/eula). IP geolocation by [DB-IP](https://db-ip.com),
+from its IP to Country Lite database, licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
+The image fetches both at build time (`scripts/fetch_geoip.py`); neither is in this repository. See
+[NOTICE](NOTICE).

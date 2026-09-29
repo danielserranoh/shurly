@@ -15,7 +15,16 @@ from sqlalchemy.orm import Session
 from server.core import get_db
 from server.core.auth import get_current_user
 from server.core.config import settings
-from server.core.models import URL, Campaign, Domain, OrphanVisit, OrphanVisitType, User, Visitor
+from server.core.models import (
+    URL,
+    Campaign,
+    Domain,
+    OrphanVisit,
+    OrphanVisitType,
+    URLType,
+    User,
+    Visitor,
+)
 from server.schemas.analytics import (
     BreakdownItem,
     BreakdownResponse,
@@ -25,6 +34,7 @@ from server.schemas.analytics import (
     CampaignTotalsResponse,
     CampaignUsersResponse,
     CampaignUserStat,
+    CityItem,
     DailyStats,
     DailyStatsResponse,
     GeoStats,
@@ -66,7 +76,14 @@ from server.utils.network import UNKNOWN_IP
 from server.utils.orphans import did_you_mean, orphan_groups
 from server.utils.profile import clean_timezone
 from server.utils.url import build_short_url, link_hostname, link_short_url
-from server.utils.visit_facets import country_label, families, kind_of, referrer_host
+from server.utils.visit_facets import (
+    OTHER_CITIES,
+    UNKNOWN,
+    country_label,
+    families,
+    kind_of,
+    referrer_host,
+)
 
 
 def _distinct_visitors():
@@ -344,6 +361,52 @@ def _breakdown_fields(visits: SAQuery, period: Period, visit_type: str) -> dict:
         "referrers": _breakdown(referrers, total),
         "countries": _breakdown(countries, total),
     }
+
+
+# Phase 8.4 — a campaign's breakdown names a city only when its visits came from at least this
+# many of the campaign's links, its recipients. With fewer, the recipients list, which says who
+# clicked when, could give one person's city away: a day on which only they clicked.
+CAMPAIGN_CITY_MIN_LINKS = 5
+
+
+def _cities(
+    visits: SAQuery, period: Period, visit_type: str, total: int, min_links: int = 1
+) -> list[CityItem]:
+    """The period's visits of a kind by city and country, grouped in SQL. "Unknown" (country
+    null) without a city; a city whose visits came from fewer than `min_links` links is summed
+    into "Other cities" (country null). By count, then name and country."""
+    rows = (
+        _in_period(visits, period, visit_type)
+        .with_entities(
+            Visitor.country,
+            Visitor.city,
+            func.count(Visitor.id),
+            func.count(Visitor.url_id.distinct()),
+        )
+        .group_by(Visitor.country, Visitor.city)
+        .all()
+    )
+    counts: Counter = Counter()
+    for country, city, count, links in rows:
+        if not city:
+            counts[UNKNOWN, None] += count
+        elif links < min_links:
+            counts[OTHER_CITIES, None] += count
+        else:
+            counts[city, country] += count
+    ordered = sorted(
+        counts.items(),
+        key=lambda item: (-item[1], item[0][0].casefold(), item[0][0], item[0][1] or ""),
+    )
+    return [
+        CityItem(
+            name=name,
+            country=country,
+            count=count,
+            share=round(count / total, 4) if total else 0.0,
+        )
+        for (name, country), count in ordered
+    ]
 
 
 def _campaign_period_fields(campaign: Campaign, period: Period) -> dict:
@@ -788,7 +851,9 @@ def get_url_timeseries(
     "/urls/{short_code}/breakdown",
     response_model=BreakdownResponse,
     responses={
-        200: {"description": "The period's visits by OS, browser, device, referrer and country"},
+        200: {
+            "description": "The period's visits by OS, browser, device, referrer, country and city"
+        },
         **get_responses(401, 404, 422),
     },
 )
@@ -805,22 +870,27 @@ def get_url_breakdown(
     current_user: User = Depends(get_current_user),
 ):
     """
-    A link's visits of a kind over a period, by OS, browser, device, referrer and country
-    (Phase 3.16).
+    A link's visits of a kind over a period, by OS, browser, device, referrer, country and
+    city (Phase 3.16, 8.4).
 
     Every value is listed, by count and then name, with its share of `total`. OS and browser
     are families, parsed from the user agent. Device is desktop, mobile, tablet, or other (a
     bot's). A referrer is its host, "Direct" without one; a missing value is "Unknown". A
-    country is an ISO code.
+    country is an ISO code. A city is its English name, with its country's code; `cities` is
+    null for a campaign link, whose visits are one named recipient's.
 
     The period is `period` (the last N local days, today included, default 30) or `from` and
     `to`, at most 731 days. Opens overcount: Apple Mail Privacy Protection loads the pixel, like
     every image, when a message arrives, read or not.
     """
     url = visible_url_or_404(db, current_user, short_code, domain)
+    visits = _link_visits(db, url)
+    fields = _breakdown_fields(visits, period, visit_type)
+    a_recipients_link = url.url_type == URLType.CAMPAIGN or url.campaign_id is not None
     return BreakdownResponse(
         **_period_fields(url, period),
-        **_breakdown_fields(_link_visits(db, url), period, visit_type),
+        **fields,
+        cities=None if a_recipients_link else _cities(visits, period, visit_type, fields["total"]),
     )
 
 
@@ -1230,7 +1300,9 @@ def get_campaign_timeseries(
     "/campaigns/{campaign_id}/breakdown",
     response_model=CampaignBreakdownResponse,
     responses={
-        200: {"description": "The period's visits by OS, browser, device, referrer and country"},
+        200: {
+            "description": "The period's visits by OS, browser, device, referrer, country and city"
+        },
         **get_responses(400, 401, 404, 422),
     },
 )
@@ -1246,18 +1318,22 @@ def get_campaign_breakdown(
     current_user: User = Depends(get_current_user),
 ):
     """
-    A campaign's visits of a kind over a period, by OS, browser, device, referrer and country,
-    over all its links (Phase 3.17): a link's breakdown (`/urls/{short_code}/breakdown`),
-    summed.
+    A campaign's visits of a kind over a period, by OS, browser, device, referrer, country and
+    city, over all its links (Phase 3.17): a link's breakdown (`/urls/{short_code}/breakdown`),
+    summed. A city is named only when its visits came from at least 5 of the campaign's links;
+    the rest are summed as "Other cities", so no city is one recipient's (Phase 8.4).
 
     The period is `period` (the last N local days, today included, default 30) or `from` and
     `to`, at most 731 days. Opens overcount: Apple Mail Privacy Protection loads the pixel,
     like every image, when a message arrives, read or not.
     """
     campaign = visible_campaign_or_404(db, current_user, campaign_id)
+    visits = _campaign_visits(db, campaign)
+    fields = _breakdown_fields(visits, period, visit_type)
     return CampaignBreakdownResponse(
         **_campaign_period_fields(campaign, period),
-        **_breakdown_fields(_campaign_visits(db, campaign), period, visit_type),
+        **fields,
+        cities=_cities(visits, period, visit_type, fields["total"], CAMPAIGN_CITY_MIN_LINKS),
     )
 
 

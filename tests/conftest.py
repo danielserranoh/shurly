@@ -88,8 +88,10 @@ Base.metadata.create_all(bind=engine)
 # Phase 6.3 — the rate limits count in the test database too.
 rate_limit.session_factory = TestingSessionLocal
 
-# Phase 8.4 — no real geolocation database in tests (tests/test_geolocation.py makes its own).
+# Phase 8.4 — no real geolocation database in tests (tests/test_geolocation.py makes its own),
+# nor the fallback: a developer's own data/ mustn't change what a test sees.
 settings.geoip_database = ""
+settings.geoip_fallback_database = ""
 
 
 def pytest_addoption(parser):

@@ -353,6 +353,8 @@ def _visits(db, report, url: URL, visits: list[dict]) -> None:
                 ip=IMPORTED_IP,
                 # Phase 8.4 — an ISO code, as Shurly stores a country: names differ by provider.
                 country=fit(location.get("countryCode") or None, Visitor.country),
+                # Its English name, as Shurly's own visits keep one. Never the coordinates.
+                city=fit(location.get("cityName") or None, Visitor.city),
                 user_agent=stored_user_agent(visit.get("userAgent")),
                 referer=stored_referer(visit.get("referer")),
                 is_bot=is_bot(visit),

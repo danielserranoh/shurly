@@ -20,22 +20,21 @@ Order agreed in the 2026-09-27 review; confirm each item before starting it.
 2. ✅ **Organization and roles** (3.14): links belong to the organization by default; owner, admin and member.
    Done: API, MCP and frontend (Settings → Organization, the personal toggle, who created each link, removed
    people). Left: two owners from day one, once people have signed up.
-3. **Frontend hosting** (4.10): S3 + CloudFront; AWS steps run with SSO. The deploy workflow is ready and runs on
-   merges to `main` that touch the frontend, but skips until the AWS side exists (`FRONTEND_BUCKET` unset), as it
-   did for release #81.
+3. ✅ **Frontend hosting** (4.10): S3 + CloudFront, live on `https://shurly.griddo.io` since 2026-09-29. The deploy
+   workflow publishes the frontend on merges to `main` that touch it.
 4. **Identity**: sign in with Google Workspace, for the web (3.13) and the MCP (5.8). One Google project covers
    both. The code of both is done (3.13's backend and frontend, 5.8), and in production since release #81
    (2026-09-28) on `shurly.griddo.io`, which the deploy's smoke test checks. The MCP's Google sign-in is live.
-   Left: the web's sign-in, which needs the hosted frontend (the sign-in ends on its `/login/`, 4.10), and the
-   end-to-end checks (3.13.6, 5.8).
+   The frontend is hosted since 2026-09-29, and a person completed the web sign-in there that day (3.13.6).
+   Left: the MCP's end-to-end check, from Claude Code and a claude.ai connector (5.8).
 5. ✅ **MCP install guide**, in the app and in the user manual (5.9): `/manual/install-mcp/` and Settings → API &
-   MCP. Its address comes from the build: `https://shurly.griddo.io/mcp/` once 4.10's production build sets
-   `PUBLIC_API_URL`.
+   MCP. Its address comes from the build: `https://shurly.griddo.io/mcp/` in production's.
 6. **Internal dogfood** with the frontend and the MCP (5.6).
 7. **Replace Shlink on `go.griddo.io`** (Phase 8): after the dogfood and error alerting (6.4). Done on `dev`: a
    link is its code and its domain (8.3); exporting, reviewing and importing Shlink's links and visits, and a
-   visit's country (8.4). Left: how the import runs in production (8.4, decision B), the `go.griddo.io` domain
-   row and switching the default to it (8.3), error alerting (6.4), and the cutover (8.5).
+   visit's country and city (8.4). Left: running the import in production (8.4: the one-off task is ready; its
+   bucket and IAM are made by hand), filling older visits' cities there once GeoLite2 City serves (8.4), the
+   `go.griddo.io` domain row and switching the default to it (8.3), error alerting (6.4), and the cutover (8.5).
 
 Also landed on 2026-09-28, outside this list: the account profile (3.12: name, country, time zone and a photo;
 people by name in Settings → Organization and "Created by"), analytics days in the viewer's time zone (3.12.8),
@@ -856,14 +855,15 @@ Until then `POST /auth/register` stays reachable through the public API and its 
 ### 3.13.5 Frontend
 - [x] "Sign in with Google" on the login page; the register page goes
 - [x] Settings → Account: the password section of 3.13.3
-- [ ] Needs the frontend hosted (4.10)
+- [x] Needs the frontend hosted (4.10) → on `https://shurly.griddo.io` since 2026-09-29
 
 ### 3.13.6 Verification
 - [x] Tests (TDD) against a faked Google: `hd` and `email_verified` enforced, `state` checked, first sign-in
       creates the user and the membership, matching by `sub` after an email change, one-time code single use and
       short-lived, passwords set only while signed in, register gone → `tests/test_phase3132_google_sign_in.py`
       and `tests/test_phase3133_passwords.py`, on `tests/fake_google.py` (real RS256 tokens, no network)
-- [ ] End to end against the real Google project with a Griddo account
+- [x] A person completes the web sign-in in production, with a Griddo account → 2026-09-29: the user signed in
+      with Google on `https://shurly.griddo.io` and saved their profile
 
 ---
 
@@ -999,7 +999,8 @@ Clicks and email opens are shown separately. The page today has 7 days, 8 weeks 
 screens are `design/shlink-*.png` (local only, not in git: they show a real link's visits).
 
 **Split (2026-09-29):** the API is Agent 1's, the page Agent 2's, built in parallel against the contract below,
-which follows Agent 2's approved layout. Cities wait for the user's decision and aren't designed here.
+which follows Agent 2's approved layout. Cities came later, with the user's decision (8.4): a card next to the
+countries.
 
 ### 3.16.1 The contract
 
@@ -1082,7 +1083,9 @@ Dates are local: dates as `YYYY-MM-DD`, and moments as ISO 8601 with the zone's 
  "browsers":  [{"name": "Chrome", "count": 20, "share": 0.5882}, …],
  "devices":   [{"name": "desktop", "count": 25, "share": 0.7353}, …],
  "referrers": [{"name": "www.linkedin.com", "count": 18, "share": 0.5294}, {"name": "Direct", "count": 15, "share": 0.4412}, …],
- "countries": [{"name": "ES", "count": 25, "share": 0.7353}, …, {"name": "Unknown", "count": 2, "share": 0.0588}]}
+ "countries": [{"name": "ES", "count": 25, "share": 0.7353}, …, {"name": "Unknown", "count": 2, "share": 0.0588}],
+ "cities":    [{"name": "Madrid", "country": "ES", "count": 12, "share": 0.3529}, …,
+               {"name": "Unknown", "country": null, "count": 4, "share": 0.1176}]}
 ```
 
 - Every value is listed, by count and then name. `share` is the count over `total`, from 0 to 1 with 4 decimals,
@@ -1097,6 +1100,9 @@ Dates are local: dates as `YYYY-MM-DD`, and moments as ISO 8601 with the zone's 
 - A referrer is its host, lowercased: `www.linkedin.com`, or `com.linkedin.android` for the app
   (`android-app://…`). Never its path or query.
 - A country is an ISO code, as elsewhere; the page shows its name.
+- A city (8.4) is its English name, from GeoLite2 City, with its country's ISO code: two Valencias are two items.
+  "Unknown", with a null country, is a visit without one. Only ever counted: `/visits` and its CSV have no city.
+  `cities` is null for a campaign link, whose visits are one named recipient's.
 
 **`GET …/visits?type=clicks&page=1&page_size=20`**
 
@@ -1155,7 +1161,7 @@ and every link on it would pay for the header's numbers.
       countries, last click
 - [x] By time: clicks or email opens by day, week or month, and by hour and weekday, each with its table
 - [x] By context: OS, browser and device donuts, and referrers (top 10, then Show all). By location: countries,
-      Unknown last
+      Unknown last, and cities (8.4)
 - [x] Visits: clicks, email opens, bots or all; a table on wide screens, stacked rows on phones; 20 a page
 - [x] Export CSV: `/visits.csv` for the period, every kind
 - [x] Check it against the real routes once Agent 1's two PRs land, at 1440 and 390 px, empty periods included
@@ -1221,7 +1227,10 @@ Every response starts with the same fields. `/totals` and `/recipients` have no 
 - `countries` and `last_click_at` are as for a link.
 
 **`GET …/timeseries?group_by=day|week|month`** and **`GET …/breakdown?type=…`** have a link's shapes (3.16.1), over
-all the campaign's links.
+all the campaign's links. But the breakdown's `cities` (8.4) name a city only when its visits in the period came from
+at least 5 of the campaign's links, 5 recipients. The rest are summed as `{"name": "Other cities", "country": null}`,
+and the total and the shares stay whole. Otherwise a day on which one recipient clicked would name their city, since
+`/recipients` says who clicked when. The countries are as for a link.
 
 **`GET …/recipients?filter=all&q=&sort=clicks&order=desc&page=1&page_size=50`**: all time, for following up with
 people (who clicked, who hasn't). It takes no period: the period scopes the charts only. It takes `tz`, for its times.
@@ -1301,7 +1310,8 @@ Their `click_through_rate` stays a percentage, 0 to 100.
 - [x] The header from `/totals`: Clicked and Opened (a share of the recipients, with a meter; Apple Mail's automatic
       opens noted), Recipients, Clicks. "Opened" (it meant clicked) became "Clicked", on the page and the campaigns list
 - [x] The period and the charts: the link page's Analytics section, now one component for both pages
-      (`AnalyticsSection.astro`, `analytics-section.ts`), with no Visits tab and no export
+      (`AnalyticsSection.astro`, `analytics-section.ts`), with no Visits tab and no export. Its cities (8.4) say
+      what Other cities is
 - [x] Recipients, all time: the table and phone rows (#122) on `/recipients`. The API filters (with `counts` on the
       filter's options), searches, sorts and pages; ticks survive a page change; Export CSV (`/recipients.csv`)
 - [x] A development-only mock (`&mock`, `src/utils/campaign-analytics-mock.ts`), which the build's dev-only check
@@ -1313,7 +1323,7 @@ Their `click_through_rate` stays a percentage, 0 to 100.
 
 ---
 
-## Phase 4: AWS Deployment (ECS Express on griddo-main) — backend ✅ · frontend pending (4.10)
+## Phase 4: AWS Deployment (ECS Express on griddo-main) — backend ✅ · frontend ✅ (4.10, 2026-09-29)
 
 **Status:** live at `https://s.griddo.io` since **2026-04-27** (first deploy, PRs #7–#11). `main` is
 production: every merge auto-deploys through `deploy-backend.yml`. The lessons from the rollout, the
@@ -1463,17 +1473,22 @@ for this.
 
 - [x] Choose the hostname → **`shurly.griddo.io`** (decided 2026-09-28), for the web, the app, the API and the
       MCP, split by path; `go.griddo.io` is for short links only. `links.griddo.io` retires with Shlink (Phase 8)
-- [ ] S3 bucket (Block Public Access on) + CloudFront distribution with OAC
-- [ ] ACM certificate in **us-east-1**: CloudFront only takes certificates from N. Virginia (the ALB's is in
-      eu-south-2). DNS validation in `griddo-production`
+- [x] S3 bucket (Block Public Access on) + CloudFront distribution with OAC → `shurly-frontend-686255983646`
+      (eu-south-2), distribution `EJDA8EMBWVGDG` (`d1e7o4qkz3x60l.cloudfront.net`), OAC `shurly-frontend-oac`, the
+      `shurly-security-headers` response-headers policy (2026-09-29)
+- [x] ACM certificate in **us-east-1**: CloudFront only takes certificates from N. Virginia (the ALB's is in
+      eu-south-2). DNS validation in `griddo-production` → issued 2026-09-29 (same validation record as the ALB's)
 - [x] CloudFront Function rewriting `/dashboard/` → `/dashboard/index.html`: a private bucket is reached through
       the S3 REST endpoint, which doesn't resolve directory indexes. The comment in `astro.config.mjs` saying no
       CDN rewrites are needed only holds for the public website endpoint → `infra/cloudfront/static-paths.js`, with tests;
       attach it to the default behaviour when the distribution is created
-- [ ] Error response: 404 → `/404.html` → an open decision now that the API shares the distribution: custom error
+- [x] Error response: 404 → `/404.html` → **no custom error responses** (decided 2026-09-29): an unknown page shows
+      S3's XML 403; the API's own 403/404 stay intact. Revisit with a Lambda@Edge origin-response if it matters. Was: custom error
       responses apply to the whole distribution and would replace the API's own 403/404 (DEPLOYMENT.md § Frontend
       hosting, "Error pages")
-- [ ] Route 53 alias record, from `griddo-production`
+- [x] Route 53 alias record, from `griddo-production` → `shurly.griddo.io` A + AAAA aliases to the distribution
+      (2026-09-29). Rollback: point the A alias back to the ALB (`ecs-express-gateway-alb-d37ca364-…`), whose host rule
+      and certificate stay in place
 - [x] Rewrite `deploy-frontend.yml`: OIDC role as in 4.8 (it still uses access keys), the real bucket, the
       production build values below, `PUBLIC_SITE_URL`; re-enable `push` on `frontend/**`. Its header still
       points at the Lambda-era "Phase 4.5/4.6"
@@ -1481,7 +1496,7 @@ for this.
       (`go.griddo.io` from Phase 8). Without `PUBLIC_SHORT_DOMAIN` the app shows short links on the API's host
       (`shurly.griddo.io/abc`). The MCP address in the manual and Settings then derives as
       `https://shurly.griddo.io/mcp/` (`PUBLIC_MCP_URL` only to override it)
-- [ ] `CORS_ORIGINS` in the task → `'[]'` once the frontend is hosted, as it shares the API's host (DEPLOYMENT.md
+- [x] `CORS_ORIGINS` in the task → `'[]'` (set 2026-09-29, with `FRONTEND_URL=https://shurly.griddo.io`) once the frontend is hosted, as it shares the API's host (DEPLOYMENT.md
       § CORS). `deploy_ecs.sh` and `.env.production.example` default to it; production keeps
       `["http://localhost:4232"]` until then (6.3)
 - [x] Update the hostnames table in `DEPLOYMENT.md` (it still says "Future frontend | 7") → done in #74
@@ -1493,9 +1508,14 @@ for this.
       address CloudFront appended to X-Forwarded-For; otherwise X-Forwarded-For as before. One `client_ip` for the
       rate limits and the visit log
       (`tests/test_phase63_cloudfront_client_ip.py`)
-  - [ ] AWS, with the distribution: the custom origin header, HTTPS to the origin, the origin request policy
+  - [x] AWS, with the distribution (2026-09-29): the custom origin header, HTTPS to the origin, the origin request policy
         AllViewerAndCloudFrontHeaders-2022-06 and the task's `CLOUDFRONT_ORIGIN_SECRETS` (DEPLOYMENT.md § Frontend
         hosting); optionally the per-host ALB rules
+  - [x] Provable in production without logging an IP: each `http.request` line says how its client IP was found,
+        `client_ip_source` (`cloudfront`, `xff` or `socket`), with its `host`, and CloudWatch counts them by host
+        (DEPLOYMENT.md § Client IPs behind CloudFront; `tests/test_client_ip_source.py`). A clean `429` from one
+        client can't show it: CloudFront reuses its connections, so its edge's address holds still too
+  - [ ] Once it's deployed, check that `shurly.griddo.io` reads `cloudfront` only
 
 ---
 
@@ -1647,6 +1667,12 @@ added there; Claude Code gets by with `--header`.
 - [x] Tests: metadata documents, the 401 header, both token types, user mapping, non-griddo identities refused
       → `tests/test_phase58_mcp_oauth.py`, against a fake Google, including two app instances completing one
       sign-in
+- [x] The sign-in's pages in Shurly's brand, not FastMCP's (the user, 2026-09-29: FastMCP's page "doesn't
+      inspire trust") → fastmcp's four page renderers point at Shurly's (`mcp_server/pages.py`), and fastmcp
+      keeps the flow. An error page shows a reason, never the URL's text; every HTML page gets its headers
+      (no `form-action`, on purpose); `tests/test_phase58_mcp_pages.py` pins them through a fastmcp upgrade
+  - [x] The renderers, the headers and the tests
+  - [x] The templates in the brand: `server/templates/mcp_consent.html` and `mcp_error.html`
 - [ ] Check it end to end: Claude Code (`claude mcp add --transport http …`, sign-in in the browser) and a
       claude.ai custom connector → in production (2026-09-28) the metadata documents and the 401 with
       `resource_metadata` are verified; nobody has completed a sign-in from claude.ai or Claude Code yet
@@ -1778,10 +1804,10 @@ live in `mcp_server/README.md`, written for developers. There is no user manual 
         so dropping it while a task of that release serves fails every user query mid-rollout. A test drops it by
         hand and runs this release against it: signing in, an API key, `/me`, the MCP, revoking
         (`tests/test_phase63_api_keys.py`)
-  - [ ] Migration `0011` drops `users.api_key` and `ix_users_api_key`, and the drift test's `_PENDING_DROP` goes:
+  - [ ] Migration `0012` drops `users.api_key` and `ix_users_api_key`, and the drift test's `_PENDING_DROP` goes:
         **only after the release that stopped mapping it is in production**, since until then a running task still
-        names the column. It takes `0011`, after `0010` (the `last_click_at` repair, 2026-09-29), which took the
-        number it had been given
+        names the column. It takes `0012`: `0010` (the `last_click_at` repair) and `0011` (a visit's city, 8.4)
+        took the numbers it had been given (2026-09-29)
   - [x] The MCP can't generate or revoke a key: talked into it by untrusted text, an assistant would get
         the new key in its context. Nor `login` or `change_password`: no password or JWT passes through an
         assistant (`EXCLUDED_ROUTE_MAPS`, pinned by `tests/test_phase52_mcp_tools.py`)
@@ -1929,7 +1955,28 @@ the import can be re-run.
       integration"). Nothing fills it today, so once Shlink's history is imported the geo view shows only that
       history, and would mislead → the ISO code, from DB-IP's IP to Country Lite (CC BY 4.0, no account),
       looked up in process from the stored, anonymized address (`server/utils/geo.py`). The image build fetches
-      the file, and the deploy job warns without it. The Shlink import stores codes too; the page shows names
+      the file, and the deploy job warns without it. The Shlink import stores codes too; the page shows names.
+      Since GeoLite2 City (below), the country comes from it, with DB-IP as the fallback
+- [ ] A visit's city, from MaxMind's GeoLite2 City (the user's decision, 2026-09-29; free account, licence key)
+  - [x] The data: GeoLite2 City in the image, fetched with MaxMind's credentials as BuildKit secrets, next to
+        DB-IP's countries, which stay as the fallback. MaxMind's EULA wants a copy replaced within 30 days of an
+        update → the deploy runs every Monday too, one deploy at a time; the job fails when the key is set but
+        GeoLite2 wasn't fetched; `geo.database_stale` past 25 days; old images expire after 30 days (ECR's
+        lifecycle rule, in DEPLOYMENT.md § Geolocation data: applied 2026-09-29). Credits in `NOTICE`.
+        MaxMind's GitHub secrets exist (2026-09-29): the release after 1a carries GeoLite2
+  - [x] `Visitor.city` (migration 0011), from the stored, anonymized address; `cities` in the link's and the
+        campaign's breakdowns (3.16, 3.17), "Unknown" counted; never a single campaign link's, never per visit.
+        The Shlink import maps `visitLocation.cityName`. A one-off backfill fills null cities and countries from
+        the stored addresses, nulls only, as a one-off task like the import's → a campaign's names a city only
+        from 5 of its links, the rest "Other cities" (3.17.1; one recipient's day can't name their city).
+        `python -m server.tools.backfill_places`, run by `scripts/run_backfill_places.sh`; the one-off tasks
+        share `scripts/one_off_task.sh`
+  - [x] The Location tab shows them: Cities next to Countries on a link's and a campaign's pages, and none on a
+        campaign link's (its `cities` is null). "Valencia, Spain", since two Valencias are two; Other cities, then
+        Unknown, last. The credit is MaxMind's alone (DB-IP has no cities), and a campaign's says what Other cities
+        is. Checked on seeded cities at 1440 and 390 px; `e2e/cities.spec.ts`, and axe on the tab
+  - [ ] In production: the release that brings GeoLite2 City, then the backfill (DEPLOYMENT.md § Geolocation
+        data, a dry run first)
 
 ### 8.5 Cutover
 - [ ] Freeze link creation in Shlink; final delta export + import

@@ -17,6 +17,11 @@ VIEWER_ADDRESS_HEADER = "cloudfront-viewer-address"
 # as a unique visitor (`_distinct_visitors`, server/app/analytics.py).
 UNKNOWN_IP = "unknown"
 
+# How `client_ip` found the address (`client_ip_and_source`): what each request's log line says,
+# since the address itself is never logged. CloudFront's viewer header; X-Forwarded-For, from a
+# trusted proxy; or the connection's peer.
+CLOUDFRONT, FORWARDED_FOR, SOCKET = "cloudfront", "xff", "socket"
+
 
 def anonymize_ip(addr: str | None) -> str | None:
     """
@@ -67,15 +72,22 @@ def resolve_client_ip(
     isn't a trusted proxy is the client. The left end is whatever the client sent:
     Phase 6.3 stopped trusting it, since rate limits key on this address.
     """
+    return _resolve(socket_addr, forwarded_for, trusted_proxies)[0]
+
+
+def _resolve(
+    socket_addr: str | None, forwarded_for: str | None, trusted_proxies: Iterable[str]
+) -> tuple[str, str]:
+    """`resolve_client_ip`, and whether X-Forwarded-For or the socket gave it."""
     socket_addr = socket_addr or "unknown"
     trusted = list(trusted_proxies)
     if not forwarded_for or not trusted or not _addr_in_any_cidr(socket_addr, trusted):
-        return socket_addr
+        return socket_addr, SOCKET
     hops = [hop.strip() for hop in forwarded_for.split(",") if hop.strip()]
     for hop in reversed(hops):
         if not _addr_in_any_cidr(hop, trusted):
-            return hop
-    return hops[0] if hops else socket_addr
+            return hop, FORWARDED_FOR
+    return (hops[0], FORWARDED_FOR) if hops else (socket_addr, SOCKET)
 
 
 def viewer_address(value: str | None) -> str | None:
@@ -147,9 +159,16 @@ def came_through_cloudfront(presented: str | None, secrets: Iterable[SecretStr])
 
 
 def client_ip(request: Request) -> str:
+    """Phase 6.3 — the client's IP: what the rate limits count, and what a visit is stored
+    with (`visit_ip`). How it's decided: `client_ip_and_source`."""
+    return client_ip_and_source(request)[0]
+
+
+def client_ip_and_source(request: Request) -> tuple[str, str]:
     """
-    Phase 6.3 — the client's IP: what the rate limits count, and what a visit is stored
-    with (`visit_ip`). The one place that decides it.
+    Phase 6.3 — the client's IP, and how it was found: "cloudfront", "xff" or "socket".
+    The one place that decides it. Each request's log line says the source, never the IP,
+    so CloudWatch can show that shurly.griddo.io's requests are read through CloudFront.
 
     Behind CloudFront (shurly.griddo.io, 4.10) the ALB's peer is a CloudFront edge, and
     X-Forwarded-For's rightmost untrusted address is the edge's. CloudFront sends the
@@ -166,12 +185,24 @@ def client_ip(request: Request) -> str:
     ):
         viewer = cloudfront_viewer(headers.get(VIEWER_ADDRESS_HEADER), forwarded_for)
         if viewer is not None:
-            return viewer
-    return resolve_client_ip(
+            return viewer, CLOUDFRONT
+    return _resolve(
         request.client.host if request.client else None,
         forwarded_for,
         settings.trusted_proxies,
     )
+
+
+def request_host(request: Request) -> str:
+    """The host a request named, as its log line shows it: lowercased, without the port, at
+    most 255 characters. Read by hand: a malformed Host header must never fail the line."""
+    host = request.headers.get("host", "").strip().lower()
+    if host.startswith("["):  # an IPv6 literal, "[2001:db8::1]:8000"
+        end = host.find("]")
+        host = host[: end + 1] if end != -1 else host
+    else:
+        host = host.split(":", 1)[0]
+    return host[:255]
 
 
 def visit_ip(request: Request) -> str:

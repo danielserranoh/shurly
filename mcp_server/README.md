@@ -371,9 +371,17 @@ the web.
   `/.well-known/oauth-authorization-server/mcp` (RFC 8414) at the root, and a 401
   pointing at the former. The OAuth endpoints are under `/mcp/`
   (`authorize`, `token`, `register`, `consent`, `auth/callback`).
+- The pages the browser shows are Shurly's (`mcp_server/pages.py`): the consent
+  page and every error, from `server/templates/mcp_consent.html` and
+  `mcp_error.html`. fastmcp renders its own, so its four renderers point at ours,
+  once, when the provider is built; fastmcp keeps the flow (CSRF token, cookies,
+  redirect checks). An error page shows a reason from a fixed set, never text
+  from the request. DEPLOYMENT.md § The MCP's sign-in pages.
 
 `tests/test_phase58_mcp_oauth.py` runs the whole flow against a fake Google,
 including across two app instances sharing only the database.
+`tests/test_phase58_mcp_pages.py` pins what the pages must keep through a fastmcp
+upgrade.
 
 ### Scope (`ApiKeyScope`)
 

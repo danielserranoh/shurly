@@ -25,7 +25,7 @@ This is about what goes *out*: what a route returns, not what Shurly records. Wh
 |---|---|
 | **recipients' rows** | A campaign recipient's row of its CSV (`user_data`): names, emails, whatever the CSV had |
 | **recipients' activity** | What one recipient did: their clicks and opens, and when |
-| **visits** | Visits, counted or one by one: time, kind, country, browser, OS, device, referrer host. Never an IP. On a campaign link, a link's visits are one recipient's |
+| **visits** | Visits, counted or one by one: time, kind, country, browser, OS, device, referrer host. Their city only counted, never one by one (§ Cities). Never an IP. On a campaign link, a link's visits are one recipient's |
 | **addresses** | Anonymized IPs, with user agents and referrers |
 | **accounts** | Other people's accounts: emails, names, roles |
 | **own account** | The caller's own: email, profile, photo, tokens, API key |
@@ -53,7 +53,7 @@ of the same module that the route calls.
 | Route | People's data it returns | Who sees it | Guard | MCP |
 |---|---|---|---|---|
 | `GET /` | none | anyone | public | excluded |
-| `GET /api/v1/analytics/campaigns/{campaign_id}/breakdown` | **visits**, counted over all its recipients | who can see the campaign | `visible_campaign_or_404` | `get_campaign_breakdown` |
+| `GET /api/v1/analytics/campaigns/{campaign_id}/breakdown` | **visits**, counted over all its recipients. A city only when at least 5 of its links' visits came from it; the rest are "Other cities" | who can see the campaign | `visible_campaign_or_404` | `get_campaign_breakdown` |
 | `GET /api/v1/analytics/campaigns/{campaign_id}/recipients` | **recipients' rows** and **recipients' activity**: every recipient's `user_data`, clicks, opens, first and last click and last open | who can see the campaign | `visible_campaign_or_404` | `list_campaign_recipients` |
 | `GET /api/v1/analytics/campaigns/{campaign_id}/recipients.csv` | **recipients' rows** and **recipients' activity**: the list's, as a CSV | who can see the campaign | `visible_campaign_or_404` | excluded |
 | `GET /api/v1/analytics/campaigns/{campaign_id}/summary` | **recipients' rows** and **recipients' activity**: the top 5 recipients' `user_data` and clicks | who can see the campaign | `visible_campaign_or_404` | `get_campaign_summary` |
@@ -63,7 +63,7 @@ of the same module that the route calls.
 | `GET /api/v1/analytics/orphan-visits` | **addresses**: the anonymized IP, user agent and referrer of each hit on an unknown code | any signed-in account: they belong to no organization. **Kept (2026-09-29):** the IPs are shown, to revisit after the dogfood | `get_current_user` | `get_orphan_visits` |
 | `GET /api/v1/analytics/orphan-visits/grouped` | none: the paths tried on unknown codes, counted, their first and last hit, and the links each may have meant. Never an IP, a user agent or a referrer | any signed-in account: they belong to no organization. The links suggested are the caller's to see | `get_current_user`, `viewer` | excluded |
 | `GET /api/v1/analytics/overview` | **visits**, counted: totals, and the top links by code (a campaign link's clicks are one recipient's) | the links the caller can see | `sees` | `get_overview_stats` |
-| `GET /api/v1/analytics/urls/{short_code}/breakdown` | **visits**, counted. On a campaign link, one recipient's | who can see the link | `visible_url_or_404` | `get_url_breakdown` |
+| `GET /api/v1/analytics/urls/{short_code}/breakdown` | **visits**, counted, cities included. On a campaign link, one recipient's, and no cities | who can see the link | `visible_url_or_404` | `get_url_breakdown` |
 | `GET /api/v1/analytics/urls/{short_code}/daily` | **visits**, counted. On a campaign link, one recipient's | who can see the link | `visible_url_or_404` | `get_url_daily_stats` |
 | `GET /api/v1/analytics/urls/{short_code}/geo` | **visits**, counted. On a campaign link, one recipient's | who can see the link | `visible_url_or_404` | `get_url_geo_stats` |
 | `GET /api/v1/analytics/urls/{short_code}/timeseries` | **visits**, counted. On a campaign link, one recipient's | who can see the link | `visible_url_or_404` | `get_url_timeseries` |
@@ -155,6 +155,17 @@ Each also runs behind `POST /mcp/`, the MCP's sign-in.
 | MCP `list_orphan_visits_grouped` | **addresses**: the anonymized IPs, user agents and referrers of each path's newest 3 hits on unknown codes, with the paths' counts, first and last hit, and the links each may have meant | any account: they belong to no organization. The links suggested are the caller's to see. **Kept (2026-09-29):** the IPs are shown, to revisit after the dogfood | `RequireAuthMiddleware`, `viewer` | curated |
 | MCP `create_campaign_from_rows` | **own account**: the new campaign | any account | `viewer` | curated |
 | MCP `add_redirect_rule` | none | who can change the link | `find_url`, `can_change` | curated |
+
+## Cities (8.4, decided 2026-09-29)
+
+A visit's city (`visits.city`) is looked up from the anonymized address, from MaxMind's GeoLite2 City, whose licence
+forbids using it to locate a person or a household (EULA §5). It goes out only counted, in the breakdowns:
+- **Never one by one:** `/visits` and its CSV have no city.
+- **Never a campaign link's:** its breakdown's `cities` is null, since its visits are one named recipient's.
+- **A campaign's names a city only when its visits in the period came from at least 5 of its links**, 5 recipients.
+  The rest are summed as "Other cities". Otherwise a day on which one recipient clicked, which `/recipients` shows,
+  would name their city (`CAMPAIGN_CITY_MIN_LINKS`, `tests/test_phase84_cities.py`).
+- **Countries aren't held to that.** They're coarse, and a campaign link's visits list them one by one (kept, below).
 
 ## Decisions kept, to revisit
 

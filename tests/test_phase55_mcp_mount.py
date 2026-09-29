@@ -32,9 +32,11 @@ def test_mcp_is_mounted_at_slash_mcp():
 
     mounts = [r for r in m.app.routes if _is_mcp_mount(r)]
     assert len(mounts) == 1, "expected exactly one /mcp mount"
-    inner = mounts[0].app
-    # fastmcp returns a Starlette app subclass for the streamable-http transport.
-    assert type(inner).__name__ == "StarletteWithLifespan"
+    wrapper = mounts[0].app
+    # Phase 5.8 — the sign-in pages' headers, around fastmcp's app (mcp_server/pages.py)…
+    assert type(wrapper).__name__ == "PageHeaders"
+    # …which is a Starlette app subclass for the streamable-http transport.
+    assert type(wrapper.app).__name__ == "StarletteWithLifespan"
 
 
 def test_disable_mount_env_skips_mount(monkeypatch):

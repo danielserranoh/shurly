@@ -375,6 +375,13 @@ That's the only secret needed. No `AWS_ACCESS_KEY_ID`, no `AWS_SECRET_ACCESS_KEY
 
 ## Frontend hosting (Phase 4.10)
 
+**Live since 2026-09-29.** Distribution `EJDA8EMBWVGDG` (`d1e7o4qkz3x60l.cloudfront.net`), bucket
+`shurly-frontend-686255983646` (eu-south-2), OAC `shurly-frontend-oac`, response-headers policy
+`shurly-security-headers`, function `shurly-static-paths`, certificate in us-east-1 for `shurly.griddo.io`, deploy role
+`github-actions-shurly-frontend-deploy` (repo secret `AWS_FRONTEND_DEPLOY_ROLE_ARN`, variables `FRONTEND_BUCKET` and
+`CLOUDFRONT_DISTRIBUTION_ID`). The task has `CLOUDFRONT_ORIGIN_SECRETS`, `FRONTEND_URL=https://shurly.griddo.io` and
+`CORS_ORIGINS='[]'`. No custom error responses. The secret origin header's value is in `_exchange/credentials.md`.
+
 The static build (`frontend/dist/`) lives in a private S3 bucket behind **one CloudFront distribution for
 `shurly.griddo.io`**, which also carries the API and the MCP to the ALB. The app and the API then share one
 origin, so the browser makes no cross-origin calls. Prepared in the repo: the deploy workflow, the CloudFront
@@ -621,6 +628,21 @@ differ only when one isn't CloudFront's: an origin request policy that doesn't a
 that no longer appends. Then `X-Forwarded-For` decides, as without the secret. It would take both of those going
 wrong at once to believe a forged address.
 
+**How each request's IP was found** is on its `http.request` line, as `client_ip_source`, next to its `host`. The IP
+itself never is. `cloudfront` is the viewer address; `xff` is `X-Forwarded-For`, from a trusted proxy; `socket` is
+the connection's peer (`client_ip_and_source`). In Logs Insights:
+```
+filter event = "http.request" and path != "/api/v1/health"
+| stats count(*) as requests by host, client_ip_source
+| sort requests desc
+```
+- **`shurly.griddo.io` should read `cloudfront` only.** `xff` there means the viewer address isn't used, and the rate
+  limits count CloudFront's edges. The origin request policy doesn't add `CloudFront-Viewer-Address`, the task's
+  secret isn't the distribution's, or the ALB stopped appending.
+- **`s.griddo.io`, and later `go.griddo.io`, should read `xff`.** `socket` there means `TRUSTED_PROXIES` doesn't name
+  the ALB, so every client looks like the ALB.
+- The health checks, left out above, read `socket`: the ALB asks them itself.
+
 **The distribution:**
 
 - On the ALB origin, the custom origin header `X-Origin-Verify` with a random value of at least 32 characters
@@ -663,10 +685,13 @@ condition on priority 12 nor a security group limited to CloudFront's origin-fac
 - `/login` answers `301` to `/login/`.
 - `/api/v1/health` answers with JSON, through CloudFront.
 - `/mcp/` answers `401` with `WWW-Authenticate`.
-- The client IP is yours, not the edge's, and a forged one is ignored: 21 failed `POST /api/v1/auth/login`
-  through CloudFront, each with another email and another `CloudFront-Viewer-Address: 6.6.6.N:1`, and the 21st
-  answers `429` (`RATE_LIMIT_LOGIN_PER_IP` is 20). A request straight to the ALB for `shurly.griddo.io` without the
-  secret gets `403` if the ALB rule is in place.
+- A forged client IP is ignored: 21 failed `POST /api/v1/auth/login` through CloudFront, each with another email
+  and another `CloudFront-Viewer-Address: 6.6.6.N:1`, and the 21st answers `429` (`RATE_LIMIT_LOGIN_PER_IP` is 20).
+  From one client that can't tell your IP from the edge's, since CloudFront reuses its connections to the ALB.
+  The next check can. A request straight to the ALB for `shurly.griddo.io` without the secret gets `403` if the
+  ALB rule is in place.
+- The client IP is yours, not the edge's: `shurly.griddo.io`'s `http.request` lines read `client_ip_source`
+  `cloudfront` (§ Client IPs behind CloudFront has the query).
 - An `_astro/` file's `Cache-Control` is `immutable`, and a page's is `max-age=0`.
 
 ## Cost estimation (eu-south-2, monthly)
@@ -698,7 +723,9 @@ Visitor logging is privacy-first by default, configured via env vars (every vari
 [docs/ENVIRONMENT.md](docs/ENVIRONMENT.md)):
 
 - **`ANONYMIZE_REMOTE_ADDR=true`** (default): IPv4 truncated to `/24`, IPv6 to `/64` at insert time. Truncation happens in `server/utils/network.py::anonymize_ip` before the `Visitor` row is committed — full addresses never reach Postgres. The client IP is resolved first and truncated after (`visit_ip`), for orphan visits too.
-- **A visit's country (Phase 8.4)** is looked up from the address that's stored: the anonymized one when `ANONYMIZE_REMOTE_ADDR` is on. The lookup never sees more than what's kept, and only the country, an ISO code, is stored: no city, no coordinates. The cost: a country range finer than a `/24` (rare in the data) can give no country or the wrong one. The lookup runs in process against a file, with no network call (§ Geolocation data).
+- **A visit's country and city (Phase 8.4)** are looked up from the address that's stored: the anonymized one when `ANONYMIZE_REMOTE_ADDR` is on. The lookup never sees more than what's kept. Only the country, an ISO code, and the city, its English name, are stored: no region, postcode or coordinates. The lookup runs in process against a file, with no network call (§ Geolocation data).
+  - The cost of looking up the `/24`, measured on GeoLite2 City (2026-09-25): another city for 0.38% of IPv4 addresses, another country for 0.04%, and none for IPv6, which it doesn't split finer than a `/64`. GeoLite2 knows a city for 45% of the IPv4 address space; the rest get a country only. A city is where the network is registered or routed, not where the person is: an approximation, and MaxMind's free data is less accurate than its paid data.
+  - MaxMind's licence forbids using the data to identify or locate a person, a household or a street address (GeoLite EULA §5). So a city only goes out counted, never visit by visit, never for a campaign link (one named recipient's), and a campaign's only from 5 of its recipients (`docs/PERSONAL_DATA.md` § Cities).
 - Bots and email tracking pixels share the `visits` table but carry `is_bot` / `is_pixel` flags so click analytics exclude them by default.
 - Tracking pixel responses set `Cache-Control: no-store` so HTML email clients re-fetch on every open.
 - The `User.api_key_scope` enum is in place so post-launch role rollouts (`READ_ONLY`, `CREATE_ONLY`, `DOMAIN_SPECIFIC`) ship without a destructive migration; only `FULL_ACCESS` is enforced today.
@@ -768,7 +795,7 @@ An API key is kept as its SHA-256 hash and its first 12 characters (`users.api_k
   gets a 401 from it. The same key works again once the rollout ends. JWTs and signing in with Google
   aren't affected.
 - `users.api_key`, empty from then on, is no longer mapped from the release after `0007`'s: the ORM named it in every
-  SELECT and INSERT of a user. The release after that drops it (`0011`). Not sooner: a task still running the
+  SELECT and INSERT of a user. The release after that drops it (`0012`). Not sooner: a task still running the
   previous release would fail every user query mid-rollout.
 - A downgrade past `0007` can't give the keys back: everyone generates a new one.
 
@@ -863,6 +890,43 @@ Google client and `ORGANIZATION_DOMAIN` above:
   OAuth endpoints are under `/mcp/`. The event log's `auth.login` and `auth.google_refused` carry
   `surface: "mcp"` for these sign-ins.
 
+#### The MCP's sign-in pages
+
+fastmcp's OAuth proxy renders its own pages, as FastMCP's, with its logo loaded from `gofastmcp.com`,
+and has no supported way to change them: the consent page, its errors, the errors after Google and
+"not registered". `mcp_server/pages.py` points its four renderers at Shurly's
+(`server/templates/mcp_consent.html` and `mcp_error.html`), once, when the Google provider is built.
+fastmcp keeps the flow: the CSRF token, the cookies and the redirect checks.
+
+- **Upgrades.** The deploy job installs the newest fastmcp 4.x (`uv.lock` isn't committed). The pages
+  were checked against 4.0.6 to 4.0.10.
+  - If a later version renames or moves a renderer, `tests/test_phase58_mcp_pages.py` fails in the
+    same job, before the image is built.
+  - If it gets past that, the app refuses to start (`check_fastmcp`), rather than show FastMCP's pages.
+  - Either way, update `pages.py` for that version.
+- **Consent every time.** `require_authorization_consent` keeps fastmcp's default, so no answer is
+  remembered.
+- **An error page shows a reason from a fixed set, never text from the request.** fastmcp's put the
+  URL's `error_description` on screen, so anyone could make a link that shows their words under our
+  domain.
+- **Headers,** on every HTML page under `/mcp/` (`PageHeaders`). JSON and event streams are left alone.
+  - A CSP that allows only the two templates' `<style>` blocks, by hash, and images as `data:`, with
+    `frame-ancestors 'none'`.
+  - `X-Frame-Options: DENY`, `Cache-Control: no-store` (the consent page carries a CSRF token),
+    `Referrer-Policy: no-referrer` (its address carries the sign-in's id), `nosniff` and `noindex`.
+- **No `form-action` in the CSP, on purpose. Don't add it.** Chrome applies it to every redirect after
+  the consent form: Google, `/mcp/auth/callback`, then the client's callback, which can be
+  `http://localhost:…` or a `claude://` app link. A `form-action` would break the sign-in. fastmcp
+  leaves it out for the same reason, and a test fails if it's added.
+- **What went wrong** is logged as `mcp.sign_in_error`, with the `page` and the `reason`. It also
+  carries Google's error code (`google_error`) or, when the exchange with Google failed, a scrubbed
+  `detail`: never a token or a code.
+  ```
+  filter event = "mcp.sign_in_error"
+  | stats count(*) as times by page, reason
+  | sort times desc
+  ```
+
 ---
 
 ## People: joining, roles and leaving (Phase 3.14)
@@ -932,7 +996,8 @@ app's `/login/` page, and they choose Sign in with Google with their work accoun
 
 ## Error alerting (Phase 6.4)
 
-The app writes one JSON line per request (`http.request`, with its `status`) to the task's log group,
+The app writes one JSON line per request (`http.request`: its `method`, `host`, `path`, `status`, `duration_ms`
+and `client_ip_source`) to the task's log group,
 `/aws/ecs/default/shurly-api-5fdb`. A generated MCP tool calls the API in-process, so its failures get a line too.
 Alerting therefore needs no code: a CloudWatch metric filter counts the errors, an alarm watches the count, and SNS
 sends the email. None of it is set up yet (ROADMAP 6.4).
@@ -1002,15 +1067,102 @@ The MCP's usage is in `mcp.tool_call` lines (`mcp_server/README.md` § Usage log
 
 ## Geolocation data (Phase 8.4)
 
-A visit's country comes from DB-IP's IP to Country Lite database (CC BY 4.0: pages that show countries credit DB-IP),
-which the image carries at `/app/data/dbip-country-lite.mmdb`. `GEOIP_DATABASE` names it; empty turns lookups off.
+A visit's country and city come from MaxMind's GeoLite2 City, at `/app/data/GeoLite2-City.mmdb` (`GEOIP_DATABASE`).
+When that file isn't there, the country comes from DB-IP's IP to Country Lite, at `/app/data/dbip-country-lite.mmdb`
+(`GEOIP_FALLBACK_DATABASE`, countries only), and there's no city. Both are looked up in process, from the stored
+address (§ GDPR posture). An empty `GEOIP_DATABASE` turns lookups off. GeoLite2 City adds about 65 MB to the image.
 
-- **The build fetches it** (`scripts/fetch_geoip.py`, the dockerfile's `geoip` stage): this month's file, or last
-  month's until this month's is out. It's installed only if it opens and places 8.8.8.8 in the US. Every release
-  therefore carries a recent one; DB-IP publishes monthly.
-- **Without it, the build still succeeds** and visits have no country. The deploy job warns on the run's page
-  (`No geolocation data`), and the app logs `geo.database_missing` once at startup. The next release fetches it again.
-- **Locally:** `uv run python scripts/fetch_geoip.py` puts it in `data/` (git-ignored). Without it, countries are null.
+- **The build fetches both** (`scripts/fetch_geoip.py`, the dockerfile's `geoip` stage). Each is installed only if it
+  opens and places 8.8.8.8 in the US. GeoLite2's must also match MaxMind's SHA-256 and be less than 25 days old.
+  DB-IP's is this month's file, or last month's until this month's is out. Both are asked with the script's own
+  User-Agent, because DB-IP answers Python's default with a 403.
+- **MaxMind's credentials** are the GitHub secrets `MAXMIND_ACCOUNT_ID` and `MAXMIND_LICENSE_KEY`. They can be the
+  repository's, or the `dev` environment's, which is where the deploy job runs for a push and for the weekly run.
+  - The job hands them to the build as BuildKit secrets, mounted for the fetch alone. They're in no image layer,
+    build argument or log line, and the running task never has them.
+  - The key goes to MaxMind only, over HTTPS. It isn't forwarded to the storage MaxMind redirects the download to.
+- **The licence, the [GeoLite EULA](https://www.maxmind.com/en/geolite2/eula):**
+  - §6.3: stop using and destroy an old copy within 30 days of MaxMind releasing an update. Hence the weekly run
+    and ECR's lifecycle rule, below.
+  - §6.1: the database mustn't reach a third party. The image stays in the private ECR repository, and nothing
+    uploads the file (no build artifact, no public registry).
+  - §5: it must never be used to identify or locate a person, a household or a street address. The lookup gets the
+    anonymized address, only the country and the city are kept, and a city only goes out counted (§ GDPR posture).
+  - §3: the attribution, "This product includes GeoLite Data created by MaxMind, available from
+    https://www.maxmind.com". It's in `NOTICE`, the README, and on the pages that show countries, next to DB-IP's
+    (CC BY 4.0).
+- **Every Monday at 05:00 UTC** (`schedule:` in `deploy-backend.yml`), the deploy job rebuilds main's current
+  commit with that week's databases and deploys it. GitHub runs a schedule from the default branch, main, so it
+  starts once this workflow is on main.
+  - One deploy runs at a time (`concurrency`). A push to main during the weekly run waits, then deploys its commit.
+  - The smoke test waits for `/api/v1/health` to report both the commit and the run's `build`. The weekly image has
+    the same commit as the one it replaces, so the commit alone can't tell them apart.
+  - Weekly leaves three retries within MaxMind's 30 days. When a weekly run fails, GitHub emails whoever last
+    changed the `schedule:` line. Running the workflow by hand (workflow_dispatch) retries.
+  - GitHub turns off a public repository's schedules after 60 days without activity. The Actions tab turns them
+    back on.
+- **The deploy job checks what the build fetched** (the `Geolocation data` step), and the push build reuses exactly
+  that, from the same run's builder cache:
+  - MaxMind's key is set but there's no GeoLite2 City: the job fails (`No GeoLite2 City`) and deploys nothing, so
+    the running image keeps serving. The fetch's lines above the error say why: a 401 is the account ID or the key,
+    a 429 is MaxMind's download limit.
+  - No key: a warning (`No MaxMind credentials`), and countries come from DB-IP only.
+  - No DB-IP file: a warning (`No DB-IP fallback`).
+- **At startup the app logs what it opened.**
+  - `geo.database_opened`: its path, type, build date and age in days. When it fell back to DB-IP, it also logs
+    `primary` and `primary_error`.
+  - `geo.database_missing`: neither file opened.
+  - `geo.database_stale`: a GeoLite2 copy is more than 25 days old, so no weekly run has deployed for three weeks.
+    Act on it before day 30.
+
+  In CloudWatch Logs Insights:
+  ```
+  filter event like /^geo\.database/
+  | fields @timestamp, event, path, database_type, built, age_days, primary_error
+  | sort @timestamp desc
+  ```
+- **ECR's lifecycle rule destroys the old copies.** Each image holds its week's copy of GeoLite2, so images pushed
+  more than 30 days ago are expired. Applied to `shurly-api` on 2026-09-29, after a preview: it expired 48 of 105
+  images, the newest from 2026-04-28, and none serving or recent. It isn't applied from here: to apply it again,
+  preview it first (`aws ecr start-lifecycle-policy-preview`), and check that it expires the per-platform images
+  along with their index:
+  ```json
+  {
+    "rules": [
+      {
+        "rulePriority": 1,
+        "description": "GeoLite EULA 6.3: no image, nor its GeoLite2 copy, older than 30 days",
+        "selection": {
+          "tagStatus": "any",
+          "countType": "sinceImagePushed",
+          "countUnit": "days",
+          "countNumber": 30
+        },
+        "action": { "type": "expire" }
+      }
+    ]
+  }
+  ```
+  ```bash
+  aws ecr put-lifecycle-policy --repository-name shurly-api --region eu-south-2 --profile griddo-main \
+      --lifecycle-policy-text file://ecr-lifecycle.json
+  ```
+  A rollback to any image of the last 30 days keeps working. If the weekly run failed four weeks running, the rule
+  would expire the image that's serving, and a new task couldn't start. `geo.database_stale` fires first, on day 25.
+- **Filling in older visits:** the visits saved before cities, or while an image had no database, have neither.
+  `scripts/run_backfill_places.sh` runs `python -m server.tools.backfill_places` as a one-off ECS task, from the
+  live service's image, environment and network, the way the Shlink import runs (`scripts/one_off_task.sh`).
+  - It looks each up as the redirect does, from the stored address, and fills only what's empty. A city goes only
+    where the visit's country is empty or agrees. It skips Shlink's imported visits, which have no address.
+  - A dry run first, which reports counts and writes nothing. Then `--for-real`, typing the service's name back.
+    Running it twice is harmless.
+  - It needs no task role, since it reads nothing from AWS. Its output goes to the service's log group, in
+    streams `backfill-places/…`, and the task definition made for it is deleted at the end.
+  - Run it after the release that brings cities, once GeoLite2 City is in the image: with DB-IP's file only, it
+    fills countries and no city.
+- **Locally:** `uv run python scripts/fetch_geoip.py` puts DB-IP's file in `data/` (git-ignored), plus GeoLite2 City
+  when `MAXMIND_ACCOUNT_ID` and `MAXMIND_LICENSE_KEY` are set. The 30 days apply to a developer's copy too:
+  delete `data/GeoLite2-City.mmdb` within 30 days, or fetch it again. Without either file, countries are null.
 
 ## Moving Shlink's links (Phase 8.4)
 

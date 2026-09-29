@@ -165,3 +165,26 @@ const DEVICES: Record<string, string> = { desktop: 'Desktop', mobile: 'Mobile', 
 export function deviceLabel(name: string): string {
   return DEVICES[name] ?? name;
 }
+
+// ---------------------------------------------------------------------------
+// Cities (8.4): a city is its name with its country's code, so two Valencias are two places. "Unknown" is a visit
+// without a city and "Other cities" a campaign's cities too few recipients clicked from to name (both: no country).
+// ---------------------------------------------------------------------------
+
+interface Place {
+  name: string;
+  country: string | null;
+}
+
+const isUnknown = (c: Place) => c.country === null && c.name === 'Unknown';
+const isOther = (c: Place) => c.country === null && c.name === 'Other cities';
+
+/** Named cities first, as the API ordered them; then Other cities; then Unknown, which is no place. */
+export function orderCities<T extends Place>(cities: T[]): T[] {
+  return [...cities.filter((c) => !isUnknown(c) && !isOther(c)), ...cities.filter(isOther), ...cities.filter(isUnknown)];
+}
+
+/** "Valencia, Spain": a city with its country's name (`nameOf` gives it from the code). The other two as they are. */
+export function cityLabel(city: Place, nameOf: (code: string) => string): string {
+  return city.country ? `${city.name}, ${nameOf(city.country)}` : city.name;
+}
