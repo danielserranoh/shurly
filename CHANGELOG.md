@@ -26,6 +26,49 @@ implementation lifecycle and is independent of the URL version segment.
 
 ## [Unreleased]
 
+### Fixed — the one-off tasks find the live task definition on ECS Express
+- **`scripts/run_backfill_places.sh` failed in production** at its first dry run: "Unable to describe task
+  definition". On an ECS Express service, `describe-services` gives the service's own `taskDefinition` as null,
+  and the script asked AWS to describe "null". The Shlink import's runner had the same fault, in the part both
+  share (`scripts/one_off_task.sh`).
+- **They take the PRIMARY deployment's task definition** (and its network, when the service has none). They stop
+  with a clear message while a rollout is in progress, when two deployments exist, rather than run with the
+  wrong one.
+- **The tests' stand-in for AWS answers as Express does:** a null `taskDefinition` beside the deployments, and
+  an error for any task definition but the live one. The earlier stand-in described whatever it was asked for,
+  which is how this got through.
+
+### Security — a client could choose its own address on s.griddo.io
+- **uvicorn ran with `--proxy-headers --forwarded-allow-ips "*"`.** It trusted every peer, and replaced the
+  connection's address with the leftmost `X-Forwarded-For` entry, which the client writes, before the app ran. So
+  on the path straight to the ALB (`s.griddo.io`), Phase 6.3's resolution, which reads the header from the right
+  and only from `TRUSTED_PROXIES`, saw the forged address as the socket's.
+  - The per-IP rate limits could be dodged with a new forged address each time.
+  - Visits and orphan visits stored the address the client chose, with its country and city.
+  - Found in production by shurly-93 on 2026-09-29: `client_ip_source` read `socket` for `s.griddo.io`.
+  - CloudFront's path (`shurly.griddo.io`) wasn't affected: its viewer check reads the address CloudFront
+    appended.
+- **The image runs uvicorn with `--no-proxy-headers`.** The app alone reads the proxy headers.
+  - `X-Forwarded-Proto` now comes from a trusted proxy only (`ForwardedProtoMiddleware`, its rightmost value), so a
+    redirect built from the scheme stays `https` behind the ALB.
+  - `tests/test_phase63_forwarded_headers.py` runs the real uvicorn with the CMD's flags. A forged
+    `X-Forwarded-For` isn't the client, a new one each time is still rate-limited, and the scheme comes only
+    from the ALB.
+- Visits stored before the fix keep the address they were stored with.
+
+### Changed — dependencies are pinned by a committed uv.lock (6.3)
+- **`uv.lock` is committed.** It was gitignored, so every CI run, deploy and Monday rebuild resolved the newest
+  versions of 121 packages. A release could ship versions its PR's CI never ran, and the weekly rebuild changed
+  production's dependencies with no PR at all.
+- **CI and the deploy job run `uv sync --locked`,** which installs exactly the lock and fails when `pyproject.toml`
+  changed without it (`uv lock`). The image keeps `uv sync --frozen`, from the same file.
+- **New versions arrive in Dependabot's weekly PR against `dev`** (`.github/dependabot.yml`): uv and the
+  workflows' actions, with minor and patch bumps grouped, and a major as a PR of its own.
+- **The caps stay,** as a safety net under the weekly bump (alembic, google-auth, maxminddb, ruff, fastmcp), with
+  their comments reworded.
+- **The README and docs/TESTING.md** install with `uv sync --extra dev --extra mcp`: plain `uv sync` leaves out
+  pytest and ruff. They also say how to add or bump a dependency.
+
 ### Changed — the MCP's sign-in pages are Shurly's, not FastMCP's (5.8)
 - **The consent page and every error the MCP sign-in can show are Shurly's.** No FastMCP name or logo, and
   nothing loaded from gofastmcp.com. They come from `server/templates/mcp_consent.html` and `mcp_error.html`.

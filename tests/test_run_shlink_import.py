@@ -84,9 +84,20 @@ FAKE_AWS = textwrap.dedent(
     elif command == ["ecs", "list-services"]:
         print("arn:aws:ecs:eu-south-2:123456789012:service/default/shurly-api-5fdb")
     elif command == ["ecs", "describe-services"]:
-        print(json.dumps({"taskDefinition": os.environ["FAKE_SERVICE_TD"],
-                          "networkConfiguration": json.loads(os.environ["FAKE_NETWORK"])}))
+        # ECS Express's shape: no task definition or network on the service itself, only on its
+        # deployments. One PRIMARY, unless FAKE_DEPLOYMENTS says otherwise (a rollout in progress).
+        primary = {"status": "PRIMARY", "rolloutState": "COMPLETED",
+                   "taskDefinition": os.environ["FAKE_SERVICE_TD"],
+                   "networkConfiguration": json.loads(os.environ["FAKE_NETWORK"])}
+        deployments = json.loads(os.environ.get("FAKE_DEPLOYMENTS") or json.dumps([primary]))
+        print(json.dumps({"taskDefinition": None, "networkConfiguration": None,
+                          "deployments": deployments}))
     elif command == ["ecs", "describe-task-definition"]:
+        if option("--task-definition") != os.environ["FAKE_SERVICE_TD"]:
+            # What AWS answered for the service's null taskDefinition (2026-09-29).
+            print("An error occurred (ClientException) when calling the DescribeTaskDefinition "
+                  "operation: Unable to describe task definition.", file=sys.stderr)
+            sys.exit(254)
         print(json.dumps(live))
     elif command == ["ecs", "register-task-definition"]:
         source = option("--cli-input-json").removeprefix("file://")
@@ -230,6 +241,44 @@ def test_it_runs_in_the_services_network(aws):
 
     run = json.loads((aws / "run-task.json").read_text())
     assert (run["network"], run["task_definition"]) == (NETWORK, NEW_TD)
+
+
+def test_the_live_task_definition_is_the_primary_deployments(aws):
+    """ECS Express leaves the service's own taskDefinition null: the one serving is the PRIMARY
+    deployment's (2026-09-29, the backfill's first dry run in production)."""
+    result = _run(aws, *ARGS)
+
+    assert result.returncode == 0, result.stderr
+    described = [call for call in _calls(aws) if call[:2] == ["ecs", "describe-task-definition"]]
+    assert [call[call.index("--task-definition") + 1] for call in described] == [SERVICE_TD]
+
+
+@pytest.mark.parametrize(
+    "deployments",
+    [
+        [
+            {
+                "status": "PRIMARY",
+                "taskDefinition": SERVICE_TD + "-new",
+                "networkConfiguration": NETWORK,
+            },
+            {"status": "ACTIVE", "taskDefinition": SERVICE_TD, "networkConfiguration": NETWORK},
+        ],
+        [],
+    ],
+    ids=["a rollout in progress", "no deployment"],
+)
+def test_it_stops_unless_exactly_one_deployment_serves(aws, deployments):
+    """Mid-rollout, which one serves isn't settled: stop rather than pick the wrong one."""
+    result = _run(aws, *ARGS, FAKE_DEPLOYMENTS=json.dumps(deployments))
+
+    assert result.returncode == 1
+    assert "deployment" in result.stderr
+    assert not [
+        call
+        for call in _calls(aws)
+        if call[:2] in (["ecs", "describe-task-definition"], ["ecs", "run-task"])
+    ]
 
 
 def test_the_services_secrets_never_reach_the_terminal(aws):

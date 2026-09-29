@@ -13,7 +13,7 @@ from server.app.urls import redirect_router
 from server.core import get_db
 from server.core.config import settings
 from server.utils.event_log import log_event
-from server.utils.network import client_ip_and_source, request_host
+from server.utils.network import ForwardedProtoMiddleware, client_ip_and_source, request_host
 from server.utils.nul import NulMiddleware, nul_value_error
 from server.utils.rate_limit import RateLimitMiddleware
 
@@ -207,6 +207,11 @@ def create_app(mcp_auth=None) -> FastAPI:
     # response, including the OPTIONS preflight handled by CORSMiddleware.
     app.add_middleware(RequestIdMiddleware)
 
+    # Phase 6.3 — the scheme from a trusted proxy's X-Forwarded-Proto (server/utils/network.py),
+    # outermost, so every layer and route sees it. uvicorn's own proxy headers are off: they'd
+    # also replace the client's address (dockerfile).
+    app.add_middleware(ForwardedProtoMiddleware)
+
     # Versioned API.
     app.include_router(api_router, prefix="/api/v1")
 
@@ -273,4 +278,5 @@ if __name__ == "__main__":
         host="0.0.0.0",
         port=8000,
         reload=True,
+        proxy_headers=False,  # as the image runs it: the app reads the proxy headers (Phase 6.3)
     )

@@ -95,6 +95,8 @@ Backend (FastAPI)               Frontend (Astro 7 + Tailwind 4)
 4. **Verify**: Run `uv run pytest` — the whole suite must pass.
 5. **Lint**: `uv run ruff check . && uv run ruff format --check .` — CI fails on either, so fix before pushing (`uv run ruff format .` rewrites).
 6. **Commit**: Use clear, descriptive commit messages following the existing pattern (`feat: Phase X.Y.Z — …`).
+7. **Dependencies**: add or bump one with `uv add <package>` / `uv lock --upgrade-package <package>`, and commit
+   `uv.lock` with `pyproject.toml`. CI runs `uv sync --locked` and fails if they disagree.
 
 ### Code Conventions
 
@@ -235,6 +237,7 @@ docker compose up -d
 
 | Need | Command |
 |------|---------|
+| Install dependencies | `uv sync --extra dev --extra mcp` |
 | Start backend | `uv run uvicorn main:app --reload` |
 | Start frontend | `cd frontend && npm run dev` |
 | Run all tests | `uv run pytest` |

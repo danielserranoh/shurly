@@ -21,7 +21,8 @@ dependencies = [
     "beautifulsoup4>=4.12.0",
     "jinja2>=3.1.0",
     # Phase 3.14.1 — schema migrations, run at startup (server/core/migrations.py).
-    # Capped below 2 for the same reason as fastmcp: no committed uv.lock.
+    # Capped below 2: uv.lock pins the version, and the cap keeps the weekly bump
+    # (`uv lock --upgrade`, Dependabot) from crossing a major, a deliberate change of its own.
     "alembic>=1.13,<2",
     # Phase 3.13.2 — verifies Google's ID token (signature, aud, iss, exp) for
     # sign in with Google (server/utils/google_oidc.py). Capped like alembic.
@@ -34,17 +35,16 @@ dependencies = [
     # (server/utils/avatar.py). It parses untrusted input: watch its CVEs, and keep
     # the floor above the last fixed one (11.3.0, CVE-2025-48379).
     "pillow>=11.3",
-    # Phase 8.4 — reads DB-IP's IP to Country Lite database (server/utils/geo.py), memory-
-    # mapped, in process. Capped like alembic: there's no committed uv.lock.
+    # Phase 8.4 — reads the geolocation databases, GeoLite2 City and DB-IP's fallback
+    # (server/utils/geo.py), memory-mapped, in process. Capped like alembic.
     "maxminddb>=3.2,<4",
 ]
 
 [project.optional-dependencies]
 dev = [
-    # Pinned to one minor series: CI now fails on lint/format, and a new ruff
-    # minor can add rules or change formatting. uv.lock isn't committed, so an
-    # open range would let an upgrade turn CI red with no code change. Bump
-    # deliberately (and re-run `ruff format .` in the same PR).
+    # Pinned to one minor series: CI fails on lint/format, and a new ruff minor
+    # can add rules or change formatting. The cap keeps the weekly bump within it.
+    # Bump deliberately (and re-run `ruff format .` in the same PR).
     "ruff>=0.15.12,<0.16",
     "pytest>=8.0.0",
     "pytest-asyncio>=0.23.0",
@@ -57,8 +57,9 @@ dev = [
 # unless deliberately enabled. Install with `uv sync --extra mcp` for local
 # development of the MCP transport surface.
 # fastmcp 4 moved its HTTP stack to httpx2 (see mcp_server/auth.py). Capped
-# below 5 because uv.lock is not committed: every CI run and deploy resolves
-# the newest release, so an unbounded spec lets a new major land unreviewed.
+# below 5: uv.lock pins the version, and the cap keeps the weekly bump from
+# crossing a major, which needs checking on its own (mcp_server/pages.py swaps
+# fastmcp's page renderers).
 # At least 4.0.6 (Phase 5.8): from there fastmcp's GoogleTokenVerifier sends
 # Google's token to tokeninfo in the Authorization header, not the URL
 # (PrefectHQ/fastmcp#5185), which is the version 5.8 was built and tested on.

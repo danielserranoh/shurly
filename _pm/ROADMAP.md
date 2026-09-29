@@ -1511,6 +1511,10 @@ for this.
   - [x] AWS, with the distribution (2026-09-29): the custom origin header, HTTPS to the origin, the origin request policy
         AllViewerAndCloudFrontHeaders-2022-06 and the task's `CLOUDFRONT_ORIGIN_SECRETS` (DEPLOYMENT.md § Frontend
         hosting); optionally the per-host ALB rules
+  - [x] uvicorn's proxy headers off (`--no-proxy-headers`): with `--forwarded-allow-ips "*"` it replaced the
+        client's address with the leftmost `X-Forwarded-For` entry before the app ran, so on `s.griddo.io` anyone
+        could choose theirs (found in production 2026-09-29). The app reads `X-Forwarded-Proto` itself, from
+        `TRUSTED_PROXIES` only (`tests/test_phase63_forwarded_headers.py`, the real uvicorn with the CMD's flags)
   - [x] Provable in production without logging an IP: each `http.request` line says how its client IP was found,
         `client_ip_source` (`cloudfront`, `xff` or `socket`), with its `host`, and CloudWatch counts them by host
         (DEPLOYMENT.md § Client IPs behind CloudFront; `tests/test_client_ip_source.py`). A clean `429` from one
@@ -1817,6 +1821,12 @@ live in `mcp_server/README.md`, written for developers. There is no user manual 
       before building anything once it exists; a failed lookup stops it too. Images go out with the deploy
       workflow, settings change on the live service (`tests/test_deploy_ecs_script.py`, on stubbed `aws` and
       `docker`)
+- [x] Reproducible builds: `uv.lock` was gitignored, so every CI run, deploy and Monday rebuild resolved the newest
+      of 121 packages, and a release could ship versions its PR never tested → the lock is committed; CI and the
+      deploy run `uv sync --locked`, the image `--frozen`. New versions come from Dependabot's weekly PR against
+      `dev` (uv and the workflows' actions, minor and patch grouped). The caps stay, as a safety net
+      (`tests/test_dependency_lock.py`)
+  - [ ] Pin the base image and the uv binary by digest, with Dependabot's docker ecosystem to bump them
 
 ### 6.4 Monitoring & Logging
 - [x] CloudWatch Logs setup → `/aws/ecs/default/shurly-api-5fdb`; `X-Request-Id` correlates requests

@@ -47,8 +47,9 @@ jobs:
       # --extra dev `uv sync` skips them and the lint step fails to spawn ruff.
       # --extra mcp pulls fastmcp so the Phase 5 / Phase 5.5 tests don't get
       # silently skipped via `pytest.importorskip("fastmcp")`.
+      # --locked: exactly uv.lock, and a failure if pyproject.toml changed without it (`uv lock`).
       run: |
-        uv sync --extra dev --extra mcp
+        uv sync --locked --extra dev --extra mcp
 
     - name: Lint with ruff
       # Gating. The codebase was brought to zero lint errors and fully
@@ -108,7 +109,7 @@ jobs:
 
     - name: Install dependencies (dev + mcp extras)
       run: |
-        uv sync --extra dev --extra mcp
+        uv sync --locked --extra dev --extra mcp
 
     - name: Run the suite on PostgreSQL
       env:
@@ -190,7 +191,7 @@ jobs:
 
     - name: Install the API's dependencies
       # The app's own, as the image has them: the wrapper and the fake Google need no extra.
-      run: uv sync
+      run: uv sync --locked
 
     - name: Set up Node.js
       uses: actions/setup-node@v4

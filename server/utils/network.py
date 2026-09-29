@@ -205,6 +205,50 @@ def request_host(request: Request) -> str:
     return host[:255]
 
 
+def forwarded_proto(scope) -> str | None:
+    """
+    Phase 6.3 — the scheme a trusted proxy says the client used: X-Forwarded-Proto, but only
+    from a peer in TRUSTED_PROXIES, and its rightmost value, the one the nearest proxy wrote.
+    None otherwise, or for anything but http and https.
+    """
+    client = scope.get("client")
+    peer = client[0] if client else None
+    if not peer or not settings.trusted_proxies:
+        return None
+    if not _addr_in_any_cidr(peer, settings.trusted_proxies):
+        return None
+    values = [
+        value.decode("latin-1") for name, value in scope["headers"] if name == b"x-forwarded-proto"
+    ]
+    if not values:
+        return None
+    proto = ",".join(values).rsplit(",", 1)[-1].strip().lower()
+    return proto if proto in ("http", "https") else None
+
+
+class ForwardedProtoMiddleware:
+    """
+    Phase 6.3 — the request's scheme behind the ALB, which ends TLS (`forwarded_proto`), so what
+    Starlette builds from it, like the trailing-slash redirect's absolute URL, stays https.
+
+    What uvicorn's --proxy-headers did for the scheme, without its also replacing the client's
+    address before the app runs: the image runs uvicorn with --no-proxy-headers, and `client_ip`
+    alone decides the address.
+    """
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] in ("http", "websocket"):
+            proto = forwarded_proto(scope)
+            if proto is not None:
+                if scope["type"] == "websocket":
+                    proto = proto.replace("http", "ws")
+                scope = {**scope, "scheme": proto}
+        await self.app(scope, receive, send)
+
+
 def visit_ip(request: Request) -> str:
     """
     The address a visit, or an orphan visit, is stored with: `client_ip`, then

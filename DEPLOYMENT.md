@@ -371,6 +371,13 @@ That's the only secret needed. No `AWS_ACCESS_KEY_ID`, no `AWS_SECRET_ACCESS_KEY
 
 `deploy-backend.yml` deploys on every push to `main`. `main` is branch-protected (a PR with passing tests), so a commit that lands there has already passed that gate. It also runs by hand from the Actions tab (`workflow_dispatch`), for a rollback or a redeploy.
 
+**Dependencies are pinned** by the committed `uv.lock`.
+- The deploy job runs `uv sync --locked`, and the image `uv sync --frozen`, so a release installs what its PR's CI
+  tested.
+- The Monday rebuild (§ Geolocation data) changes no Python dependency, and a rollback rebuilds what shipped.
+- New versions arrive only through Dependabot's weekly PR against `dev` (`.github/dependabot.yml`: uv and the
+  workflows' actions, minor and patch grouped), which is QA'd and released like any other.
+
 ---
 
 ## Frontend hosting (Phase 4.10)
@@ -750,6 +757,8 @@ The resolver (`server/utils/network.py::resolve_client_ip`) checks the request's
 
 Behind CloudFront (`shurly.griddo.io`, Phase 4.10) the client IP comes from `CloudFront-Viewer-Address` instead, on requests that prove they came through the distribution: § Frontend hosting, "Client IPs behind CloudFront". Don't add CloudFront's ranges here.
 
+**uvicorn's proxy headers stay off** (`--no-proxy-headers` in the dockerfile's CMD). They're on by default, and they replace the connection's address before the app sees the request. Until 2026-09-29 the image ran them with `--forwarded-allow-ips "*"`, which takes the leftmost `X-Forwarded-For` entry, the one the client writes. So on `s.griddo.io` anyone could choose their address: the per-IP rate limits counted it, and visits stored it, with its country and city. Never turn them back on, and don't add `--forwarded-allow-ips`. The app reads `X-Forwarded-Proto` itself, from `TRUSTED_PROXIES` only (`ForwardedProtoMiddleware`), so what Starlette builds from the scheme, like a trailing-slash redirect, stays `https` behind the ALB. `tests/test_phase63_forwarded_headers.py` runs the real uvicorn with the CMD's flags.
+
 ## Rate limits (Phase 6.3)
 
 What anyone can call is limited per client IP, counted in the database (`rate_limits`) so both tasks share the counts: the password login (every attempt runs a bcrypt check, on the tasks that also serve redirects) and the Google and MCP sign-in endpoints (each request writes a row). Redirects, anything signed in and CORS preflights are never limited.
@@ -898,10 +907,10 @@ and has no supported way to change them: the consent page, its errors, the error
 (`server/templates/mcp_consent.html` and `mcp_error.html`), once, when the Google provider is built.
 fastmcp keeps the flow: the CSRF token, the cookies and the redirect checks.
 
-- **Upgrades.** The deploy job installs the newest fastmcp 4.x (`uv.lock` isn't committed). The pages
+- **Upgrades.** `uv.lock` pins fastmcp, and a new version arrives in Dependabot's weekly PR. The pages
   were checked against 4.0.6 to 4.0.10.
-  - If a later version renames or moves a renderer, `tests/test_phase58_mcp_pages.py` fails in the
-    same job, before the image is built.
+  - If a later version renames or moves a renderer, `tests/test_phase58_mcp_pages.py` fails in that PR's
+    CI, before anything is merged.
   - If it gets past that, the app refuses to start (`check_fastmcp`), rather than show FastMCP's pages.
   - Either way, update `pages.py` for that version.
 - **Consent every time.** `require_authorization_consent` keeps fastmcp's default, so no answer is
@@ -1155,7 +1164,7 @@ address (§ GDPR posture). An empty `GEOIP_DATABASE` turns lookups off. GeoLite2
   - It looks each up as the redirect does, from the stored address, and fills only what's empty. A city goes only
     where the visit's country is empty or agrees. It skips Shlink's imported visits, which have no address.
   - A dry run first, which reports counts and writes nothing. Then `--for-real`, typing the service's name back.
-    Running it twice is harmless.
+    Running it twice is harmless. Not during a rollout: the script stops until there's one deployment.
   - It needs no task role, since it reads nothing from AWS. Its output goes to the service's log group, in
     streams `backfill-places/…`, and the task definition made for it is deleted at the end.
   - Run it after the release that brings cities, once GeoLite2 City is in the image: with DB-IP's file only, it
@@ -1178,7 +1187,12 @@ store, never in the repository.
 
 `scripts/run_shlink_import.sh` runs the import in production's network, against the private RDS, with the live
 service's own image and environment. It makes a task definition for the run from the live one, and deletes it at
-the end, whatever happened. The task has two containers, sharing a volume:
+the end, whatever happened.
+- The live one is the service's PRIMARY deployment's: ECS Express leaves the service's own `taskDefinition`
+  empty. While a rollout is in progress there are two deployments, and the script stops: run it once the
+  rollout is done (`scripts/one_off_task.sh`, shared with the backfill).
+
+The task has two containers, sharing a volume:
 
 - **`fetch`**, the AWS CLI's image (`public.ecr.aws/aws-cli/aws-cli`), copies the snapshot and the review from a
   private bucket into the volume. It uses the task role `shurly-shlink-import`, which can read that one prefix
