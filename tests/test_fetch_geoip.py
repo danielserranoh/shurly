@@ -1,7 +1,8 @@
 """
 Phase 8.4 — scripts/fetch_geoip.py, which the image build runs: DB-IP's IP to Country Lite,
 this month's or last month's, installed only once it opens and knows that 8.8.8.8 is in
-the US. It never fails: without a database, visits have no country.
+the US. It never fails: without a database, visits have no country. It asks with its own
+User-Agent: download.db-ip.com answers Python's default with a 403.
 """
 
 import gzip
@@ -25,14 +26,19 @@ AUGUST = "https://download.db-ip.com/free/dbip-country-lite-2026-08.mmdb.gz"
 
 
 class FakeDBIP:
-    """download.db-ip.com: the months it has, gzipped; a 404 for the others."""
+    """download.db-ip.com: the months it has, gzipped; a 404 for the others; a 403 for
+    Python's default User-Agent, which urllib sends when the request names none."""
 
     def __init__(self, files: dict[str, bytes]):
         self.files = files
         self.asked: list[str] = []
 
-    def __call__(self, url, timeout=None):
+    def __call__(self, request, timeout=None):
+        url = request.full_url
         self.asked.append(url)
+        agent = request.get_header("User-agent") or "Python-urllib/3"
+        if agent.startswith("Python-urllib"):
+            raise HTTPError(url, 403, "Forbidden", {}, None)
         if url not in self.files:
             raise HTTPError(url, 404, "Not Found", {}, None)
         return io.BytesIO(gzip.compress(self.files[url]))
@@ -87,3 +93,10 @@ def test_never_a_failure_and_a_file_already_there_stays(tmp_path, monkeypatch, c
 
     assert installed.read_bytes() == b"last month's"
     assert "visits will have no country" in capsys.readouterr().out
+
+
+def test_asked_with_the_scripts_own_user_agent(tmp_path):
+    dbip = FakeDBIP({SEPTEMBER: good(tmp_path)})
+
+    assert fetch_geoip.fetch(tmp_path / "data", TODAY, opener=dbip) is not None
+    assert not fetch_geoip.USER_AGENT.startswith("Python-urllib")

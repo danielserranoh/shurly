@@ -26,6 +26,36 @@ implementation lifecycle and is independent of the URL version segment.
 
 ## [Unreleased]
 
+### Fixed — the image has its country database again (a hotfix, 8.4)
+- **The release's image shipped without DB-IP's country database.** The build got a 403 for this month's file
+  and for last month's, because download.db-ip.com refuses Python's default User-Agent. Visits saved since then
+  have no country, and the deploy job warned: "No geolocation data".
+- **`scripts/fetch_geoip.py` now asks with its own User-Agent,** `shurly-fetch-geoip/1`. The tests' stand-in for
+  DB-IP refuses Python's agent, as the real one does.
+- The visits saved without a country keep none until the one-off backfill that comes with cities (8.4) fills it
+  in from their stored address.
+
+### Added — the Shlink import runs as a one-off ECS task (decision B)
+- **`scripts/run_shlink_import.sh`** runs `python -m server.tools.shlink import` in production's network, against
+  the private RDS, from the live service's own image, environment and network. It makes the task definition for
+  the run and deletes it at the end, whatever happened.
+- **The snapshot and the review come from a private S3 bucket.** An AWS CLI container copies them into a volume the
+  import reads, using a task role that reads one prefix. The app's image stays as it is.
+- **It's a dry run unless `--for-real`,** which asks for the owner's email typed back. Its output goes to the
+  service's CloudWatch log group, and the script prints it.
+- **The service's secrets,** in the environment it carries over, go to AWS and never to the terminal.
+- **DEPLOYMENT.md has the runbook,** and the bucket and the IAM to make once by hand.
+  `tests/test_run_shlink_import.py` runs the script against a fake `aws`.
+
+### Changed — two privacy questions, answered for now
+- **A campaign link's visits one by one, and orphan visits' IPs,** are both kept as they are (2026-09-29), to revisit
+  after the dogfood. `docs/PERSONAL_DATA.md` says so where it said "decision pending".
+
+### Added — Send feedback (the dogfood, 5.6.1)
+- **Send feedback, in the account menu and the phone's menu**, opens an email to support@griddo.io in the person's
+  own mail app, with the subject "Shurly feedback" and, below room to write, the page they were on: its path, built
+  when the page is, so never its query (a link's code or a campaign's id).
+
 ### Added — CI runs the whole suite on PostgreSQL too
 - **The suite ran on in-memory SQLite,** which takes what PostgreSQL refuses. The recent 500s only production could
   give hid there: a `GROUP BY` on a `json` column, a NUL character in text. CI's PostgreSQL service ran only the

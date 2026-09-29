@@ -99,8 +99,9 @@ uv run python -m server.tools.shlink import _exchange/shlink-go.griddo.io-….sn
 ```
 
 It writes to the database the `DB_*` settings name. **Run it with `--dry-run` first:** it does everything,
-prints the report, and rolls back. How it runs against production's private RDS is still to be decided
-(ROADMAP 8.4, decision B). A rehearsal runs locally against a restored copy.
+prints the report, and rolls back. Against production's private RDS it runs as a one-off ECS task:
+`scripts/run_shlink_import.sh` (DEPLOYMENT.md § The import as a one-off ECS task). A rehearsal runs locally
+against a restored copy.
 
 **Each link the review keeps** (`keep`, `archive`, or left out of the review) arrives with:
 - its exact code, never lowercased, so `AbC` and `abc` stay two links, as in Shlink's default `strict` mode;

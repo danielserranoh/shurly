@@ -2,6 +2,8 @@
 import BaseLayout from './BaseLayout.astro';
 import Logo from '@/components/brand/Logo.astro';
 import Icon from '@/components/ui/Icon.astro';
+import { site } from '@/config/site';
+import { feedbackHref } from '@/utils/feedback';
 
 type Section = 'links' | 'campaigns' | 'analytics' | 'settings';
 
@@ -13,6 +15,8 @@ interface Props {
 }
 
 const { title, section, width = 'default' } = Astro.props;
+// Send feedback: an email to the team with this page's path, known here at build time, so no query gets in.
+const feedback = feedbackHref(site.supportEmail, Astro.url.pathname);
 
 const nav: { key: Section; label: string; href: string; icon: 'link' | 'megaphone' | 'chart' }[] = [
   { key: 'links', label: 'Links', href: '/dashboard/', icon: 'link' },
@@ -67,6 +71,7 @@ const maxWidth = { default: 'max-w-6xl', narrow: 'max-w-3xl', wide: 'max-w-7xl' 
           <a class="menu-item" href="/dashboard/settings/#tags"><Icon name="tags" />Manage tags</a>
           <a class="menu-item" href="/dashboard/settings/#api"><Icon name="key" />API &amp; MCP</a>
           <a class="menu-item" href="/manual/"><Icon name="book-open" />Help</a>
+          <a class="menu-item" href={feedback}><Icon name="mail" />Send feedback</a>
           <div class="menu-sep"></div>
           <button type="button" class="menu-item" data-logout><Icon name="log-out" />Log out</button>
         </div>
@@ -101,6 +106,7 @@ const maxWidth = { default: 'max-w-6xl', narrow: 'max-w-3xl', wide: 'max-w-7xl' 
           <Icon name="settings" />Settings
         </a>
         <a href="/manual/" class="menu-item h-11 text-base"><Icon name="book-open" />Help</a>
+        <a href={feedback} class="menu-item h-11 text-base"><Icon name="mail" />Send feedback</a>
         <div class="menu-sep"></div>
         <button type="button" class="menu-item h-11 text-base" data-logout><Icon name="log-out" />Log out</button>
       </nav>
