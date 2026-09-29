@@ -694,7 +694,8 @@ Mitigations if cost ever pinches:
 
 ## GDPR posture
 
-Visitor logging is privacy-first by default, configured via env vars:
+Visitor logging is privacy-first by default, configured via env vars (every variable, with its default and meaning:
+[docs/ENVIRONMENT.md](docs/ENVIRONMENT.md)):
 
 - **`ANONYMIZE_REMOTE_ADDR=true`** (default): IPv4 truncated to `/24`, IPv6 to `/64` at insert time. Truncation happens in `server/utils/network.py::anonymize_ip` before the `Visitor` row is committed — full addresses never reach Postgres. The client IP is resolved first and truncated after (`visit_ip`), for orphan visits too.
 - **A visit's country (Phase 8.4)** is looked up from the address that's stored: the anonymized one when `ANONYMIZE_REMOTE_ADDR` is on. The lookup never sees more than what's kept, and only the country, an ISO code, is stored: no city, no coordinates. The cost: a country range finer than a `/24` (rare in the data) can give no country or the wrong one. The lookup runs in process against a file, with no network call (§ Geolocation data).

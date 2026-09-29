@@ -1741,7 +1741,9 @@ live in `mcp_server/README.md`, written for developers. There is no user manual 
 - [x] User manual for dashboard: starts with the MCP install page (5.9), which lives in the frontend → `/manual/`, Markdown in `frontend/src/content/manual/`
 - [ ] Architecture diagram
 - [ ] Database schema diagram
-- [ ] Environment variables reference
+- [x] Environment variables reference → [docs/ENVIRONMENT.md](../docs/ENVIRONMENT.md) (2026-09-29): every variable
+      Shurly reads, with its default and meaning, never a production value. `tests/test_environment_reference.py`
+      fails on a setting without a row or with another default, a variable read anywhere without a row, and a stale row
 
 ### 7.2 Operational Runbook
 - [ ] How to add new users → self-service sign-up for `@griddo.io`: signing in with Google makes the account

@@ -26,6 +26,15 @@ implementation lifecycle and is independent of the URL version segment.
 
 ## [Unreleased]
 
+### Added — every environment variable, in one reference (ROADMAP 7.1)
+- **`docs/ENVIRONMENT.md`** lists every variable Shurly reads, with its default and what it does. That's the
+  backend's settings, what the backend, its tools and its tests read directly, and what the frontend's build reads.
+  It has defaults only, never a production value.
+- **`tests/test_environment_reference.py` keeps it true.** It fails when:
+  - a setting has no row, or another default than its row;
+  - a variable read anywhere (`os.getenv`, `os.environ`, or `PUBLIC_*` in the frontend) has no row;
+  - a row names nothing.
+
 ### Added — a campaign's analytics (Phase 3.17)
 - **The campaign page's header numbers are all-time and about people** (`/totals`):
   - **Clicked:** the recipients who clicked their link, as a share of all of them;
