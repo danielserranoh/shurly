@@ -18,6 +18,7 @@ from server.schemas.campaign import (
 from server.schemas.responses import get_responses
 from server.schemas.tag import TagResponse
 from server.utils.access import viewer, visible_campaign_or_404
+from server.utils.bounds import MAX_SKIP
 from server.utils.campaign import generate_campaign_urls, parse_csv, validate_csv
 from server.utils.csv_export import stream_csv
 from server.utils.domain import get_or_create_default_domain
@@ -161,7 +162,9 @@ def create_campaign(
 def list_campaigns(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
-    skip: int = Query(0, ge=0, description="Number of campaigns to skip, for pagination"),
+    skip: int = Query(
+        0, ge=0, le=MAX_SKIP, description="Number of campaigns to skip, for pagination"
+    ),
     limit: int = Query(
         100, ge=1, le=100, description="Maximum number of campaigns to return (1-100)"
     ),
@@ -174,7 +177,7 @@ def list_campaigns(
     **Authentication:** Required (JWT Bearer token)
 
     **Query Parameters:**
-    - **skip**: Number of records to skip for pagination (default: 0, min: 0)
+    - **skip**: Number of records to skip for pagination (default: 0, min: 0, max: 1,000,000,000)
     - **limit**: Maximum number of records to return (default: 100, min: 1, max: 100).
       Out-of-range values are rejected with 422, not clamped: to read more than 100
       campaigns, page through them with `skip` until you have `total`.

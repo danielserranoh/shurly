@@ -1673,6 +1673,11 @@ live in `mcp_server/README.md`, written for developers. There is no user manual 
       (pinned by `tests/test_input_lengths.py`); values from outside a schema (a fetched page's title,
       an address from `X-Forwarded-For`) are cut to their column instead of failing with a PostgreSQL 500;
       the MCP's `create_campaign_from_rows` checks its name like the API
+  - [x] Numbers (2026-09-29): every integer a request carries has a maximum, and a minimum of 0 or more
+        unless a negative means something (a rule's priority). Six query parameters and two body fields
+        had none, and an absurd value answered 500 (`server/utils/bounds.py`). The MCP's curated tools
+        advertise theirs. `tests/test_bounded_numbers.py` reads the OpenAPI document and the tools, and
+        fails on an unbounded one
   - [x] CSV formula injection: the exports quote cells that start like a formula, and the CSV import unquotes them
         (`spreadsheet_safe`, `server/utils/csv_export.py`)
 - [x] SQL injection prevention check → the API binds every value (ORM and Core); the raw SQL left is static or

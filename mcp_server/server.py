@@ -22,13 +22,16 @@ Auth (Phase 5.4) and deployment (Phase 5.5) are still pending.
 from __future__ import annotations
 
 import os
+from typing import Annotated
 
 from fastmcp import FastMCP
 from fastmcp.server.providers.openapi import MCPType, RouteMap
+from pydantic import Field
 
 # Module level, not inside `_register_curated_tools`: with postponed annotations
 # fastmcp resolves the tools' parameter types against this module's globals.
 from server.utils.access import Visibility
+from server.utils.bounds import INT4_MAX, INT4_MIN
 
 # Routes that exist in the FastAPI app but should NOT be MCP tools.
 #
@@ -316,7 +319,7 @@ def _register_curated_tools(server: FastMCP) -> None:
         short_code: str,
         target_url: str,
         domain: str | None = None,
-        priority: int = 0,
+        priority: Annotated[int, Field(ge=INT4_MIN, le=INT4_MAX)] = 0,
         device: str | None = None,
         language: str | None = None,
         browser: str | None = None,
@@ -355,7 +358,7 @@ def _register_curated_tools(server: FastMCP) -> None:
     def get_url_analytics_summary(
         short_code: str,
         domain: str | None = None,
-        days: int = 7,
+        days: Annotated[int, Field(ge=1, le=90)] = 7,  # what curated.py checks
         include_bots: bool = False,
     ) -> dict:
         from server.core import SessionLocal
@@ -378,8 +381,8 @@ def _register_curated_tools(server: FastMCP) -> None:
         ),
     )
     def list_orphan_visits_grouped(
-        since_days: int = 30,
-        limit_groups: int = 20,
+        since_days: Annotated[int, Field(ge=1, le=365)] = 30,  # what curated.py checks
+        limit_groups: Annotated[int, Field(ge=1, le=200)] = 20,
     ) -> dict:
         from server.core import SessionLocal
 

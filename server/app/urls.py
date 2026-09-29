@@ -41,6 +41,7 @@ from server.schemas.url import (
     URLUpdate,
 )
 from server.utils.access import LinkDomain, find_urls, viewer, visible_url_or_404
+from server.utils.bounds import MAX_SKIP
 from server.utils.columns import fit
 from server.utils.domain import get_or_create_default_domain, resolve_domain_for_host
 from server.utils.geo import country_of
@@ -414,7 +415,7 @@ def list_urls(
     ),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
-    skip: int = Query(0, ge=0, description="Number of URLs to skip, for pagination"),
+    skip: int = Query(0, ge=0, le=MAX_SKIP, description="Number of URLs to skip, for pagination"),
     limit: int = Query(100, ge=1, le=100, description="Maximum number of URLs to return (1-100)"),
 ):
     """
@@ -427,7 +428,7 @@ def list_urls(
     **Authentication:** Required (JWT Bearer token)
 
     **Query Parameters:**
-    - **skip**: Number of records to skip for pagination (default: 0, min: 0)
+    - **skip**: Number of records to skip for pagination (default: 0, min: 0, max: 1,000,000,000)
     - **limit**: Maximum number of records to return (default: 100, min: 1, max: 100).
       Out-of-range values are rejected with 422, not clamped: to read more than 100
       URLs, page through them with `skip` until you have `total`.
