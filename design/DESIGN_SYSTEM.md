@@ -110,7 +110,8 @@ yet (pricing reads "announced soon") and the API has no billing, so nothing is e
    everyone, including the ones the Plan tab lists under Pro (social preview editing, API & MCP).
 2. Pro-only controls are visible but disabled, marked with a `ProBadge` or lock icon and a tooltip saying
    what Pro adds ("Longer ranges come with Pro"). Features that aren't built yet use `ProBadge label="Coming soon"`.
-   Examples: analytics ranges beyond 7 days, QR brand colours and logo, click notifications.
+   Examples: the Analytics page's ranges beyond 7 days across all links (a link's own page has 30 and 90 days and
+   custom ranges, free), QR brand colours and logo, click notifications.
 3. The copy says "Unlock with Pro". It never says "Upgrade now!", and it never uses a blocking modal.
 
 ## Charts
