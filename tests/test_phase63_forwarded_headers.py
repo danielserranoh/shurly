@@ -29,6 +29,7 @@ from main import create_app
 from server.core import get_db
 from server.core.config import settings
 from server.core.models import OrphanVisit
+from server.utils import rate_limit
 from tests.conftest import TestingSessionLocal
 
 ROOT = Path(__file__).parents[1]
@@ -111,8 +112,11 @@ class TestTheClientAddress:
 
         assert _orphan_ip(db_session, "/zz-direct") == "127.0.0.0"
 
-    def test_the_rate_limit_counts_the_client_whatever_it_forges(self, serve):
-        """What production showed: a new forged address each time was never limited."""
+    def test_the_rate_limit_counts_the_client_whatever_it_forges(self, serve, monkeypatch):
+        """What production showed: a new forged address each time was never limited. The clock
+        stands still mid-window: the limits count per minute, and 21 logins that straddled one
+        started a new count (a flake in CI, where they take seconds)."""
+        monkeypatch.setattr(rate_limit, "_now", lambda: 1_790_000_030.0)
         base = serve(["127.0.0.1/32"])
 
         statuses = [
