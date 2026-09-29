@@ -5,7 +5,7 @@ Pagination bounds and constant SQL query counts for multi-row endpoints.
   document: `limit` must be 1-100 and `skip` >= 0, anything else is a 422.
 * Endpoints that return or update many URLs run the same number of SQL
   statements whatever the row count (no N+1 queries):
-  - `GET /api/v1/urls` loads the page's tags in one query;
+  - `GET /api/v1/urls` loads the page's tags in one query, and its campaigns' names in one;
   - `GET /api/v1/campaigns` loads the page's tags and URL counts in one query each;
   - `POST /api/v1/urls/bulk/tags` and `PATCH /api/v1/campaigns/{id}/tags` load
     the URLs' current tags in one query;
@@ -186,6 +186,48 @@ class TestListURLs:
             "none1": [],
         }
 
+    def test_campaign_names_for_the_whole_page_load_in_one_query(
+        self, client: TestClient, auth_headers: dict, db_session: Session, test_user: User
+    ):
+        """A campaign link names its campaign (`campaign_name`): one query for the page's."""
+        _make_urls(
+            db_session,
+            test_user,
+            ["spring0"],
+            campaign=_make_campaign(db_session, test_user, "Spring"),
+        )
+        _make_urls(db_session, test_user, ["plain0"])
+        _, small = _request_sql(
+            client,
+            db_session,
+            "GET",
+            "/api/v1/urls?url_type=campaign&url_type=standard",
+            headers=auth_headers,
+        )
+
+        for name in ("Summer", "Autumn", "Winter"):
+            campaign = _make_campaign(db_session, test_user, name)
+            _make_urls(
+                db_session, test_user, [f"{name.lower()}0", f"{name.lower()}1"], campaign=campaign
+            )
+        _make_urls(db_session, test_user, ["plain1", "plain2"])
+        r, large = _request_sql(
+            client,
+            db_session,
+            "GET",
+            "/api/v1/urls?url_type=campaign&url_type=standard",
+            headers=auth_headers,
+        )
+
+        assert len(large) == len(small), large
+        assert sum("FROM campaigns" in s for s in large) == 1, large
+        names = {u["short_code"]: u["campaign_name"] for u in r.json()["urls"]}
+        assert names == {
+            "spring0": "Spring",
+            **{f"{n.lower()}{i}": n for n in ("Summer", "Autumn", "Winter") for i in range(2)},
+            **{f"plain{i}": None for i in range(3)},
+        }
+
 
 # ---------------------------------------------------------------------------
 # GET /api/v1/campaigns
@@ -202,7 +244,7 @@ class TestListCampaigns:
         assert r.json()["detail"][0]["loc"] == ["query", query.split("=")[0]]
 
     def test_limit_100_is_accepted(self, client: TestClient, auth_headers: dict):
-        """The campaigns page asks for exactly `limit=100`."""
+        """The largest page: the MCP's `list_campaigns` may ask for it."""
         r = client.get("/api/v1/campaigns?limit=100", headers=auth_headers)
 
         assert r.status_code == 200

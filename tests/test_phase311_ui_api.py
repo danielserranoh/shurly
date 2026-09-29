@@ -187,6 +187,7 @@ class TestURLResponseClickCount:
             body = r.json()
             assert body["click_count"] == 0
             assert body["campaign_id"] is None
+            assert body["campaign_name"] is None
             assert body["user_data"] is None
 
     def test_update_returns_click_count(
@@ -220,8 +221,10 @@ class TestURLResponseClickCount:
         assert r.status_code == 200
         by_code = {u["short_code"]: u for u in r.json()["urls"]}
         assert by_code["camp01"]["campaign_id"] == str(campaign.id)
+        assert by_code["camp01"]["campaign_name"] == "Spring"
         assert by_code["camp01"]["user_data"] == {"firstName": "Ada"}
         assert by_code["plain1"]["campaign_id"] is None
+        assert by_code["plain1"]["campaign_name"] is None
         assert by_code["plain1"]["user_data"] is None
 
 
@@ -277,6 +280,7 @@ class TestGetURL:
         assert r.status_code == 200
         assert r.json()["url_type"] == "campaign"
         assert r.json()["campaign_id"] == str(campaign.id)
+        assert r.json()["campaign_name"] == "Spring"
         assert r.json()["user_data"] == {"firstName": "Grace"}
 
     def test_get_url_not_found(self, client: TestClient, auth_headers: dict):

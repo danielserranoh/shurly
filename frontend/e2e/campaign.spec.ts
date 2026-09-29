@@ -1,6 +1,7 @@
 // Phase 6.1 — a campaign from its CSV to who clicked (3.17): made with the wizard from five recipients, one of
 // them clicks, and its page counts them: Clicked 20% and each filter's count, a header's sort, the Clicked filter,
-// two recipients' links copied at once, and the recipients' CSV.
+// two recipients' links copied at once, and the recipients' CSV. Then the campaigns' list, a page of 20 at a time,
+// and a campaign link's page, which names its campaign.
 
 import { expect, test } from './fixtures';
 import { clickLink, csvLines, pick } from './helpers';
@@ -95,4 +96,42 @@ test("Export CSV downloads the recipients, their CSV's columns first", async ({ 
   const [header, ...rows] = await csvLines(download);
   expect(header).toBe('firstName,company,short_code,short_url,clicks,opens,first_click_at,last_click_at,last_open_at');
   expect(rows).toHaveLength(5);
+});
+
+test('the campaigns page shows 20 at a time: the first of 21 made is on page 2', async ({ page, ownerApi }) => {
+  // The newest 21 campaigns: page 1 holds the last 20 made, newest first, and page 2 starts with the first.
+  const names = Array.from({ length: 21 }, (_, i) => `E2E paged ${stamp} ${String(i + 1).padStart(2, '0')}`);
+  const ids: string[] = [];
+  for (const campaign of names) {
+    const made = await ownerApi.post('/api/v1/campaigns', { data: { name: campaign, original_url: destination, csv_data: 'firstName\nAna' } });
+    expect(made.ok(), campaign).toBeTruthy();
+    ids.push(((await made.json()) as { id: string }).id);
+  }
+  const cards = page.locator('#campaign-list [data-campaign]');
+  const range = page.locator('#pagination [data-range]');
+
+  await page.goto('/dashboard/campaigns/');
+  await expect(cards).toHaveCount(20);
+  await expect(cards.first()).toContainText(names[20]);
+  await expect(cards.last()).toContainText(names[1]);
+  await expect(range).toHaveText(/^Showing 1–20 of \d+$/);
+  await expect(page.getByRole('button', { name: 'Previous', exact: true })).toBeDisabled();
+
+  await page.getByRole('button', { name: 'Next', exact: true }).click();
+  await expect(page).toHaveURL(/\/dashboard\/campaigns\/\?page=2$/);
+  await expect(cards.first()).toContainText(names[0]);
+  await expect(range).toHaveText(/^Showing 21–\d+ of \d+$/);
+
+  // The address keeps the page, and Previous goes back to the first.
+  await page.reload();
+  await expect(cards.first()).toContainText(names[0]);
+  await page.getByRole('button', { name: 'Previous', exact: true }).click();
+  await expect(page).toHaveURL(/\/dashboard\/campaigns\/$/);
+  await expect(cards.first()).toContainText(names[20]);
+
+  // Its recipient's link names it, from the link itself (`campaign_name`), whichever campaign it is.
+  const listed = await ownerApi.get(`/api/v1/analytics/campaigns/${ids[0]}/recipients`);
+  const { recipients } = (await listed.json()) as { recipients: Array<{ short_code: string }> };
+  await page.goto(`/dashboard/link/?code=${recipients[0].short_code}`);
+  await expect(page.locator('[data-campaign-link]')).toHaveText(names[0]);
 });

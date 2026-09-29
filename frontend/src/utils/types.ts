@@ -74,6 +74,8 @@ export interface ShortLink {
   tags: Tag[];
   click_count: number;
   campaign_id: string | null;
+  /** Its campaign's name, for a campaign link. */
+  campaign_name?: string | null;
   user_data: Record<string, string> | null;
   created_at: string;
   updated_at: string;

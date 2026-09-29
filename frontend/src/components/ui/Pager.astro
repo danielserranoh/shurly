@@ -1,0 +1,13 @@
+---
+// Previous and Next under a paged list, with the rows it shows: the links, the campaigns. Hidden until the list
+// has a second page; `renderPager` (src/utils/paging.ts) brings it to the page shown. One per page.
+import Icon from './Icon.astro';
+---
+
+<nav id="pagination" hidden class="mt-6 flex items-center justify-between gap-3 text-sm text-ink-500" aria-label="Pagination">
+  <p data-range></p>
+  <div class="flex gap-2">
+    <button type="button" class="btn btn-secondary btn-sm" data-prev><Icon name="chevron-left" />Previous</button>
+    <button type="button" class="btn btn-secondary btn-sm" data-next>Next<Icon name="chevron-right" /></button>
+  </div>
+</nav>

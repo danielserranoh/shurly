@@ -26,6 +26,23 @@ implementation lifecycle and is independent of the URL version segment.
 
 ## [Unreleased]
 
+### Fixed — the campaigns page shows every campaign, 20 at a time
+- **It showed only the newest 100.** It asked for one page of 100, the most a page holds, and had no pager, so the
+  101st campaign and older never showed. Their pages and links still worked, by address.
+- **Now it shows 20 at a time, with the links page's pager.** That's Previous and Next, "Showing 1–20 of N", and
+  `?page=` in the address. It's the same component now (`components/ui/Pager.astro`) and the same `?page=` handling.
+  The page also sends at most 20 summary requests at a time, where it sent up to 100 at once.
+- **A campaign link's page names its campaign, whichever it is.** It looked for it among those newest 100, and
+  said "a campaign" for an older one. The link now carries its campaign's name, **`campaign_name`**:
+  - on `GET /api/v1/urls` and `GET /api/v1/urls/{short_code}`, and so in the MCP's `list_urls` and `get_url`;
+  - it's a new field, `null` on other links, and nothing else changes;
+  - the list loads its page's campaigns in one query, whatever its size.
+- **Tests:**
+  - the name on a campaign link, and none on the others;
+  - the list's query count;
+  - the pager's states;
+  - an end-to-end test: of 21 campaigns, the first made is on page 2, and its link's page names it.
+
 ### Fixed — an absurd number in a request is a 422, not a 500
 - **Six query parameters and two body fields took any integer.** A value past what the database or the date
   arithmetic holds answered 500, on PostgreSQL too:

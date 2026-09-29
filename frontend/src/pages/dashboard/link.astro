@@ -165,7 +165,7 @@ import { BROWSERS, DEVICES, LANGUAGES } from '@/utils/rules';
 </AppLayout>
 
 <script>
-  import { apiGet, apiPost, ApiError, errorMessage } from '@/utils/api';
+  import { apiPost, ApiError, errorMessage } from '@/utils/api';
   import { initAnalytics, type AnalyticsControls } from '@/utils/analytics-section';
   import { clearErrors, setFieldError } from '@/utils/forms';
   import { formatDate, formatDateTime, formatNumber, fromLocalInput, hostname, isValidHttpUrl, linkTitle, normalizeUrlInput, parseDate, pluralize, prettyUrl } from '@/utils/format';
@@ -179,7 +179,7 @@ import { BROWSERS, DEVICES, LANGUAGES } from '@/utils/rules';
   import { tagPill } from '@/utils/tags';
   import { confirmDialog, copyWithFeedback, hydrateTimes, setLoading, toast } from '@/utils/ui';
   import { canChange, creatorEmailBehindName, creatorName, getViewer, installLockedControls, lockControl, onForbidden, type Viewer } from '@/utils/viewer';
-  import type { CampaignListResponse, LinkTotals, PreviewMetadata, RedirectRule, RuleCondition, RuleConditionType, ShortLink } from '@/utils/types';
+  import type { LinkTotals, PreviewMetadata, RedirectRule, RuleCondition, RuleConditionType, ShortLink } from '@/utils/types';
 
   // Phase 8.3 — a link is its code and its domain. Without `?domain=` (an old bookmark),
   // the default domain's link answers; after that, the loaded link addresses itself.
@@ -238,14 +238,7 @@ import { BROWSERS, DEVICES, LANGUAGES } from '@/utils/rules';
         $('[data-user-data]'),
         html`${Object.entries(link.user_data ?? {}).map(([k, v]) => html`<span class="badge badge-outline"><span class="text-ink-500">${k}</span> ${v}</span>`)}`,
       );
-      if (link.campaign_id) {
-        apiGet<CampaignListResponse>('/api/v1/campaigns?limit=100')
-          .then((r) => {
-            const c = r.campaigns.find((x) => x.id === link.campaign_id);
-            if (c) a.textContent = c.name;
-          })
-          .catch(() => {});
-      }
+      if (link.campaign_name) a.textContent = link.campaign_name;
     }
     // Shown as text, to paste into an email's HTML.
     const pixel = link.short_url ? `<img src="${safeUrl(link.short_url)}/track" width="1" height="1" alt="" style="display:none">` : '';

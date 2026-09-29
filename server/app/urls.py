@@ -483,10 +483,14 @@ def list_urls(
     if url_type:
         query = query.filter(URL.url_type.in_(url_type))
 
-    # Tags, creators and their profiles (Phase 3.12: names) for the whole page, one query
-    # each: no lazy load per URL or per creator.
+    # Tags, creators and their profiles (Phase 3.12: names), and campaigns (their names) for
+    # the whole page, one query each: no lazy load per URL, creator or campaign.
     urls = (
-        query.options(selectinload(URL.tags), selectinload(URL.creator).selectinload(User.profile))
+        query.options(
+            selectinload(URL.tags),
+            selectinload(URL.creator).selectinload(User.profile),
+            selectinload(URL.campaign),
+        )
         .order_by(URL.created_at.desc())
         .offset(skip)
         .limit(limit)

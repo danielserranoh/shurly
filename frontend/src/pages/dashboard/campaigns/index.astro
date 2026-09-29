@@ -3,6 +3,7 @@ import AppLayout from '@/layouts/AppLayout.astro';
 import PageHeader from '@/components/ui/PageHeader.astro';
 import EmptyState from '@/components/ui/EmptyState.astro';
 import Icon from '@/components/ui/Icon.astro';
+import Pager from '@/components/ui/Pager.astro';
 ---
 
 <AppLayout title="Campaigns" section="campaigns">
@@ -38,6 +39,8 @@ import Icon from '@/components/ui/Icon.astro';
   <EmptyState id="load-error" hidden illustration="error" title="We couldn’t load your campaigns" body="Check your connection and try again.">
     <button type="button" class="btn btn-primary" data-retry><Icon name="refresh" />Try again</button>
   </EmptyState>
+
+  <Pager />
 </AppLayout>
 
 <script>
@@ -47,13 +50,21 @@ import Icon from '@/components/ui/Icon.astro';
   import { SAMPLE_CSV } from '@/utils/csv';
   import { formatNumber, pluralize } from '@/utils/format';
   import { html, setHTML } from '@/utils/html';
+  import { pageFromQuery, renderPager } from '@/utils/paging';
   import { confirmDialog, toast } from '@/utils/ui';
   import { getViewer, installLockedControls, onForbidden, type Viewer } from '@/utils/viewer';
   import type { Campaign, CampaignSummary } from '@/utils/types';
 
+  // A page at a time, as the links page: `?page=N` in the address, Previous and Next under the list.
+  const PAGE_SIZE = 20;
+
   const list = document.getElementById('campaign-list')!;
   const empty = document.getElementById('empty')!;
   const errorState = document.getElementById('load-error')!;
+  const pagination = document.getElementById('pagination')!;
+  let page = pageFromQuery(new URLSearchParams(location.search).get('page'), PAGE_SIZE);
+  let total = 0;
+  let requestId = 0;
   let campaigns: Campaign[] = [];
   const summaries = new Map<string, CampaignSummary | null>();
   // Who's looking: cards name the creator "you" and lock what the viewer can't delete.
@@ -65,18 +76,34 @@ import Icon from '@/components/ui/Icon.astro';
     render();
   });
 
+  function syncUrl() {
+    history.replaceState(null, '', page > 1 ? `?page=${page}` : location.pathname);
+  }
+
   async function load() {
+    const id = ++requestId;
     errorState.hidden = true;
     list.setAttribute('aria-busy', 'true');
     try {
-      campaigns = (await Promise.all([listCampaigns(), viewerReady]))[0].campaigns;
+      const [res] = await Promise.all([listCampaigns((page - 1) * PAGE_SIZE, PAGE_SIZE), viewerReady]);
+      if (id !== requestId) return;
+      // A page past the last (a deletion, an old address): the first.
+      if (res.campaigns.length === 0 && page > 1) {
+        page = 1;
+        syncUrl();
+        return load();
+      }
+      campaigns = res.campaigns;
+      total = res.total;
     } catch (err) {
+      if (id !== requestId) return;
       list.replaceChildren();
+      pagination.hidden = true;
       errorState.hidden = false;
       errorState.querySelector('[data-empty-body]')!.textContent = errorMessage(err);
       return;
     } finally {
-      list.setAttribute('aria-busy', 'false');
+      if (id === requestId) list.setAttribute('aria-busy', 'false');
     }
     render();
   }
@@ -103,6 +130,7 @@ import Icon from '@/components/ui/Icon.astro';
   function render() {
     empty.hidden = campaigns.length > 0;
     setHTML(list, html`${campaigns.map((c) => renderCampaignCard(c, viewer))}`);
+    renderPager(pagination, page, PAGE_SIZE, total, campaigns.length);
     // Stats per card are fetched lazily (and cached) so the list shows up immediately.
     campaigns.forEach((c) => {
       if (summaries.has(c.id)) return applyStats(c);
@@ -130,14 +158,20 @@ import Icon from '@/components/ui/Icon.astro';
         onConfirm: () => deleteCampaign(c.id),
       });
       if (ok) {
-        campaigns = campaigns.filter((x) => x.id !== c.id);
-        render();
         toast('Campaign deleted', 'success');
+        load(); // the next one moves up into this page
       }
     }
   });
 
-  document.querySelector('[data-retry]')!.addEventListener('click', load);
+  document.querySelector('[data-retry]')!.addEventListener('click', () => load());
+  function goTo(to: number) {
+    page = to;
+    syncUrl();
+    load().then(() => list.scrollIntoView({ behavior: 'smooth' }));
+  }
+  pagination.querySelector('[data-prev]')!.addEventListener('click', () => goTo(Math.max(1, page - 1)));
+  pagination.querySelector('[data-next]')!.addEventListener('click', () => goTo(page + 1));
   document.querySelector('[data-sample]')!.addEventListener('click', () =>
     saveBlob(new Blob([SAMPLE_CSV], { type: 'text/csv' }), 'shurly-sample-recipients.csv'),
   );
