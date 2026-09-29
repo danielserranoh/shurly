@@ -17,7 +17,7 @@ from server.schemas.campaign import (
 )
 from server.schemas.responses import get_responses
 from server.schemas.tag import TagResponse
-from server.utils.access import viewer
+from server.utils.access import viewer, visible_campaign_or_404
 from server.utils.campaign import generate_campaign_urls, parse_csv, validate_csv
 from server.utils.csv_export import stream_csv
 from server.utils.domain import get_or_create_default_domain
@@ -27,22 +27,6 @@ from server.utils.domain import get_or_create_default_domain
 from server.utils.url import link_hostname, link_short_url
 
 campaigns_router = APIRouter()
-
-
-def _get_visible_campaign(
-    db: Session, campaign_id: UUID, user: User, *, to_change: bool = False
-) -> Campaign:
-    """Phase 3.14.3 — 404 if the user can't see it; 403 if they see it but can't change it."""
-    who = viewer(db, user)
-    campaign = db.query(Campaign).filter(Campaign.id == campaign_id, who.sees(Campaign)).first()
-    if not campaign:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Campaign not found",
-        )
-    if to_change:
-        who.ensure_can_change(campaign, noun="campaign")
-    return campaign
 
 
 @campaigns_router.post(
@@ -276,16 +260,7 @@ def get_campaign(
     - **401**: Authentication required or invalid token
     - **404**: Campaign not found, or someone else's personal campaign
     """
-    # Convert string to UUID
-    try:
-        uuid_id = UUID(campaign_id)
-    except ValueError as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid campaign ID format",
-        ) from e
-
-    campaign = _get_visible_campaign(db, uuid_id, current_user)
+    campaign = visible_campaign_or_404(db, current_user, campaign_id)
 
     # Get all URLs for this campaign
     urls = db.query(URL).filter(URL.campaign_id == campaign.id).all()
@@ -347,16 +322,7 @@ def export_campaign(
 
     **Note:** The CSV filename will be `campaign_{name}.csv`
     """
-    # Convert string to UUID
-    try:
-        uuid_id = UUID(campaign_id)
-    except ValueError as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid campaign ID format",
-        ) from e
-
-    campaign = _get_visible_campaign(db, uuid_id, current_user)
+    campaign = visible_campaign_or_404(db, current_user, campaign_id)
 
     # Get all URLs for this campaign
     urls = db.query(URL).filter(URL.campaign_id == campaign.id).all()
@@ -418,16 +384,7 @@ def delete_campaign(
 
     **Warning:** This will cascade delete all URLs and analytics data for this campaign.
     """
-    # Convert string to UUID
-    try:
-        uuid_id = UUID(campaign_id)
-    except ValueError as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid campaign ID format",
-        ) from e
-
-    campaign = _get_visible_campaign(db, uuid_id, current_user, to_change=True)
+    campaign = visible_campaign_or_404(db, current_user, campaign_id, to_change=True)
 
     # Delete campaign (cascades to URLs)
     db.delete(campaign)
@@ -481,7 +438,7 @@ def update_campaign_tags(
             detail=f"Invalid campaign ID: {str(e)}",
         ) from e
 
-    campaign = _get_visible_campaign(db, uuid_id, current_user, to_change=True)
+    campaign = visible_campaign_or_404(db, current_user, uuid_id, to_change=True)
 
     tag_ids_str = tag_data.get("tag_ids", [])
 

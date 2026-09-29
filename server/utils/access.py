@@ -9,6 +9,10 @@ to its creator (personal, `organization_id` NULL):
 
 Someone else's personal link stays hidden (404), so nobody learns it exists. An
 organization link you can see but not change is a 403.
+
+Every route that reads one link or campaign decides with `visible_url_or_404` or
+`visible_campaign_or_404`, so a route can't answer for more people than another
+(docs/PERSONAL_DATA.md, checked by tests/test_personal_data_inventory.py).
 """
 
 from dataclasses import dataclass
@@ -19,7 +23,7 @@ from fastapi import HTTPException, Query, status
 from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session, joinedload
 
-from server.core.models import URL, Domain, OrgRole, User
+from server.core.models import URL, Campaign, Domain, OrgRole, User
 from server.utils.domain import normalize_hostname
 from server.utils.organization import get_membership
 
@@ -88,6 +92,51 @@ def find_url(db: Session, who: Viewer, short_code: str, domain: str | None = Non
     default domain's, after one that has it.
     """
     return find_urls(db, who, [(short_code, domain)]).get((short_code, domain))
+
+
+def visible_url_or_404(
+    db: Session,
+    user: User,
+    short_code: str,
+    domain: str | None = None,
+    *,
+    to_change: bool = False,
+) -> URL:
+    """
+    The link a code names on `domain` (`find_url`, Phase 8.3), if the person can see it:
+    404 otherwise. With `to_change`, a 403 if they may see it but not change it.
+    """
+    who = viewer(db, user)
+    url = find_url(db, who, short_code, domain)
+    if not url:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="URL not found")
+    if to_change:
+        who.ensure_can_change(url)
+    return url
+
+
+def visible_campaign_or_404(
+    db: Session, user: User, campaign_id: UUID | str, *, to_change: bool = False
+) -> Campaign:
+    """
+    A campaign the person can see: their organization's, whatever their role, or their own
+    personal one. A 400 for a string that isn't a UUID, a 404 when they can't see it. With
+    `to_change`, a 403 if they may see it but not change it.
+    """
+    if isinstance(campaign_id, str):
+        try:
+            campaign_id = UUID(campaign_id)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid campaign ID format"
+            ) from exc
+    who = viewer(db, user)
+    campaign = db.query(Campaign).filter(Campaign.id == campaign_id, who.sees(Campaign)).first()
+    if not campaign:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Campaign not found")
+    if to_change:
+        who.ensure_can_change(campaign, noun="campaign")
+    return campaign
 
 
 def find_urls(
