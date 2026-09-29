@@ -26,6 +26,12 @@ implementation lifecycle and is independent of the URL version segment.
 
 ## [Unreleased]
 
+### Changed — ruff 0.16
+- **ruff 0.16.9,** with its cap raised to `<0.17`. `ruff check` finds nothing new.
+- **It also formats the Python code blocks in Markdown files.** That reformatted one block in DEPLOYMENT.md, which
+  lost its aligned comments, and the examples in `_pm/IMPLEMENTATION_TAGS.md` and `_pm/IMPLEMENTATION_TASKS.md`. No
+  `.py` file changed. It replaces Dependabot's #181, which was red for those three files.
+
 ### Changed — what builds the image is pinned too (6.3)
 - **The base image and uv are pinned by digest.** The dockerfile names `python:3.11-slim@sha256:…`, which is the
   digest production already runs, and `ghcr.io/astral-sh/uv:0.11.1@sha256:…` in place of `:latest`.

@@ -52,6 +52,7 @@ class URLCreate(BaseModel):
     title: str | None = None  # Add this
     # ... rest
 
+
 class URLResponse(BaseModel):
     id: int
     short_code: str
@@ -106,10 +107,7 @@ async def create_url(url_data: URLCreate, ...):
 def test_create_url_with_title(client, auth_headers):
     response = client.post(
         "/api/urls",
-        json={
-            "original_url": "https://example.com",
-            "title": "Test Campaign"
-        },
+        json={"original_url": "https://example.com", "title": "Test Campaign"},
         headers=auth_headers,
     )
     assert response.status_code == 200
@@ -148,6 +146,7 @@ SET last_click_at = (
 2. **Update Model** (`server/core/models/url.py`):
 ```python
 from datetime import datetime
+
 
 class URL(Base):
     # ... existing fields ...
@@ -239,10 +238,11 @@ async def update_url(
     current_user: User = Depends(get_current_user),
 ):
     # Get URL
-    url = db.query(URL).filter(
-        URL.short_code == short_code,
-        URL.created_by == current_user.id
-    ).first()
+    url = (
+        db.query(URL)
+        .filter(URL.short_code == short_code, URL.created_by == current_user.id)
+        .first()
+    )
 
     if not url:
         raise HTTPException(status_code=404, detail="URL not found")
@@ -321,6 +321,7 @@ def test_update_url_title(client, auth_headers, sample_url):
     assert data["title"] == "Updated Title"
     assert data["original_url"] == sample_url.original_url  # Unchanged
 
+
 def test_update_url_destination(client, auth_headers, sample_url):
     response = client.patch(
         f"/api/urls/{sample_url.short_code}",
@@ -331,12 +332,14 @@ def test_update_url_destination(client, auth_headers, sample_url):
     data = response.json()
     assert data["original_url"] == "https://new-destination.com"
 
+
 def test_update_url_unauthorized(client, sample_url):
     response = client.patch(
         f"/api/urls/{sample_url.short_code}",
         json={"title": "Hacked"},
     )
     assert response.status_code == 401
+
 
 def test_update_url_not_owner(client, auth_headers_other_user, sample_url):
     response = client.patch(
@@ -404,6 +407,7 @@ async def redirect_url(short_code: str, request: Request, ...):
 class URLCreate(BaseModel):
     # ... existing ...
     forward_parameters: bool = True
+
 
 class URLResponse(BaseModel):
     # ... existing ...
@@ -482,11 +486,12 @@ from server.core import Base
 
 # Association table
 url_tags = Table(
-    'url_tags',
+    "url_tags",
     Base.metadata,
-    Column('url_id', Integer, ForeignKey('urls.id'), primary_key=True),
-    Column('tag_id', Integer, ForeignKey('tags.id'), primary_key=True),
+    Column("url_id", Integer, ForeignKey("urls.id"), primary_key=True),
+    Column("tag_id", Integer, ForeignKey("tags.id"), primary_key=True),
 )
+
 
 class Tag(Base):
     __tablename__ = "tags"
@@ -502,7 +507,7 @@ class Tag(Base):
 
     __table_args__ = (
         # Unique constraint: user can't have duplicate tag names
-        UniqueConstraint('name', 'created_by', name='unique_tag_per_user'),
+        UniqueConstraint("name", "created_by", name="unique_tag_per_user"),
     )
 ```
 
@@ -516,7 +521,8 @@ class URL(Base):
 3. **Tag Schemas** (`server/schemas/tags.py`):
 ```python
 class TagCreate(BaseModel):
-    name: str = Field(..., min_length=1, max_length=50, pattern=r'^[a-zA-Z0-9:_-]+$')
+    name: str = Field(..., min_length=1, max_length=50, pattern=r"^[a-zA-Z0-9:_-]+$")
+
 
 class TagResponse(BaseModel):
     id: int
@@ -525,6 +531,7 @@ class TagResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
 
 class TagWithCount(TagResponse):
     url_count: int
@@ -537,6 +544,7 @@ from server.schemas.tags import TagCreate, TagResponse, TagWithCount
 
 router = APIRouter(prefix="/api/tags", tags=["tags"])
 
+
 @router.post("", response_model=TagResponse, status_code=201)
 async def create_tag(
     tag_data: TagCreate,
@@ -544,10 +552,9 @@ async def create_tag(
     current_user: User = Depends(get_current_user),
 ):
     # Check if tag already exists
-    existing = db.query(Tag).filter(
-        Tag.name == tag_data.name,
-        Tag.created_by == current_user.id
-    ).first()
+    existing = (
+        db.query(Tag).filter(Tag.name == tag_data.name, Tag.created_by == current_user.id).first()
+    )
 
     if existing:
         return existing  # Idempotent
@@ -558,24 +565,25 @@ async def create_tag(
     db.refresh(tag)
     return tag
 
+
 @router.get("", response_model=list[TagWithCount])
 async def list_tags(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    tags = db.query(
-        Tag.id,
-        Tag.name,
-        Tag.created_at,
-        func.count(url_tags.c.url_id).label("url_count")
-    ).outerjoin(url_tags).filter(
-        Tag.created_by == current_user.id
-    ).group_by(Tag.id).all()
+    tags = (
+        db.query(Tag.id, Tag.name, Tag.created_at, func.count(url_tags.c.url_id).label("url_count"))
+        .outerjoin(url_tags)
+        .filter(Tag.created_by == current_user.id)
+        .group_by(Tag.id)
+        .all()
+    )
 
     return [
         {"id": t.id, "name": t.name, "created_at": t.created_at, "url_count": t.url_count}
         for t in tags
     ]
+
 
 @router.delete("/{tag_id}", status_code=204)
 async def delete_tag(
@@ -583,10 +591,7 @@ async def delete_tag(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    tag = db.query(Tag).filter(
-        Tag.id == tag_id,
-        Tag.created_by == current_user.id
-    ).first()
+    tag = db.query(Tag).filter(Tag.id == tag_id, Tag.created_by == current_user.id).first()
 
     if not tag:
         raise HTTPException(status_code=404, detail="Tag not found")
@@ -718,19 +723,18 @@ def test_create_tag(client, auth_headers):
     assert response.status_code == 201
     assert response.json()["name"] == "marketing"
 
+
 def test_create_url_with_tags(client, auth_headers):
     response = client.post(
         "/api/urls",
-        json={
-            "original_url": "https://example.com",
-            "tags": ["email", "campaign:summer"]
-        },
+        json={"original_url": "https://example.com", "tags": ["email", "campaign:summer"]},
         headers=auth_headers,
     )
     assert response.status_code == 200
     data = response.json()
     assert len(data["tags"]) == 2
     assert any(t["name"] == "email" for t in data["tags"])
+
 
 def test_list_tags_with_counts(client, auth_headers, sample_url_with_tags):
     response = client.get("/api/tags", headers=auth_headers)
@@ -759,15 +763,18 @@ def test_list_tags_with_counts(client, auth_headers, sample_url_with_tags):
 ```python
 from enum import Enum
 
+
 class OrderByField(str, Enum):
     created_at = "created_at"
     clicks = "clicks"
     last_click_at = "last_click_at"
     title = "title"
 
+
 class OrderDirection(str, Enum):
     asc = "asc"
     desc = "desc"
+
 
 @router.get("", response_model=list[URLResponse])
 async def list_urls(
@@ -890,15 +897,16 @@ Resources:
 ```python
 from fastapi.responses import JSONResponse
 
+
 @app.exception_handler(429)
 async def rate_limit_handler(request: Request, exc):
     return JSONResponse(
         status_code=429,
         content={
             "detail": "Rate limit exceeded. Please try again later.",
-            "retry_after": 60  # seconds
+            "retry_after": 60,  # seconds
         },
-        headers={"Retry-After": "60"}
+        headers={"Retry-After": "60"},
     )
 ```
 
@@ -1012,6 +1020,7 @@ Update `server/core/models/url.py`:
 ```python
 from datetime import datetime
 
+
 class URL(Base):
     __tablename__ = "urls"
 
@@ -1054,6 +1063,7 @@ from typing import Dict, Optional
 import logging
 
 logger = logging.getLogger(__name__)
+
 
 class OpenGraphMetadata:
     """Open Graph metadata container."""
@@ -1100,9 +1110,10 @@ async def fetch_opengraph_metadata(url: str, timeout: int = 5) -> OpenGraphMetad
     """
     try:
         async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
-            response = await client.get(url, headers={
-                "User-Agent": "Shurly/1.0 (+https://shurl.griddo.io; Link Preview Bot)"
-            })
+            response = await client.get(
+                url,
+                headers={"User-Agent": "Shurly/1.0 (+https://shurl.griddo.io; Link Preview Bot)"},
+            )
 
             # Only parse successful responses
             if response.status_code != 200:
@@ -1191,17 +1202,17 @@ def is_social_media_crawler(user_agent: str) -> bool:
 
     # Social media crawler identifiers
     crawlers = [
-        "twitterbot",           # Twitter/X
+        "twitterbot",  # Twitter/X
         "facebookexternalhit",  # Facebook
-        "linkedinbot",          # LinkedIn
-        "whatsapp",             # WhatsApp
-        "slackbot",             # Slack
-        "discordbot",           # Discord
-        "telegrambot",          # Telegram
-        "skypeuripreview",      # Skype
-        "pinterest",            # Pinterest
-        "redditbot",            # Reddit
-        "slurp",                # Yahoo (sometimes used by messaging apps)
+        "linkedinbot",  # LinkedIn
+        "whatsapp",  # WhatsApp
+        "slackbot",  # Slack
+        "discordbot",  # Discord
+        "telegrambot",  # Telegram
+        "skypeuripreview",  # Skype
+        "pinterest",  # Pinterest
+        "redditbot",  # Reddit
+        "slurp",  # Yahoo (sometimes used by messaging apps)
     ]
 
     return any(crawler in ua_lower for crawler in crawlers)
@@ -1249,17 +1260,20 @@ class TestOpenGraphMetadata:
 class TestSocialMediaCrawlerDetection:
     """Test social media crawler detection."""
 
-    @pytest.mark.parametrize("user_agent,expected", [
-        ("Mozilla/5.0 (compatible; Twitterbot/1.0)", True),
-        ("facebookexternalhit/1.1", True),
-        ("LinkedInBot/1.0", True),
-        ("WhatsApp/2.0", True),
-        ("Slackbot-LinkExpanding 1.0", True),
-        ("Mozilla/5.0 (Windows NT 10.0; Win64; x64)", False),
-        ("Mozilla/5.0 (iPhone; CPU iPhone OS 14_0)", False),
-        ("curl/7.68.0", False),
-        ("", False),
-    ])
+    @pytest.mark.parametrize(
+        "user_agent,expected",
+        [
+            ("Mozilla/5.0 (compatible; Twitterbot/1.0)", True),
+            ("facebookexternalhit/1.1", True),
+            ("LinkedInBot/1.0", True),
+            ("WhatsApp/2.0", True),
+            ("Slackbot-LinkExpanding 1.0", True),
+            ("Mozilla/5.0 (Windows NT 10.0; Win64; x64)", False),
+            ("Mozilla/5.0 (iPhone; CPU iPhone OS 14_0)", False),
+            ("curl/7.68.0", False),
+            ("", False),
+        ],
+    )
     def test_crawler_detection(self, user_agent, expected):
         assert is_social_media_crawler(user_agent) == expected
 
@@ -1423,6 +1437,7 @@ Update `main.py` redirect handler:
 ```python
 from server.utils.opengraph import is_social_media_crawler
 
+
 @app.get("/{short_code}", include_in_schema=False)
 async def redirect_short_url(
     short_code: str,
@@ -1512,6 +1527,7 @@ class URLResponse(BaseModel):
 
 class OpenGraphMetadataResponse(BaseModel):
     """Response for preview endpoint."""
+
     og_title: str | None
     og_description: str | None
     og_image_url: str | None
@@ -1528,6 +1544,7 @@ Add to `server/app/urls.py`:
 from server.utils.opengraph import fetch_opengraph_metadata
 from datetime import datetime
 
+
 @router.get("/{short_code}/preview", response_model=OpenGraphMetadataResponse)
 async def get_url_preview(
     short_code: str,
@@ -1535,10 +1552,14 @@ async def get_url_preview(
     db: Session = Depends(get_db),
 ):
     """Get Open Graph preview metadata for a URL."""
-    url = db.query(URL).filter(
-        URL.short_code == short_code,
-        URL.created_by == current_user.id,
-    ).first()
+    url = (
+        db.query(URL)
+        .filter(
+            URL.short_code == short_code,
+            URL.created_by == current_user.id,
+        )
+        .first()
+    )
 
     if not url:
         raise HTTPException(status_code=404, detail="URL not found")
@@ -1562,10 +1583,14 @@ async def refresh_url_preview(
     db: Session = Depends(get_db),
 ):
     """Refresh Open Graph metadata by fetching from destination URL."""
-    url = db.query(URL).filter(
-        URL.short_code == short_code,
-        URL.created_by == current_user.id,
-    ).first()
+    url = (
+        db.query(URL)
+        .filter(
+            URL.short_code == short_code,
+            URL.created_by == current_user.id,
+        )
+        .first()
+    )
 
     if not url:
         raise HTTPException(status_code=404, detail="URL not found")
