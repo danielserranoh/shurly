@@ -26,6 +26,20 @@ implementation lifecycle and is independent of the URL version segment.
 
 ## [Unreleased]
 
+### Added — CI runs the whole suite on PostgreSQL too
+- **The suite ran on in-memory SQLite,** which takes what PostgreSQL refuses. The recent 500s only production could
+  give hid there: a `GROUP BY` on a `json` column, a NUL character in text. CI's PostgreSQL service ran only the
+  migration and PostgreSQL tests.
+- **A new job, `test-postgres`, runs all of it on PostgreSQL,** in parallel with the SQLite one, and the summary
+  waits for both.
+  - `TEST_SUITE_ON_POSTGRES=1`, with `TEST_DATABASE_URL`, gives the run a database of its own, one per process.
+  - That database is dropped when the run ends, however it ended.
+  - SQLite stays the default locally: it's faster.
+- **A trial run found nothing else hiding:** every test passed on PostgreSQL. The test that makes an insert fail now
+  does it with a trigger in each dialect.
+- `tests/test_suite_database.py` checks the suite runs on the database it was asked for, so the job can't quietly
+  run on SQLite.
+
 ### Fixed — a visit stores at most 1024 characters of user agent and 2048 of referrer
 - **The columns take any length,** so a scanner could store tens of KB of header on every hit, up to what the
   load balancer lets through. Real user agents and referrers are a few hundred characters.

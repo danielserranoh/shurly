@@ -1684,6 +1684,9 @@ live in `mcp_server/README.md`, written for developers. There is no user manual 
 - [x] Integration tests (FastAPI `TestClient` against in-memory SQLite)
   - [x] API endpoints
   - [x] Database operations
+  - [x] The whole suite on PostgreSQL too (2026-09-29), as production runs: the `test-postgres` job, in parallel.
+        SQLite takes what PostgreSQL refuses (a `GROUP BY` on `json`, a NUL in text). A trial run found nothing
+        else hiding. `TEST_SUITE_ON_POSTGRES=1`: a database made for the run, dropped at its end
 - [x] E2E tests: Playwright, on every push and PR (the `e2e` job of `test.yml`); `npm run e2e`, see
       `docs/TESTING.md`. Phase 3.11 ran a manual smoke of 14 core flows before them
   - [x] The harness: the production build in Chromium, against the real API with a fake Google
