@@ -26,6 +26,17 @@ implementation lifecycle and is independent of the URL version segment.
 
 ## [Unreleased]
 
+### Changed — passwords: bcrypt 5, without passlib
+- **Passwords are hashed and checked by bcrypt 5 directly.** passlib, unmaintained since 2020, broke on bcrypt 5:
+  its bcrypt self-test hashes a 255-byte secret, which bcrypt 5 refuses, so every hash failed (Dependabot's #182,
+  which this replaces). The hashes are the same, `$2b$` with 12 rounds, so every stored password still checks.
+  Hashes made by the old code are pinned in the tests.
+- **A new password can be at most 72 bytes,** what bcrypt reads. Register, set and change answer a 422: "Too long:
+  a password can be at most 72 bytes. That's 72 characters of plain text, and fewer with accented letters or
+  emoji, which take more than one byte each." Until now the end of a longer password was silently ignored.
+- **Signing in still reads a password's first 72 bytes,** as the old code hashed it, so one set longer before
+  still works.
+
 ### Changed — what builds the image is pinned too (6.3)
 - **The base image and uv are pinned by digest.** The dockerfile names `python:3.11-slim@sha256:…`, which is the
   digest production already runs, and `ghcr.io/astral-sh/uv:0.11.1@sha256:…` in place of `:latest`.
