@@ -1682,6 +1682,18 @@ live in `mcp_server/README.md`, written for developers. There is no user manual 
       frontend shares the API's origin (4.10). At release #81 (2026-09-28) its `CORS_ORIGINS` became
       `["http://localhost:4232"]`: `https://shurl.griddo.io`, a host that doesn't exist, is gone, and
       localhost stays for running the frontend locally against production until 4.10
+- [x] Personal data, route by route (2026-09-29) → `docs/PERSONAL_DATA.md`
+  - It says what people's data each route and MCP tool returns, who sees it, and the guard that decides. That's 73
+    API routes, the MCP's 11 and its 4 curated tools.
+  - `tests/test_personal_data_inventory.py` fails on a route without a row, a guard not in the code, or an MCP column
+    that isn't the tools.
+  - One lookup each, in `server/utils/access.py`: `visible_url_or_404` and `visible_campaign_or_404`. The two copies of
+    each are gone, with no change of behaviour.
+  - [ ] (b) At runtime, for every route that returns recipients' rows or activity, or visits: an outsider gets a 404
+        and an organization member a 200
+  - [ ] Finding 1: a crawler's preview of a campaign link carries its recipient's `user_data` in its refresh URL.
+        Proposed: leave it out of the preview
+  - Decisions pending, with the user: a campaign link's visits one by one; orphan visits' IPs
 - [ ] Environment secrets audit (DB password and JWT secret are plain task env vars; Secrets Manager is the planned move)
   - [ ] The Google OAuth client's secret (3.13.2, `GOOGLE_CLIENT_SECRET`) in Secrets Manager
 - [x] SSRF guard on the Open Graph fetcher (PR #21, see CHANGELOG § Security)
