@@ -113,3 +113,12 @@ def test_reports_are_limited_per_address(monkeypatch, capsys):
     assert [first.post(ROUTE, json=REPORT).status_code for _ in range(4)] == [204, 204, 204, 429]
     assert second.post(ROUTE, json=REPORT).status_code == 204  # another address, its own count
     assert len(_reports(capsys)) == 4
+
+
+def test_a_nul_in_a_report_is_refused_at_its_field(client, capsys):
+    """The web app never sends one (error-report.ts); a hand-made one meets the NUL guard (server/utils/nul.py)."""
+    response = client.post(ROUTE, json={**REPORT, "message": "boom\u0000"})
+
+    assert response.status_code == 422
+    assert response.json()["detail"][0]["loc"] == ["body", "message"]
+    assert _reports(capsys) == []
