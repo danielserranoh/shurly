@@ -26,6 +26,18 @@ implementation lifecycle and is independent of the URL version segment.
 
 ## [Unreleased]
 
+### Added — each request's log line says how its client IP was found (6.3)
+- **`http.request` lines carry `client_ip_source` and `host`.** The source is `cloudfront` (the viewer address, on a
+  request with the distribution's secret), `xff` (`X-Forwarded-For`, from a trusted proxy) or `socket` (the
+  connection's peer). The IP itself is never logged.
+- **So production can show the rate limits count people, not CloudFront's edges.** `shurly.griddo.io` should read
+  `cloudfront` only, and `s.griddo.io` `xff`. DEPLOYMENT.md § Client IPs behind CloudFront has the query, and what
+  each other answer means.
+- `client_ip_and_source` (`server/utils/network.py`) decides both. `client_ip`, which the rate limits and the visit
+  log use, is unchanged.
+- DEPLOYMENT's first-deploy check no longer claims that 21 failed logins show the IP is yours. From one client they
+  can't, since CloudFront reuses its connections. The source can.
+
 ### Added — a visit's city, in the breakdowns (8.4)
 - **A visit's city is stored** (`visits.city`, migration `0011`): its English name, from GeoLite2 City, looked up
   from the stored, anonymized address like its country. Nothing else about the place: no region, postcode or

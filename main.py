@@ -13,6 +13,7 @@ from server.app.urls import redirect_router
 from server.core import get_db
 from server.core.config import settings
 from server.utils.event_log import log_event
+from server.utils.network import client_ip_and_source, request_host
 from server.utils.nul import NulMiddleware, nul_value_error
 from server.utils.rate_limit import RateLimitMiddleware
 
@@ -28,12 +29,14 @@ class RequestIdMiddleware(BaseHTTPMiddleware):
     Phase 5.6.0 — also writes each request's `http.request` line of the event log,
     which replaces uvicorn's access log (turned off in the image). The path goes
     without its query string, which can carry tokens. `duration_ms` runs until the
-    response headers are ready, so a streamed body isn't counted.
+    response headers are ready, so a streamed body isn't counted. Phase 6.3 — with
+    the host, and how the client IP was found (`client_ip_source`): never the IP.
     """
 
     async def dispatch(self, request: Request, call_next):
         rid = request.headers.get("x-request-id") or uuid.uuid4().hex
         request.state.request_id = rid
+        _, ip_source = client_ip_and_source(request)
         started = time.perf_counter()
         status = 500  # what the client gets if the app raises
         try:
@@ -44,7 +47,9 @@ class RequestIdMiddleware(BaseHTTPMiddleware):
                 "http.request",
                 request_id=rid,
                 method=request.method,
+                host=request_host(request),
                 path=request.url.path,
+                client_ip_source=ip_source,
                 status=status,
                 duration_ms=round((time.perf_counter() - started) * 1000, 1),
             )
