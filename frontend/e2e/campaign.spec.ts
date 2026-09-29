@@ -69,6 +69,18 @@ test('a header sorts the recipients, and the Clicked filter keeps who clicked', 
   await expect(rows).toContainText('Ana');
 });
 
+test("the search keeps to the API's 200 characters, so a long paste still searches", async ({ page, context }) => {
+  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+  await page.goto(campaignPage);
+  await expect(page.locator('[data-recipients] tbody tr')).toHaveCount(5);
+  const search = page.getByRole('searchbox', { name: 'Search recipients' });
+  await page.evaluate((text) => navigator.clipboard.writeText(text), 'x'.repeat(250));
+  await search.focus();
+  const [answer] = await Promise.all([page.waitForResponse((r) => r.url().includes('/recipients?') && r.url().includes('q=x')), page.keyboard.press('ControlOrMeta+V')]);
+  expect(answer.status()).toBe(200); // not a 422: the API takes up to 200
+  await expect(search).toHaveValue('x'.repeat(200));
+});
+
 test('ticking two recipients copies their two links', async ({ page, context }) => {
   await context.grantPermissions(['clipboard-read', 'clipboard-write']);
   await page.goto(campaignPage);

@@ -80,7 +80,8 @@ const filters = [
           <div class="relative lg:w-72">
             <span class="pointer-events-none absolute inset-y-0 left-3 flex items-center text-ink-400"><Icon name="search" /></span>
             <label for="recipient-search" class="sr-only">Search recipients</label>
-            <input id="recipient-search" type="search" class="input w-full pl-9" placeholder="Search recipients" data-search autocomplete="off" />
+            <!-- maxlength: the API's cap on `q` (ROADMAP 3.17.1); a longer paste would get a 422 -->
+            <input id="recipient-search" type="search" class="input w-full pl-9" placeholder="Search recipients" maxlength="200" data-search autocomplete="off" />
           </div>
           <div class="segmented scrollbar-none max-w-full self-start overflow-x-auto" role="radiogroup" aria-label="Show">
             {
