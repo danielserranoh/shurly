@@ -14,6 +14,7 @@ import {
   nextSort,
   pageRange,
   personLabel,
+  recipientsExportQuery,
   recipientsQuery,
   secondaryLabel,
   sortChoice,
@@ -61,6 +62,10 @@ describe('the query', () => {
   test('sends the filter, the sort and the page, and the search only when there is one', () => {
     assert.equal(recipientsQuery({ filter: 'all', q: '', sort: 'clicks', order: 'desc', page: 1 }), 'filter=all&sort=clicks&order=desc&page=1&page_size=50');
     assert.equal(recipientsQuery({ filter: 'opened', q: ' Ana & Co ', sort: 'last_click', order: 'asc', page: 3 }), 'filter=opened&q=Ana+%26+Co&sort=last_click&order=asc&page=3&page_size=50');
+  });
+
+  test('the CSV takes the same filter, search and sort, and every page', () => {
+    assert.equal(recipientsExportQuery({ filter: 'clicked', q: 'acme', sort: 'opens', order: 'desc', page: 4 }), 'filter=clicked&q=acme&sort=opens&order=desc');
   });
 });
 

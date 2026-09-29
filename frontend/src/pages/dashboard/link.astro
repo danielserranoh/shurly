@@ -5,21 +5,8 @@ import StatCard from '@/components/ui/StatCard.astro';
 import EmptyState from '@/components/ui/EmptyState.astro';
 import EditLinkModal from '@/components/app/EditLinkModal.astro';
 import QrModal from '@/components/app/QrModal.astro';
+import AnalyticsSection from '@/components/app/AnalyticsSection.astro';
 import { BROWSERS, DEVICES, LANGUAGES } from '@/utils/rules';
-import type { IconName } from '@/utils/icons';
-
-// Phase 3.16 — the link's analytics: the period's tabs, and the donuts of "By context".
-const tabs: Array<{ key: string; label: string; icon: IconName }> = [
-  { key: 'time', label: 'By time', icon: 'calendar' },
-  { key: 'context', label: 'By context', icon: 'monitor' },
-  { key: 'location', label: 'By location', icon: 'globe' },
-  { key: 'visits', label: 'Visits', icon: 'list' },
-];
-const donuts = [
-  { key: 'os', title: 'Operating systems' },
-  { key: 'browsers', title: 'Browsers' },
-  { key: 'devices', title: 'Devices' },
-];
 ---
 
 <AppLayout title="Link details" section="links">
@@ -89,178 +76,7 @@ const donuts = [
     </section>
 
     <!-- Analytics for a period (3.16) -->
-    <section class="card mt-6" aria-labelledby="analytics-title">
-      <div class="flex flex-col gap-4 p-5 pb-4 sm:p-6 sm:pb-4 lg:flex-row lg:items-center lg:justify-between">
-        <div class="min-w-0">
-          <h2 id="analytics-title" class="font-semibold text-ink-950">Analytics</h2>
-          <p class="text-sm text-ink-500" data-range><span class="skeleton inline-block h-4 w-56 align-middle"></span></p>
-        </div>
-        <div class="flex min-w-0 items-center gap-2">
-          <div class="segmented scrollbar-none min-w-0 overflow-x-auto" role="radiogroup" aria-label="Period" data-periods>
-            {[7, 30, 90].map((d) => <label><input type="radio" name="period" value={String(d)} /><span>{d} days</span></label>)}
-            <label data-custom><input type="radio" name="period" value="custom" /><span><Icon name="calendar" /><span data-custom-label>Custom</span></span></label>
-          </div>
-          <button type="button" class="btn btn-secondary btn-sm shrink-0" data-export aria-label="Export CSV"><Icon name="download" /><span class="max-sm:hidden">Export CSV</span></button>
-        </div>
-      </div>
-
-      <div id="range-menu" popover class="menu w-72 p-4" data-align="end">
-        <form class="grid gap-3" data-range-form novalidate>
-          <p class="text-sm font-semibold text-ink-950">Custom range</p>
-          <div class="grid grid-cols-2 gap-2">
-            <label class="grid gap-1.5"><span class="label">From</span><input type="date" name="from" class="input" required /></label>
-            <label class="grid gap-1.5"><span class="label">To</span><input type="date" name="to" class="input" required /></label>
-          </div>
-          <p class="field-error" data-range-error hidden></p>
-          <div class="flex justify-end gap-2">
-            <button type="button" class="btn btn-ghost btn-sm" data-range-cancel>Cancel</button>
-            <button type="submit" class="btn btn-primary btn-sm">Apply</button>
-          </div>
-        </form>
-      </div>
-
-      <div
-        role="tablist"
-        aria-label="Analytics"
-        class="scrollbar-none relative flex gap-6 overflow-x-auto px-5 shadow-[inset_0_-1px_0_var(--color-line)] [mask-image:linear-gradient(to_right,transparent,#000_var(--fade-start,0px),#000_calc(100%-var(--fade-end,2.5rem)),transparent)] sm:px-6 md:[mask-image:none]"
-        data-tablist
-      >
-        {
-          tabs.map((tab, i) => (
-            <button type="button" role="tab" id={`tab-${tab.key}`} class="tab mb-0 shrink-0 max-sm:focus-visible:outline-offset-[-2px]" aria-selected={i === 0 ? 'true' : 'false'} aria-controls={`panel-${tab.key}`} tabindex={i === 0 ? 0 : -1} data-tab={tab.key}>
-              <Icon name={tab.icon} />
-              {tab.label}
-            </button>
-          ))
-        }
-      </div>
-
-      <!-- By time: the period's clicks (or opens) over time, by hour and by weekday -->
-      <div role="tabpanel" id="panel-time" aria-labelledby="tab-time" class="p-5 sm:p-6" hidden>
-        <div data-panel-error hidden></div>
-        <div data-panel-body>
-          <div class="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <h3 class="font-semibold text-ink-950" data-series-title>Clicks over time</h3>
-              <p class="text-sm text-ink-500" data-series-sub>Per day</p>
-            </div>
-            <div class="flex flex-wrap items-center gap-2">
-              <div class="segmented" role="radiogroup" aria-label="Show" data-series-picker hidden>
-                <label><input type="radio" name="series" value="clicks" checked /><span>Clicks</span></label>
-                <label><input type="radio" name="series" value="opens" /><span>Email opens</span></label>
-              </div>
-              <div class="segmented" role="radiogroup" aria-label="Group by">
-                <label><input type="radio" name="group" value="day" /><span>Day</span></label>
-                <label><input type="radio" name="group" value="week" /><span>Week</span></label>
-                <label><input type="radio" name="group" value="month" /><span>Month</span></label>
-              </div>
-              <button type="button" class="btn btn-ghost btn-sm" data-table-toggle="series" aria-pressed="false"><Icon name="list" /><span data-label>Table</span></button>
-            </div>
-          </div>
-          <div class="mt-6" data-chart="series"></div>
-          <div class="mt-4 max-h-80 overflow-auto rounded-xl border border-line" data-table="series" hidden></div>
-          <p class="hint mt-4" data-opens-note hidden>Apple Mail loads the images of an email when it arrives, to protect its users’ privacy, so some opens aren’t people reading.</p>
-          <p class="hint mt-2" data-days-hint hidden></p>
-          <div class="mt-8 grid gap-8 border-t border-line pt-6 lg:grid-cols-2">
-            <section aria-labelledby="hours-title">
-              <div class="flex items-start justify-between gap-3">
-                <div>
-                  <h3 id="hours-title" class="font-semibold text-ink-950">Time of day</h3>
-                  <p class="text-sm text-ink-500" data-hours-sub>Clicks by hour</p>
-                </div>
-                <button type="button" class="btn btn-ghost btn-sm" data-table-toggle="hours" aria-pressed="false"><Icon name="list" /><span data-label>Table</span></button>
-              </div>
-              <div class="mt-5" data-chart="hours"></div>
-              <div class="mt-4 max-h-80 overflow-auto rounded-xl border border-line" data-table="hours" hidden></div>
-            </section>
-            <section aria-labelledby="weekdays-title">
-              <div class="flex items-start justify-between gap-3">
-                <div>
-                  <h3 id="weekdays-title" class="font-semibold text-ink-950">Day of the week</h3>
-                  <p class="text-sm text-ink-500" data-weekdays-sub>Clicks by weekday</p>
-                </div>
-                <button type="button" class="btn btn-ghost btn-sm" data-table-toggle="weekdays" aria-pressed="false"><Icon name="list" /><span data-label>Table</span></button>
-              </div>
-              <div class="mt-5" data-chart="weekdays"></div>
-              <div class="mt-4 max-h-80 overflow-auto rounded-xl border border-line" data-table="weekdays" hidden></div>
-            </section>
-          </div>
-        </div>
-      </div>
-
-      <!-- By context: operating systems, browsers, devices and referrers -->
-      <div role="tabpanel" id="panel-context" aria-labelledby="tab-context" class="p-5 sm:p-6" hidden>
-        <div data-panel-error hidden></div>
-        <div class="grid gap-6" data-panel-body>
-          <div class="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
-            {
-              donuts.map((d) => (
-                <section class="rounded-2xl border border-line p-5" aria-labelledby={`${d.key}-title`}>
-                  <div class="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
-                    <h3 id={`${d.key}-title`} class="font-semibold text-ink-950">{d.title}</h3>
-                    <div class="flex items-center gap-3">
-                      <label class="flex items-center gap-2 text-sm text-ink-600"><span class="switch"><input type="checkbox" role="switch" data-numbers={d.key} /><span></span></span>Show numbers</label>
-                      <button type="button" class="btn btn-ghost btn-sm" data-table-toggle={d.key} aria-pressed="false"><Icon name="list" /><span data-label>Table</span></button>
-                    </div>
-                  </div>
-                  <div class="mt-5" data-chart={d.key}></div>
-                  <div class="mt-4 max-h-80 overflow-auto rounded-xl border border-line" data-table={d.key} hidden></div>
-                </section>
-              ))
-            }
-          </div>
-          <section class="rounded-2xl border border-line p-5" aria-labelledby="referrers-title">
-            <div class="flex items-start justify-between gap-3">
-              <div>
-                <h3 id="referrers-title" class="font-semibold text-ink-950">Referrers</h3>
-                <p class="text-sm text-ink-500">Direct means no referrer: an email app, a chat, or a typed link.</p>
-              </div>
-              <button type="button" class="btn btn-ghost btn-sm" data-table-toggle="referrers" aria-pressed="false"><Icon name="list" /><span data-label>Table</span></button>
-            </div>
-            <div class="mt-5" data-chart="referrers"></div>
-            <div class="mt-4 max-h-80 overflow-auto rounded-xl border border-line" data-table="referrers" hidden></div>
-          </section>
-        </div>
-      </div>
-
-      <!-- By location: countries -->
-      <div role="tabpanel" id="panel-location" aria-labelledby="tab-location" class="p-5 sm:p-6" hidden>
-        <div data-panel-error hidden></div>
-        <section data-panel-body aria-labelledby="countries-title">
-          <div class="flex items-start justify-between gap-3">
-            <div>
-              <h3 id="countries-title" class="font-semibold text-ink-950">Countries</h3>
-              <p class="text-sm text-ink-500">Countries by <a class="link" href="https://db-ip.com" target="_blank" rel="noopener">DB-IP</a>. Unknown: clicks it couldn’t place, or from before countries were recorded.</p>
-            </div>
-            <button type="button" class="btn btn-ghost btn-sm" data-table-toggle="countries" aria-pressed="false"><Icon name="list" /><span data-label>Table</span></button>
-          </div>
-          <div class="mt-5" data-chart="countries"></div>
-          <div class="mt-4 max-h-80 overflow-auto rounded-xl border border-line" data-table="countries" hidden></div>
-        </section>
-      </div>
-
-      <!-- Visits: one row each, newest first -->
-      <div role="tabpanel" id="panel-visits" aria-labelledby="tab-visits" class="p-5 sm:p-6" hidden>
-        <div data-panel-error hidden></div>
-        <div data-panel-body>
-          <div class="flex flex-wrap items-center justify-between gap-3">
-            <div class="segmented scrollbar-none max-w-full overflow-x-auto" role="radiogroup" aria-label="Which visits">
-              <label><input type="radio" name="visit-type" value="clicks" checked /><span>Clicks</span></label>
-              <label><input type="radio" name="visit-type" value="opens" /><span>Email opens</span></label>
-              <label><input type="radio" name="visit-type" value="bots" /><span>Bots</span></label>
-              <label><input type="radio" name="visit-type" value="all" /><span>All</span></label>
-            </div>
-            <p class="text-sm text-ink-500" data-visits-count aria-live="polite"></p>
-          </div>
-          <div class="mt-4" data-visits></div>
-          <nav class="mt-4 flex items-center justify-between gap-3" aria-label="Pages of visits" data-pager hidden>
-            <button type="button" class="btn btn-secondary btn-sm" data-page="newer"><Icon name="chevron-left" />Newer</button>
-            <span class="text-sm text-ink-500" data-page-of></span>
-            <button type="button" class="btn btn-secondary btn-sm" data-page="older">Older<Icon name="chevron-right" /></button>
-          </nav>
-        </div>
-      </div>
-    </section>
+    <AnalyticsSection visits exportCsv />
 
     <div class="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
       <!-- Social preview -->
@@ -349,42 +165,21 @@ const donuts = [
 </AppLayout>
 
 <script>
-  import { apiGet, ApiError, errorMessage } from '@/utils/api';
-  import { barList, bindChartTableToggle, bindShowNumbers, columnChart, dataTable, donutChart, donutTable } from '@/utils/charts';
-  import {
-    bucketRows,
-    dayOfWeekRows,
-    defaultGroupBy,
-    deviceLabel,
-    hourRows,
-    PERIOD_CHOICES,
-    periodFromParams,
-    periodLabel,
-    rangeLabel,
-    rangeProblem,
-    setPeriodParams,
-    visitTime,
-    type GroupBy,
-    type Period,
-    type Series,
-  } from '@/utils/analytics-view';
-  import { todayIn } from '@/utils/days';
+  import { apiGet, apiPost, ApiError, errorMessage } from '@/utils/api';
+  import { initAnalytics, type AnalyticsControls } from '@/utils/analytics-section';
   import { clearErrors, setFieldError } from '@/utils/forms';
   import { formatDate, formatDateTime, formatNumber, fromLocalInput, hostname, isValidHttpUrl, linkTitle, normalizeUrlInput, parseDate, pluralize, prettyUrl } from '@/utils/format';
-  import { html, safeUrl, setHTML, type RawHTML } from '@/utils/html';
+  import { html, safeUrl, setHTML } from '@/utils/html';
   import { icon } from '@/utils/icons';
   import { downloadVisits, getBreakdown, getTimeseries, getTotals, getVisits } from '@/utils/link-analytics';
   import { openLinkEditor } from '@/utils/link-editor';
   import { campaignHref, deleteLink, getLink, linkBadges, linkThumb, openQr } from '@/utils/links';
   import { linkApi } from '@/utils/link-address';
-  import { countryName } from '@/utils/country';
   import { createRule, deleteRule, listRules, renderRule } from '@/utils/rules';
-  import { initTabs, type Tabs } from '@/utils/tabs';
   import { tagPill } from '@/utils/tags';
-  import { confirmDialog, copyWithFeedback, hydrateTimes, positionMenu, setLoading, toast } from '@/utils/ui';
-  import { apiPost } from '@/utils/api';
-  import { canChange, creatorEmailBehindName, creatorName, getViewer, installLockedControls, lockControl, onForbidden, showDaysZoneHint, type Viewer } from '@/utils/viewer';
-  import type { BreakdownEntry, CampaignListResponse, LinkBreakdown, LinkTimeseries, LinkTotals, LinkVisit, LinkVisits, PreviewMetadata, RedirectRule, RuleCondition, RuleConditionType, ShortLink, VisitType } from '@/utils/types';
+  import { confirmDialog, copyWithFeedback, hydrateTimes, setLoading, toast } from '@/utils/ui';
+  import { canChange, creatorEmailBehindName, creatorName, getViewer, installLockedControls, lockControl, onForbidden, type Viewer } from '@/utils/viewer';
+  import type { CampaignListResponse, LinkTotals, PreviewMetadata, RedirectRule, RuleCondition, RuleConditionType, ShortLink } from '@/utils/types';
 
   // Phase 8.3 — a link is its code and its domain. Without `?domain=` (an old bookmark),
   // the default domain's link answers; after that, the loaded link addresses itself.
@@ -464,34 +259,10 @@ const donuts = [
     }
   }
 
-  // ------------------------------------------------------------------ Analytics (3.16)
-  // The all-time numbers come from /totals. Everything under "Analytics" is for the period, from the
-  // contract's routes (src/utils/link-analytics.ts): each tab loads when it opens, and again after the
-  // period changes. The timeseries always loads, as it also says which days the period counted.
-  const browserZone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+  // ------------------------------------------------------------------ All-time numbers (3.16: /totals)
+  // Everything under "Analytics" is for a period: src/utils/analytics-section.ts, fed by this link's routes.
   let totals: LinkTotals | null = null;
-  let period: Period = periodFromParams(params, todayIn(browserZone));
-  let groupBy: GroupBy = defaultGroupBy(period);
-  let series: Series = 'clicks';
-  /** Set once the viewer picks clicks or opens; until then a period with only opens shows opens. */
-  let seriesChosen = false;
-  let visitType: VisitType = 'clicks';
-  let visitPage = 1;
-  let timeseries: Promise<LinkTimeseries> | null = null;
-  let breakdown: Promise<LinkBreakdown> | null = null;
-  let visitsShown = '';
-  let counted: { from: string; to: string; timezone: string } | null = null;
-  let tabs: Tabs | null = null;
-
-  const CLICKS: [string, string] = ['click', 'clicks'];
-  const OPENS: [string, string] = ['email open', 'email opens'];
-  const panel = (key: string) => $(`#panel-${key}`);
-  const panelBody = (key: string) => panel(key).querySelector<HTMLElement>('[data-panel-body]')!;
-  const chartEl = (key: string) => $(`[data-chart="${key}"]`);
-  const tableEl = (key: string) => $(`[data-table="${key}"]`);
-  const skeleton = (height: string) => html`<div class="skeleton ${height} w-full rounded-xl"></div>`;
-  const nothing = (message: string) =>
-    html`<div class="flex items-start gap-3 rounded-xl bg-ink-50 p-4 text-sm text-ink-600"><span class="mt-0.5 text-ink-400">${icon('chart', 'size-4')}</span><p>${message}</p></div>`;
+  let analytics: AnalyticsControls | null = null;
 
   function setStat(key: string, value: string, hint: string) {
     $(`[data-stat="${key}"]`).textContent = value;
@@ -511,333 +282,9 @@ const donuts = [
       $('[data-stat-hint="last"]').textContent = formatDateTime(totals.last_click_at);
       hydrateTimes($('[data-stat="last"]'));
     } else setStat('last', 'Never', 'No clicks yet');
-    $('[data-series-picker]').hidden = totals.opens === 0;
+    analytics?.setOpens(totals.opens > 0);
+    analytics?.setZone(totals.timezone);
   }
-
-  /** Dim a panel while it reloads (the first load shows skeletons instead). */
-  function busy(key: string, on: boolean) {
-    panelBody(key).classList.toggle('opacity-60', on);
-    panel(key).setAttribute('aria-busy', String(on));
-  }
-
-  /** Show a panel's content, or, with `error`, what went wrong and a way to try again. */
-  function panelState(key: string, error?: unknown) {
-    const box = panel(key).querySelector<HTMLElement>('[data-panel-error]')!;
-    panelBody(key).hidden = error !== undefined;
-    box.hidden = error === undefined;
-    if (error === undefined) return;
-    setHTML(
-      box,
-      html`<div class="flex flex-col items-start gap-3 rounded-xl bg-ink-50 p-4 text-sm text-ink-700" role="alert">
-        <p class="flex items-start gap-2">${icon('circle-alert', 'mt-0.5 size-4 shrink-0 text-red-600')}<span>Couldn’t load these numbers. ${errorMessage(error)}</span></p>
-        <button type="button" class="btn btn-secondary btn-sm" data-retry>${icon('refresh')}Try again</button>
-      </div>`,
-    );
-    box.querySelector('[data-retry]')!.addEventListener('click', () => loadTab(key));
-  }
-
-  /** "Last 30 days: Aug 31 – Sep 29, 2026 · 34 clicks · 12 email opens": what the period counted. */
-  function renderRange(ts: LinkTimeseries) {
-    counted = { from: ts.from, to: ts.to, timezone: ts.timezone };
-    const when = 'days' in period ? `${periodLabel(period)}: ${rangeLabel(ts.from, ts.to)}` : rangeLabel(ts.from, ts.to);
-    $('[data-range]').textContent = `${when} · ${pluralize(ts.clicks, 'click')} · ${pluralize(ts.opens, 'email open')}`;
-  }
-
-  // ---------------------------------------------------------------- By time
-  async function loadTime() {
-    const first = !chartEl('series').querySelector('svg');
-    timeseries ??= getTimeseries(link, period, groupBy);
-    const request = timeseries;
-    if (first) ['series', 'hours', 'weekdays'].forEach((key) => setHTML(chartEl(key), skeleton(key === 'series' ? 'h-60' : 'h-48')));
-    else busy('time', true);
-    try {
-      const ts = await request;
-      if (request !== timeseries) return;
-      panelState('time');
-      renderRange(ts);
-      if (!seriesChosen) {
-        series = ts.clicks === 0 && ts.opens > 0 ? 'opens' : 'clicks';
-        document.querySelectorAll<HTMLInputElement>('input[name="series"]').forEach((r) => (r.checked = r.value === series));
-      }
-      renderTime(ts);
-    } catch (err) {
-      if (request !== timeseries) return;
-      timeseries = null;
-      $('[data-range]').textContent = periodLabel(period);
-      panelState('time', err);
-    } finally {
-      if (request === timeseries || timeseries === null) busy('time', false);
-    }
-  }
-
-  function renderTime(ts: LinkTimeseries) {
-    const unit = series === 'clicks' ? CLICKS : OPENS;
-    const what = series === 'clicks' ? 'Clicks' : 'Email opens';
-    const empty = series === 'clicks' ? 'No clicks in this period' : 'No email opens in this period';
-    const per = { day: 'Per day', week: 'Per week, from Monday', month: 'Per month' }[ts.group_by];
-    const rows = bucketRows(ts.stats, ts.group_by, series, todayIn(ts.timezone));
-    $('[data-series-title]').textContent = `${what} over time`;
-    $('[data-series-sub]').textContent = per;
-    columnChart(chartEl('series'), rows, { ariaLabel: `${what}, ${per.toLowerCase()}, ${rangeLabel(ts.from, ts.to)}. Total ${formatNumber(ts[series])}.`, height: 240, unit, emptyMessage: empty });
-    setHTML(tableEl('series'), dataTable(rows.map((r) => ({ label: r.title, value: r.value })), [{ day: 'Day', week: 'Week', month: 'Month' }[ts.group_by], what]));
-
-    const hours = hourRows(ts.hour_of_day, series);
-    $('[data-hours-sub]').textContent = `${what} by hour, local time`;
-    columnChart(chartEl('hours'), hours, { ariaLabel: `${what} by hour of the day.`, height: 200, unit, emptyMessage: empty });
-    setHTML(tableEl('hours'), dataTable(hours.map((r) => ({ label: r.title, value: r.value })), ['Hour', what]));
-
-    const weekdays = dayOfWeekRows(ts.day_of_week, series);
-    $('[data-weekdays-sub]').textContent = `${what} by weekday`;
-    columnChart(chartEl('weekdays'), weekdays, { ariaLabel: `${what} by day of the week.`, height: 200, unit, emptyMessage: empty });
-    setHTML(tableEl('weekdays'), dataTable(weekdays.map((r) => ({ label: r.title, value: r.value })), ['Day', what]));
-
-    $('[data-opens-note]').hidden = series !== 'opens';
-    void showDaysZoneHint($('[data-days-hint]'));
-  }
-
-  // ---------------------------------------------------------------- By context, by location (one /breakdown)
-  const entries = (list: BreakdownEntry[], label: (name: string) => string = (name) => name) => list.map((e) => ({ label: label(e.name), value: e.count }));
-  const numbersOn = (key: string) => $<HTMLInputElement>(`[data-numbers="${key}"]`).checked;
-
-  async function loadBreakdown(key: 'context' | 'location') {
-    const first = !panelBody(key).dataset.loaded;
-    breakdown ??= getBreakdown(link, period, 'clicks');
-    const request = breakdown;
-    if (first) {
-      if (key === 'context') {
-        ['os', 'browsers', 'devices'].forEach((k) => setHTML(chartEl(k), skeleton('h-36')));
-        setHTML(chartEl('referrers'), skeleton('h-40'));
-      } else setHTML(chartEl('countries'), skeleton('h-56'));
-    } else busy(key, true);
-    try {
-      const b = await request;
-      if (request !== breakdown) return;
-      panelState(key);
-      if (key === 'context') renderContext(b);
-      else renderLocation(b);
-      panelBody(key).dataset.loaded = 'true';
-    } catch (err) {
-      if (request !== breakdown) return;
-      breakdown = null;
-      panelState(key, err);
-    } finally {
-      busy(key, false);
-    }
-  }
-
-  function renderContext(b: LinkBreakdown) {
-    const parts = { os: ['Operating system', entries(b.os)], browsers: ['Browser', entries(b.browsers)], devices: ['Device', entries(b.devices, deviceLabel)] } as const;
-    for (const [key, [heading, items]] of Object.entries(parts)) {
-      donutChart(chartEl(key), items, { unit: CLICKS, showNumbers: numbersOn(key), emptyMessage: 'No clicks in this period' });
-      setHTML(tableEl(key), donutTable(items, [heading, 'Clicks']));
-    }
-    const referrers = entries(b.referrers);
-    setHTML(chartEl('referrers'), referrers.length ? barList(referrers, CLICKS, { limit: 10 }) : nothing('No clicks in this period.'));
-    setHTML(tableEl('referrers'), dataTable(referrers, ['Referrer', 'Clicks'], { share: true }));
-  }
-
-  function renderLocation(b: LinkBreakdown) {
-    // Unknown goes last, whatever its count: it isn't a place.
-    const places = [...b.countries.filter((c) => c.name !== 'Unknown'), ...b.countries.filter((c) => c.name === 'Unknown')];
-    const items = entries(places, (name) => (name === 'Unknown' ? 'Unknown' : countryName(name)));
-    setHTML(chartEl('countries'), items.length ? barList(items, CLICKS, { limit: 10 }) : nothing('No clicks in this period.'));
-    setHTML(tableEl('countries'), dataTable(items, ['Country', 'Clicks'], { share: true }));
-  }
-
-  // ---------------------------------------------------------------- Visits
-  const KINDS: Record<LinkVisit['kind'], [string, string]> = { click: ['badge-brand', 'Click'], open: ['badge-info', 'Email open'], bot: ['badge-neutral', 'Bot'] };
-  const NO_VISITS: Record<VisitType, string> = { clicks: 'No clicks in this period.', opens: 'No email opens in this period.', bots: 'No bots in this period.', all: 'No visits in this period.' };
-  const known = (value: string) => value !== 'Unknown';
-
-  async function loadVisits() {
-    const key = `${JSON.stringify(period)}|${visitType}|${visitPage}`;
-    if (key === visitsShown) return;
-    visitsShown = key;
-    if (!$('[data-visits]').firstElementChild) setHTML($('[data-visits]'), skeleton('h-72'));
-    else busy('visits', true);
-    try {
-      const v = await getVisits(link, period, visitType, visitPage);
-      if (key !== visitsShown) return;
-      panelState('visits');
-      renderVisits(v);
-    } catch (err) {
-      if (key !== visitsShown) return;
-      visitsShown = '';
-      panelState('visits', err);
-    } finally {
-      busy('visits', false);
-    }
-  }
-
-  function renderVisits(v: LinkVisits) {
-    const first = (v.page - 1) * v.page_size + 1;
-    $('[data-visits-count]').textContent = v.visits.length ? `${formatNumber(first)}–${formatNumber(first + v.visits.length - 1)} of ${formatNumber(v.total)}` : '';
-    $('[data-pager]').hidden = v.pages <= 1;
-    $<HTMLButtonElement>('[data-page="newer"]').disabled = v.page <= 1;
-    $<HTMLButtonElement>('[data-page="older"]').disabled = v.page >= v.pages;
-    $('[data-page-of]').textContent = `Page ${formatNumber(v.page)} of ${formatNumber(v.pages)}`;
-    if (!v.visits.length) {
-      setHTML($('[data-visits]'), nothing(NO_VISITS[v.type]));
-      return;
-    }
-    const withKind = v.type === 'all';
-    const badge = (visit: LinkVisit) => html`<span class="badge ${KINDS[visit.kind][0]}">${KINDS[visit.kind][1]}</span>`;
-    const when = (visit: LinkVisit): RawHTML => {
-      const t = visitTime(visit.visited_at);
-      return html`<time datetime="${visit.visited_at}" title="${t.long}">${t.short}</time>`;
-    };
-    const software = (visit: LinkVisit) =>
-      known(visit.browser) && known(visit.os) ? `${visit.browser} on ${visit.os}` : known(visit.browser) ? visit.browser : known(visit.os) ? visit.os : '';
-    const summary = (visit: LinkVisit) => [known(visit.country) ? countryName(visit.country) : '', software(visit), known(visit.device) ? deviceLabel(visit.device) : ''].filter(Boolean).join(' · ') || 'Unknown';
-    setHTML(
-      $('[data-visits]'),
-      html`<div class="overflow-x-auto rounded-xl border border-line max-md:hidden">
-          <table class="table">
-            <thead>
-              <tr><th scope="col">Date and time</th><th scope="col">Country</th><th scope="col">Browser</th><th scope="col">OS</th><th scope="col">Device</th><th scope="col">Referrer</th>${withKind ? html`<th scope="col">Type</th>` : ''}</tr>
-            </thead>
-            <tbody>${v.visits.map(
-              (visit) => html`<tr>
-                <td class="whitespace-nowrap">${when(visit)}</td>
-                <td>${known(visit.country) ? countryName(visit.country) : 'Unknown'}</td>
-                <td>${visit.browser}</td>
-                <td>${visit.os}</td>
-                <td>${deviceLabel(visit.device)}</td>
-                <td class="max-w-[16rem] truncate" title="${visit.referrer}">${visit.referrer}</td>
-                ${withKind ? html`<td>${badge(visit)}</td>` : ''}
-              </tr>`,
-            )}</tbody>
-          </table>
-        </div>
-        <ul class="divide-y divide-line rounded-xl border border-line md:hidden">${v.visits.map(
-          (visit) => html`<li class="grid gap-1 px-4 py-3 text-sm">
-            <div class="flex items-center justify-between gap-3"><span class="font-medium text-ink-900">${when(visit)}</span>${withKind ? badge(visit) : ''}</div>
-            <p class="text-ink-700">${summary(visit)}</p>
-            <p class="truncate text-ink-500">${visit.referrer === 'Direct' ? 'Direct' : known(visit.referrer) ? `From ${visit.referrer}` : 'Unknown referrer'}</p>
-          </li>`,
-        )}</ul>`,
-    );
-  }
-
-  // ---------------------------------------------------------------- Tabs and the period
-  function loadTab(key: string) {
-    if (key === 'time') void loadTime();
-    else if (key === 'context' || key === 'location') void loadBreakdown(key);
-    else void loadVisits();
-  }
-
-  const periodRadios = [...document.querySelectorAll<HTMLInputElement>('input[name="period"]')];
-  const choice = (p: Period) => ('days' in p && (PERIOD_CHOICES as readonly number[]).includes(p.days) ? String(p.days) : 'custom');
-
-  function syncPeriodControls() {
-    periodRadios.forEach((r) => (r.checked = r.value === choice(period)));
-    $('[data-custom-label]').textContent = choice(period) === 'custom' ? periodLabel(period) : 'Custom';
-    document.querySelectorAll<HTMLInputElement>('input[name="group"]').forEach((r) => (r.checked = r.value === groupBy));
-  }
-
-  function setPeriod(next: Period) {
-    period = next;
-    const query = new URLSearchParams(location.search);
-    setPeriodParams(query, period);
-    history.replaceState(history.state, '', `${location.pathname}?${query}${location.hash}`);
-    groupBy = defaultGroupBy(period);
-    timeseries = null;
-    breakdown = null;
-    visitPage = 1;
-    syncPeriodControls();
-    void loadTime();
-    if (tabs && tabs.current() !== 'time') loadTab(tabs.current());
-  }
-
-  // Custom: a popover with two dates, checked as the API would before asking it.
-  const rangeMenu = $('#range-menu');
-  const rangeForm = $<HTMLFormElement>('[data-range-form]');
-  const rangeInput = (name: 'from' | 'to') => rangeForm.elements.namedItem(name) as HTMLInputElement;
-  const localToday = () => todayIn(counted?.timezone ?? totals?.timezone ?? browserZone);
-  let rangeApplied = false;
-  function openRangeMenu() {
-    rangeApplied = false;
-    const today = localToday();
-    rangeInput('from').max = today;
-    rangeInput('to').max = today;
-    rangeInput('from').value = 'from' in period ? period.from : (counted?.from ?? '');
-    rangeInput('to').value = 'to' in period ? period.to : (counted?.to ?? today);
-    $('[data-range-error]').hidden = true;
-    rangeMenu.showPopover();
-    positionMenu(rangeMenu, $('[data-custom]'));
-    rangeInput('from').focus();
-  }
-  periodRadios.forEach((r) => r.addEventListener('change', () => (r.value === 'custom' ? openRangeMenu() : setPeriod({ days: Number(r.value) }))));
-  // "Custom" again while it's the period: change the dates.
-  $('[data-custom]').addEventListener('click', (e) => {
-    if (choice(period) === 'custom' && !rangeMenu.matches(':popover-open')) {
-      e.preventDefault();
-      openRangeMenu();
-    }
-  });
-  rangeMenu.addEventListener('toggle', (e) => {
-    if ((e as ToggleEvent).newState === 'closed' && !rangeApplied) syncPeriodControls();
-  });
-  $('[data-range-cancel]').addEventListener('click', () => rangeMenu.hidePopover());
-  rangeForm.addEventListener('submit', (e) => {
-    e.preventDefault();
-    const problem = rangeProblem(rangeInput('from').value, rangeInput('to').value, localToday());
-    const error = $('[data-range-error]');
-    error.hidden = !problem;
-    if (problem) {
-      error.textContent = problem;
-      return;
-    }
-    rangeApplied = true;
-    rangeMenu.hidePopover();
-    setPeriod({ from: rangeInput('from').value, to: rangeInput('to').value });
-  });
-
-  document.querySelectorAll<HTMLInputElement>('input[name="group"]').forEach((r) =>
-    r.addEventListener('change', () => {
-      groupBy = r.value as GroupBy;
-      timeseries = null;
-      void loadTime();
-    }),
-  );
-  document.querySelectorAll<HTMLInputElement>('input[name="series"]').forEach((r) =>
-    r.addEventListener('change', () => {
-      series = r.value as Series;
-      seriesChosen = true;
-      timeseries?.then(renderTime).catch(() => {});
-    }),
-  );
-  document.querySelectorAll<HTMLInputElement>('input[name="visit-type"]').forEach((r) =>
-    r.addEventListener('change', () => {
-      visitType = r.value as VisitType;
-      visitPage = 1;
-      void loadVisits();
-    }),
-  );
-  $('[data-page="newer"]').addEventListener('click', () => {
-    visitPage -= 1;
-    void loadVisits();
-  });
-  $('[data-page="older"]').addEventListener('click', () => {
-    visitPage += 1;
-    void loadVisits();
-  });
-  $('[data-export]').addEventListener('click', async (e) => {
-    const btn = e.currentTarget as HTMLButtonElement;
-    const name = counted ? `${link.short_code}-visits-${counted.from}-${counted.to}.csv` : `${link.short_code}-visits.csv`;
-    setLoading(btn, true, '');
-    try {
-      await downloadVisits(link, period, name);
-    } catch (err) {
-      toast('Couldn’t export the visits', 'error', { description: errorMessage(err) });
-    } finally {
-      setLoading(btn, false);
-    }
-  });
-  for (const key of ['series', 'hours', 'weekdays', 'os', 'browsers', 'devices', 'referrers', 'countries']) {
-    bindChartTableToggle($<HTMLButtonElement>(`[data-table-toggle="${key}"]`), chartEl(key), tableEl(key));
-  }
-  for (const key of ['os', 'browsers', 'devices']) bindShowNumbers($<HTMLInputElement>(`[data-numbers="${key}"]`), chartEl(key));
 
   // ------------------------------------------------------------------ Social preview
   function renderPreview(meta?: Partial<PreviewMetadata>) {
@@ -1019,9 +466,13 @@ const donuts = [
     $('#loading').hidden = true;
     $('#content').hidden = false;
 
-    syncPeriodControls();
-    tabs = initTabs($('[data-tablist]'), { hash: true, onSelect: loadTab });
-    if (tabs.current() !== 'time') void loadTime();
+    analytics = initAnalytics({
+      timeseries: (period, groupBy) => getTimeseries(link, period, groupBy),
+      breakdown: (period) => getBreakdown(link, period, 'clicks'),
+      visits: (period, type, page) => getVisits(link, period, type, page),
+      exportVisits: (period, counted) =>
+        downloadVisits(link, period, counted ? `${link.short_code}-visits-${counted.from}-${counted.to}.csv` : `${link.short_code}-visits.csv`),
+    });
 
     const [t, r] = await Promise.allSettled([getTotals(link), listRules(link)]);
     totals = t.status === 'fulfilled' ? t.value : null;

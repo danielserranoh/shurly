@@ -59,6 +59,14 @@ export function recipientsQuery({ filter, q, sort, order, page, pageSize = PAGE_
   return params.toString();
 }
 
+/** The query of `/recipients.csv`: the list's filter, search and sort, and every row (no page). */
+export function recipientsExportQuery(request: RecipientsRequest): string {
+  const params = new URLSearchParams(recipientsQuery(request));
+  params.delete('page');
+  params.delete('page_size');
+  return params.toString();
+}
+
 const filled = (data: Record<string, string>, columns: readonly string[]) => {
   const ordered = [...columns, ...Object.keys(data).filter((key) => !columns.includes(key))];
   return ordered.map((key) => (data[key] ?? '').trim()).filter(Boolean);

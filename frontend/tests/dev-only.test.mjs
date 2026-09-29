@@ -27,7 +27,13 @@ describe('checkDevOnly', () => {
   });
 });
 
-test('the mock carries the marker, so the check can find it', () => {
-  const source = readFileSync(new URL('../src/utils/link-analytics-mock.ts', import.meta.url), 'utf8');
-  assert.ok(source.includes(DEV_ONLY_MARKER));
+test('the mocks carry the marker, so the check can find them', () => {
+  for (const mock of ['link-analytics-mock.ts', 'campaign-analytics-mock.ts']) {
+    const source = readFileSync(new URL(`../src/utils/${mock}`, import.meta.url), 'utf8');
+    assert.ok(source.includes(DEV_ONLY_MARKER), mock);
+  }
+});
+
+test("a campaign mock's chunk fails the build too", () => {
+  assert.equal(checkDevOnly([chunk('_astro/campaign-analytics-mock.x1.js', 'export{a as b}')]).length, 1);
 });

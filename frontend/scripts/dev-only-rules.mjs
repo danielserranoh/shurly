@@ -1,10 +1,11 @@
-// Phase 3.16 — development-only code never reaches a production build. The link analytics' mock
-// (src/utils/link-analytics-mock.ts, loaded by `&mock` under `import.meta.env.DEV` only) carries
-// DEV_ONLY_MARKER in a string it uses, so it shows in any script that bundles it, minified or not.
+// Phase 3.16/3.17 — development-only code never reaches a production build. The analytics mocks
+// (src/utils/link-analytics-mock.ts and campaign-analytics-mock.ts, loaded by `&mock` under
+// `import.meta.env.DEV` only) carry DEV_ONLY_MARKER in a string they use, so it shows in any script that
+// bundles them, minified or not.
 
 export const DEV_ONLY_MARKER = 'shurly-dev-only';
 /** Chunk names that give a development-only module away. */
-const DEV_ONLY_CHUNKS = ['link-analytics-mock'];
+const DEV_ONLY_CHUNKS = ['link-analytics-mock', 'campaign-analytics-mock'];
 
 /** Problems with the built scripts (`{name, source}`): one per script that carries development-only code. */
 export function checkDevOnly(files) {
