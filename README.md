@@ -430,6 +430,10 @@ Per-link analytics as on Shlink's link page (Phase 3.16, contract in ROADMAP 3.1
   (recipients with at least one), the click and open rates, countries, the last click (Phase 3.17)
 - `GET /api/v1/analytics/campaigns/{campaign_id}/timeseries` and `…/breakdown` — a link's series and breakdown
   (Phase 3.16), over all the campaign's links, for a period
+- `GET /api/v1/analytics/campaigns/{campaign_id}/recipients` — all time, for following up with people: each
+  recipient's CSV row, clicks, opens, first and last click and last open. Filtered (`clicked`, `opened`, `none`),
+  searched, sorted and paged, with the `counts` each filter gives. Shown to whom `/users` is
+- `GET /api/v1/analytics/campaigns/{campaign_id}/recipients.csv` — the same, every row. Not an MCP tool
 - `GET /api/v1/analytics/orphan-visits` — typo'd / unknown codes (Phase 3.10.4)
 
 ### Public / unversioned
