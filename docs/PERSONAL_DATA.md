@@ -115,7 +115,7 @@ of the same module that the route calls.
 | `GET /mcp` | none: a redirect to `/mcp/` | anyone | public | excluded |
 | `POST /mcp` | none: a redirect to `/mcp/` | anyone | public | excluded |
 | `GET /robots.txt` | none | anyone | public | excluded |
-| `GET /{short_code}` | **recipients' rows**: a campaign link adds its recipient's `user_data` to the destination's query (personalization), and a crawler's preview page carries that destination (finding 1) | anyone with the link (by design) | public | excluded |
+| `GET /{short_code}` | **recipients' rows**: a campaign link adds its recipient's `user_data` to the destination's query, for people (personalization). A crawler's preview page never carries it (finding 1, fixed) | anyone with the link (by design) | public | excluded |
 | `GET /{short_code}/track` | none | anyone | public | excluded |
 
 ## The MCP's own routes
@@ -157,12 +157,13 @@ These rows record a question for the user, not a verdict:
 
 ## Findings
 
-1. **A crawler's preview of a campaign link carries its recipient's data.**
-   - `GET /{short_code}` answers a social crawler with a preview page. Its refresh URL is the destination, and for a
-     campaign link that destination has the recipient's `user_data` in its query.
-   - So when a recipient shares their link, the social network's crawler receives their name or email.
-   - People get the redirect, never the preview, so the preview could leave `user_data` out and change nothing for
-     them. That's proposed; nothing has changed yet.
+1. **A crawler's preview of a campaign link carried its recipient's data. Fixed on 2026-09-29.**
+   - `GET /{short_code}` answers a social crawler with a preview page. Its refresh URL was the destination, and for a
+     campaign link that destination had the recipient's `user_data` in its query.
+   - So when a recipient shared their link, the social network's crawler received their name or email.
+   - Now the preview's refresh target is the destination the rules pick, with only what the shared address itself
+     forwards. People still get their personalized redirect, unchanged
+     (`tests/test_campaign_link_preview.py`).
 2. **`PATCH /api/v1/campaigns/{campaign_id}/tags` answers a malformed id with another 400 message**
    (`Invalid campaign ID: …`, where the others say `Invalid campaign ID format`). It's left as it is: this audit
    changes no behaviour.
