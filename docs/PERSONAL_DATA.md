@@ -123,6 +123,7 @@ of the same module that the route calls.
 | `DELETE /mcp` | none: a redirect to `/mcp/` | anyone | public | excluded |
 | `GET /mcp` | none: a redirect to `/mcp/` | anyone | public | excluded |
 | `POST /mcp` | none: a redirect to `/mcp/` | anyone | public | excluded |
+| `GET /favicon.ico` | none: a 204 | anyone | public | excluded |
 | `GET /robots.txt` | none | anyone | public | excluded |
 | `GET /{short_code}` | **recipients' rows**: a campaign link adds its recipient's `user_data` to the destination's query, for people (personalization). A crawler's preview page never carries it (finding 1, fixed) | anyone with the link (by design) | public | excluded |
 | `GET /{short_code}/track` | none | anyone | public | excluded |
