@@ -26,6 +26,18 @@ implementation lifecycle and is independent of the URL version segment.
 
 ## [Unreleased]
 
+### Fixed — the one-off tasks find the live task definition on ECS Express
+- **`scripts/run_backfill_places.sh` failed in production** at its first dry run: "Unable to describe task
+  definition". On an ECS Express service, `describe-services` gives the service's own `taskDefinition` as null,
+  and the script asked AWS to describe "null". The Shlink import's runner had the same fault, in the part both
+  share (`scripts/one_off_task.sh`).
+- **They take the PRIMARY deployment's task definition** (and its network, when the service has none). They stop
+  with a clear message while a rollout is in progress, when two deployments exist, rather than run with the
+  wrong one.
+- **The tests' stand-in for AWS answers as Express does:** a null `taskDefinition` beside the deployments, and
+  an error for any task definition but the live one. The earlier stand-in described whatever it was asked for,
+  which is how this got through.
+
 ### Security — a client could choose its own address on s.griddo.io
 - **uvicorn ran with `--proxy-headers --forwarded-allow-ips "*"`.** It trusted every peer, and replaced the
   connection's address with the leftmost `X-Forwarded-For` entry, which the client writes, before the app ran. So

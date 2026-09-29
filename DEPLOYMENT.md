@@ -1164,7 +1164,7 @@ address (§ GDPR posture). An empty `GEOIP_DATABASE` turns lookups off. GeoLite2
   - It looks each up as the redirect does, from the stored address, and fills only what's empty. A city goes only
     where the visit's country is empty or agrees. It skips Shlink's imported visits, which have no address.
   - A dry run first, which reports counts and writes nothing. Then `--for-real`, typing the service's name back.
-    Running it twice is harmless.
+    Running it twice is harmless. Not during a rollout: the script stops until there's one deployment.
   - It needs no task role, since it reads nothing from AWS. Its output goes to the service's log group, in
     streams `backfill-places/…`, and the task definition made for it is deleted at the end.
   - Run it after the release that brings cities, once GeoLite2 City is in the image: with DB-IP's file only, it
@@ -1187,7 +1187,12 @@ store, never in the repository.
 
 `scripts/run_shlink_import.sh` runs the import in production's network, against the private RDS, with the live
 service's own image and environment. It makes a task definition for the run from the live one, and deletes it at
-the end, whatever happened. The task has two containers, sharing a volume:
+the end, whatever happened.
+- The live one is the service's PRIMARY deployment's: ECS Express leaves the service's own `taskDefinition`
+  empty. While a rollout is in progress there are two deployments, and the script stops: run it once the
+  rollout is done (`scripts/one_off_task.sh`, shared with the backfill).
+
+The task has two containers, sharing a volume:
 
 - **`fetch`**, the AWS CLI's image (`public.ecr.aws/aws-cli/aws-cli`), copies the snapshot and the review from a
   private bucket into the volume. It uses the task role `shurly-shlink-import`, which can read that one prefix
