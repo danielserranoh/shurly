@@ -50,6 +50,18 @@ implementation lifecycle and is independent of the URL version segment.
 - **The links page's `?page=` stays within the API's bounds.** A fraction, or a page past a billion rows, was sent
   as is, and the list failed to load. Now it's page 1, as a page past the last already was.
 
+### Added — end-to-end tests (Phase 6.1)
+- **Playwright drives the production build of the frontend in Chromium**, against the real API on its own
+  PostgreSQL, on every push and pull request (the `e2e` job of `test.yml`). Locally: `npm run e2e` in
+  `frontend/`, with a throwaway database (`docs/TESTING.md`).
+- **Signing in goes through the real Google flow**, with the pytest suite's fake Google in place of Google:
+  `tests/e2e/app.py`. It starts only with `E2E=1` on a local database, and the image never copies `tests/`
+  (a test reads the dockerfile).
+- **Every test fails** on a Content-Security-Policy or Trusted Types violation, an uncaught error in a page, a 5xx
+  from the API, or a request to any other host.
+- **The first specs:** signing in and out; a link from the dashboard to its page: its all-time numbers, the tabs,
+  the periods (a custom range refused, then applied) and the CSV of its visits.
+
 ### Removed — the `IS_LAMBDA` setting
 - **A leftover of the Lambda deploy**, which the ECS deploy never sets. It made short URLs `https://DEFAULT_DOMAIN`
   even with `DEFAULT_DOMAIN=localhost`. A non-local `DEFAULT_DOMAIN` already does that, so short URLs don't change.

@@ -1650,15 +1650,21 @@ live in `mcp_server/README.md`, written for developers. There is no user manual 
 > were rewritten for that stack on 2026-09-26.
 
 ### 6.1 Testing
-- [x] Unit tests (pytest) — 465 tests, run on every PR by `test.yml` (with `--extra mcp`)
+- [x] Unit tests (pytest) — over 1,250 tests, run on every PR by `test.yml` (with `--extra mcp`)
   - [x] URL shortening logic
   - [x] Campaign CSV parsing
   - [x] Auth token generation
 - [x] Integration tests (FastAPI `TestClient` against in-memory SQLite)
   - [x] API endpoints
   - [x] Database operations
-- [ ] E2E tests (optional)
-  - [ ] Frontend flows (Phase 3.11 ran a manual smoke of 14 core flows; nothing automated)
+- [ ] E2E tests: Playwright, on every push and PR (the `e2e` job of `test.yml`); `npm run e2e`, see
+      `docs/TESTING.md`. Phase 3.11 ran a manual smoke of 14 core flows before them
+  - [x] The harness: the production build in Chromium, against the real API with a fake Google
+        (`tests/e2e/app.py`, never in the image) on its own PostgreSQL. A test fails on a CSP or Trusted Types
+        violation, an uncaught error, a 5xx, or a request to any other host
+  - [x] Signing in with Google and out; a link from the dashboard to its page: its numbers, tabs, periods and CSV
+  - [ ] A campaign's page (3.17), Settings, the phone layout (390 px) and the public pages: the next PR
+  - [ ] Accessibility checks (axe), in a PR of their own once the harness is stable
 
 ### 6.2 Performance Optimization
 - [ ] Database indexes review
