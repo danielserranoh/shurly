@@ -426,6 +426,10 @@ Per-link analytics as on Shlink's link page (Phase 3.16, contract in ROADMAP 3.1
   an IP. Not an MCP tool
 - `GET /api/v1/analytics/campaigns/{campaign_id}/summary` — totals + top performers
 - `GET /api/v1/analytics/campaigns/{campaign_id}/users` — per-URL stats (CSV-friendly)
+- `GET /api/v1/analytics/campaigns/{campaign_id}/totals` — all time: recipients, clicks, opens, Clicked and Opened
+  (recipients with at least one), the click and open rates, countries, the last click (Phase 3.17)
+- `GET /api/v1/analytics/campaigns/{campaign_id}/timeseries` and `…/breakdown` — a link's series and breakdown
+  (Phase 3.16), over all the campaign's links, for a period
 - `GET /api/v1/analytics/orphan-visits` — typo'd / unknown codes (Phase 3.10.4)
 
 ### Public / unversioned

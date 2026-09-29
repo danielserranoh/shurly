@@ -9,7 +9,7 @@ from uuid import UUID as UUIDType
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
 from pydantic import BeforeValidator
-from sqlalchemy import func
+from sqlalchemy import func, select
 from sqlalchemy.orm import Query as SAQuery
 from sqlalchemy.orm import Session
 
@@ -20,7 +20,10 @@ from server.core.models import URL, Campaign, Domain, OrphanVisit, User, Visitor
 from server.schemas.analytics import (
     BreakdownItem,
     BreakdownResponse,
+    CampaignBreakdownResponse,
     CampaignSummary,
+    CampaignTimeseriesResponse,
+    CampaignTotalsResponse,
     CampaignUsersResponse,
     CampaignUserStat,
     DailyStats,
@@ -143,13 +146,23 @@ def _period(
         ) from None
 
 
-def _in_period(db: Session, url: URL, period: Period, visit_type: str) -> SAQuery:
-    """The link's visits of a kind (`_of_type`) in the period."""
+def _link_visits(db: Session, url: URL) -> SAQuery:
+    """A link's visits (Phase 3.16)."""
+    return db.query(Visitor).filter(Visitor.url_id == url.id)
+
+
+def _campaign_visits(db: Session, campaign: Campaign) -> SAQuery:
+    """Phase 3.17 — the visits of a campaign's links: a subquery on `urls.campaign_id`, never a
+    list of ids."""
+    links = select(URL.id).where(URL.campaign_id == campaign.id)
+    return db.query(Visitor).filter(Visitor.url_id.in_(links))
+
+
+def _in_period(visits: SAQuery, period: Period, visit_type: str) -> SAQuery:
+    """`visits` of a kind (`_of_type`) in the period."""
     start, end = period.bounds()
-    visits = db.query(Visitor).filter(
-        Visitor.url_id == url.id, Visitor.visited_at >= start, Visitor.visited_at < end
-    )
-    return _of_type(visits, visit_type)
+    in_period = visits.filter(Visitor.visited_at >= start, Visitor.visited_at < end)
+    return _of_type(in_period, visit_type)
 
 
 # What a visit shows, and newest first: the id breaks ties, so pages keep one order.
@@ -187,6 +200,154 @@ def _period_fields(url: URL, period: Period) -> dict:
         "to": period.last,
         "timezone": period.days.name,
     }
+
+
+def _click_totals(visits: SAQuery, days: LocalDays) -> dict:
+    """
+    The all-time numbers a link's header and a campaign's share: its clicks and opens, how
+    many of its links were clicked and opened, the countries its clicks came from, and the
+    last click, in `days`' zone.
+    """
+    clicks, countries, clicked, last = (
+        _of_type(visits, "clicks")
+        .with_entities(
+            func.count(Visitor.id),
+            func.count(func.distinct(Visitor.country)),
+            func.count(func.distinct(Visitor.url_id)),
+            func.max(Visitor.visited_at),
+        )
+        .one()
+    )
+    opens, opened = (
+        _of_type(visits, "opens")
+        .with_entities(func.count(Visitor.id), func.count(func.distinct(Visitor.url_id)))
+        .one()
+    )
+    return {
+        "clicks": clicks,
+        "opens": opens,
+        "clicked": clicked,
+        "opened": opened,
+        "countries": countries,
+        "last_click_at": days.local(last).replace(microsecond=0) if last else None,
+    }
+
+
+def _series(visits: SAQuery, period: Period, group_by: str) -> dict:
+    """A series' fields (`SeriesFields`): the period's clicks and opens per bucket, hour and
+    weekday, on local time. The rows are read once, then bucketed here."""
+    start, end = period.bounds()
+    # Clicks and opens are the visits that aren't a bot's (`_of_type`, `kind_of`).
+    rows = (
+        visits.filter(
+            Visitor.visited_at >= start, Visitor.visited_at < end, Visitor.is_bot.is_(False)
+        )
+        .with_entities(Visitor.visited_at, Visitor.is_pixel)
+        .all()
+    )
+
+    buckets = period.buckets(group_by)
+    starts = [first for first, _ in buckets]
+    kinds = ("click", "open")
+    per_bucket = [[0, 0] for _ in buckets]
+    per_hour = [[0, 0] for _ in range(24)]
+    per_weekday = [[0, 0] for _ in range(7)]
+    for visited_at, is_pixel in rows:
+        local = period.days.local(visited_at)
+        kind = kinds.index(kind_of(is_pixel, is_bot=False))
+        per_bucket[bisect_right(starts, local.date()) - 1][kind] += 1
+        per_hour[local.hour][kind] += 1
+        per_weekday[local.isoweekday() - 1][kind] += 1
+
+    return {
+        "group_by": group_by,
+        "clicks": sum(clicks for clicks, _ in per_bucket),
+        "opens": sum(opens for _, opens in per_bucket),
+        "stats": [
+            TimeseriesBucket(start=first, end=last, clicks=clicks, opens=opens)
+            for (first, last), (clicks, opens) in zip(buckets, per_bucket, strict=True)
+        ],
+        "hour_of_day": [
+            HourCounts(hour=hour, clicks=clicks, opens=opens)
+            for hour, (clicks, opens) in enumerate(per_hour)
+        ],
+        "day_of_week": [
+            WeekdayCounts(day=day, clicks=clicks, opens=opens)
+            for day, (clicks, opens) in enumerate(per_weekday, start=1)
+        ],
+    }
+
+
+def _breakdown_fields(visits: SAQuery, period: Period, visit_type: str) -> dict:
+    """A breakdown's fields (`BreakdownFields`): the period's visits of a kind by OS, browser,
+    device, referrer and country, each grouped in SQL and each distinct value worked out once."""
+    in_period = _in_period(visits, period, visit_type)
+
+    def grouped(column):
+        return in_period.with_entities(column, func.count(Visitor.id)).group_by(column).all()
+
+    os_names, browsers, devices, referrers, countries = (Counter() for _ in range(5))
+    for user_agent, count in grouped(Visitor.user_agent):
+        found = families(user_agent)
+        os_names[found.os] += count
+        browsers[found.browser] += count
+        devices[found.device] += count
+    for referer, count in grouped(Visitor.referer):
+        referrers[referrer_host(referer)] += count
+    for country, count in grouped(Visitor.country):
+        countries[country_label(country)] += count
+    total = sum(countries.values())
+
+    return {
+        "type": visit_type,
+        "total": total,
+        "os": _breakdown(os_names, total),
+        "browsers": _breakdown(browsers, total),
+        "devices": _breakdown(devices, total),
+        "referrers": _breakdown(referrers, total),
+        "countries": _breakdown(countries, total),
+    }
+
+
+def _visible_campaign_or_404(db: Session, user: User, campaign_id: str) -> Campaign:
+    """
+    A campaign the viewer can see (Phase 3.14.3): their organization's, whatever their role, or
+    their own personal one. 400 for an id that isn't a UUID, 404 otherwise. Every campaign
+    route decides with this, so `/recipients` shows `user_data` to exactly whom `/users` does.
+    """
+    try:
+        campaign_uuid = UUIDType(campaign_id)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid campaign ID format",
+        ) from exc
+    campaign = (
+        db.query(Campaign)
+        .filter(Campaign.id == campaign_uuid, viewer(db, user).sees(Campaign))
+        .first()
+    )
+    if not campaign:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Campaign not found",
+        )
+    return campaign
+
+
+def _campaign_period_fields(campaign: Campaign, period: Period) -> dict:
+    """What every per-campaign response over a period starts with."""
+    return {
+        "campaign_id": str(campaign.id),
+        "campaign_name": campaign.name,
+        "from": period.first,
+        "to": period.last,
+        "timezone": period.days.name,
+    }
+
+
+def _rate(part: int, whole: int) -> float:
+    return round(part / whole, 4) if whole else 0.0
 
 
 def _breakdown(counts: Counter, total: int) -> list[BreakdownItem]:
@@ -428,25 +589,15 @@ def get_url_totals(
     """
     url = _visible_url_or_404(db, current_user, short_code, domain)
     days = LocalDays.of(current_user, tz)
-    visits = db.query(Visitor).filter(Visitor.url_id == url.id)
-    clicks, countries, last = (
-        _of_type(visits, "clicks")
-        .with_entities(
-            func.count(Visitor.id),
-            func.count(func.distinct(Visitor.country)),
-            func.max(Visitor.visited_at),
-        )
-        .one()
-    )
-    opens = _of_type(visits, "opens").with_entities(func.count(Visitor.id)).scalar()
+    totals = _click_totals(_link_visits(db, url), days)
     return LinkTotalsResponse(
         short_code=url.short_code,
         domain=link_hostname(url),
         timezone=days.name,
-        clicks=clicks,
-        opens=opens,
-        countries=countries,
-        last_click_at=days.local(last).replace(microsecond=0) if last else None,
+        clicks=totals["clicks"],
+        opens=totals["opens"],
+        countries=totals["countries"],
+        last_click_at=totals["last_click_at"],
     )
 
 
@@ -478,53 +629,12 @@ def get_url_timeseries(
     - **day_of_week**: per local weekday, 1 (Monday) to 7
 
     The period is `period` (the last N local days, today included, default 30) or `from` and
-    `to`, at most 731 days. Bots count in neither. Opens overcount: Apple Mail Privacy Protection loads the pixel, like
-    every image, when a message arrives, read or not.
+    `to`, at most 731 days. Bots count in neither. Opens overcount: Apple Mail Privacy
+    Protection loads the pixel, like every image, when a message arrives, read or not.
     """
     url = _visible_url_or_404(db, current_user, short_code, domain)
-    start, end = period.bounds()
-    # Clicks and opens are the visits that aren't a bot's (`_of_type`, `kind_of`).
-    rows = (
-        db.query(Visitor.visited_at, Visitor.is_pixel)
-        .filter(
-            Visitor.url_id == url.id,
-            Visitor.visited_at >= start,
-            Visitor.visited_at < end,
-            Visitor.is_bot.is_(False),
-        )
-        .all()
-    )
-
-    buckets = period.buckets(group_by)
-    starts = [first for first, _ in buckets]
-    kinds = ("click", "open")
-    per_bucket = [[0, 0] for _ in buckets]
-    per_hour = [[0, 0] for _ in range(24)]
-    per_weekday = [[0, 0] for _ in range(7)]
-    for visited_at, is_pixel in rows:
-        local = period.days.local(visited_at)
-        kind = kinds.index(kind_of(is_pixel, is_bot=False))
-        per_bucket[bisect_right(starts, local.date()) - 1][kind] += 1
-        per_hour[local.hour][kind] += 1
-        per_weekday[local.isoweekday() - 1][kind] += 1
-
     return TimeseriesResponse(
-        **_period_fields(url, period),
-        group_by=group_by,
-        clicks=sum(clicks for clicks, _ in per_bucket),
-        opens=sum(opens for _, opens in per_bucket),
-        stats=[
-            TimeseriesBucket(start=first, end=last, clicks=clicks, opens=opens)
-            for (first, last), (clicks, opens) in zip(buckets, per_bucket, strict=True)
-        ],
-        hour_of_day=[
-            HourCounts(hour=hour, clicks=clicks, opens=opens)
-            for hour, (clicks, opens) in enumerate(per_hour)
-        ],
-        day_of_week=[
-            WeekdayCounts(day=day, clicks=clicks, opens=opens)
-            for day, (clicks, opens) in enumerate(per_weekday, start=1)
-        ],
+        **_period_fields(url, period), **_series(_link_visits(db, url), period, group_by)
     )
 
 
@@ -562,33 +672,9 @@ def get_url_breakdown(
     every image, when a message arrives, read or not.
     """
     url = _visible_url_or_404(db, current_user, short_code, domain)
-    visits = _in_period(db, url, period, visit_type)
-
-    def grouped(column):
-        # The period's rows, grouped in SQL: each distinct value is worked out once.
-        return visits.with_entities(column, func.count(Visitor.id)).group_by(column).all()
-
-    os_names, browsers, devices, referrers, countries = (Counter() for _ in range(5))
-    for user_agent, count in grouped(Visitor.user_agent):
-        found = families(user_agent)
-        os_names[found.os] += count
-        browsers[found.browser] += count
-        devices[found.device] += count
-    for referer, count in grouped(Visitor.referer):
-        referrers[referrer_host(referer)] += count
-    for country, count in grouped(Visitor.country):
-        countries[country_label(country)] += count
-    total = sum(countries.values())
-
     return BreakdownResponse(
         **_period_fields(url, period),
-        type=visit_type,
-        total=total,
-        os=_breakdown(os_names, total),
-        browsers=_breakdown(browsers, total),
-        devices=_breakdown(devices, total),
-        referrers=_breakdown(referrers, total),
-        countries=_breakdown(countries, total),
+        **_breakdown_fields(_link_visits(db, url), period, visit_type),
     )
 
 
@@ -626,7 +712,7 @@ def list_url_visits(
     like every image, when a message arrives, read or not.
     """
     url = _visible_url_or_404(db, current_user, short_code, domain)
-    visits = _in_period(db, url, period, visit_type)
+    visits = _in_period(_link_visits(db, url), period, visit_type)
     total = visits.with_entities(func.count(Visitor.id)).scalar()
     rows = (
         visits.with_entities(*_SHOWN)
@@ -674,7 +760,7 @@ def export_url_visits(
     """
     url = _visible_url_or_404(db, current_user, short_code, domain)
     # Read before the response streams: the session is the request's.
-    rows = _in_period(db, url, period, visit_type).with_entities(*_SHOWN)
+    rows = _in_period(_link_visits(db, url), period, visit_type).with_entities(*_SHOWN)
     rows = rows.order_by(*_NEWEST_FIRST).all()
     # Each row as the list shows it (same columns, same dates), plus the raw user agent.
     lines = (
@@ -719,26 +805,9 @@ def get_campaign_summary(
     - **401**: Authentication required or invalid token
     - **404**: Campaign not found, or someone else's personal campaign
     """
-    # Convert campaign_id string to UUID
-    try:
-        campaign_uuid = UUIDType(campaign_id)
-    except ValueError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid campaign ID format",
-        ) from exc
-
-    # Verify the user can see the campaign (Phase 3.14.3 — the organization's, or their own)
-    campaign = (
-        db.query(Campaign)
-        .filter(Campaign.id == campaign_uuid, viewer(db, current_user).sees(Campaign))
-        .first()
-    )
-    if not campaign:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Campaign not found",
-        )
+    # The organization's, or their own (Phase 3.14.3): every campaign route decides alike.
+    campaign = _visible_campaign_or_404(db, current_user, campaign_id)
+    campaign_uuid = campaign.id
 
     # Get all URLs for this campaign
     campaign_urls = db.query(URL).filter(URL.campaign_id == campaign_uuid).all()
@@ -859,26 +928,9 @@ def get_campaign_users(
     - **401**: Authentication required or invalid token
     - **404**: Campaign not found, or someone else's personal campaign
     """
-    # Convert campaign_id string to UUID
-    try:
-        campaign_uuid = UUIDType(campaign_id)
-    except ValueError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid campaign ID format",
-        ) from exc
-
-    # Verify the user can see the campaign (Phase 3.14.3 — the organization's, or their own)
-    campaign = (
-        db.query(Campaign)
-        .filter(Campaign.id == campaign_uuid, viewer(db, current_user).sees(Campaign))
-        .first()
-    )
-    if not campaign:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Campaign not found",
-        )
+    # The organization's, or their own (Phase 3.14.3): every campaign route decides alike.
+    campaign = _visible_campaign_or_404(db, current_user, campaign_id)
+    campaign_uuid = campaign.id
 
     # Get all URLs with their visit stats
     campaign_urls = db.query(URL).filter(URL.campaign_id == campaign_uuid).all()
@@ -949,6 +1001,117 @@ def get_campaign_users(
         campaign_name=campaign.name,
         users=users,
         total_users=len(users),
+    )
+
+
+@analytics_router.get(
+    "/campaigns/{campaign_id}/totals",
+    response_model=CampaignTotalsResponse,
+    responses={
+        200: {"description": "The campaign's all-time numbers"},
+        **get_responses(400, 401, 404, 422),
+    },
+)
+def get_campaign_totals(
+    campaign_id: str,
+    tz: TimeZoneParam = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    A campaign's all-time numbers, for the header of its page (Phase 3.17). A campaign has one
+    link per recipient, a row of its CSV.
+
+    - **recipients**: its links
+    - **clicks** and **opens**: over all of them, as a link's. Opens overcount: Apple Mail
+      Privacy Protection loads the pixel, like every image, when a message arrives, read or
+      not; and so does the open rate
+    - **clicked** (Clicked): the recipients with at least one click; **opened** (Opened): with
+      at least one pixel open. A recipient can be both
+    - **click_rate** and **open_rate**: clicked and opened over recipients, 0 to 1
+    - **countries** and **last_click_at**: as a link's
+
+    The same campaigns as `/users`: the organization's, whatever your role, and your own.
+    """
+    campaign = _visible_campaign_or_404(db, current_user, campaign_id)
+    days = LocalDays.of(current_user, tz)
+    recipients = db.query(func.count(URL.id)).filter(URL.campaign_id == campaign.id).scalar()
+    totals = _click_totals(_campaign_visits(db, campaign), days)
+    return CampaignTotalsResponse(
+        campaign_id=str(campaign.id),
+        campaign_name=campaign.name,
+        timezone=days.name,
+        recipients=recipients,
+        click_rate=_rate(totals["clicked"], recipients),
+        open_rate=_rate(totals["opened"], recipients),
+        **totals,
+    )
+
+
+@analytics_router.get(
+    "/campaigns/{campaign_id}/timeseries",
+    response_model=CampaignTimeseriesResponse,
+    responses={
+        200: {"description": "Clicks and opens over the period, over the campaign's links"},
+        **get_responses(400, 401, 404, 422),
+    },
+)
+def get_campaign_timeseries(
+    campaign_id: str,
+    group_by: Literal["day", "week", "month"] = Query(
+        "day", description="Local days, ISO weeks (from Monday) or months"
+    ),
+    period: Period = Depends(_period),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    A campaign's clicks and email opens over a period, side by side, over all its links
+    (Phase 3.17): a link's series (`/urls/{short_code}/timeseries`), summed.
+
+    The period is `period` (the last N local days, today included, default 30) or `from` and
+    `to`, at most 731 days. Bots count in neither. Opens overcount: Apple Mail Privacy
+    Protection loads the pixel, like every image, when a message arrives, read or not.
+    """
+    campaign = _visible_campaign_or_404(db, current_user, campaign_id)
+    return CampaignTimeseriesResponse(
+        **_campaign_period_fields(campaign, period),
+        **_series(_campaign_visits(db, campaign), period, group_by),
+    )
+
+
+@analytics_router.get(
+    "/campaigns/{campaign_id}/breakdown",
+    response_model=CampaignBreakdownResponse,
+    responses={
+        200: {"description": "The period's visits by OS, browser, device, referrer and country"},
+        **get_responses(400, 401, 404, 422),
+    },
+)
+def get_campaign_breakdown(
+    campaign_id: str,
+    visit_type: VisitType = Query(
+        "clicks",
+        alias="type",
+        description="clicks; opens (email pixel hits, not a bot's); bots; or all",
+    ),
+    period: Period = Depends(_period),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    A campaign's visits of a kind over a period, by OS, browser, device, referrer and country,
+    over all its links (Phase 3.17): a link's breakdown (`/urls/{short_code}/breakdown`),
+    summed.
+
+    The period is `period` (the last N local days, today included, default 30) or `from` and
+    `to`, at most 731 days. Opens overcount: Apple Mail Privacy Protection loads the pixel,
+    like every image, when a message arrives, read or not.
+    """
+    campaign = _visible_campaign_or_404(db, current_user, campaign_id)
+    return CampaignBreakdownResponse(
+        **_campaign_period_fields(campaign, period),
+        **_breakdown_fields(_campaign_visits(db, campaign), period, visit_type),
     )
 
 
