@@ -11,6 +11,8 @@ interface Props {
   exportCsv?: boolean;
 }
 const { visits = false, exportCsv = false } = Astro.props;
+// The manual's section for this page: a link's page is the one with Visits.
+const help = `/manual/read-your-analytics/#${visits ? 'a-links-page' : 'a-campaigns-page'}`;
 
 const tabs: Array<{ key: string; label: string; icon: IconName }> = [
   { key: 'time', label: 'By time', icon: 'calendar' },
@@ -29,7 +31,10 @@ const donuts = [
 <section class="card mt-6" aria-labelledby="analytics-title">
   <div class="flex flex-col gap-4 p-5 pb-4 sm:p-6 sm:pb-4 lg:flex-row lg:items-center lg:justify-between">
     <div class="min-w-0">
-      <h2 id="analytics-title" class="font-semibold text-ink-950">Analytics</h2>
+      <div class="flex flex-wrap items-baseline gap-x-3">
+        <h2 id="analytics-title" class="font-semibold text-ink-950">Analytics</h2>
+        <a class="link text-sm" href={help}>How to read this</a>
+      </div>
       <p class="text-sm text-ink-500" data-range><span class="skeleton inline-block h-4 w-56 align-middle"></span></p>
     </div>
     <div class="flex min-w-0 items-center gap-2">
