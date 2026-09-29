@@ -236,7 +236,7 @@ jobs:
 
     - name: Upload the report, the traces and the API's log
       if: failure()
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: e2e-report
         path: |
