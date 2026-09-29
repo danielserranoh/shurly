@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 from server.core import get_db
 from server.core.auth import get_current_user
 from server.core.config import settings
-from server.core.models import URL, Campaign, Domain, OrphanVisit, User, Visitor
+from server.core.models import URL, Campaign, Domain, OrphanVisit, OrphanVisitType, User, Visitor
 from server.schemas.analytics import (
     BreakdownItem,
     BreakdownResponse,
@@ -31,6 +31,7 @@ from server.schemas.analytics import (
     GeoStatsResponse,
     HourCounts,
     LinkTotalsResponse,
+    OrphanGroupsResponse,
     OverviewStats,
     RecipientCounts,
     RecipientRow,
@@ -62,6 +63,7 @@ from server.utils.local_days import (
     last_days,
 )
 from server.utils.network import UNKNOWN_IP
+from server.utils.orphans import did_you_mean, orphan_groups
 from server.utils.profile import clean_timezone
 from server.utils.url import build_short_url, link_hostname, link_short_url
 from server.utils.visit_facets import country_label, families, kind_of, referrer_host
@@ -1527,3 +1529,64 @@ def get_orphan_visits(
             for r in rows
         ],
     }
+
+
+@analytics_router.get(
+    "/orphan-visits/grouped",
+    response_model=OrphanGroupsResponse,
+    responses={
+        200: {"description": "The paths tried on unknown codes, most tried first"},
+        **get_responses(401, 422),
+    },
+)
+def get_orphan_visit_groups(
+    period: Period = Depends(_period),
+    page: int = Query(1, ge=1, le=MAX_PAGE, description="From 1; a page past the last is empty"),
+    page_size: int = Query(20, ge=1, le=100),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    ROADMAP 3.10.4 — "Typos & broken links": the paths tried on unknown codes in the period, a
+    page at a time. The most tried first, then the latest hit, then the path.
+
+    - **did_you_mean**: up to 3 links the viewer sees that the path is one edit away from (a
+      character deleted, inserted, replaced, or swapped with its neighbour), or the same code but
+      for case where codes are lowercase. None for a path no code could be: longer than a code,
+      or with a character no code has, like a scanner's `/wp-login.php`.
+    - Hits on "/" (`base_url`) aren't typos: not counted.
+    - Never an IP, a user agent or a referrer. Orphan visits belong to no organization, as on
+      `/orphan-visits`; the links suggested are the viewer's to see.
+    """
+    since, until = period.bounds()
+    groups, total_visits, total_paths = orphan_groups(
+        db,
+        since=since,
+        until=until,
+        types=[OrphanVisitType.INVALID_SHORT_URL],
+        skip=(page - 1) * page_size,
+        limit=page_size,
+    )
+    suggested = did_you_mean(db, viewer(db, current_user), [g.attempted_path for g in groups])
+    return OrphanGroupsResponse.model_validate(
+        {
+            "from": period.first,
+            "to": period.last,
+            "timezone": period.days.name,
+            "total_visits": total_visits,
+            "total_paths": total_paths,
+            "page": page,
+            "page_size": page_size,
+            "pages": -(-total_paths // page_size),
+            "groups": [
+                {
+                    "attempted_path": group.attempted_path,
+                    "visits": group.visits,
+                    "first_seen": _moment(period.days, group.first_seen),
+                    "last_seen": _moment(period.days, group.last_seen),
+                    "did_you_mean": suggested[group.attempted_path],
+                }
+                for group in groups
+            ],
+        }
+    )

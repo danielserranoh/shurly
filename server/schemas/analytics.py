@@ -283,3 +283,40 @@ class RecipientsResponse(BaseModel):
     pages: int
     counts: RecipientCounts
     recipients: list[RecipientRow]
+
+
+# ROADMAP 3.10.4 — orphan visits by the path tried, for "Typos & broken links".
+
+
+class OrphanSuggestion(BaseModel):
+    """A link the path was probably meant for: one edit away, or the same code but for case."""
+
+    short_code: str
+    domain: str = Field(description="The link's domain")
+    short_url: str
+    title: str | None
+
+
+class OrphanGroup(BaseModel):
+    """A path tried on an unknown code: never an IP, a user agent or a referrer."""
+
+    attempted_path: str
+    visits: int
+    first_seen: datetime = Field(description="Local, with the zone's offset, to the second")
+    last_seen: datetime = Field(description="Local, with the zone's offset, to the second")
+    did_you_mean: list[OrphanSuggestion] = Field(
+        description="Up to 3 links the viewer sees, the likeliest first; none for a path no "
+        "code could be (longer than a code, or with a character no code has)"
+    )
+
+
+class OrphanGroupsResponse(BaseModel):
+    first: date = Field(alias="from", description="The first local day counted")
+    last: date = Field(alias="to", description="The last local day counted: today at the latest")
+    timezone: str = Field(description="The IANA time zone the days are counted in")
+    total_visits: int = Field(description="Hits on unknown codes in the period")
+    total_paths: int = Field(description="The paths they tried, on every page")
+    page: int
+    page_size: int
+    pages: int
+    groups: list[OrphanGroup]

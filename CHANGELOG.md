@@ -26,6 +26,27 @@ implementation lifecycle and is independent of the URL version segment.
 
 ## [Unreleased]
 
+### Added — "Typos & broken links" suggests from every link, a page at a time
+- **The analytics page grouped the newest 500 orphan visits itself,** and its "did you mean" looked only at the
+  newest 100 links. Both now come from the API, over the last 30 days: every path tried, 10 at a time, with the
+  links pager.
+- **`GET /api/v1/analytics/orphan-visits/grouped`** groups the hits on unknown codes by the path tried. It takes a
+  period like the other analytics routes, and pages its results.
+  - Each path: how often it was tried, its first and last hit, and `did_you_mean`.
+  - The most tried first, then the latest hit.
+  - Hits on "/" aren't typos, so they aren't counted.
+  - Never an IP, a user agent or a referrer.
+- **"Did you mean" looks at every link you can see.** It suggests a link the path is one edit from: a character
+  deleted, inserted or replaced, or two neighbours swapped. It also suggests the same code in capitals, where codes
+  are lowercase.
+  - Up to 3, the likeliest first.
+  - One indexed lookup per path, and none for a path no code could be: longer than 20 characters, or with a
+    character no code has, like a scanner's `/wp-login.php`.
+  - Two edits would suggest unrelated links as codes grow in number, so it stops at one.
+- **The MCP's `list_orphan_visits_grouped` uses the same grouping.** It no longer loads every row of its window, and
+  each path gains `first_seen`, `last_seen` and `did_you_mean`. Its samples are unchanged, IPs included: that's a
+  decision pending (`docs/PERSONAL_DATA.md`).
+
 ### Added — the pager's specimen (styleguide)
 - **The pager under the links' and the campaigns' lists** (`components/ui/Pager.astro`, from #134) has a live
   specimen: 57 links, 20 a page, brought to each page by `renderPager`, as the lists do. In `/styleguide/` →

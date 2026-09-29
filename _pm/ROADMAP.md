@@ -569,6 +569,14 @@ System creates:
 - [x] Catch-all handler logs orphan visits before returning 404
 - [x] Endpoint GET `/api/v1/analytics/orphan-visits`
 - [x] Tests for orphan logging + listing endpoint (`tests/test_phase3104_orphan_visits.py`)
+- [x] Grouped by the path tried (2026-09-29): `GET /api/v1/analytics/orphan-visits/grouped`, for the analytics
+      page's "Typos & broken links" (`server/utils/orphans.py`, `tests/test_orphan_groups.py`)
+  - One GROUP BY over a period, paged: counts, first and last hit. Never an IP, a user agent or a referrer
+  - "Did you mean" against every link the viewer sees, not the page's newest 100: one edit away (a character
+    deleted, inserted, replaced or swapped with its neighbour), or the same code but for case. One indexed
+    lookup per path; none for a path no code could be (longer than 20, or a character no code has)
+  - The MCP's `list_orphan_visits_grouped` uses it, and stops loading every row. Its samples keep their IPs:
+    a decision pending (`docs/PERSONAL_DATA.md`)
 
 ### 3.10.5 CSV Export for Analytics ✅
 - [x] Add `?format=csv` to visit / analytics endpoints
@@ -1510,7 +1518,7 @@ for this.
 - [x] **`create_campaign_from_rows`** — accepts `rows: list[dict]`, serialises to CSV in-memory, reuses the existing campaign generator.
 - [x] **`get_url_analytics_summary`** — composes totals + daily series + top countries in one call (default 7-day window, bot/pixel filtering aligned with regular analytics endpoints).
 - [x] **`add_redirect_rule`** — sugar over `POST /urls/{code}/rules` with named condition args (device/language/browser/query_param[+value]/before_date/after_date), at least one condition required.
-- [x] **`list_orphan_visits_grouped`** — clusters by `attempted_path`, returns top-N groups with capped sample list (3 per group) and overall totals.
+- [x] **`list_orphan_visits_grouped`** — clusters by `attempted_path`, returns top-N groups with capped sample list (3 per group) and overall totals. Since 2026-09-29 it's the analytics page's grouping, in SQL, with each path's first and last hit and `did_you_mean` (3.10.4).
 - [x] Logic in `mcp_server/curated.py` (testable with explicit `db`+`user`); MCP wrappers in `mcp_server/server.py` (auth stub raises until 5.4 lands).
 - [x] Tests in `tests/test_phase53_curated_tools.py` cover registration, happy paths, validation, scoping, bot/pixel toggle.
 

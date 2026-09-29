@@ -435,6 +435,9 @@ Per-link analytics as on Shlink's link page (Phase 3.16, contract in ROADMAP 3.1
   searched, sorted and paged, with the `counts` each filter gives. Shown to whom `/users` is
 - `GET /api/v1/analytics/campaigns/{campaign_id}/recipients.csv` — the same, every row. Not an MCP tool
 - `GET /api/v1/analytics/orphan-visits` — typo'd / unknown codes (Phase 3.10.4)
+- `GET /api/v1/analytics/orphan-visits/grouped` — the same by the path tried, over a period and paged: how often,
+  the first and last hit, and "did you mean": the links you see that it's one edit from. Never an IP, a user
+  agent or a referrer. Not an MCP tool: `list_orphan_visits_grouped` is its MCP side
 
 ### Public / unversioned
 - `GET /{short_code}` — Redirect (302 by default; honors validity window, max-visits, redirect rules)

@@ -413,19 +413,35 @@ export interface OverviewStats {
   timezone?: string;
 }
 
-export interface OrphanVisit {
-  id: string;
-  type: 'base_url' | 'invalid_short_url' | 'regular_404';
-  attempted_path: string;
-  ip: string | null;
-  user_agent: string | null;
-  referer: string | null;
-  created_at: string | null;
+// "Typos & broken links" (ROADMAP 3.10.4): orphan visits by the path tried, from the API.
+
+/** A link the path was probably meant for: one edit away, or the same code but for case. */
+export interface OrphanSuggestion {
+  short_code: string;
+  domain: string;
+  short_url: string;
+  title: string | null;
 }
 
-export interface OrphanVisitsResponse {
-  total: number;
-  items: OrphanVisit[];
+export interface OrphanGroup {
+  attempted_path: string;
+  visits: number;
+  first_seen: string;
+  last_seen: string;
+  /** Up to 3, the likeliest first. */
+  did_you_mean: OrphanSuggestion[];
+}
+
+export interface OrphanGroupsResponse {
+  from: string;
+  to: string;
+  timezone: string;
+  total_visits: number;
+  total_paths: number;
+  page: number;
+  page_size: number;
+  pages: number;
+  groups: OrphanGroup[];
 }
 
 // Redirect rules (Phase 3.10.2)

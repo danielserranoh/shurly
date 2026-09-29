@@ -29,7 +29,7 @@ from __future__ import annotations
 
 import csv
 import io
-from collections import Counter, defaultdict
+from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -52,6 +52,7 @@ from server.utils.campaign import (
 )
 from server.utils.domain import get_or_create_default_domain
 from server.utils.local_days import LocalDays, last_days
+from server.utils.orphans import did_you_mean, orphan_groups
 from server.utils.url import is_valid_url, link_hostname
 
 # ---------------------------------------------------------------------------
@@ -306,59 +307,83 @@ def get_url_analytics_summary(
 
 def list_orphan_visits_grouped(
     db: Session,
-    user: User,  # noqa: ARG001 — orphans are tenant-wide; kept for auth parity
+    user: User,
     *,
     since_days: int = 30,
     limit_groups: int = 20,
 ) -> dict[str, Any]:
     """
-    Group orphan visits by `attempted_path` so the LLM can spot typo patterns.
+    Group orphan visits by `attempted_path` so the LLM can spot typo patterns, with the links a
+    typo was probably meant for.
 
-    Orphan visits are tenant-wide (Phase 3.10.4), so the `user` argument is
-    accepted only for auth-context parity with the other curated tools — it
-    has no scoping effect on the query.
+    The grouping is the analytics page's (`server/utils/orphans.py`), in SQL, over every kind of
+    orphan visit and the last `since_days`. Orphan visits are tenant-wide (Phase 3.10.4): `user`
+    decides only which links are suggested. The samples, the newest 3 hits of each path, are
+    this tool's own.
     """
     if since_days < 1 or since_days > 365:
         raise ValueError("since_days must be between 1 and 365")
     if limit_groups < 1 or limit_groups > 200:
         raise ValueError("limit_groups must be between 1 and 200")
 
-    cutoff = datetime.now(timezone.utc) - timedelta(days=since_days)
-
-    rows = (
-        db.query(OrphanVisit)
-        .filter(OrphanVisit.created_at >= cutoff)
-        .order_by(OrphanVisit.created_at.desc())
-        .all()
-    )
-
-    paths = Counter(r.attempted_path for r in rows)
-    samples: dict[str, list[dict[str, Any]]] = defaultdict(list)
-    for r in rows:
-        bucket = samples[r.attempted_path]
-        if len(bucket) < 3:
-            bucket.append(
-                {
-                    "type": r.type.value,
-                    "ip": r.ip,
-                    "user_agent": r.user_agent,
-                    "referer": r.referer,
-                    "created_at": r.created_at.isoformat() if r.created_at else None,
-                }
-            )
-
-    groups = [
-        {
-            "attempted_path": path,
-            "count": count,
-            "samples": samples[path],
-        }
-        for path, count in paths.most_common(limit_groups)
-    ]
+    since = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=since_days)
+    groups, total_visits, total_paths = orphan_groups(db, since=since, limit=limit_groups)
+    paths = [group.attempted_path for group in groups]
+    suggested = did_you_mean(db, viewer(db, user), paths)
+    samples = _newest_hits(db, paths, since)
 
     return {
         "since_days": since_days,
-        "total_visits": sum(paths.values()),
-        "distinct_paths": len(paths),
-        "groups": groups,
+        "total_visits": total_visits,
+        "distinct_paths": total_paths,
+        "groups": [
+            {
+                "attempted_path": group.attempted_path,
+                "count": group.visits,
+                "first_seen": group.first_seen.isoformat(),
+                "last_seen": group.last_seen.isoformat(),
+                "did_you_mean": suggested[group.attempted_path],
+                "samples": samples.get(group.attempted_path, []),
+            }
+            for group in groups
+        ],
     }
+
+
+def _newest_hits(db: Session, paths: list[str], since: datetime) -> dict[str, list[dict[str, Any]]]:
+    """Each path's newest 3 hits since `since`, in one query. Their IPs are a decision pending
+    (docs/PERSONAL_DATA.md): shown, as they always were."""
+    if not paths:
+        return {}
+    newest = (
+        func.row_number()
+        .over(
+            partition_by=OrphanVisit.attempted_path,
+            order_by=(OrphanVisit.created_at.desc(), OrphanVisit.id.desc()),
+        )
+        .label("newest")
+    )
+    ranked = (
+        db.query(OrphanVisit.id, newest)
+        .filter(OrphanVisit.created_at >= since, OrphanVisit.attempted_path.in_(paths))
+        .subquery()
+    )
+    rows = (
+        db.query(OrphanVisit)
+        .join(ranked, ranked.c.id == OrphanVisit.id)
+        .filter(ranked.c.newest <= 3)
+        .order_by(ranked.c.newest)
+        .all()
+    )
+    samples: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for r in rows:
+        samples[r.attempted_path].append(
+            {
+                "type": r.type.value,
+                "ip": r.ip,
+                "user_agent": r.user_agent,
+                "referer": r.referer,
+                "created_at": r.created_at.isoformat() if r.created_at else None,
+            }
+        )
+    return samples
