@@ -92,6 +92,7 @@ of the same module that the route calls.
 | `GET /api/v1/campaigns/{campaign_id}` | **recipients' rows**: every recipient's `user_data`. **accounts**: the creator's email and names | who can see the campaign | `visible_campaign_or_404` | `get_campaign` |
 | `GET /api/v1/campaigns/{campaign_id}/export` | **recipients' rows**: every recipient's `user_data`, as a CSV | who can see the campaign | `visible_campaign_or_404` | `export_campaign` |
 | `PATCH /api/v1/campaigns/{campaign_id}/tags` | none | who can change the campaign | `visible_campaign_or_404` | `update_campaign_tags` |
+| `POST /api/v1/client-errors` | none: it logs a browser's error report as a `client.error` line and answers nothing. The line keeps the page's path, never its query or the IP; the account's id when signed in | anyone, limited per IP | public | excluded |
 | `GET /api/v1/health` | none | anyone | public | excluded |
 | `GET /api/v1/health/db` | none | anyone | public | excluded |
 | `GET /api/v1/organization` | **own account**: the organization, and the caller's role | a member | `_my_membership` | `get_organization` |

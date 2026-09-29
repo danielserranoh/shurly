@@ -63,6 +63,11 @@ const ogImage = new URL('/og-image.png', Astro.site ?? Astro.url).href;
     {isProtected && <script is:inline set:html={PROTECTED_GUARD}></script>}
     {guestOnly && <script is:inline set:html={GUEST_GUARD}></script>}
     <link rel="preload" as="font" type="font/woff2" href={figtreeLatin} crossorigin />
+    <script>
+      // Browser errors reach the logs (Phase 6.4), from before the page's own scripts run.
+      import { installErrorReporter } from '@/utils/error-reporter';
+      installErrorReporter();
+    </script>
     <slot />
     <div id="toast-region" class="toast-region" aria-live="polite"></div>
     <script>

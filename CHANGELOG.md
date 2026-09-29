@@ -26,6 +26,18 @@ implementation lifecycle and is independent of the URL version segment.
 
 ## [Unreleased]
 
+### Added — browser errors reach the logs (6.4, for the dogfood)
+- **The web app reports what breaks in a person's browser**: an uncaught error, a rejected promise, or a
+  Content-Security-Policy or Trusted Types block, which a `<meta>` policy can't report by itself. Each goes to
+  `POST /api/v1/client-errors`, which logs one `client.error` line next to the API's own.
+- **What a report holds:** the message (500 characters at most, on one line, without any URL's query or fragment),
+  the script and where in it, and the page's path, never its query. The account's id when signed in; never an IP.
+  Not form values or storage.
+- **Bounded:** five a page load, each once; the API takes anyone's, signed in or not, and limits them per IP
+  (`RATE_LIMIT_CLIENT_ERRORS_PER_IP`, 30 a minute). A report can't forge a log line: the event log is JSON.
+- **Where to look:** `DEPLOYMENT.md` § Error alerting has its metric filter and a query, and § What the web app is
+  used for has the dogfood's usage queries over the request lines.
+
 ### Fixed — a NUL character in a request is a 400 or a 422, not a 500
 - **PostgreSQL can't hold a NUL character (U+0000) in text,** while SQLite, which the tests run on, can. So every
   request carrying one answered 500 in production, including:

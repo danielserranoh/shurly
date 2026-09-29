@@ -110,6 +110,7 @@ Each is a count per window, and `0` turns it off. The per-IP ones need `TRUSTED_
 | `RATE_LIMIT_LOGIN_FAILURES_PER_ACCOUNT` | `10` | Failed password checks per address, per 15 minutes: logins, and the current password given to change or set one |
 | `RATE_LIMIT_SIGN_IN_PER_IP` | `30` | Google's and the MCP's sign-in pages and endpoints, per client IP, per minute |
 | `RATE_LIMIT_MCP_CLIENTS_PER_IP` | `60` | `/mcp/register` and `/mcp/token` per client IP, per minute: claude.ai calls them from shared addresses |
+| `RATE_LIMIT_CLIENT_ERRORS_PER_IP` | `30` | Browser error reports (`POST /api/v1/client-errors`) per client IP, per minute: the web app sends 5 at most per page |
 
 ### Tags
 
