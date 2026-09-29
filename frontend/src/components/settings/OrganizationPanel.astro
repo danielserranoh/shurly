@@ -3,13 +3,34 @@
  * Phase 3.14 — Settings → Organization: the members and their roles. Each row offers only
  * what the viewer's role allows (the 3.14.2 table, server/utils/organization.py); the API
  * still checks, and its 403/409 `detail` is shown as it comes.
+ *
+ * Phase 3.14.4 — the logo: owners and admins upload, preview and remove it; members see it.
  */
 import Icon from '@/components/ui/Icon.astro';
 import EmptyState from '@/components/ui/EmptyState.astro';
+import OrgMark from '@/components/ui/OrgMark.astro';
 import SettingsSection from './SettingsSection.astro';
 ---
 
 <div class="grid gap-10" data-org-content>
+  <SettingsSection id="org-logo-title" title="Logo" description="Everyone in the organization sees it next to its name. Owners and admins can change it.">
+    <div class="card p-5 sm:p-6">
+      <!-- Saved on its own, as picked: the API keeps its shape and transparency, within 512 px -->
+      <div class="-m-2 flex items-center gap-4 rounded-xl border-2 border-dashed border-transparent p-2 transition-colors data-dragging:border-brand-400 data-dragging:bg-brand-50" data-logo-block>
+        <OrgMark class="h-16 w-28 rounded-xl text-2xl" alt="The organization’s logo" />
+        <div class="grid min-w-0 gap-1.5">
+          <div class="flex flex-wrap items-center gap-2" data-logo-actions hidden>
+            <button type="button" class="btn btn-secondary btn-sm" data-logo-pick><Icon name="upload" />Upload logo</button>
+            <button type="button" class="btn btn-ghost btn-sm" data-logo-remove hidden>Remove</button>
+          </div>
+          <p class="hint" data-logo-hint><span class="skeleton inline-block h-4 w-48 align-middle"></span></p>
+          <p class="field-error" role="alert" data-logo-error hidden></p>
+        </div>
+        <input type="file" accept="image/jpeg,image/png,image/webp" hidden data-logo-file />
+      </div>
+    </div>
+  </SettingsSection>
+
   <SettingsSection
     id="org-members-title"
     title="Members"
@@ -19,7 +40,7 @@ import SettingsSection from './SettingsSection.astro';
 
     <div class="card overflow-hidden">
       <div class="flex items-center gap-3 border-b border-line px-4 py-3.5 sm:px-5">
-        <span class="grid size-9 shrink-0 place-items-center rounded-xl bg-ink-950 text-brand-300"><Icon name="users" /></span>
+        <OrgMark class="size-9 rounded-xl text-sm" />
         <div class="min-w-0">
           <p class="truncate font-semibold text-ink-950" data-org-name><span class="skeleton inline-block h-4 w-24 align-middle"></span></p>
           <p class="text-[13px] text-ink-500" data-org-summary></p>
@@ -77,8 +98,9 @@ import SettingsSection from './SettingsSection.astro';
   import { html, setHTML, type RawHTML } from '@/utils/html';
   import { accountLine, hasName, personName, type Person } from '@/utils/people';
   import { icon, type IconName } from '@/utils/icons';
-  import { confirmDialog, toast, type ConfirmOptions } from '@/utils/ui';
-  import { forgetOrganization, getMe, getMyOrganization, installLockedControls } from '@/utils/viewer';
+  import { confirmDialog, setLoading, toast, type ConfirmOptions } from '@/utils/ui';
+  import { canChangeLogo, logoFileProblem, paintOrgMark, removeLogo, uploadLogo } from '@/utils/org-logo';
+  import { forgetOrganization, getMe, getMyOrganization, installLockedControls, organizationChanged } from '@/utils/viewer';
   import type { AdoptedLinks, OrgMember, OrgRole, Organization, RemovedMember, User } from '@/utils/types';
 
   const ROLES: Record<OrgRole, { label: string; icon: IconName; badge: string; rank: number }> = {
@@ -188,6 +210,7 @@ import SettingsSection from './SettingsSection.astro';
 
   function render() {
     $('[data-org-name]').textContent = org.name;
+    renderLogo();
     $('[data-org-summary]').textContent = org.google_domain
       ? `You’re ${withArticle(org.role)}. Anyone who signs in with an @${org.google_domain} account joins as a member.`
       : `You’re ${withArticle(org.role)}.`;
@@ -441,6 +464,101 @@ import SettingsSection from './SettingsSection.astro';
     if (btn.dataset.memberAction === 'role') void changeRole(m, btn.dataset.role as OrgRole);
     else if (btn.dataset.memberAction === 'transfer') void transfer(m);
     else if (btn.dataset.memberAction === 'remove') void remove(m);
+  });
+
+  // ---------------------------------------------------------------- Logo (Phase 3.14.4)
+  // Picked or dropped, checked, and saved as it is: no crop, since a logo keeps its shape. The
+  // image comes from the API as a blob (it needs the bearer header), shown from an object URL.
+  const logoBlock = $('[data-logo-block]');
+  const logoActions = $('[data-logo-actions]');
+  const logoPick = $<HTMLButtonElement>('[data-logo-pick]');
+  const logoRemove = $<HTMLButtonElement>('[data-logo-remove]');
+  const logoFile = $<HTMLInputElement>('[data-logo-file]');
+  const logoHint = $('[data-logo-hint]');
+  const logoError = $('[data-logo-error]');
+  const editsLogo = () => Boolean(org) && canChangeLogo(org.role);
+
+  function renderLogo() {
+    content.querySelectorAll<HTMLElement>('[data-org-mark]').forEach((mark) => void paintOrgMark(mark, org));
+    logoActions.hidden = !editsLogo();
+    logoRemove.hidden = !org.logo_version;
+    logoHint.textContent = editsLogo()
+      ? 'JPEG, PNG or WebP, up to 2 MB. It keeps its shape and transparency. Or drop it here.'
+      : org.logo_version
+        ? 'Owners and admins can change it.'
+        : 'No logo yet. Owners and admins can add one.';
+  }
+
+  function showLogoError(message: string | null) {
+    logoError.textContent = message ?? '';
+    logoError.hidden = !message;
+  }
+
+  /** The API answered the organization, with the logo's new version (or none). */
+  function logoSaved(next: Organization) {
+    org = next;
+    renderLogo();
+    organizationChanged(next); // the header shows it too
+  }
+
+  async function takeLogo(file: File | undefined) {
+    showLogoError(null);
+    if (!file || !editsLogo()) return;
+    const problem = logoFileProblem(file);
+    if (problem) {
+      showLogoError(problem);
+      return;
+    }
+    setLoading(logoPick, true, 'Uploading…');
+    try {
+      logoSaved(await uploadLogo(file));
+    } catch (err) {
+      setLoading(logoPick, false);
+      showLogoError(errorMessage(err));
+      return;
+    }
+    setLoading(logoPick, false);
+    toast('Logo saved', 'success');
+  }
+
+  logoPick.addEventListener('click', () => logoFile.click());
+  logoFile.addEventListener('change', () => {
+    const file = logoFile.files?.[0];
+    logoFile.value = ''; // the same file can be picked again
+    void takeLogo(file);
+  });
+
+  // Drop a file on the logo block.
+  const dragging = (on: boolean) => logoBlock.toggleAttribute('data-dragging', on);
+  logoBlock.addEventListener('dragover', (e) => {
+    if (!editsLogo() || !e.dataTransfer?.types.includes('Files')) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+    dragging(true);
+  });
+  logoBlock.addEventListener('dragleave', (e) => {
+    if (!logoBlock.contains(e.relatedTarget as Node | null)) dragging(false);
+  });
+  logoBlock.addEventListener('drop', (e) => {
+    if (!editsLogo()) return;
+    e.preventDefault();
+    dragging(false);
+    void takeLogo(e.dataTransfer?.files[0]);
+  });
+
+  logoRemove.addEventListener('click', async () => {
+    showLogoError(null);
+    setLoading(logoRemove, true, 'Removing…');
+    try {
+      await removeLogo();
+    } catch (err) {
+      setLoading(logoRemove, false);
+      showLogoError(errorMessage(err));
+      return;
+    }
+    setLoading(logoRemove, false);
+    logoSaved({ ...org, logo_version: null });
+    toast('Logo removed', 'success');
   });
 
   renderSkeleton();

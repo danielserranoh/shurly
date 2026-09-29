@@ -44,6 +44,7 @@ from server.core.models import (
     User,
     Visitor,
 )
+from server.schemas.datetimes import utc_isoformat
 from server.utils.access import Visibility, find_url, viewer
 from server.utils.campaign import (
     generate_campaign_urls,
@@ -137,7 +138,7 @@ def create_campaign_from_rows(
         "original_url": campaign.original_url,
         "csv_columns": campaign.csv_columns,
         "url_count": len(urls),
-        "created_at": campaign.created_at.isoformat() if campaign.created_at else None,
+        "created_at": utc_isoformat(campaign.created_at),
         "visibility": campaign.visibility,
     }
 
@@ -223,7 +224,7 @@ def add_redirect_rule(
         "priority": rule.priority,
         "conditions": rule.conditions,
         "target_url": rule.target_url,
-        "created_at": rule.created_at.isoformat() if rule.created_at else None,
+        "created_at": utc_isoformat(rule.created_at),
     }
 
 
@@ -340,8 +341,8 @@ def list_orphan_visits_grouped(
             {
                 "attempted_path": group.attempted_path,
                 "count": group.visits,
-                "first_seen": group.first_seen.isoformat(),
-                "last_seen": group.last_seen.isoformat(),
+                "first_seen": utc_isoformat(group.first_seen),
+                "last_seen": utc_isoformat(group.last_seen),
                 "did_you_mean": suggested[group.attempted_path],
                 "samples": samples.get(group.attempted_path, []),
             }
@@ -383,7 +384,7 @@ def _newest_hits(db: Session, paths: list[str], since: datetime) -> dict[str, li
                 "ip": r.ip,
                 "user_agent": r.user_agent,
                 "referer": r.referer,
-                "created_at": r.created_at.isoformat() if r.created_at else None,
+                "created_at": utc_isoformat(r.created_at),
             }
         )
     return samples

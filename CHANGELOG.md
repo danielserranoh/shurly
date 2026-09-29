@@ -26,6 +26,44 @@ implementation lifecycle and is independent of the URL version segment.
 
 ## [Unreleased]
 
+### Fixed — MCP tools returned dates without a time zone
+- **MCP tools returned dates without a time zone, which claude.ai rejects:** `create_short_url` made the link, and
+  then claude.ai threw the whole answer away ("`created_at` does not match format date-time"), so the assistant
+  never got the short code; `list_urls`, `get_url` and every other tool with a date in its answer failed the same
+  way. A tool's outputSchema comes from the API's OpenAPI schema, which says `"format": "date-time"`, and RFC 3339
+  needs an offset there: the API wrote naive UTC, `2026-09-29T22:04:42.082199`. It now writes
+  `2026-09-29T22:04:42.082199Z`.
+- **The curated tools say it too:** `create_campaign_from_rows`, `add_redirect_rule` and
+  `list_orphan_visits_grouped` give their dates in UTC with `Z`, and so does `GET /api/v1/analytics/orphan-visits`.
+- **A test calls every MCP tool** through the in-process server on seeded data and validates its answer against its
+  outputSchema, date-time checked (`tests/test_mcp_output_dates.py`). Another fails on a response model's datetime
+  field that isn't one of the two shared types, `UtcDateTime` or `LocalDateTime` (`server/schemas/datetimes.py`).
+
+### Changed — the API's datetimes carry `Z`
+- **Every UTC datetime in the API's JSON now ends in `Z`**: `created_at`, `updated_at`, `joined_at`,
+  `og_fetched_at`, `last_click_at`, `valid_since`, `valid_until`, a preview's `fetched_at` and a campaign user's
+  `last_clicked`. The same moment as before, which was UTC already, written as RFC 3339 says. It's an additive,
+  compatible change to the format: a client that took the old value as UTC reads the same instant, and the web
+  app's dates show as they did ("Created Sep 29, 2026").
+- **The per-link and per-campaign analytics (3.16, 3.17) are unchanged:** their times are local, with the zone's
+  offset (`2026-09-30T03:34:42+05:30`), and never turned into `Z`.
+- **What the API accepts is unchanged:** `valid_since` and `valid_until` are read with or without an offset, as
+  before. The CSV exports keep their text as it was.
+
+### Added — the organization's logo (3.14.4)
+- **Owners and admins upload the organization's logo** in Settings → Organization, preview it and remove it. Every
+  member sees it there and in the account menu, next to the organization's name; without one, the name's initial.
+- **`PUT`, `GET` and `DELETE /api/v1/organization/logo`**, with the avatar's contract: the image is the request body,
+  the GET has an ETag, the `?v=<logo_version>` URL of the current version is immutable in the browser's cache and
+  any other is `private, no-cache`, a 404 without one, `nosniff`. A member gets a 403, someone outside the
+  organization a 404. `GET /api/v1/organization` gains `logo_version` (additive). None of them is an MCP tool.
+- **The avatar's pipeline, shared:** a JPEG, PNG or WebP by its magic bytes (never SVG), 2 MB at most, refused as it
+  streams in, 4096 pixels a side, a decompression bomb refused, stored as WebP without metadata. But a logo isn't a
+  face: it keeps its shape, fit within 512×512 and never enlarged, and its transparency.
+- **Migration `0012`** adds `organizations.logo`, its content type and when it was uploaded: nullable columns
+  only. So `users.api_key`'s drop takes `0013`.
+- Each upload and removal writes `org.logo_changed` (who, and which) to the event log.
+
 ### Security — only `main` can deploy to production
 - **The backend deploy runs in the GitHub environment `production`**, which allows the `main` branch only,
   and the AWS deploy role (`github-actions-shurly-deploy`) trusts that environment alone. Until now the job's
@@ -177,7 +215,8 @@ implementation lifecycle and is independent of the URL version segment.
   address. It fills only what's empty, and a city only where the country agrees.
   - In production, `scripts/run_backfill_places.sh` runs it as a one-off ECS task, a dry run first.
   - It and the Shlink import's runner share `scripts/one_off_task.sh`.
-- **Migration numbers:** `0011` is the city, so `users.api_key`'s drop takes `0012`.
+- **Migration numbers:** `0011` is the city, and `0012` the organization's logo (3.14.4), so `users.api_key`'s drop
+  takes `0013`.
 
 ### Added — GeoLite2 City in the image, kept within MaxMind's 30 days (8.4)
 - **The image carries MaxMind's GeoLite2 City**, the data for a visit's city, which comes next. A visit's country
@@ -553,7 +592,7 @@ implementation lifecycle and is independent of the URL version segment.
   `?nostat` hit. The Shlink import counted Shlink's potential bots the same way; it doesn't anymore.
 - **Migration `0010` repairs what's stored:** each link's latest click, or nothing. Data only, in two
   statements. During the rollout, the previous release can still set a bot's time. So `users.api_key`'s drop
-  takes `0012` (`0011` is a visit's city, 8.4).
+  takes `0013` (`0011` is a visit's city, 8.4; `0012` the organization's logo, 3.14.4).
 - **Unique visitors don't count an unknown address.** Every visit imported from Shlink has ip "unknown" (it
   exposes none), and so does a visit whose address Shurly couldn't read. They made one extra "visitor" in the
   overview, a campaign's summary, top performers and users, and the MCP's link summary. So unique-visitor counts
@@ -866,7 +905,7 @@ implementation lifecycle and is independent of the URL version segment.
   running this one, mid-rollout: signing in, every authenticated call, the MCP.
 - This release doesn't map it. A PostgreSQL test drops the column by hand and runs this release against the result:
   signing in, generating an API key, `/me`, an MCP tool call with the key, revoking.
-- The release after drops it, in migration `0012` (0009 is the avatar, 3.12; 0010 repairs `last_click_at`; 0011 is a visit's city, 8.4). Until then the migration drift test ignores exactly that column
+- The release after drops it, in migration `0013` (0009 is the avatar, 3.12; 0010 repairs `last_click_at`; 0011 is a visit's city, 8.4; 0012 is the organization's logo, 3.14.4). Until then the migration drift test ignores exactly that column
   and its index, and a guard fails once they're gone.
 
 ### Security — the client IP behind CloudFront (Phase 6.3)

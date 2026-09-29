@@ -88,6 +88,8 @@ test('href and src built from a URL go through safeUrl', () => {
     ['src/utils/avatar-cropper.ts', 'img.src = url;', 'a blob: URL from URL.createObjectURL, of the file being cropped'],
     ['src/components/settings/AccountPanel.astro', 'if (url) avatarImage.src = url;', 'a blob: URL from avatarUrl()'],
     ['src/layouts/AppLayout.astro', 'photo.src = url;', 'a blob: URL from avatarUrl()'],
+    // Phase 3.14.4: so is the organization's logo.
+    ['src/utils/org-logo.ts', 'if (url) logo.src = url;', 'a blob: URL from logoUrl()'],
     ['src/pages/styleguide.astro', 'photo.src = URL.createObjectURL(square);', 'a blob: URL of the cropped sample'],
   ];
   const problems = check([...occurrences(attr), ...occurrences(prop)], allowed);

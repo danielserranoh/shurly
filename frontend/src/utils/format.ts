@@ -4,7 +4,10 @@ import type { ShortLink } from './types';
 
 const LOCALE = 'en-US';
 
-/** The API returns naive UTC timestamps for some columns ("2025-11-09T10:00:00"). Treat them as UTC. */
+/**
+ * The API gives UTC with `Z` ("2025-11-09T10:00:00Z") or, in the 3.16/3.17 analytics, a local time with its offset.
+ * Before it gave naive UTC ("2025-11-09T10:00:00"): taken as UTC, so a `Z` is added only when there's no zone.
+ */
 export function parseDate(value: string | null | undefined): Date | null {
   if (!value) return null;
   const hasZone = /([zZ]|[+-]\d{2}:?\d{2})$/.test(value);

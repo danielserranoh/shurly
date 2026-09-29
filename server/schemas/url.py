@@ -7,6 +7,7 @@ from uuid import UUID
 from pydantic import BaseModel, Field, field_validator
 
 from server.core.models.url import URLType
+from server.schemas.datetimes import UtcDateTime
 from server.utils.access import Visibility
 from server.utils.bounds import INT4_MAX
 from server.utils.url import is_valid_url
@@ -188,17 +189,17 @@ class URLResponse(BaseModel):
     og_title: str | None = None
     og_description: str | None = None
     og_image_url: str | None = None
-    og_fetched_at: datetime | None = None
+    og_fetched_at: UtcDateTime | None = None
 
     # Analytics
-    last_click_at: datetime | None = None
+    last_click_at: UtcDateTime | None = None
     # Phase 3.11 — all-time clicks, excluding bot/crawler hits and email tracking-pixel
     # opens (the analytics endpoints' default definition). Computed per request.
     click_count: int = 0
 
     # Phase 3.9.2 — validity window and visit cap
-    valid_since: datetime | None = None
-    valid_until: datetime | None = None
+    valid_since: UtcDateTime | None = None
+    valid_until: UtcDateTime | None = None
     max_visits: int | None = None
 
     # Phase 3.9.4 — crawlability flag
@@ -213,8 +214,8 @@ class URLResponse(BaseModel):
     tags: list[TagResponse] = []
 
     # Audit fields
-    created_at: datetime
-    updated_at: datetime
+    created_at: UtcDateTime
+    updated_at: UtcDateTime
     warning: str | None = None  # For custom URLs when code was modified
     # Phase 3.14.3 — whose it is
     visibility: Visibility = "organization"
@@ -241,7 +242,7 @@ class OpenGraphMetadataResponse(BaseModel):
     og_image_url: str | None
     og_url: str
     has_custom_preview: bool
-    fetched_at: datetime | None
+    fetched_at: UtcDateTime | None
 
 
 class URLMetadataRequest(BaseModel):

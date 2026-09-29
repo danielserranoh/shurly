@@ -9,11 +9,12 @@ import enum
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Column, DateTime, Enum, ForeignKey, String
+from sqlalchemy import Column, DateTime, Enum, ForeignKey, LargeBinary, String
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import deferred, relationship
 
 from server.core import Base
+from server.utils.stored_image import version_of
 
 
 class OrgRole(str, enum.Enum):
@@ -30,6 +31,18 @@ class Organization(Base):
     # Google Workspace domain whose accounts may sign in (3.13).
     google_domain = Column(String(255), nullable=True, unique=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    # Phase 3.14.4 — the logo: a WebP within 512×512, its shape and transparency kept
+    # (server/utils/logo.py). Deferred: reading the organization never loads the image, only
+    # GET /organization/logo does.
+    logo = deferred(Column(LargeBinary, nullable=True))
+    logo_content_type = Column(String(32), nullable=True)
+    # When it was uploaded, and so its version: in its URL (`?v=`) and its ETag.
+    logo_updated_at = Column(DateTime, nullable=True)
+
+    @property
+    def logo_version(self) -> str | None:
+        """Changes with each upload; None without a logo."""
+        return version_of(self.logo_updated_at)
 
     def __repr__(self):
         return f"<Organization(id={self.id}, name={self.name})>"

@@ -1,11 +1,11 @@
 """Pydantic schemas for the organization and its members (Phase 3.14.2)."""
 
 import uuid as uuid_pkg
-from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from server.core.models import OrgRole
+from server.schemas.datetimes import UtcDateTime
 
 
 class OrganizationResponse(BaseModel):
@@ -15,6 +15,14 @@ class OrganizationResponse(BaseModel):
     name: str
     google_domain: str | None
     role: OrgRole
+    # Phase 3.14.4 — additive: older clients ignore it.
+    logo_version: str | None = Field(
+        default=None,
+        description=(
+            "Changes with each upload; null without a logo. "
+            "The image: GET /api/v1/organization/logo?v=<logo_version>."
+        ),
+    )
 
 
 class MemberResponse(BaseModel):
@@ -24,7 +32,7 @@ class MemberResponse(BaseModel):
     first_name: str | None = None
     last_name: str | None = None
     role: OrgRole
-    joined_at: datetime
+    joined_at: UtcDateTime
 
 
 class RoleUpdate(BaseModel):

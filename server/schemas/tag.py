@@ -1,9 +1,10 @@
 """Pydantic schemas for tags."""
 
 import uuid as uuid_pkg
-from datetime import datetime
 
 from pydantic import BaseModel, Field, field_validator
+
+from server.schemas.datetimes import UtcDateTime
 
 
 class TagBase(BaseModel):
@@ -40,7 +41,7 @@ class TagResponse(BaseModel):
     color: str
     is_predefined: bool
     usage_count: int = 0
-    created_at: datetime
+    created_at: UtcDateTime
 
     class Config:
         from_attributes = True
