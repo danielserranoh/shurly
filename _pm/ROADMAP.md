@@ -1818,8 +1818,9 @@ live in `mcp_server/README.md`, written for developers. There is no user manual 
       fails on a setting without a row or with another default, a variable read anywhere without a row, and a stale row
 
 ### 7.2 Operational Runbook
-- [ ] How to add new users → self-service sign-up for `@griddo.io`: signing in with Google makes the account
-      (3.13.2); the Google project is done. Left: writing it down here
+- [x] How to add new users → `DEPLOYMENT.md` § People: joining, roles and leaving: signing in with Google makes the
+      account for the organization's Workspace domain (3.13.2), roles and removals are in Settings → Organization
+      (3.14), and the rollout's steps
 - [x] How to investigate issues → troubleshooting catalog in `docs/AWS_ECS_DEPLOYMENT.md`
 - [x] How to scale if needed → "Scale up/down" in the same runbook
 - [ ] Backup and recovery procedures
