@@ -293,10 +293,8 @@ cat > trust-policy.json <<'EOF'
     "Action": "sts:AssumeRoleWithWebIdentity",
     "Condition": {
       "StringEquals": {
-        "token.actions.githubusercontent.com:aud": "sts.amazonaws.com"
-      },
-      "StringLike": {
-        "token.actions.githubusercontent.com:sub": "repo:danielserranoh/shurly:*"
+        "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
+        "token.actions.githubusercontent.com:sub": "repo:danielserranoh/shurly:environment:production"
       }
     }
   }]
@@ -307,6 +305,10 @@ aws iam create-role --profile griddo-main \
     --role-name github-actions-shurly-deploy \
     --assume-role-policy-document file://trust-policy.json
 ```
+
+The subject is the GitHub environment, not a branch: the deploy job runs in `production` (Settings →
+Environments), whose deployment branch policy allows `main` only. Together, only a workflow on `main` can
+assume the role. Until 2026-09-29 the trust was `repo:danielserranoh/shurly:*` (any branch, any environment).
 
 ### Permissions policy
 

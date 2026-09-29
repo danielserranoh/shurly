@@ -26,6 +26,12 @@ implementation lifecycle and is independent of the URL version segment.
 
 ## [Unreleased]
 
+### Security — only `main` can deploy to production
+- **The backend deploy runs in the GitHub environment `production`**, which allows the `main` branch only,
+  and the AWS deploy role (`github-actions-shurly-deploy`) trusts that environment alone. Until now the job's
+  environment was `dev`, with no rules, and the role trusted `repo:danielserranoh/shurly:*`: a workflow on any
+  branch of the repo could assume it. The manual run's dev/staging/prod input is gone.
+
 ### Changed — passwords: bcrypt 5, without passlib
 - **Passwords are hashed and checked by bcrypt 5 directly.** passlib, unmaintained since 2020, broke on bcrypt 5:
   its bcrypt self-test hashes a 255-byte secret, which bcrypt 5 refuses, so every hash failed (Dependabot's #182,

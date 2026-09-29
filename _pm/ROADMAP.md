@@ -1424,7 +1424,7 @@ ECS Express does blue/green deploys by alternating target group weights. Manual 
 Replaces the SAM-based GitHub Actions workflow.
 - [x] **One-time setup in `griddo-main`** (documented in DEPLOYMENT.md, executed manually with SSO):
   - GitHub OIDC provider (`token.actions.githubusercontent.com`)
-  - IAM role `github-actions-shurly-deploy` with trust policy scoped to `repo:danielserranoh/shurly:*`
+  - IAM role `github-actions-shurly-deploy` with trust policy scoped to `repo:danielserranoh/shurly:environment:production` (was `…:*` until 2026-09-29; the `production` environment allows `main` only)
   - Permissions: ECR push (scoped to the `shurly-api` repo), ECS update-express-gateway-service (scoped to the Shurly service ARN), CloudWatch Logs read for verification
 - [x] Rewrite `.github/workflows/deploy-backend.yml`:
   - `permissions: id-token: write` for OIDC
