@@ -1,6 +1,6 @@
-// Phase 6.1 — accessibility: axe on the pages people use most, once their content is in: serious and critical
-// issues, and moderate ones too on the landing and login pages, which have none. What it finds gets fixed, or
-// allowed below with a reason and the issue that will fix it: never a rule turned off.
+// Phase 6.1 — accessibility: axe on the pages people use most, once their content is in: moderate, serious and
+// critical issues. What it finds gets fixed, or allowed below with a reason and the issue that will fix it: never a
+// rule turned off.
 
 import AxeBuilder from '@axe-core/playwright';
 import type { APIRequestContext, Page } from '@playwright/test';
@@ -20,17 +20,16 @@ interface Allowed {
 /** Known issues, each until its issue is fixed. */
 const ALLOWED: Allowed[] = [];
 
-const SERIOUS = ['serious', 'critical'];
-/** Moderate too: landmarks, headings' order and the like. For pages clean of those, to keep them clean. */
-const MODERATE = ['moderate', ...SERIOUS];
+/** Every impact but minor: moderate takes in landmarks, headings' order and the like. */
+const IMPACTS = ['moderate', 'serious', 'critical'];
 
-async function expectNoIssues(page: Page, name: string, impacts = SERIOUS) {
+async function expectNoIssues(page: Page, name: string) {
   const { violations } = await new AxeBuilder({ page }).analyze();
   const found = violations
-    .filter((v) => impacts.includes(v.impact ?? ''))
+    .filter((v) => IMPACTS.includes(v.impact ?? ''))
     .flatMap((v) => v.nodes.map((node) => ({ rule: v.id, impact: v.impact, target: node.target.join(' '), summary: node.failureSummary ?? v.help })))
     .filter((f) => !ALLOWED.some((a) => a.page === name && a.rule === f.rule && a.target === f.target));
-  expect(found, `axe on ${name}: ${impacts.join(', ')} issues`).toEqual([]);
+  expect(found, `axe on ${name}: ${IMPACTS.join(', ')} issues`).toEqual([]);
 }
 
 test.describe('signed out', () => {
@@ -39,13 +38,13 @@ test.describe('signed out', () => {
   test('the landing page', async ({ page }) => {
     await page.goto('/');
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
-    await expectNoIssues(page, 'landing', MODERATE);
+    await expectNoIssues(page, 'landing');
   });
 
   test('the login page', async ({ page }) => {
     await page.goto('/login/');
     await expect(page.getByRole('button', { name: 'Sign in with Google' })).toBeVisible();
-    await expectNoIssues(page, 'login', MODERATE);
+    await expectNoIssues(page, 'login');
   });
 });
 
