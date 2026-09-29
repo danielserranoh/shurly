@@ -26,6 +26,20 @@ implementation lifecycle and is independent of the URL version segment.
 
 ## [Unreleased]
 
+### Fixed — a NUL character in a request is a 400 or a 422, not a 500
+- **PostgreSQL can't hold a NUL character (U+0000) in text,** while SQLite, which the tests run on, can. So every
+  request carrying one answered 500 in production, including:
+  - the short-link host's own `/%00`, which anyone could send;
+  - the links' search, and `/urls/{short_code}`;
+  - a link's title or URL.
+- **A NUL in the path or the query is a 400,** before any route sees it. That includes the short-link host, since
+  no link has one.
+- **A NUL in a JSON body is a 422** in FastAPI's shape, saying where it is. The body is parsed for it only when its
+  bytes hold a NUL or its escape, so other requests pay for a byte search, not a second parse.
+- **A safety net** answers psycopg2's refusal of a NUL with a 422, for anything the first two don't see.
+- **Headers don't need a check.** uvicorn's parsers refuse a NUL in one with a 400 of their own. A huge header is
+  stored whole: user agents and referrers are text with no limit.
+
 ### Added — the manual: making a campaign, and reading your analytics (7.1)
 - **"Make a campaign from a CSV"**: what the CSV needs; that each person's row reaches the destination as
   parameters, so keep to what you'd share that way; the wizard's steps; exporting the links for a mail merge, with
