@@ -44,8 +44,9 @@ dependencies = [
 dev = [
     # Pinned to one minor series: CI fails on lint/format, and a new ruff minor
     # can add rules or change formatting. The cap keeps the weekly bump within it.
-    # Bump deliberately (and re-run `ruff format .` in the same PR).
-    "ruff>=0.15.12,<0.16",
+    # Bump deliberately (and re-run `ruff format .` in the same PR). 0.16 also
+    # formats the Python code blocks in Markdown files.
+    "ruff>=0.16.9,<0.17",
     "pytest>=8.0.0",
     "pytest-asyncio>=0.23.0",
     "pytest-cov>=4.0.0",

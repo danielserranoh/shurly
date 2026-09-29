@@ -26,6 +26,12 @@ implementation lifecycle and is independent of the URL version segment.
 
 ## [Unreleased]
 
+### Changed — ruff 0.16
+- **ruff 0.16.9,** with its cap raised to `<0.17`. `ruff check` finds nothing new.
+- **It also formats the Python code blocks in Markdown files.** That reformatted one block in DEPLOYMENT.md, which
+  lost its aligned comments, and the examples in `_pm/IMPLEMENTATION_TAGS.md` and `_pm/IMPLEMENTATION_TASKS.md`. No
+  `.py` file changed. It replaces Dependabot's #181, which was red for those three files.
+
 ### Changed — CI's actions, a major each, in one PR (Dependabot's first run)
 - **checkout v7, setup-python v7, setup-node v7, cache v6, codecov-action v7 and configure-aws-credentials v6.**
   They're mostly the move to the Node 24 runtime, which GitHub's runners have. None of the inputs we pass changed,

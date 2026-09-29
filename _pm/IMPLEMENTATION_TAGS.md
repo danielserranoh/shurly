@@ -72,6 +72,7 @@ from datetime import datetime
 
 from server.core import Base
 
+
 class Tag(Base):
     __tablename__ = "tags"
 
@@ -81,15 +82,15 @@ class Tag(Base):
     color = Column(String(20), nullable=False)  # e.g., "blue-500", "#3B82F6"
     is_predefined = Column(Boolean, default=False, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    created_by = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_by = Column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
 
     # Relationships
     urls = relationship("URL", secondary="url_tags", back_populates="tags")
     campaigns = relationship("Campaign", secondary="campaign_tags", back_populates="tags")
 
-    __table_args__ = (
-        CheckConstraint("name = LOWER(name)", name="name_lowercase_check"),
-    )
+    __table_args__ = (CheckConstraint("name = LOWER(name)", name="name_lowercase_check"),)
 
     def __repr__(self):
         return f"<Tag {self.display_name} ({self.name})>"
@@ -116,10 +117,15 @@ from sqlalchemy import Table
 url_tags = Table(
     "url_tags",
     Base.metadata,
-    Column("url_id", UUID(as_uuid=True), ForeignKey("urls.id", ondelete="CASCADE"), primary_key=True),
-    Column("tag_id", UUID(as_uuid=True), ForeignKey("tags.id", ondelete="CASCADE"), primary_key=True),
+    Column(
+        "url_id", UUID(as_uuid=True), ForeignKey("urls.id", ondelete="CASCADE"), primary_key=True
+    ),
+    Column(
+        "tag_id", UUID(as_uuid=True), ForeignKey("tags.id", ondelete="CASCADE"), primary_key=True
+    ),
     Column("created_at", DateTime, default=datetime.utcnow, nullable=False),
 )
+
 
 # Update URL model
 class URL(Base):
@@ -148,10 +154,18 @@ CREATE INDEX idx_campaign_tags_tag_id ON campaign_tags(tag_id);
 campaign_tags = Table(
     "campaign_tags",
     Base.metadata,
-    Column("campaign_id", UUID(as_uuid=True), ForeignKey("campaigns.id", ondelete="CASCADE"), primary_key=True),
-    Column("tag_id", UUID(as_uuid=True), ForeignKey("tags.id", ondelete="CASCADE"), primary_key=True),
+    Column(
+        "campaign_id",
+        UUID(as_uuid=True),
+        ForeignKey("campaigns.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+    Column(
+        "tag_id", UUID(as_uuid=True), ForeignKey("tags.id", ondelete="CASCADE"), primary_key=True
+    ),
     Column("created_at", DateTime, default=datetime.utcnow, nullable=False),
 )
+
 
 # Update Campaign model
 class Campaign(Base):
@@ -213,9 +227,11 @@ PREDEFINED_TAGS='{
 
 ```python
 """Tag utility functions."""
+
 from sqlalchemy.orm import Session
 from server.core.models.tag import Tag
 from server.core.config import settings
+
 
 def initialize_predefined_tags(db: Session) -> None:
     """
@@ -240,15 +256,17 @@ def initialize_predefined_tags(db: Session) -> None:
                 display_name=tag_name,
                 color=color,
                 is_predefined=True,
-                created_by=None
+                created_by=None,
             )
             db.add(tag)
 
     db.commit()
 
+
 def normalize_tag_name(name: str) -> str:
     """Normalize tag name to lowercase, trimmed."""
     return name.strip().lower()
+
 
 def validate_tag_name(name: str) -> tuple[bool, str]:
     """
@@ -315,6 +333,7 @@ from server.schemas.tag import TagResponse, TagListResponse
 
 tags_router = APIRouter(prefix="/api/tags", tags=["tags"])
 
+
 @tags_router.get("", response_model=TagListResponse)
 def list_tags(
     search: str | None = Query(None, description="Filter by name (starts-with)"),
@@ -323,10 +342,11 @@ def list_tags(
     current_user: User = Depends(get_current_user),
 ):
     """List all tags with optional filtering."""
-    query = db.query(
-        Tag,
-        func.count(url_tags.c.url_id).label("usage_count")
-    ).outerjoin(url_tags, Tag.id == url_tags.c.tag_id).group_by(Tag.id)
+    query = (
+        db.query(Tag, func.count(url_tags.c.url_id).label("usage_count"))
+        .outerjoin(url_tags, Tag.id == url_tags.c.tag_id)
+        .group_by(Tag.id)
+    )
 
     if search:
         query = query.filter(Tag.name.startswith(search.lower()))
@@ -549,10 +569,11 @@ def update_url_tags(
     current_user: User = Depends(get_current_user),
 ):
     """Update tags for a URL."""
-    url = db.query(URL).filter(
-        URL.short_code == short_code,
-        URL.created_by == current_user.id
-    ).first()
+    url = (
+        db.query(URL)
+        .filter(URL.short_code == short_code, URL.created_by == current_user.id)
+        .first()
+    )
 
     if not url:
         raise HTTPException(status_code=404, detail="URL not found")
@@ -567,10 +588,7 @@ def update_url_tags(
     db.commit()
     db.refresh(url)
 
-    return {
-        "short_code": url.short_code,
-        "tags": [TagResponse.from_orm(tag) for tag in url.tags]
-    }
+    return {"short_code": url.short_code, "tags": [TagResponse.from_orm(tag) for tag in url.tags]}
 ```
 
 #### POST /api/urls/bulk/tags
@@ -602,10 +620,11 @@ def bulk_tag_urls(
 ):
     """Apply tags to multiple URLs."""
     # Fetch URLs
-    urls = db.query(URL).filter(
-        URL.short_code.in_(bulk_data.short_codes),
-        URL.created_by == current_user.id
-    ).all()
+    urls = (
+        db.query(URL)
+        .filter(URL.short_code.in_(bulk_data.short_codes), URL.created_by == current_user.id)
+        .all()
+    )
 
     # Fetch tags
     tags = db.query(Tag).filter(Tag.id.in_(bulk_data.tag_ids)).all()
@@ -627,10 +646,7 @@ def bulk_tag_urls(
 
     db.commit()
 
-    return {
-        "updated": updated,
-        "failed": failed
-    }
+    return {"updated": updated, "failed": failed}
 ```
 
 ### 4.3 Campaign Tagging Endpoints
@@ -656,10 +672,11 @@ def update_campaign_tags(
     current_user: User = Depends(get_current_user),
 ):
     """Update tags for a campaign."""
-    campaign = db.query(Campaign).filter(
-        Campaign.id == campaign_id,
-        Campaign.created_by == current_user.id
-    ).first()
+    campaign = (
+        db.query(Campaign)
+        .filter(Campaign.id == campaign_id, Campaign.created_by == current_user.id)
+        .first()
+    )
 
     if not campaign:
         raise HTTPException(status_code=404, detail="Campaign not found")
@@ -681,7 +698,7 @@ def update_campaign_tags(
 
     return {
         "campaign_id": campaign.id,
-        "tags": [TagResponse.from_orm(tag) for tag in campaign.tags]
+        "tags": [TagResponse.from_orm(tag) for tag in campaign.tags],
     }
 ```
 
@@ -720,10 +737,7 @@ def list_urls(
 
     urls = query.order_by(URL.created_at.desc()).all()
 
-    return URLListResponse(
-        urls=[URLResponse.from_orm(url) for url in urls],
-        total=len(urls)
-    )
+    return URLListResponse(urls=[URLResponse.from_orm(url) for url in urls], total=len(urls))
 ```
 
 ---
@@ -735,13 +749,17 @@ def list_urls(
 
 ```python
 """Pydantic schemas for tags."""
+
 from pydantic import BaseModel, Field, validator
 from datetime import datetime
 import uuid as uuid_pkg
 
+
 class TagBase(BaseModel):
     """Base tag schema."""
+
     name: str = Field(..., min_length=1, max_length=30)
+
 
 class TagCreate(TagBase):
     """Schema for creating a tag."""
@@ -754,12 +772,16 @@ class TagCreate(TagBase):
             raise ValueError("Tag name cannot exceed 30 characters")
         return v
 
+
 class TagUpdate(TagBase):
     """Schema for updating a tag."""
+
     pass
+
 
 class TagResponse(BaseModel):
     """Schema for tag response."""
+
     id: uuid_pkg.UUID
     name: str
     display_name: str
@@ -771,22 +793,30 @@ class TagResponse(BaseModel):
     class Config:
         from_attributes = True
 
+
 class TagListResponse(BaseModel):
     """Schema for list of tags."""
+
     tags: list[TagResponse]
     total: int
 
+
 class URLTagUpdate(BaseModel):
     """Schema for updating URL tags."""
+
     tag_ids: list[uuid_pkg.UUID] = Field(..., description="List of tag IDs")
+
 
 class BulkTagUpdate(BaseModel):
     """Schema for bulk tagging."""
+
     short_codes: list[str] = Field(..., min_items=1)
     tag_ids: list[uuid_pkg.UUID] = Field(..., min_items=1)
 
+
 class CampaignTagUpdate(BaseModel):
     """Schema for updating campaign tags."""
+
     tag_ids: list[uuid_pkg.UUID]
 ```
 
@@ -818,6 +848,7 @@ from server.utils.tags import initialize_predefined_tags
 from server.core import get_db
 
 app = FastAPI()
+
 
 @app.on_event("startup")
 async def startup_event():
@@ -1008,11 +1039,7 @@ class TestTagCRUD:
 
     def test_create_user_tag(self, client, auth_headers):
         """User can create custom tag."""
-        response = client.post(
-            "/api/tags",
-            json={"name": "My Campaign"},
-            headers=auth_headers
-        )
+        response = client.post("/api/tags", json={"name": "My Campaign"}, headers=auth_headers)
         assert response.status_code == 201
         data = response.json()
         assert data["name"] == "my campaign"  # lowercase
@@ -1026,7 +1053,7 @@ class TestTagCRUD:
         response = client.post(
             "/api/tags",
             json={"name": "test"},  # Same, different case
-            headers=auth_headers
+            headers=auth_headers,
         )
         assert response.status_code == 400
         assert "already exists" in response.json()["detail"].lower()
@@ -1034,30 +1061,19 @@ class TestTagCRUD:
     def test_create_tag_too_long(self, client, auth_headers):
         """Tag name exceeding 30 chars should fail."""
         long_name = "a" * 31
-        response = client.post(
-            "/api/tags",
-            json={"name": long_name},
-            headers=auth_headers
-        )
+        response = client.post("/api/tags", json={"name": long_name}, headers=auth_headers)
         assert response.status_code == 400
 
     def test_update_user_tag(self, client, auth_headers, db_session, test_user):
         """User can rename their tag."""
         # Create tag
-        tag = Tag(
-            name="oldname",
-            display_name="OldName",
-            color="gray-500",
-            created_by=test_user.id
-        )
+        tag = Tag(name="oldname", display_name="OldName", color="gray-500", created_by=test_user.id)
         db_session.add(tag)
         db_session.commit()
 
         # Update
         response = client.patch(
-            f"/api/tags/{tag.id}",
-            json={"name": "NewName"},
-            headers=auth_headers
+            f"/api/tags/{tag.id}", json={"name": "NewName"}, headers=auth_headers
         )
         assert response.status_code == 200
         data = response.json()
@@ -1066,19 +1082,12 @@ class TestTagCRUD:
 
     def test_update_predefined_tag_forbidden(self, client, auth_headers, db_session):
         """Cannot update predefined tags."""
-        tag = Tag(
-            name="email",
-            display_name="email",
-            color="blue-500",
-            is_predefined=True
-        )
+        tag = Tag(name="email", display_name="email", color="blue-500", is_predefined=True)
         db_session.add(tag)
         db_session.commit()
 
         response = client.patch(
-            f"/api/tags/{tag.id}",
-            json={"name": "NewName"},
-            headers=auth_headers
+            f"/api/tags/{tag.id}", json={"name": "NewName"}, headers=auth_headers
         )
         assert response.status_code == 400
         assert "predefined" in response.json()["detail"].lower()
@@ -1086,10 +1095,7 @@ class TestTagCRUD:
     def test_delete_user_tag(self, client, auth_headers, db_session, test_user):
         """User can delete their tag."""
         tag = Tag(
-            name="deleteme",
-            display_name="DeleteMe",
-            color="gray-500",
-            created_by=test_user.id
+            name="deleteme", display_name="DeleteMe", color="gray-500", created_by=test_user.id
         )
         db_session.add(tag)
         db_session.commit()
@@ -1112,7 +1118,7 @@ class TestTagCRUD:
             short_code="abc123",
             original_url="https://example.com",
             url_type=URLType.STANDARD,
-            created_by=test_user.id
+            created_by=test_user.id,
         )
         url.tags.append(tag)
         db_session.add(url)
@@ -1125,6 +1131,7 @@ class TestTagCRUD:
         db_session.refresh(url)
         assert len(url.tags) == 0
 
+
 @pytest.mark.integration
 class TestURLTagging:
     """Test URL tagging functionality."""
@@ -1133,7 +1140,9 @@ class TestURLTagging:
         """Can add tags to URL."""
         # Create tags
         tag1 = Tag(name="email", display_name="email", color="blue-500", is_predefined=True)
-        tag2 = Tag(name="campaign", display_name="Campaign", color="gray-500", created_by=test_user.id)
+        tag2 = Tag(
+            name="campaign", display_name="Campaign", color="gray-500", created_by=test_user.id
+        )
         db_session.add_all([tag1, tag2])
 
         # Create URL
@@ -1141,7 +1150,7 @@ class TestURLTagging:
             short_code="test123",
             original_url="https://example.com",
             url_type=URLType.STANDARD,
-            created_by=test_user.id
+            created_by=test_user.id,
         )
         db_session.add(url)
         db_session.commit()
@@ -1150,7 +1159,7 @@ class TestURLTagging:
         response = client.patch(
             f"/api/urls/test123/tags",
             json={"tag_ids": [str(tag1.id), str(tag2.id)]},
-            headers=auth_headers
+            headers=auth_headers,
         )
         assert response.status_code == 200
         data = response.json()
@@ -1163,22 +1172,30 @@ class TestURLTagging:
         db_session.add(tag)
 
         # Create URLs
-        url1 = URL(short_code="url1", original_url="https://a.com", url_type=URLType.STANDARD, created_by=test_user.id)
-        url2 = URL(short_code="url2", original_url="https://b.com", url_type=URLType.STANDARD, created_by=test_user.id)
+        url1 = URL(
+            short_code="url1",
+            original_url="https://a.com",
+            url_type=URLType.STANDARD,
+            created_by=test_user.id,
+        )
+        url2 = URL(
+            short_code="url2",
+            original_url="https://b.com",
+            url_type=URLType.STANDARD,
+            created_by=test_user.id,
+        )
         db_session.add_all([url1, url2])
         db_session.commit()
 
         # Bulk tag
         response = client.post(
             "/api/urls/bulk/tags",
-            json={
-                "short_codes": ["url1", "url2"],
-                "tag_ids": [str(tag.id)]
-            },
-            headers=auth_headers
+            json={"short_codes": ["url1", "url2"], "tag_ids": [str(tag.id)]},
+            headers=auth_headers,
         )
         assert response.status_code == 200
         assert response.json()["updated"] == 2
+
 
 @pytest.mark.integration
 class TestURLFiltering:
@@ -1191,9 +1208,19 @@ class TestURLFiltering:
         db_session.add(tag)
 
         # Create URLs (one with tag, one without)
-        url1 = URL(short_code="with", original_url="https://a.com", url_type=URLType.STANDARD, created_by=test_user.id)
+        url1 = URL(
+            short_code="with",
+            original_url="https://a.com",
+            url_type=URLType.STANDARD,
+            created_by=test_user.id,
+        )
         url1.tags.append(tag)
-        url2 = URL(short_code="without", original_url="https://b.com", url_type=URLType.STANDARD, created_by=test_user.id)
+        url2 = URL(
+            short_code="without",
+            original_url="https://b.com",
+            url_type=URLType.STANDARD,
+            created_by=test_user.id,
+        )
         db_session.add_all([url1, url2])
         db_session.commit()
 
@@ -1222,6 +1249,7 @@ def test_predefined_tags_initialized(db_session):
     email_tag = db_session.query(Tag).filter(Tag.name == "email").first()
     assert email_tag is not None
     assert email_tag.color == "blue-500"
+
 
 def test_predefined_tags_idempotent(db_session):
     """Running initialization twice should not create duplicates."""
@@ -1380,59 +1408,62 @@ Revises: previous_migration
 Create Date: 2025-01-15
 
 """
+
 from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
+
 def upgrade():
     # Create tags table
     op.create_table(
-        'tags',
-        sa.Column('id', postgresql.UUID(as_uuid=True), nullable=False),
-        sa.Column('name', sa.String(30), nullable=False),
-        sa.Column('display_name', sa.String(30), nullable=False),
-        sa.Column('color', sa.String(20), nullable=False),
-        sa.Column('is_predefined', sa.Boolean(), nullable=False, server_default='false'),
-        sa.Column('created_at', sa.DateTime(), nullable=False, server_default=sa.text('now()')),
-        sa.Column('created_by', postgresql.UUID(as_uuid=True), nullable=True),
-        sa.ForeignKeyConstraint(['created_by'], ['users.id'], ondelete='SET NULL'),
-        sa.PrimaryKeyConstraint('id'),
-        sa.UniqueConstraint('name'),
-        sa.CheckConstraint("name = LOWER(name)", name='name_lowercase_check')
+        "tags",
+        sa.Column("id", postgresql.UUID(as_uuid=True), nullable=False),
+        sa.Column("name", sa.String(30), nullable=False),
+        sa.Column("display_name", sa.String(30), nullable=False),
+        sa.Column("color", sa.String(20), nullable=False),
+        sa.Column("is_predefined", sa.Boolean(), nullable=False, server_default="false"),
+        sa.Column("created_at", sa.DateTime(), nullable=False, server_default=sa.text("now()")),
+        sa.Column("created_by", postgresql.UUID(as_uuid=True), nullable=True),
+        sa.ForeignKeyConstraint(["created_by"], ["users.id"], ondelete="SET NULL"),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("name"),
+        sa.CheckConstraint("name = LOWER(name)", name="name_lowercase_check"),
     )
-    op.create_index('idx_tags_name', 'tags', ['name'])
-    op.create_index('idx_tags_is_predefined', 'tags', ['is_predefined'])
+    op.create_index("idx_tags_name", "tags", ["name"])
+    op.create_index("idx_tags_is_predefined", "tags", ["is_predefined"])
 
     # Create url_tags association table
     op.create_table(
-        'url_tags',
-        sa.Column('url_id', postgresql.UUID(as_uuid=True), nullable=False),
-        sa.Column('tag_id', postgresql.UUID(as_uuid=True), nullable=False),
-        sa.Column('created_at', sa.DateTime(), nullable=False, server_default=sa.text('now()')),
-        sa.ForeignKeyConstraint(['url_id'], ['urls.id'], ondelete='CASCADE'),
-        sa.ForeignKeyConstraint(['tag_id'], ['tags.id'], ondelete='CASCADE'),
-        sa.PrimaryKeyConstraint('url_id', 'tag_id')
+        "url_tags",
+        sa.Column("url_id", postgresql.UUID(as_uuid=True), nullable=False),
+        sa.Column("tag_id", postgresql.UUID(as_uuid=True), nullable=False),
+        sa.Column("created_at", sa.DateTime(), nullable=False, server_default=sa.text("now()")),
+        sa.ForeignKeyConstraint(["url_id"], ["urls.id"], ondelete="CASCADE"),
+        sa.ForeignKeyConstraint(["tag_id"], ["tags.id"], ondelete="CASCADE"),
+        sa.PrimaryKeyConstraint("url_id", "tag_id"),
     )
-    op.create_index('idx_url_tags_url_id', 'url_tags', ['url_id'])
-    op.create_index('idx_url_tags_tag_id', 'url_tags', ['tag_id'])
+    op.create_index("idx_url_tags_url_id", "url_tags", ["url_id"])
+    op.create_index("idx_url_tags_tag_id", "url_tags", ["tag_id"])
 
     # Create campaign_tags association table
     op.create_table(
-        'campaign_tags',
-        sa.Column('campaign_id', postgresql.UUID(as_uuid=True), nullable=False),
-        sa.Column('tag_id', postgresql.UUID(as_uuid=True), nullable=False),
-        sa.Column('created_at', sa.DateTime(), nullable=False, server_default=sa.text('now()')),
-        sa.ForeignKeyConstraint(['campaign_id'], ['campaigns.id'], ondelete='CASCADE'),
-        sa.ForeignKeyConstraint(['tag_id'], ['tags.id'], ondelete='CASCADE'),
-        sa.PrimaryKeyConstraint('campaign_id', 'tag_id')
+        "campaign_tags",
+        sa.Column("campaign_id", postgresql.UUID(as_uuid=True), nullable=False),
+        sa.Column("tag_id", postgresql.UUID(as_uuid=True), nullable=False),
+        sa.Column("created_at", sa.DateTime(), nullable=False, server_default=sa.text("now()")),
+        sa.ForeignKeyConstraint(["campaign_id"], ["campaigns.id"], ondelete="CASCADE"),
+        sa.ForeignKeyConstraint(["tag_id"], ["tags.id"], ondelete="CASCADE"),
+        sa.PrimaryKeyConstraint("campaign_id", "tag_id"),
     )
-    op.create_index('idx_campaign_tags_campaign_id', 'campaign_tags', ['campaign_id'])
-    op.create_index('idx_campaign_tags_tag_id', 'campaign_tags', ['tag_id'])
+    op.create_index("idx_campaign_tags_campaign_id", "campaign_tags", ["campaign_id"])
+    op.create_index("idx_campaign_tags_tag_id", "campaign_tags", ["tag_id"])
+
 
 def downgrade():
-    op.drop_table('campaign_tags')
-    op.drop_table('url_tags')
-    op.drop_table('tags')
+    op.drop_table("campaign_tags")
+    op.drop_table("url_tags")
+    op.drop_table("tags")
 ```
 
 ---

@@ -188,9 +188,9 @@ The `ecs-alb-rule-sync` Lambda (created during the Shlink deploy, see Shlink Pha
 ```python
 # In the Lambda code (deployed in griddo-main):
 RULE_SYNC_MAP = {
-    "1": "10",   # shlink-api  → go.griddo.io
-    "3": "11",   # shlink-web  → links.griddo.io
-    "<N>": "12", # shurly-api  → s.griddo.io   ← NEW (use the priority printed by setup_custom_domain.sh)
+    "1": "10",  # shlink-api  → go.griddo.io
+    "3": "11",  # shlink-web  → links.griddo.io
+    "<N>": "12",  # shurly-api  → s.griddo.io   ← NEW (use the priority printed by setup_custom_domain.sh)
 }
 ```
 
