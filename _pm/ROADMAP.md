@@ -1598,6 +1598,8 @@ records which tools get used, how often, or how they fail.
       that nothing set since the register page went (3.13)
 - [ ] Roll out to the Griddo team: 3–5 internal users, with the frontend and the MCP.
 - [ ] Capture for 2–4 weeks: tool invocation counts (which tools get used vs ignored), tool error rates, average call duration.
+  - [x] The web app's side: its errors as `client.error` lines (6.4), and what it's used for from the API's
+        `http.request` lines: queries in `DEPLOYMENT.md` § What the web app is used for
 - [ ] Capture qualitatively: which workflows feel smooth in chat, which feel awkward (e.g. CSV import, charts).
 - [ ] Output: a "frontend feature priority" list backed by real signal, fed into the frontend backlog.
 
@@ -1781,6 +1783,10 @@ live in `mcp_server/README.md`, written for developers. There is no user manual 
   - [x] What to count, and a runbook stub: `DEPLOYMENT.md` § Error alerting. No code: `http.request` lines already
         carry the status, so a metric filter on 5xx does it
   - [ ] AWS: the metric filters, the alarms and an SNS topic with an email subscription
+  - [x] Browser errors reach the logs: the web app reports an uncaught error, a rejected promise, or a CSP or Trusted
+        Types block (which a `<meta>` policy can't report) to `POST /api/v1/client-errors`, logged as `client.error`
+        lines (never an IP; the page's path, never its query; the account's id when signed in). Five a page, limited
+        per IP. Its metric filter and a query are in `DEPLOYMENT.md` § Error alerting
 - [ ] Key metrics dashboard
   - [ ] ECS task count / CPU / memory
   - [ ] ALB 5xx and target health

@@ -876,12 +876,22 @@ sends the email. None of it is set up yet (ROADMAP 6.4).
 |---|---|---|
 | `shurly-5xx` | `{ $.event = "http.request" && $.status >= 500 }` | Sum ≥ 5 in 5 minutes |
 | `shurly-rate-limit-store` | `{ $.event = "rate_limit.store_failed" }` | Sum ≥ 1 in 5 minutes: the limits are letting everything through |
+| `shurly-client-errors` | `{ $.event = "client.error" }` | Sum ≥ 10 in 15 minutes: the web app is breaking in people's browsers |
 
 - Each filter publishes a metric in namespace `Shurly`, value `1`, default `0`. The alarms notify an SNS topic with
   an email subscription.
 - The ALB's `HTTPCode_Target_5XX_Count` and `HTTPCode_ELB_5XX_Count` catch a task that doesn't answer at all.
 - MCP tool errors (`{ $.event = "mcp.tool_call" && $.outcome = "error" }`) include invalid input, a 4xx. They belong
   on a dashboard, not an alarm (`mcp_server/README.md` § Usage log).
+- **Browser errors** are `client.error` lines: the web app reports an uncaught error, a rejected promise, or a CSP or
+  Trusted Types block (`POST /api/v1/client-errors`, `server/app/client_errors.py`). Each has its `kind`, `message`,
+  `source` (script:line:column) and `page` (the path, never its query), and the account's `user_id` when signed in.
+  Never an IP. A page sends 5 at most; `RATE_LIMIT_CLIENT_ERRORS_PER_IP` caps an address. Which ones, most first:
+  ```
+  filter event = "client.error"
+  | stats count(*) as reports, count_distinct(user_id) as people by kind, message, page
+  | sort reports desc
+  ```
 
 ### When it fires (runbook stub)
 
@@ -898,6 +908,32 @@ sends the email. None of it is set up yet (ROADMAP 6.4).
 3. **Is the database there?** `GET /api/v1/health/db`, then RDS's connections and CPU.
 4. **Write it down** in the troubleshooting catalog (`docs/AWS_ECS_DEPLOYMENT.md`): the symptom, the cause and the
    fix.
+
+### What the web app is used for (the dogfood, ROADMAP 5.6.1)
+
+The MCP's usage is in `mcp.tool_call` lines (`mcp_server/README.md` § Usage log). The web app's is in the API's
+`http.request` lines, one per call it makes, with the path and the status: no user, so they count uses, not people.
+
+- Calls per part of the API:
+  ```
+  filter event = "http.request" and status < 400 and path like /^\/api\/v1\//
+  | parse path /^\/api\/v1\/(?<area>[a-z-]+)/
+  | stats count(*) as calls by method, area
+  | sort calls desc
+  ```
+- Links and campaigns made, by week:
+  ```
+  filter event = "http.request" and method = "POST" and status = 201 and (path = "/api/v1/urls" or path = "/api/v1/campaigns")
+  | stats count(*) as made by path, bin(7d)
+  ```
+- A link's and a campaign's analytics, tab by tab (`timeseries` is By time; `breakdown` By context and By location;
+  `visits` and `recipients` their lists), and the CSVs downloaded:
+  ```
+  filter event = "http.request" and status < 400 and path like /^\/api\/v1\/analytics\/(urls|campaigns)\//
+  | parse path /\/(?<what>totals|timeseries|breakdown|visits|visits\.csv|recipients|recipients\.csv)$/
+  | stats count(*) as calls by what
+  | sort calls desc
+  ```
 
 ## Geolocation data (Phase 8.4)
 
