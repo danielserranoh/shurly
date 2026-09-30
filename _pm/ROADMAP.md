@@ -1700,9 +1700,10 @@ added there; Claude Code gets by with `--header`.
       (no `form-action`, on purpose); `tests/test_phase58_mcp_pages.py` pins them through a fastmcp upgrade
   - [x] The renderers, the headers and the tests
   - [x] The templates in the brand: `server/templates/mcp_consent.html` and `mcp_error.html`
-- [ ] Check it end to end: Claude Code (`claude mcp add --transport http …`, sign-in in the browser) and a
-      claude.ai custom connector → in production (2026-09-28) the metadata documents and the 401 with
-      `resource_metadata` are verified; nobody has completed a sign-in from claude.ai or Claude Code yet
+- [x] Check it end to end: Claude Code (`claude mcp add --transport http …`, sign-in in the browser) and a
+      claude.ai custom connector → done 2026-09-30 from claude.ai: the branded consent page (#167), Google
+      sign-in, and `create_short_url` returning its short link after release #195 (the dates fix, #194).
+      Claude Code's own sign-in is still to be tried
   - [x] Found from claude.ai (2026-09-30): every tool answer with a date was rejected, "does not match format
         date-time" (the API wrote naive UTC, without an offset), so `create_short_url` made the link and the
         assistant never got its code → every datetime the API returns is UTC with `Z`, or the analytics' local
