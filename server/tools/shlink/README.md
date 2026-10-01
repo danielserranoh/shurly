@@ -29,6 +29,9 @@ uv run python -m server.tools.shlink export [--visits] [--out-dir _exchange]
   - `GET /rest/health` gives Shlink's version.
 - **The API key** travels only in the `X-Api-Key` header. It never goes in the snapshot
   or its name, and is never printed, errors included.
+- **At the end** it prints how many links it exported, how many links' visits came whole (and how many
+  of those have any), and the codes of the links whose visits Shlink failed on, each with what was
+  recovered and the ranges lost.
 
 The snapshot:
 
@@ -42,10 +45,76 @@ The snapshot:
       "short_url": {"…": "as Shlink's API returned it"},
       "redirect_rules": {"…": "only if it has some"},
       "visits": ["… only with --visits"]
+    },
+    {
+      "short_url": {"shortCode": "23q4griddo", "…": "…"},
+      "visits": ["… the ones recovered by date"],
+      "visits_error": {"status": 500, "detail": "An unknown error occurred."},
+      "visits_gaps": [{"start": "2025-03-04T10:00:07+00:00", "end": "2025-03-04T10:00:07+00:00"}]
     }
-  ]
+  ],
+  "visits_failed": ["23q4griddo"]
 }
 ```
+
+### When Shlink fails on a link's visits
+
+Production's Shlink (4.x) answers `500 An unknown error occurred.` to `…/visits` for a few links, whatever
+the parameters, while the link itself answers fine. Shlink's log says why:
+
+```
+Typed property Shlinkio\Shlink\Core\Visit\Entity\VisitLocation::$regionName must not be accessed before
+initialization (VisitLocation.php:67)
+```
+
+Some `visit_locations` rows have a NULL `region_name`. The column is nullable, but the PHP property is a
+non-null `string`, so Shlink can't serialize a visit with that location, and any page holding one fails
+whole. `country_code`, `country_name`, `city_name` and `timezone` are mapped the same way and would fail
+the same way.
+
+**The fix is in Shlink's data, and it's the operator's call** (the export never writes to Shlink). Applied
+before the real export, every visit comes:
+
+```sql
+-- How many, per column (PostgreSQL and MySQL alike):
+SELECT SUM(CASE WHEN region_name  IS NULL THEN 1 ELSE 0 END) AS region_name,
+       SUM(CASE WHEN country_code IS NULL THEN 1 ELSE 0 END) AS country_code,
+       SUM(CASE WHEN country_name IS NULL THEN 1 ELSE 0 END) AS country_name,
+       SUM(CASE WHEN city_name    IS NULL THEN 1 ELSE 0 END) AS city_name,
+       SUM(CASE WHEN timezone     IS NULL THEN 1 ELSE 0 END) AS timezone
+FROM visit_locations;
+
+-- The fix: Shlink stores '' for a region it doesn't know.
+UPDATE visit_locations SET region_name = '' WHERE region_name IS NULL;
+-- …and the same for any other column the count found.
+```
+
+Take Shlink's RDS snapshot first: Shlink is the rollback.
+
+**Without the fix, the export doesn't stop.** For each link:
+
+1. A 5xx is asked again twice, after 0.5 s and 1 s. Any other error status still stops the export, and so
+   does a failing list of short URLs: without it there's nothing to export.
+2. If it still fails, the link gets `visits_error` (Shlink's status and detail), its code goes in
+   `visits_failed`, and its visits are recovered by date range.
+3. **The recovery** uses what Shlink's spec offers for a link's visits (`getShortUrlVisits`):
+   `startDate` and `endDate` (ISO 8601), `page`, `itemsPerPage` and `excludeBots`. There is no visit id or
+   cursor to narrow it by. Shlink compares both dates inclusively, to the second, lists the newest first,
+   and fails on a page past the last one. So:
+   - it asks for 1970 to now, and cuts a range that fails in two, newer half first, down to a single second;
+   - a second that fails is read one visit per page (`itemsPerPage=1`), keeping each visit Shlink can
+     serialize. Only the bad visit is lost, unless two in a row fail before a page says how many there are;
+   - a second where a visit failed becomes a **gap**: `visits_gaps`, `{start, end}`, both ends included, to
+     the second. The recovered visits keep Shlink's order, newest first.
+   - A link's recovery makes at most 600 requests. Past that, the ranges it hadn't tried become gaps as they
+     are, wider than a second, so a link Shlink can't answer for at all can't take a request per second.
+   - If every range answered but Shlink counts more visits than came (`visitsSummary.total`), the gap has
+     no ends (`{"start": null, "end": null}`): visits no date range reaches.
+   - It costs a failing link about 130 requests and under a minute, mostly the retries' waits. It prints
+     each as it starts on it.
+
+The review's `visits_export` and `visits_lost` columns, and the import's report, carry the gaps on: no
+visit is made up for a gap.
 
 ## Review
 
@@ -64,6 +133,8 @@ spreadsheet-safe: a title that starts like a formula gets a leading quote.
 | `destination`, `title`, `tags`, `created` | As in Shlink |
 | `visits`, `non_bot_visits` | Shlink's counts |
 | `last_visit` | The latest visit's date, when the snapshot has visits |
+| `visits_export` | Empty without visits in the snapshot. `complete`; `recovered` when Shlink failed on them but the date ranges brought them all; `partial` when some ranges were lost; `failed` when none came |
+| `visits_lost` | The ranges lost (`visits_gaps`), as ISO 8601 intervals `start/end`, both ends included; `…` for an end there isn't. `last_visit` and `capped_in_shurly` only count the visits that came |
 | `expired`, `capped` | `yes` when `validUntil` has passed, or `visits` reached `maxVisits` (Shlink's rule: every visit counts) |
 | `capped_in_shurly` | `yes` when the link arrives capped from an import with `--visits`: its clicks reach `maxVisits`, bots and pixel opens aside (Shurly's rule, see Visits below). Without visits in the snapshot, no link does |
 | `redirect_rules`, `rules_to_check` | How many rules, and the conditions Shurly has no equivalent for (IP address, geolocation) |
@@ -145,6 +216,9 @@ The report lists every rule left out or approximated. Nothing is dropped silentl
 - A run imports only the visits newer than the link's last imported one. The cutover's final snapshot
   therefore adds what happened since the first import. A second visit in the very same second as that last
   one would be missed.
+- **A link whose visits Shlink failed on** (When Shlink fails on a link's visits, above) brings the visits the
+  export recovered, and no more. The report names each of its lost ranges. Since a later run only adds newer
+  visits, a gap stays a gap: to fill it, fix Shlink's data and export again before the first import.
 - Shurly's own visits get their country and city from MaxMind's GeoLite2 City, as Shlink's do, else their
   country from DB-IP's database (`server/utils/geo.py`). The same codes and names, so the geo view counts
   imported and new visits together.
