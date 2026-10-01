@@ -6,6 +6,7 @@ import QrModal from '@/components/app/QrModal.astro';
 import VisibilityToggle from '@/components/app/VisibilityToggle.astro';
 import Illustration from '@/components/illustrations/Illustration.astro';
 import { site } from '@/config/site';
+import { MAX_CODE_LENGTH } from '@/utils/short-code';
 ---
 
 <AppLayout title="New link" section="links">
@@ -36,9 +37,9 @@ import { site } from '@/config/site';
           <div data-custom hidden class="grid gap-1.5">
             <div class="input-group">
               <span class="addon shortlink">{site.shortDomain}/</span>
-              <input name="custom_code" aria-label="Custom back-half" placeholder="acme-proposal" maxlength="20" autocomplete="off" spellcheck="false" aria-describedby="code-hint code-error" />
+              <input name="custom_code" aria-label="Custom back-half" placeholder="acme-proposal" maxlength={MAX_CODE_LENGTH} autocomplete="off" spellcheck="false" aria-describedby="code-hint code-error" />
             </div>
-            <p id="code-hint" class="hint">3–20 letters, numbers, hyphens or underscores. We’ll make it lowercase.</p>
+            <p id="code-hint" class="hint">3–{MAX_CODE_LENGTH} letters, numbers, hyphens or underscores. We’ll make it lowercase.</p>
             <p id="code-error" class="field-error" data-error-for="custom_code" hidden></p>
           </div>
         </fieldset>
@@ -185,6 +186,7 @@ import { site } from '@/config/site';
   import { html, safeUrl, setHTML } from '@/utils/html';
   import { icon } from '@/utils/icons';
   import { createLink, fetchMetadata, linkHref, openQr, setLinkTags } from '@/utils/links';
+  import { isValidCustomCode, MAX_CODE_LENGTH } from '@/utils/short-code';
   import { mountTagInput } from '@/utils/tag-input';
   import { copyWithFeedback, setLoading, toast, writeClipboard } from '@/utils/ui';
   import { visibilityOf } from '@/utils/viewer';
@@ -195,6 +197,7 @@ import { site } from '@/config/site';
   const q = <T extends HTMLElement = HTMLElement>(sel: string) => document.querySelector<T>(sel)!;
   const submit = form.querySelector<HTMLButtonElement>('button[type="submit"]')!;
   const tags = mountTagInput(document.getElementById('tags')!);
+  const CODE_RULE = `Use 3–${MAX_CODE_LENGTH} letters, numbers, hyphens or underscores.`;
 
   // Prefill from ?url= (e.g. from the dashboard)
   const pre = new URLSearchParams(location.search).get('url');
@@ -337,8 +340,8 @@ import { site } from '@/config/site';
       setFieldError(form, 'url', 'That doesn’t look like a web link. Try https://example.com/page');
       ok = false;
     }
-    if (custom && !/^[A-Za-z0-9_-]{3,20}$/.test(code)) {
-      setFieldError(form, 'custom_code', code ? 'Use 3–20 letters, numbers, hyphens or underscores.' : 'Choose a back-half, or switch to Random.');
+    if (custom && !isValidCustomCode(code)) {
+      setFieldError(form, 'custom_code', code ? CODE_RULE : 'Choose a back-half, or switch to Random.');
       ok = false;
     }
     if (ogImage && !isValidHttpUrl(ogImage)) {
@@ -391,7 +394,7 @@ import { site } from '@/config/site';
       await showSuccess(link);
     } catch (err) {
       if (/custom code/i.test(errorMessage(err, ''))) {
-        setFieldError(form, 'custom_code', 'Use 3–20 letters, numbers, hyphens or underscores.');
+        setFieldError(form, 'custom_code', CODE_RULE);
         codeInput.focus();
       } else {
         applyApiError(form, err);

@@ -10,7 +10,7 @@ from server.core.models.url import URLType
 from server.schemas.datetimes import UtcDateTime
 from server.utils.access import Visibility
 from server.utils.bounds import INT4_MAX
-from server.utils.url import is_valid_url
+from server.utils.url import MAX_SHORT_CODE_LENGTH, is_valid_url
 
 if TYPE_CHECKING:
     pass  # Keep for future type checking needs
@@ -73,7 +73,11 @@ class URLCustomCreate(BaseModel):
     """Schema for creating a custom short URL."""
 
     url: str = Field(..., description="The original URL to shorten")
-    custom_code: str = Field(..., description="Custom short code (3-20 characters)")
+    custom_code: str = Field(
+        ...,
+        description=f"Custom short code (3-{MAX_SHORT_CODE_LENGTH} letters, numbers, hyphens or "
+        "underscores)",
+    )
     title: str | None = Field(None, max_length=255, description="Optional user-friendly title")
     forward_parameters: bool = Field(True, description="Forward query parameters to destination")
 

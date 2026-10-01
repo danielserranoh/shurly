@@ -177,6 +177,15 @@ def test_a_path_one_edit_from_a_code_suggests_it(
     assert _suggested(client, auth_headers, typed) == ["abc123"]
 
 
+def test_a_long_code_is_looked_for_too(client, auth_headers, db_session, test_user):
+    """Codes run to 64 characters since Shlink's import (8.4), the longest 44."""
+    code = "jane-doe-acme-corp-2026-q4-outreach-followup"
+    _link(db_session, test_user, code)
+    _hits(db_session, f"/{code[:-1]}", timedelta(minutes=1))  # its last character missing
+
+    assert _suggested(client, auth_headers, f"/{code[:-1]}") == [code]
+
+
 @pytest.mark.parametrize("typed", ["/abd12", "/bac132", "/abc1235x"])
 def test_two_edits_away_suggests_nothing(client, auth_headers, db_session, test_user, typed):
     _link(db_session, test_user, "abc123")
@@ -239,7 +248,7 @@ def test_a_link_on_another_domain_comes_with_it(client, auth_headers, db_session
 @pytest.mark.parametrize(
     "typed, code",
     [
-        ("/" + "a" * 21, "a" * 20),  # longer than any code: one deletion away, but not looked for
+        ("/" + "a" * 65, "a" * 64),  # longer than any code: one deletion away, but not looked for
         ("/abc12.", "abc123"),  # a character no code has: one replacement away, not looked for
         ("/wp-login.php", "wp-loginxphp"),
     ],

@@ -958,7 +958,7 @@ copied (`server/utils/images.py`, `server/utils/stored_image.py`; `frontend/src/
       404 (`editable_organization`, `server/utils/organization.py`). A member's upload is refused before it's
       read. Each change writes `org.logo_changed` to the event log
 - [x] Storage: migration `0012`, additive: `organizations.logo` (deferred), `logo_content_type`, `logo_updated_at`,
-      all nullable. So `users.api_key`'s drop moves to `0013`
+      all nullable. So `users.api_key`'s drop moves to `0013` (then `0014`, after 8.4's longer short codes)
 - [x] Processing: JPEG, PNG or WebP by their magic bytes, 2 MB at most (refused as it streams in), 4096 px a side,
       Pillow's pixel limit (a decompression bomb is a 413), metadata stripped, WebP. Unlike a face, a logo keeps its
       shape (fit within 512×512, never cropped, never enlarged) and its transparency (RGBA). No SVG
@@ -1848,10 +1848,11 @@ live in `mcp_server/README.md`, written for developers. There is no user manual 
         so dropping it while a task of that release serves fails every user query mid-rollout. A test drops it by
         hand and runs this release against it: signing in, an API key, `/me`, the MCP, revoking
         (`tests/test_phase63_api_keys.py`)
-  - [ ] Migration `0013` drops `users.api_key` and `ix_users_api_key`, and the drift test's `_PENDING_DROP` goes:
+  - [ ] Migration `0014` drops `users.api_key` and `ix_users_api_key`, and the drift test's `_PENDING_DROP` goes:
         **only after the release that stopped mapping it is in production**, since until then a running task still
-        names the column. It takes `0013`: `0010` (the `last_click_at` repair), `0011` (a visit's city, 8.4) and
-        `0012` (the organization's logo, 3.14.4) took the numbers it had been given (2026-09-29)
+        names the column. It takes `0014`: `0010` (the `last_click_at` repair), `0011` (a visit's city, 8.4),
+        `0012` (the organization's logo, 3.14.4) and `0013` (longer short codes, 8.4) took the numbers it had been
+        given (2026-09-29, 2026-10-01)
   - [x] The MCP can't generate or revoke a key: talked into it by untrusted text, an assistant would get
         the new key in its context. Nor `login` or `change_password`: no password or JWT passes through an
         assistant (`EXCLUDED_ROUTE_MAPS`, pinned by `tests/test_phase52_mcp_tools.py`)
@@ -2019,6 +2020,13 @@ the import can be re-run.
         a one-off ECS task (decided 2026-09-29): `scripts/run_shlink_import.sh`, the live service's image,
         environment and network, and a task role that reads one S3 prefix. Dry run unless `--for-real`.
         DEPLOYMENT.md has the runbook and the IAM, to make once by hand
+  - [x] Codes up to 64 characters 🔎 R15: production's dry run of the import (2026-10-01) stopped on 57 links
+        whose codes are longer than 20, the longest 44, 17 of them with visits (388 in all): personalized
+        outreach links, out there already, which keep working as they are → `MAX_SHORT_CODE_LENGTH` 64;
+        `urls.short_code` and `visits.short_code` VARCHAR(64), migration `0013` (a catalog change in
+        PostgreSQL; its downgrade fails while a longer code is kept); custom codes up to 64 in the API, the MCP
+        and the create page; generated codes stay 6; "Typos & broken links" looks for codes that long.
+        `users.api_key`'s drop takes `0014` (`tests/test_phase84_long_codes.py`)
 - [x] Fill `Visitor.country` for Shurly's own visits (geolocation: 2.x's deferred "IP geolocation service
       integration"). Nothing fills it today, so once Shlink's history is imported the geo view shows only that
       history, and would mislead → the ISO code, from DB-IP's IP to Country Lite (CC BY 4.0, no account),
@@ -2271,4 +2279,14 @@ check earlier in the next project.
   heads and one doc line, not in the script
 - **Lesson:** when the source of truth for a setting moves, check every tool that still writes it. A rule about
   when not to run a script belongs in the script
+
+### R15 — Shurly's codes stopped at 20 characters; Shlink's run to 44 · missed · found 2026-10-01
+- **What:** a short code was at most 20 characters, from the first schema on. Shlink's on `go.griddo.io` aren't:
+  57 links have longer codes, the longest 44, personalized outreach links already out there, 17 of them with
+  visits → codes up to 64 (8.4)
+- **How it surfaced:** the import's dry run in production, which stopped on them before writing anything
+- **Why it slipped:** the import refused a code longer than Shurly's column from the start, but nobody counted
+  how many of Shlink's links that was until the dry run ran on the real snapshot. The tests' links have short codes
+- **Lesson:** when an import refuses what doesn't fit the schema, measure the real data against those limits
+  early, not at the production dry run
 

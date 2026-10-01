@@ -38,7 +38,8 @@ class URL(Base):
     # Phase 3.10.1 — Composite uniqueness with `domain_id` so the same code can
     # exist on different domains. Index kept on short_code alone for the existing
     # single-domain lookup path; the composite UNIQUE is what enforces correctness.
-    short_code = Column(String(20), nullable=False, index=True)
+    # Phase 8.4 — 64 characters (MAX_SHORT_CODE_LENGTH), for Shlink's longer codes (0013).
+    short_code = Column(String(64), nullable=False, index=True)
     domain_id = Column(UUID(as_uuid=True), ForeignKey("domains.id"), nullable=True, index=True)
     original_url = Column(Text, nullable=False)
     url_type = Column(Enum(URLType), nullable=False, default=URLType.STANDARD)

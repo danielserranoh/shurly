@@ -62,8 +62,9 @@ class TestCustomCodeValidation:
         assert not is_valid_custom_code("a")
 
     def test_invalid_custom_code_too_long(self):
-        """Test that codes longer than 20 chars are invalid."""
-        assert not is_valid_custom_code("a" * 21)
+        """Codes run to 64 characters (Phase 8.4: Shlink's imported ones, the longest 44)."""
+        assert is_valid_custom_code("a" * 64)
+        assert not is_valid_custom_code("a" * 65)
 
     def test_invalid_custom_code_special_chars(self):
         """Test that codes with special characters (except - and _) are invalid."""
