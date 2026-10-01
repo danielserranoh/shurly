@@ -19,6 +19,7 @@ from urllib.parse import urlsplit
 
 import httpx
 
+from server.tools.shlink.export import format_gap, visits_state
 from server.tools.shlink.mapping import CONDITION_TYPES, is_click
 from server.utils.csv_export import spreadsheet_safe
 from server.utils.opengraph import FetchRefusedError, guarded_request
@@ -33,6 +34,8 @@ COLUMNS = [
     "visits",
     "non_bot_visits",
     "last_visit",
+    "visits_export",
+    "visits_lost",
     "expired",
     "capped",
     "capped_in_shurly",
@@ -71,6 +74,8 @@ def review_rows(
                 "visits": visits.get("total", ""),
                 "non_bot_visits": visits.get("nonBots", ""),
                 "last_visit": _last_visit(entry.get("visits")),
+                "visits_export": visits_state(entry),
+                "visits_lost": "; ".join(map(format_gap, entry.get("visits_gaps") or [])),
                 "expired": "yes" if _is_before(meta.get("validUntil"), now) else "",
                 "capped": "yes" if _is_capped(meta.get("maxVisits"), visits.get("total")) else "",
                 "capped_in_shurly": (

@@ -1983,6 +1983,11 @@ the import can be re-run.
       key → raw JSON snapshot, archived untouched → `python -m server.tools.shlink export`
       (`server/tools/shlink/README.md`). The snapshot can hold personal data: `_exchange/` or an encrypted store,
       never the repo
+  - [x] A link whose visits Shlink fails on doesn't stop it: production's answered 500 for 12 links (visit
+        locations with a NULL `region_name`, which Shlink 4 can't serialize; the fix in Shlink's data is in the
+        README). A 5xx is retried, then the link gets `visits_error`, its code `visits_failed`, and its visits are
+        recovered by date range bisected to the second, one visit per page there; what's lost is its
+        `visits_gaps`, which the review (`visits_export`, `visits_lost`) and the import's report name
 - [x] Review sheet (CSV), one row per link: code, domain, destination, title, tags, created, visits, last visit,
       expired/capped, destination HTTP status, duplicate-of, and a `decision` column: `keep`, `archive` or `drop`
       → `… review`, plus the redirect-rule conditions Shurly lacks and codes that differ only in case (8.2). The

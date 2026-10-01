@@ -40,6 +40,23 @@ implementation lifecycle and is independent of the URL version segment.
   `DEFAULT_DOMAIN` keeps the new default, since the row marked default wins at startup. `BASE_URL` still moves
   only `DEFAULT_DOMAIN`'s links.
 
+### Fixed — the Shlink export stopped at the first link whose visits Shlink failed on (8.4)
+- **`export --visits` aborted on production's Shlink** with `Shlink answered 500 to
+  /rest/v3/short-urls/23q4griddo/visits.`: 12 of the ~91 links with visits answer 500 to their visits, whatever the
+  parameters. Shlink's log names the cause: some `visit_locations` rows have a NULL `region_name`, and Shlink 4
+  can't serialize a visit with one (`VisitLocation::$regionName must not be accessed before initialization`), so
+  any page holding one fails whole. `server/tools/shlink/README.md` has the count and the fix in Shlink's data.
+- **The export now carries on:** a 5xx is asked again twice, after 0.5 s and 1 s. If it persists, the link gets
+  `visits_error` (status and Shlink's detail), its code goes in the snapshot's `visits_failed`, and its visits are
+  recovered by date range: a range that fails is cut in two down to one second, and that second is read one visit
+  per page, so only the visit Shlink can't serialize is lost. The ranges lost are the link's `visits_gaps`
+  (`{start, end}`, both ends included). A failing list of short URLs, or a 4xx, still stops it.
+- **It says what it brought:** the links exported, the links whose visits came whole and how many of those have
+  visits, and the codes whose visits failed, with what was recovered and lost.
+- **The review and the import carry the gaps on:** the sheet's `visits_export` (`complete`, `recovered`,
+  `partial`, `failed`) and `visits_lost` columns; the import brings the recovered visits, never more, and its report
+  names each lost range.
+
 ### Fixed — MCP tools returned dates without a time zone
 - **MCP tools returned dates without a time zone, which claude.ai rejects:** `create_short_url` made the link, and
   then claude.ai threw the whole answer away ("`created_at` does not match format date-time"), so the assistant
