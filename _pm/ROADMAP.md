@@ -26,7 +26,7 @@ Order agreed in the 2026-09-27 review; confirm each item before starting it.
    both. The code of both is done (3.13's backend and frontend, 5.8), and in production since release #81
    (2026-09-28) on `shurly.griddo.io`, which the deploy's smoke test checks. The MCP's Google sign-in is live.
    The frontend is hosted since 2026-09-29, and a person completed the web sign-in there that day (3.13.6).
-   Left: the MCP's end-to-end check, from Claude Code and a claude.ai connector (5.8).
+   The MCP works end to end from claude.ai (2026-09-30). Left: Claude Code's own sign-in to the MCP (5.8).
 5. ✅ **MCP install guide**, in the app and in the user manual (5.9): `/manual/install-mcp/` and Settings → API &
    MCP. Its address comes from the build: `https://shurly.griddo.io/mcp/` in production's.
 6. **Internal dogfood** with the frontend and the MCP (5.6).
@@ -1516,7 +1516,9 @@ for this.
 - [x] Production build values: `PUBLIC_API_URL=https://shurly.griddo.io` and `PUBLIC_SHORT_DOMAIN=s.griddo.io`
       (`go.griddo.io` from Phase 8). Without `PUBLIC_SHORT_DOMAIN` the app shows short links on the API's host
       (`shurly.griddo.io/abc`). The MCP address in the manual and Settings then derives as
-      `https://shurly.griddo.io/mcp/` (`PUBLIC_MCP_URL` only to override it)
+      `https://shurly.griddo.io/mcp/` (`PUBLIC_MCP_URL` only to override it). Since 2026-10-01
+      `PUBLIC_SHORT_DOMAIN` is the repository variable, `s.griddo.io` while it's unset: the cutover sets it
+      without a release
 - [x] `CORS_ORIGINS` in the task → `'[]'` (set 2026-09-29, with `FRONTEND_URL=https://shurly.griddo.io`) once the frontend is hosted, as it shares the API's host (DEPLOYMENT.md
       § CORS). `deploy_ecs.sh` and `.env.production.example` default to it; production keeps
       `["http://localhost:4232"]` until then (6.3)
@@ -2043,8 +2045,9 @@ the import can be re-run.
       recreate rule 10. Update `RULE_SYNC_MAP` in `infra/ecs-alb-rule-sync/`. The `go.griddo.io` certificate is
       already on the listener
 - [ ] Switch the default domain to `go.griddo.io` (8.3) in the same window → `scripts/run_promote_domain.sh
-      go.griddo.io`, then `DEFAULT_DOMAIN` on the service and the frontend's `PUBLIC_SHORT_DOMAIN`
-      (DEPLOYMENT.md § The cutover). Before `s.griddo.io`'s row is deleted: it's the default until then
+      go.griddo.io`, then `DEFAULT_DOMAIN` on the service, and the repository variable `PUBLIC_SHORT_DOMAIN` with
+      a run of the frontend deploy (DEPLOYMENT.md § The cutover). No `BASE_URL` step: the live service sets none
+      (checked 2026-10-01). Before `s.griddo.io`'s row is deleted: it's the default until then
 - [ ] Delete `s.griddo.io` entirely: out of rule 12's host condition, its certificate off the listener and deleted,
       its Route 53 record (griddo-production), its `Domain` row and test links; the docs and scripts that still
       name it
