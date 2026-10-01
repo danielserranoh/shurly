@@ -26,6 +26,20 @@ implementation lifecycle and is independent of the URL version segment.
 
 ## [Unreleased]
 
+### Added — the default domain's switch, for the cutover (8.3)
+- **`python -m server.tools.domains promote go.griddo.io`** makes a domain the default: the one new links go on.
+  It makes the domain's row if it's missing, marks it the default and unmarks the one that was (`s.griddo.io`),
+  in one transaction. A dry run unless `--for-real`, and a second run does nothing. It prints the domains, their
+  links and what changes, and says so while `DEFAULT_DOMAIN` still names another domain.
+- **In production it runs as a one-off ECS task,** like the import and the backfill:
+  `scripts/run_promote_domain.sh go.griddo.io [--for-real]`, which needs the domain typed back. DEPLOYMENT.md
+  § The cutover has the runbook for 8.5's window, with `DEFAULT_DOMAIN` and the frontend's `PUBLIC_SHORT_DOMAIN`.
+- **What moves with the default, at once:** the domain of new links (the API's, a campaign's, the MCP's), the
+  link a code names when the API isn't told the domain, and where a request on a host Shurly doesn't know looks.
+- **What doesn't:** a link keeps its domain, so `s.griddo.io`'s keep resolving there. A restart with the old
+  `DEFAULT_DOMAIN` keeps the new default, since the row marked default wins at startup. `BASE_URL` still moves
+  only `DEFAULT_DOMAIN`'s links.
+
 ### Fixed — the Shlink export stopped at the first link whose visits Shlink failed on (8.4)
 - **`export --visits` aborted on production's Shlink** with `Shlink answered 500 to
   /rest/v3/short-urls/23q4griddo/visits.`: 12 of the ~91 links with visits answer 500 to their visits, whatever the

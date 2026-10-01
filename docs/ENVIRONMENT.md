@@ -71,7 +71,7 @@ Reviewed on 2026-09-29. **Update this reference in the same PR as any new or cha
 
 | Variable | Default | What it does |
 |---|---|---|
-| `DEFAULT_DOMAIN` | `shurl.griddo.io` | The default short-link host, seeded at startup. The default is a placeholder that doesn't resolve: set it wherever Shurly runs |
+| `DEFAULT_DOMAIN` | `shurl.griddo.io` | The default short-link host, seeded at startup. The default is a placeholder that doesn't resolve: set it wherever Shurly runs. Once seeded, the database's default wins: moving it takes `python -m server.tools.domains promote` too (DEPLOYMENT.md § The cutover) |
 | `BASE_URL` | (empty) | The base of every short URL the API writes, when the short-link host isn't the one `DEFAULT_DOMAIN` gives. Rare |
 | `SHORT_URL_MODE` | `loose` | `loose` lowercases generated codes and custom slugs; `strict` keeps their case |
 | `DISABLE_TRACK_PARAM` | `nostat` | A query parameter that makes a redirect log no visit: for QA |
