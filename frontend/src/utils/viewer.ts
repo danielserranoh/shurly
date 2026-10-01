@@ -158,10 +158,14 @@ export function personalBadge(item: Owned): RawHTML | '' {
 
 type Noun = 'link' | 'campaign';
 
-const LOCK_TOOLTIP = 'Only its creator or an admin can change it';
+/** Who may change an organization's link or campaign, in the API's words (server/utils/access.py). */
+const WHO_CHANGES = 'Only its creator, or an admin or owner,';
+
+/** On hover or focus: the rule, shorter. */
+const LOCK_TOOLTIP = `${WHO_CHANGES} can change it`;
 
 /** Same words as the API's 403. */
-export const lockReason = (noun: Noun) => `Only its creator, or an admin or owner, can change this ${noun}.`;
+export const lockReason = (noun: Noun) => `${WHO_CHANGES} can change this ${noun}.`;
 
 /**
  * Attributes that lock a menu item rendered with `html` (see `lockControl`). Popover menus

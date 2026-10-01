@@ -26,6 +26,12 @@ implementation lifecycle and is independent of the URL version segment.
 
 ## [Unreleased]
 
+### Changed — a locked control's tooltip names owners too
+- **"Only its creator, or an admin or owner, can change it"**, in the API's words, where it said "Only its creator
+  or an admin can change it". The tooltip and what a click on the control says now share one phrase
+  (`src/utils/viewer.ts`), and `e2e/member.spec.ts` pins both.
+- The member spec hovers a locked control before its forced click, so a menu that's still opening can't take it.
+
 ### Added — end-to-end tests as a member
 - **The e2e harness signs in a member too:** a second account on the Workspace domain (`e2e.member@griddo.io`),
   which joins as a member through the real sign-in. The fake Google page picks who by a cookie only the harness
