@@ -11,6 +11,7 @@ import csv
 import json
 from datetime import datetime
 
+import httpx
 import pytest
 
 from server.core.auth import hash_password
@@ -27,9 +28,12 @@ from server.core.models import (
 )
 from server.tools.shlink import __main__ as cli
 from server.tools.shlink import importer
+from server.tools.shlink.export import export_snapshot, shlink_client
 from server.tools.shlink.importer import ImportRefused, import_snapshot
+from server.tools.shlink.review import review_rows
 from tests.conftest import TestingSessionLocal
-from tests.test_phase84_shlink_export import short_url, visit
+from tests.test_phase84_shlink_export import BAD_SECOND, KEY, YEAR, FakeShlink, short_url, visit
+from tests.test_phase84_shlink_export import URL as SHLINK_URL
 
 HOST = "go.shlink.test"  # Shlink's default domain in the fixtures
 
@@ -357,6 +361,77 @@ class TestVisits:
 
         assert db_session.query(Visitor).count() == 3
         assert (report.unchanged, report.visits) == ([f"{HOST}/abc"], 1)
+
+    def test_what_shlink_failed_to_export_is_named_never_made_up(self, db_session, owner):
+        """The export's `visits_gaps`: the visits it recovered come, and the report names
+        the ranges it lost."""
+        second = "2025-03-04T10:00:07+00:00"
+        error = {"status": 500, "detail": "An unknown error occurred."}
+        links = [
+            {
+                "short_url": short_url("partial", visitsSummary={"total": 9, "nonBots": 9}),
+                "visits": self.VISITS,
+                "visits_error": error,
+                "visits_gaps": [{"start": second, "end": second}],
+            },
+            {
+                "short_url": short_url("failed"),
+                "visits": [],
+                "visits_error": error,
+                "visits_gaps": [{"start": "1970-01-01T00:00:00+00:00", "end": second}],
+            },
+            {
+                "short_url": short_url("recovered"),
+                "visits": self.VISITS[:1],
+                "visits_error": error,
+                "visits_gaps": [],
+            },
+        ]
+
+        report = run(db_session, owner, *links, visits=True)
+        db_session.commit()
+
+        assert report.visits == 4 == db_session.query(Visitor).count()
+        assert report.visits_lost == [
+            f"{HOST}/partial (partial): {second}/{second}",
+            f"{HOST}/failed (failed): 1970-01-01T00:00:00+00:00/{second}",
+        ]
+        text = importer.format_report(report, snapshot(*links), visits=True)
+        assert "visits Shlink failed to export, so not imported" in text
+        assert f"    {HOST}/partial (partial): {second}/{second}" in text
+        assert "recovered" not in text
+
+    def test_from_an_export_shlink_failed_on(self, db_session, owner):
+        """End to end, from the fake Shlink: one visit it can't serialize is all that's lost."""
+        fake = FakeShlink(
+            [short_url("23q4griddo")],
+            visits={(None, "23q4griddo"): [visit(BAD_SECOND), *YEAR]},
+            broken={(None, "23q4griddo"): {0}},
+        )
+        client = shlink_client(SHLINK_URL, KEY, transport=httpx.MockTransport(fake.handle))
+        exported = export_snapshot(client, visits=True, sleep=lambda seconds: None)
+
+        (row,) = review_rows(exported)
+        report = import_snapshot(db_session, exported, {}, owner, visits=True)
+        db_session.commit()
+
+        assert (row["visits_export"], row["visits_lost"]) == (
+            "partial",
+            f"{BAD_SECOND}/{BAD_SECOND}",
+        )
+        assert report.visits == len(YEAR) == db_session.query(Visitor).count()
+        assert report.visits_lost == [f"{HOST}/23q4griddo (partial): {BAD_SECOND}/{BAD_SECOND}"]
+
+    def test_without_the_flag_no_gaps_either(self, db_session, owner):
+        link = {
+            "short_url": short_url("partial"),
+            "visits": [],
+            "visits_gaps": [{"start": None, "end": None}],
+        }
+
+        report = run(db_session, owner, link)
+
+        assert report.visits_lost == []
 
 
 class TestOwner:
