@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 from server.core.models import URL, URLType
+from server.utils.url import MAX_SHORT_CODE_LENGTH
 
 
 @pytest.mark.integration
@@ -120,7 +121,7 @@ class TestCustomURLShortening:
 
     def test_custom_url_invalid_code(self, client: TestClient, auth_headers: dict):
         """Test that invalid custom codes are rejected."""
-        invalid_codes = ["ab", "test!code", "a" * 25]
+        invalid_codes = ["ab", "test!code", "a" * (MAX_SHORT_CODE_LENGTH + 1)]
 
         for code in invalid_codes:
             response = client.post(
@@ -206,16 +207,16 @@ class TestCustomURLShortening:
     def test_custom_url_taken_fallback_fits_the_column(
         self, client: TestClient, auth_headers: dict, no_og_fetch
     ):
-        """`URL.short_code` is String(20). SQLite doesn't enforce that, but
-        Postgres rejects a taken 20-character code grown by the suffix."""
-        code = "a" * 20
+        """`URL.short_code` is String(64). SQLite doesn't enforce that, but
+        Postgres rejects a taken 64-character code grown by the suffix."""
+        code = "a" * MAX_SHORT_CODE_LENGTH
         self._create(client, auth_headers, code)
 
         data = self._create(client, auth_headers, code).json()
 
-        assert len(data["short_code"]) <= 20
+        assert len(data["short_code"]) <= MAX_SHORT_CODE_LENGTH
         assert data["short_code"] != code
-        assert data["short_code"].startswith(code[:17])
+        assert data["short_code"].startswith(code[: MAX_SHORT_CODE_LENGTH - 3])
 
     def test_custom_url_taken_fallback_retries_until_free(
         self,

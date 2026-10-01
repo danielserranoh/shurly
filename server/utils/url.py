@@ -8,8 +8,9 @@ from urllib.parse import urlparse
 from server.core.config import settings
 from server.utils.domain import normalize_hostname
 
-# Matches the `URL.short_code` column (String(20)).
-MAX_SHORT_CODE_LENGTH = 20
+# Matches the columns that keep a code, `URL.short_code` and `Visitor.short_code` (String(64)).
+# 64 since Phase 8.4: Shlink's links on go.griddo.io run to 44 characters (migration 0013).
+MAX_SHORT_CODE_LENGTH = 64
 
 # Single-segment paths the app serves itself, ahead of `/{short_code}`: a short
 # link with one of these codes could never be reached. Custom codes that hit
@@ -115,7 +116,7 @@ def is_valid_custom_code(code: str) -> bool:
     Validate a custom short code.
 
     Rules:
-    - Length between 3 and 20 characters
+    - Length between 3 and MAX_SHORT_CODE_LENGTH (64) characters
     - Only alphanumeric, hyphens, and underscores allowed
     - No spaces or special characters
 

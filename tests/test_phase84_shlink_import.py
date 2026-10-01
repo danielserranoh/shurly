@@ -36,6 +36,7 @@ from tests.test_phase84_shlink_export import BAD_SECOND, KEY, YEAR, FakeShlink, 
 from tests.test_phase84_shlink_export import URL as SHLINK_URL
 
 HOST = "go.shlink.test"  # Shlink's default domain in the fixtures
+LONG = "jane-doe-acme-corp-2026-q4-outreach-followup"  # 44 characters, as go.griddo.io's longest
 
 
 @pytest.fixture
@@ -97,6 +98,21 @@ class TestALink:
 
         assert (hit.status_code, hit.headers["location"]) == (302, "https://example.com/offer")
         assert miss.status_code == 404
+
+    def test_a_code_up_to_64_characters_long(self, client, db_session, owner):
+        """go.griddo.io's personalized links run to 44 characters, and are out there already."""
+        link = {
+            "short_url": short_url(LONG, "https://example.com/offer"),
+            "visits": [visit("2025-03-01T10:00:00+00:00")],
+        }
+
+        report = run(db_session, owner, link, visits=True)
+        db_session.commit()
+
+        assert (report.blocked, report.created) == (False, [f"{HOST}/{LONG}"])
+        assert db_session.query(Visitor.short_code).scalar() == LONG
+        hit = client.get(f"/{LONG}", headers={"host": HOST}, follow_redirects=False)
+        assert (hit.status_code, hit.headers["location"]) == (302, "https://example.com/offer")
 
     def test_the_fields_that_map(self, db_session, owner):
         db_session.add(
@@ -244,7 +260,7 @@ class TestAgain:
     @pytest.mark.parametrize(
         ("code", "destination", "why"),
         [
-            ("x" * 21, "https://example.com/", "longer than 20 characters"),
+            ("x" * 65, "https://example.com/", "longer than 64 characters"),
             ("docs", "https://example.com/", "a path Shurly serves itself"),
             ("app", "myapp://open", "not an http(s) destination"),
         ],
@@ -517,7 +533,8 @@ class TestCommand:
 
 
 def test_on_postgresql(pg_engine):
-    """The whole import, twice, on the real database: dates, case-sensitive codes, rules."""
+    """The whole import, twice, on the real database: dates, case-sensitive codes, rules, and a
+    code longer than 20, in the columns the migrations made."""
     from sqlalchemy.orm import sessionmaker
 
     from server.core.migrations import run_migrations
@@ -538,6 +555,10 @@ def test_on_postgresql(pg_engine):
                 "visits": [visit("2025-03-01T10:00:00+02:00")],
             },
             {"short_url": short_url("abc", "https://example.com/b")},
+            {
+                "short_url": short_url(LONG, "https://example.com/c"),
+                "visits": [visit("2025-03-02T10:00:00+00:00")],
+            },
         )
 
         first = import_snapshot(db, snapshot(*links), {}, user, visits=True)
@@ -545,6 +566,7 @@ def test_on_postgresql(pg_engine):
         second = import_snapshot(db, snapshot(*links), {}, user, visits=True)
         db.commit()
 
-        assert (len(first.created), len(second.unchanged), second.visits) == (2, 2, 0)
-        assert sorted(url.short_code for url in db.query(URL).all()) == ["AbC", "abc"]
-        assert db.query(Visitor).one().visited_at == datetime(2025, 3, 1, 8, 0)
+        assert (len(first.created), len(second.unchanged), second.visits) == (3, 3, 0)
+        assert sorted(url.short_code for url in db.query(URL).all()) == ["AbC", "abc", LONG]
+        visits = dict(db.query(Visitor.short_code, Visitor.visited_at).all())
+        assert visits == {"AbC": datetime(2025, 3, 1, 8, 0), LONG: datetime(2025, 3, 2, 10, 0)}

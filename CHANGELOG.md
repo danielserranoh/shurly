@@ -26,6 +26,17 @@ implementation lifecycle and is independent of the URL version segment.
 
 ## [Unreleased]
 
+### Changed — short codes up to 64 characters (8.4)
+- **A short code can be 64 characters long, up from 20.** Shlink's links on `go.griddo.io` run to 44
+  (personalized outreach links, out there already), and the import refused the 57 longer than 20. Custom codes
+  take up to 64 in the API, the MCP's `create_custom_url` and the create page; generated codes stay 6 characters.
+  A code over 64 is still a 400, which now says 64.
+- **Migration `0013`** widens `urls.short_code` and `visits.short_code` to VARCHAR(64). PostgreSQL only changes its
+  catalog, and the previous release keeps working during the rollout. Its downgrade fails while a code longer
+  than 20 is kept. So `users.api_key`'s drop takes `0014`.
+- **"Typos & broken links"** looks for paths up to 64 characters, so a typo in a long code is suggested its link
+  too.
+
 ### Changed — a locked control's tooltip names owners too
 - **"Only its creator, or an admin or owner, can change it"**, in the API's words, where it said "Only its creator
   or an admin can change it". The tooltip and what a click on the control says now share one phrase
@@ -122,7 +133,7 @@ implementation lifecycle and is independent of the URL version segment.
   streams in, 4096 pixels a side, a decompression bomb refused, stored as WebP without metadata. But a logo isn't a
   face: it keeps its shape, fit within 512×512 and never enlarged, and its transparency.
 - **Migration `0012`** adds `organizations.logo`, its content type and when it was uploaded: nullable columns
-  only. So `users.api_key`'s drop takes `0013`.
+  only. So `users.api_key`'s drop takes `0014` (`0013` is longer short codes, 8.4).
 - Each upload and removal writes `org.logo_changed` (who, and which) to the event log.
 
 ### Security — only `main` can deploy to production
@@ -276,8 +287,8 @@ implementation lifecycle and is independent of the URL version segment.
   address. It fills only what's empty, and a city only where the country agrees.
   - In production, `scripts/run_backfill_places.sh` runs it as a one-off ECS task, a dry run first.
   - It and the Shlink import's runner share `scripts/one_off_task.sh`.
-- **Migration numbers:** `0011` is the city, and `0012` the organization's logo (3.14.4), so `users.api_key`'s drop
-  takes `0013`.
+- **Migration numbers:** `0011` is the city, `0012` the organization's logo (3.14.4) and `0013` longer short codes
+  (8.4), so `users.api_key`'s drop takes `0014`.
 
 ### Added — GeoLite2 City in the image, kept within MaxMind's 30 days (8.4)
 - **The image carries MaxMind's GeoLite2 City**, the data for a visit's city, which comes next. A visit's country
@@ -653,7 +664,8 @@ implementation lifecycle and is independent of the URL version segment.
   `?nostat` hit. The Shlink import counted Shlink's potential bots the same way; it doesn't anymore.
 - **Migration `0010` repairs what's stored:** each link's latest click, or nothing. Data only, in two
   statements. During the rollout, the previous release can still set a bot's time. So `users.api_key`'s drop
-  takes `0013` (`0011` is a visit's city, 8.4; `0012` the organization's logo, 3.14.4).
+  takes `0014` (`0011` is a visit's city, 8.4; `0012` the organization's logo, 3.14.4; `0013` longer short
+  codes, 8.4).
 - **Unique visitors don't count an unknown address.** Every visit imported from Shlink has ip "unknown" (it
   exposes none), and so does a visit whose address Shurly couldn't read. They made one extra "visitor" in the
   overview, a campaign's summary, top performers and users, and the MCP's link summary. So unique-visitor counts
@@ -966,7 +978,7 @@ implementation lifecycle and is independent of the URL version segment.
   running this one, mid-rollout: signing in, every authenticated call, the MCP.
 - This release doesn't map it. A PostgreSQL test drops the column by hand and runs this release against the result:
   signing in, generating an API key, `/me`, an MCP tool call with the key, revoking.
-- The release after drops it, in migration `0013` (0009 is the avatar, 3.12; 0010 repairs `last_click_at`; 0011 is a visit's city, 8.4; 0012 is the organization's logo, 3.14.4). Until then the migration drift test ignores exactly that column
+- The release after drops it, in migration `0014` (0009 is the avatar, 3.12; 0010 repairs `last_click_at`; 0011 is a visit's city, 8.4; 0012 is the organization's logo, 3.14.4; 0013 is longer short codes, 8.4). Until then the migration drift test ignores exactly that column
   and its index, and a guard fails once they're gone.
 
 ### Security — the client IP behind CloudFront (Phase 6.3)

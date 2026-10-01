@@ -17,7 +17,8 @@ class Visitor(Base):
     url_id = Column(UUID(as_uuid=True), ForeignKey("urls.id"), nullable=False, index=True)
     # Denormalized, for orphan checks and debugging. Never a link's key in queries: the same
     # code can name links on two domains, so a link's visits are those with its url_id.
-    short_code = Column(String(20), nullable=False, index=True)
+    # As long as a link's (MAX_SHORT_CODE_LENGTH, 64 since 0013).
+    short_code = Column(String(64), nullable=False, index=True)
 
     # Visit metadata
     ip = Column(String(50), nullable=False)

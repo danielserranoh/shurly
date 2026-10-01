@@ -195,7 +195,7 @@ The report lists every rule left out or approximated. Nothing is dropped silentl
 
 **Running it again** is safe:
 - a link already there with the same destination is left as it is, Shurly-side edits included;
-- a link there with another destination is a conflict. So is a link Shurly can't take: a code longer than 20
+- a link there with another destination is a conflict. So is a link Shurly can't take: a code longer than 64
   characters, one of Shurly's own paths (`docs`, `redoc`, `mcp`), or a destination that isn't http(s). Either
   stops the import before anything is written, unless the review drops that link. The exit status is `1`.
 
