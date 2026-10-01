@@ -26,6 +26,16 @@ implementation lifecycle and is independent of the URL version segment.
 
 ## [Unreleased]
 
+### Added — end-to-end tests as a member
+- **The e2e harness signs in a member too:** a second account on the Workspace domain (`e2e.member@griddo.io`),
+  which joins as a member through the real sign-in. The fake Google page picks who by a cookie only the harness
+  reads (`tests/e2e/identities.py`, pinned by `tests/test_e2e_guard.py`). `e2e/member.setup.ts` saves the session;
+  a spec becomes the member with `test.use({ storageState: MEMBER_STATE })`.
+- **The organization's logo, as a member:** they see it in Settings and in the account menu, with nothing to change
+  it with, and a dropped or picked file sends nothing. axe on a desktop and a phone.
+- **The Logo section says who can change it once:** its description no longer repeats the hint's "Owners and admins
+  can change it."
+
 ### Fixed — MCP tools returned dates without a time zone
 - **MCP tools returned dates without a time zone, which claude.ai rejects:** `create_short_url` made the link, and
   then claude.ai threw the whole answer away ("`created_at` does not match format date-time"), so the assistant
