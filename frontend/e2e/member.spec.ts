@@ -5,19 +5,25 @@
 // desktop and on a phone (390 px).
 
 import AxeBuilder from '@axe-core/playwright';
-import { devices, type APIRequestContext, type Page } from '@playwright/test';
+import { devices, type APIRequestContext, type Locator, type Page } from '@playwright/test';
 
 import { MEMBER, MEMBER_STATE, OWNER } from './env';
 import { expect, test } from './fixtures';
 
 test.use({ storageState: MEMBER_STATE });
 
-/** The API's 403, which a locked control says instead of acting (src/utils/viewer.ts). */
-const LOCKED_LINK = 'Only its creator, or an admin or owner, can change this link.';
-const LOCKED_CAMPAIGN = 'Only its creator, or an admin or owner, can change this campaign.';
-const LOCK_TIP = 'Only its creator or an admin can change it';
-/** A locked control is aria-disabled, which Playwright won't click, but a person can: their click is what says why. */
-const ANYWAY = { force: true };
+/** Who may change a link or campaign, in the API's words (server/utils/access.py). A locked control's click says
+ * the API's 403 instead of acting, and its tooltip the same, shorter (src/utils/viewer.ts). */
+const WHO = 'Only its creator, or an admin or owner,';
+const LOCKED_LINK = `${WHO} can change this link.`;
+const LOCKED_CAMPAIGN = `${WHO} can change this campaign.`;
+const LOCK_TIP = `${WHO} can change it`;
+/** A locked control is aria-disabled, which Playwright won't click, but a person can: their click is what says why.
+ * Forced, so first a hover, which waits for it to hold still (a menu that's opening still moves). */
+async function clickLocked(control: Locator) {
+  await control.hover();
+  await control.click({ force: true });
+}
 
 /** Every impact but minor, as a11y.spec.ts. */
 const IMPACTS = ['moderate', 'serious', 'critical'];
@@ -80,7 +86,7 @@ test("the owner's link is locked for them, saying why, and a click sends nothing
     await expect(theirs.locator(`[data-action="${action}"]`)).toHaveAttribute('aria-disabled', 'true');
     await expect(theirs.locator(`[data-action="${action}"]`)).toHaveAttribute('title', LOCK_TIP);
   }
-  await theirs.locator('[data-action="delete"]').click(ANYWAY);
+  await clickLocked(theirs.locator('[data-action="delete"]'));
   await expect(page.getByText(LOCKED_LINK)).toBeVisible();
   await expect(page.getByRole('dialog')).toBeHidden(); // no "Delete this link?" to answer
   await expect(theirs).toBeVisible();
@@ -99,12 +105,12 @@ test("on the owner's link page every change is locked; on their own, they edit a
   await expect(edit).toHaveAttribute('aria-disabled', 'true');
   await expect(edit).toHaveAttribute('data-tooltip', LOCK_TIP);
   await expect(page.locator('[data-add-rule]')).toHaveAttribute('aria-disabled', 'true');
-  await edit.click(ANYWAY);
+  await clickLocked(edit);
   await expect(page.getByText(LOCKED_LINK).first()).toBeVisible();
   await expect(page.locator('#edit-link')).toBeHidden();
   await page.getByRole('button', { name: 'More actions' }).click();
   await expect(page.locator('#link-menu [data-delete]')).toHaveAttribute('aria-disabled', 'true');
-  await page.locator('#link-menu [data-delete]').click(ANYWAY);
+  await clickLocked(page.locator('#link-menu [data-delete]'));
   await expect(page.getByRole('dialog')).toBeHidden();
   expect(changes).toEqual([]);
 
@@ -150,7 +156,7 @@ test("the owner's campaign is locked for them, on its page and in the list", asy
   await page.getByRole('button', { name: 'More actions' }).click();
   const remove = page.locator('#campaign-menu [data-delete]');
   await expect(remove).toHaveAttribute('aria-disabled', 'true');
-  await remove.click(ANYWAY);
+  await clickLocked(remove);
   await expect(page.getByText(LOCKED_CAMPAIGN)).toBeVisible();
   await expect(page.getByRole('dialog')).toBeHidden();
 
