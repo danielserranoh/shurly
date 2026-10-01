@@ -26,6 +26,12 @@ implementation lifecycle and is independent of the URL version segment.
 
 ## [Unreleased]
 
+### Changed — the frontend's short-link host is a repository variable
+- **`PUBLIC_SHORT_DOMAIN`**, the host the app shows before a new link's code, is the repository variable of the
+  same name in the frontend deploy, and `s.griddo.io` while it's unset, as before. At the cutover it moves to
+  `go.griddo.io` with `gh variable set` and a run of the deploy by hand, with no release (DEPLOYMENT.md § The
+  cutover, which also notes there's no `BASE_URL` step: the live service sets none).
+
 ### Added — the default domain's switch, for the cutover (8.3)
 - **`python -m server.tools.domains promote go.griddo.io`** makes a domain the default: the one new links go on.
   It makes the domain's row if it's missing, marks it the default and unmarks the one that was (`s.griddo.io`),
