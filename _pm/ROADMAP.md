@@ -979,12 +979,14 @@ copied (`server/utils/images.py`, `server/utils/stored_image.py`; `frontend/src/
       follow the same scope (`tests/test_phase3142_organization_roles.py`,
       `tests/test_phase3143_organization_links.py`)
 - [x] Migrations run against PostgreSQL (docker-compose), not only the in-memory SQLite of the test suite → PostgreSQL 17 service in CI (`--require-postgres`)
-- [ ] What a member sees, in the browser, before the dogfood's members arrive (5.6.1). The end-to-end harness signs
+- [x] What a member sees, in the browser, before the dogfood's members arrive (5.6.1). The end-to-end harness signs
       in a second account, which joins as a member (`e2e/member.setup.ts`; the fake Google page picks who by a
       cookie only the harness reads, `tests/e2e/identities.py`)
   - [x] The logo: they see it in Settings and in the account menu, with nothing to change it with, and a dropped or
         picked file sends nothing (`e2e/organization-logo.spec.ts`). The section says who can change it once
-  - [ ] The organization's links and campaigns locked for them, their own changeable, the members card read-only
+  - [x] The owner's links and campaigns locked for them, saying why, and a click sends nothing; their own they edit
+        and save; bulk tagging skips the owner's and says so; the members card has no role menus; the welcome greets
+        them. axe on each page, desktop and phone (`e2e/member.spec.ts`)
 
 ---
 

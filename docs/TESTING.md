@@ -172,7 +172,7 @@ browser's user agent), picking an option of a segmented control, and a downloade
 page shows, never on time, and give each spec data of its own: a run shares one database.
 
 Specs run as the owner. To be a member instead, a second account on the Workspace domain, add
-`test.use({ storageState: MEMBER_STATE })` (from `e2e/env.ts`). `e2e/member.setup.ts` signs them in with the cookie
+`test.use({ storageState: MEMBER_STATE })` (from `e2e/env.ts`); the `memberApi` fixture makes what's theirs. `e2e/member.setup.ts` signs them in with the cookie
 `e2e_as=member`, which tells the fake Google page who it is (`tests/e2e/identities.py`); nothing but the harness
 reads it (`tests/test_e2e_guard.py`).
 
