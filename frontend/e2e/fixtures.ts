@@ -7,10 +7,10 @@
 
 import { readFile } from 'node:fs/promises';
 
-import { test as base, expect, type APIRequestContext } from '@playwright/test';
+import { test as base, expect, type APIRequest, type APIRequestContext } from '@playwright/test';
 
 import { TOKEN_KEY } from '../src/utils/auth';
-import { API_URL, OWNER_STATE, WEB_URL } from './env';
+import { API_URL, MEMBER_STATE, OWNER_STATE, WEB_URL } from './env';
 
 interface Violation {
   directive: string;
@@ -31,9 +31,17 @@ interface StorageState {
 }
 
 const LOCAL_HOSTS = new Set(['127.0.0.1', 'localhost', '[::1]']);
+
+/** The API as whoever a setup project saved the session of. */
+async function apiAs(request: APIRequest, statePath: string): Promise<APIRequestContext> {
+  const state = JSON.parse(await readFile(statePath, 'utf8')) as StorageState;
+  const token = state.origins.find((o) => o.origin === WEB_URL)?.localStorage.find((item) => item.name === TOKEN_KEY)?.value;
+  if (!token) throw new Error(`No session in ${statePath}: the setup project saves it`);
+  return request.newContext({ baseURL: API_URL, extraHTTPHeaders: { Authorization: `Bearer ${token}` } });
+}
 const isLocal = (url: URL) => !/^(https?|wss?):$/.test(url.protocol) || LOCAL_HOSTS.has(url.hostname);
 
-export const test = base.extend<{ enforceRules: boolean; broken: string[]; ownerApi: APIRequestContext }>({
+export const test = base.extend<{ enforceRules: boolean; broken: string[]; ownerApi: APIRequestContext; memberApi: APIRequestContext }>({
   /** Fail the test on a broken rule: off only in harness.spec.ts, which reads `broken` instead. */
   enforceRules: [true, { option: true }],
   /** The rules broken so far, one line each. */
@@ -68,10 +76,13 @@ export const test = base.extend<{ enforceRules: boolean; broken: string[]; owner
   ],
   /** The API as the owner, with auth.setup.ts's session: for what a spec needs made, not what it tests. */
   ownerApi: async ({ playwright }, use) => {
-    const state = JSON.parse(await readFile(OWNER_STATE, 'utf8')) as StorageState;
-    const token = state.origins.find((o) => o.origin === WEB_URL)?.localStorage.find((item) => item.name === TOKEN_KEY)?.value;
-    if (!token) throw new Error(`No owner session in ${OWNER_STATE}: the setup project saves it`);
-    const api = await playwright.request.newContext({ baseURL: API_URL, extraHTTPHeaders: { Authorization: `Bearer ${token}` } });
+    const api = await apiAs(playwright.request, OWNER_STATE);
+    await use(api);
+    await api.dispose();
+  },
+  /** The same as the member, with member.setup.ts's session: what's theirs, made as they would. */
+  memberApi: async ({ playwright }, use) => {
+    const api = await apiAs(playwright.request, MEMBER_STATE);
     await use(api);
     await api.dispose();
   },

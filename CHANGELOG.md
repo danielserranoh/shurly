@@ -33,6 +33,14 @@ implementation lifecycle and is independent of the URL version segment.
   a spec becomes the member with `test.use({ storageState: MEMBER_STATE })`.
 - **The organization's logo, as a member:** they see it in Settings and in the account menu, with nothing to change
   it with, and a dropped or picked file sends nothing. axe on a desktop and a phone.
+- **The rest of what a member sees** (`e2e/member.spec.ts`):
+  - the owner's links and campaigns are locked for them, saying why, and a click sends nothing;
+  - their own link they edit and save;
+  - tagging in bulk skips the owner's link and says so;
+  - the members card has no role menus;
+  - the welcome greets them.
+
+  axe on each page, on a desktop and on a phone. A `memberApi` fixture makes what's theirs.
 - **The Logo section says who can change it once:** its description no longer repeats the hint's "Owners and admins
   can change it."
 
