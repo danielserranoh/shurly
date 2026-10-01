@@ -969,7 +969,8 @@ copied (`server/utils/images.py`, `server/utils/stored_image.py`; `frontend/src/
       the members card's header shows it. The account menu shows the organization, its logo or else the name's
       initial (`components/ui/OrgMark.astro`)
 - [x] Tests: `tests/test_phase3144_organization_logo.py`, `frontend/tests/image-file.test.mjs`,
-      `frontend/e2e/organization-logo.spec.ts` (upload and display, axe on a desktop and a phone)
+      `frontend/e2e/organization-logo.spec.ts` (upload and display as the owner, seen as a member; axe on a desktop
+      and a phone)
 
 ### 3.14.5 Verification
 - [x] Tests (TDD): visibility matrix (A sees B's organization links, not B's personal ones), organization by
@@ -978,6 +979,12 @@ copied (`server/utils/images.py`, `server/utils/stored_image.py`; `frontend/src/
       follow the same scope (`tests/test_phase3142_organization_roles.py`,
       `tests/test_phase3143_organization_links.py`)
 - [x] Migrations run against PostgreSQL (docker-compose), not only the in-memory SQLite of the test suite → PostgreSQL 17 service in CI (`--require-postgres`)
+- [ ] What a member sees, in the browser, before the dogfood's members arrive (5.6.1). The end-to-end harness signs
+      in a second account, which joins as a member (`e2e/member.setup.ts`; the fake Google page picks who by a
+      cookie only the harness reads, `tests/e2e/identities.py`)
+  - [x] The logo: they see it in Settings and in the account menu, with nothing to change it with, and a dropped or
+        picked file sends nothing (`e2e/organization-logo.spec.ts`). The section says who can change it once
+  - [ ] The organization's links and campaigns locked for them, their own changeable, the members card read-only
 
 ---
 

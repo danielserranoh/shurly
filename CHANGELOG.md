@@ -26,6 +26,16 @@ implementation lifecycle and is independent of the URL version segment.
 
 ## [Unreleased]
 
+### Added — end-to-end tests as a member
+- **The e2e harness signs in a member too:** a second account on the Workspace domain (`e2e.member@griddo.io`),
+  which joins as a member through the real sign-in. The fake Google page picks who by a cookie only the harness
+  reads (`tests/e2e/identities.py`, pinned by `tests/test_e2e_guard.py`). `e2e/member.setup.ts` saves the session;
+  a spec becomes the member with `test.use({ storageState: MEMBER_STATE })`.
+- **The organization's logo, as a member:** they see it in Settings and in the account menu, with nothing to change
+  it with, and a dropped or picked file sends nothing. axe on a desktop and a phone.
+- **The Logo section says who can change it once:** its description no longer repeats the hint's "Owners and admins
+  can change it."
+
 ### Changed — the frontend's short-link host is a repository variable
 - **`PUBLIC_SHORT_DOMAIN`**, the host the app shows before a new link's code, is the repository variable of the
   same name in the frontend deploy, and `s.griddo.io` while it's unset, as before. At the cutover it moves to
