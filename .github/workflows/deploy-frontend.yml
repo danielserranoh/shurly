@@ -71,12 +71,14 @@ jobs:
       - name: Type-check and build
         working-directory: frontend
         env:
-          # Phase 4.10's production values: the app and the API share shurly.griddo.io, and
-          # short links show on s.griddo.io until Phase 8 (go.griddo.io after). The MCP
-          # address in the manual and Settings derives as https://shurly.griddo.io/mcp/.
+          # Phase 4.10's production values: the app and the API share shurly.griddo.io. Short
+          # links show on the repository variable PUBLIC_SHORT_DOMAIN's host, s.griddo.io while
+          # it's unset: the cutover sets go.griddo.io and runs this by hand (DEPLOYMENT.md § The
+          # cutover). The MCP address in the manual and Settings derives as
+          # https://shurly.griddo.io/mcp/.
           PUBLIC_API_URL: https://shurly.griddo.io
           PUBLIC_SITE_URL: https://shurly.griddo.io
-          PUBLIC_SHORT_DOMAIN: s.griddo.io
+          PUBLIC_SHORT_DOMAIN: ${{ vars.PUBLIC_SHORT_DOMAIN || 's.griddo.io' }}
         run: npm run build
 
       - name: Configure AWS credentials

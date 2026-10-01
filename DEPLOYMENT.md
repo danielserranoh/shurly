@@ -602,6 +602,7 @@ In the repo's **Settings → Secrets and variables → Actions**:
 | Secret | `AWS_FRONTEND_DEPLOY_ROLE_ARN` | `arn:aws:iam::686255983646:role/github-actions-shurly-frontend-deploy` |
 | Variable | `FRONTEND_BUCKET` | the bucket's name |
 | Variable | `CLOUDFRONT_DISTRIBUTION_ID` | the distribution's id |
+| Variable | `PUBLIC_SHORT_DOMAIN` | unset until the cutover, which sets `go.griddo.io` (§ The cutover) |
 
 What the workflow does, on merges to `main` that touch `frontend/**` and by hand:
 
@@ -609,7 +610,7 @@ What the workflow does, on merges to `main` that touch `frontend/**` and by hand
 - Otherwise it runs `npm ci`, `npm test` and `npm run build` with the production values:
   - `PUBLIC_API_URL=https://shurly.griddo.io`
   - `PUBLIC_SITE_URL=https://shurly.griddo.io`
-  - `PUBLIC_SHORT_DOMAIN=s.griddo.io` (`go.griddo.io` from Phase 8)
+  - `PUBLIC_SHORT_DOMAIN`: the variable's value, `s.griddo.io` while it's unset
 - It uploads `_astro/` first, with `max-age=31536000, immutable`: those names carry a hash, and old files are
   kept for pages still open in someone's browser.
 - It uploads everything else with `max-age=0, must-revalidate`, and removes pages that are gone.
@@ -1301,6 +1302,57 @@ aws s3 rm --recursive s3://shurly-imports-<account id>/shlink/2026-10-01/ --prof
 
 The script checks both files are there before it makes anything. `tests/test_run_shlink_import.py` runs it
 against a fake `aws`. On the first real run, read the dry run's report before going on.
+
+## The cutover (Phase 8.5)
+
+ROADMAP 8.5 has the steps, in one window. The default domain switches to `go.griddo.io` once the ALB sends
+`go.griddo.io` to Shurly: new links go on the default domain, so it has to lead to Shurly first.
+
+### The default domain
+
+Three settings name it, and all three move in the window:
+
+- **The database's default domain** decides the domain of new links (the API's, a campaign's, the MCP's), which
+  link a code names when the API isn't told the domain, and where a request on a host Shurly doesn't know looks.
+  `scripts/run_promote_domain.sh` moves it, at once, with no redeploy. `DEFAULT_DOMAIN` alone doesn't: at
+  startup, the row already marked default wins.
+- **`DEFAULT_DOMAIN`**, on the service, decides which links `BASE_URL` moves, and the domain of a link from before
+  domains. The live service sets no `BASE_URL` (checked 2026-10-01), so there's no `BASE_URL` step.
+- **`PUBLIC_SHORT_DOMAIN`**, the repository variable the frontend deploy builds with, is the host the create page
+  shows before a new link's code. Unset, it's `s.griddo.io`.
+
+A link keeps its domain: `s.griddo.io`'s keep resolving there until it's deleted. Delete its `Domain` row only
+after this: until then it's the default.
+
+`scripts/run_promote_domain.sh` runs `python -m server.tools.domains promote` as a one-off ECS task, like the
+backfill (`scripts/one_off_task.sh`): the live service's image, environment and network, one container,
+`promote`, and no task role. It makes the domain's row if it's missing, marks it the default and unmarks the one
+that was, in one transaction. A dry run unless `--for-real`, which needs the domain typed back; a second run finds
+nothing to do. Its output goes to the service's log group, in streams `promote-domain/…`.
+
+```bash
+# 1. A dry run: the domains, their links, and what changes
+scripts/run_promote_domain.sh go.griddo.io
+
+# 2. For real (it asks for the domain again)
+scripts/run_promote_domain.sh go.griddo.io --for-real
+
+# 3. DEFAULT_DOMAIN=go.griddo.io on the service, from its current container (§ Rotate the JWT secret has
+#    how), and a redeploy
+
+# 4. The frontend: the variable, then its deploy by hand, with no release
+gh variable set PUBLIC_SHORT_DOMAIN --body go.griddo.io --repo danielserranoh/shurly
+gh workflow run deploy-frontend.yml --ref main --repo danielserranoh/shurly
+```
+
+- **If the dry run says `go.griddo.io` "isn't a domain here yet", stop.** The Shlink import makes its row, with its
+  links: either the import didn't run on this database, or the name is wrong.
+- **Rollback:** `scripts/run_promote_domain.sh s.griddo.io --for-real` while it exists, `DEFAULT_DOMAIN` back, and
+  `gh variable delete PUBLIC_SHORT_DOMAIN` with another run of the frontend deploy. Links made in between stay on
+  `go.griddo.io`, which Shlink doesn't know, if the ALB goes back to it too.
+
+`tests/test_run_promote_domain.py` runs the script against the import's fake `aws`, and
+`tests/test_phase83_promote_domain.py` pins what the switch moves and what it leaves.
 
 ## Routine operations
 

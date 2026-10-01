@@ -16,6 +16,9 @@ ip "unknown": Shlink exposes no addresses. That's how an imported visit is told 
 and why unique-visitor counts only cover the cutover onward. A run brings only the
 visits newer than the link's last imported one, so the cutover's final snapshot adds
 what happened since the first import.
+
+A link whose visits Shlink failed to export brings the visits the export recovered, and no
+more: the date ranges it lost (the snapshot's `visits_gaps`) are named in the report.
 """
 
 import csv
@@ -30,6 +33,7 @@ from sqlalchemy.orm import Session
 from server.core import SessionLocal
 from server.core.config import settings
 from server.core.models import URL, Domain, OrgRole, RedirectRule, Tag, URLType, User, Visitor
+from server.tools.shlink.export import format_gap, visits_state
 from server.tools.shlink.mapping import is_bot, is_pixel, map_condition
 from server.utils.columns import fit, stored_referer, stored_user_agent
 from server.utils.csv_export import unquote_spreadsheet_text
@@ -69,6 +73,7 @@ class Report:
     rules_approximated: list[str] = field(default_factory=list)
     rules_skipped: list[str] = field(default_factory=list)
     visits: int = 0
+    visits_lost: list[str] = field(default_factory=list)
 
     @property
     def blocked(self) -> bool:
@@ -145,6 +150,9 @@ def import_snapshot(
             report.unchanged.append(name)
         if visits:
             _visits(db, report, url, entry.get("visits") or [])
+            if entry.get("visits_gaps"):
+                gaps = ", ".join(map(format_gap, entry["visits_gaps"]))
+                report.visits_lost.append(f"{name} ({visits_state(entry)}): {gaps}")
     db.flush()
     return report
 
@@ -197,6 +205,16 @@ def format_report(report: Report, snapshot: dict, *, visits: bool) -> str:
         )
         if not any("visits" in entry for entry in snapshot["links"]):
             lines.append("  the snapshot has no visits: export it with --visits")
+        if report.visits_lost:
+            lines.append(
+                "  visits Shlink failed to export, so not imported (the snapshot's visits_gaps, "
+                "date ranges with both ends included):"
+            )
+            lines += [f"    {item}" for item in report.visits_lost]
+            lines.append(
+                "    a later run imports only the visits newer than a link's last imported one: "
+                "a gap stays a gap"
+            )
     if report.conflicts:
         lines.append("  conflicts, which stop the import:")
         lines += [f"    {item}" for item in report.conflicts]

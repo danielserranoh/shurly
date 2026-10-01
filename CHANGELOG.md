@@ -36,6 +36,43 @@ implementation lifecycle and is independent of the URL version segment.
 - **The Logo section says who can change it once:** its description no longer repeats the hint's "Owners and admins
   can change it."
 
+### Changed — the frontend's short-link host is a repository variable
+- **`PUBLIC_SHORT_DOMAIN`**, the host the app shows before a new link's code, is the repository variable of the
+  same name in the frontend deploy, and `s.griddo.io` while it's unset, as before. At the cutover it moves to
+  `go.griddo.io` with `gh variable set` and a run of the deploy by hand, with no release (DEPLOYMENT.md § The
+  cutover, which also notes there's no `BASE_URL` step: the live service sets none).
+
+### Added — the default domain's switch, for the cutover (8.3)
+- **`python -m server.tools.domains promote go.griddo.io`** makes a domain the default: the one new links go on.
+  It makes the domain's row if it's missing, marks it the default and unmarks the one that was (`s.griddo.io`),
+  in one transaction. A dry run unless `--for-real`, and a second run does nothing. It prints the domains, their
+  links and what changes, and says so while `DEFAULT_DOMAIN` still names another domain.
+- **In production it runs as a one-off ECS task,** like the import and the backfill:
+  `scripts/run_promote_domain.sh go.griddo.io [--for-real]`, which needs the domain typed back. DEPLOYMENT.md
+  § The cutover has the runbook for 8.5's window, with `DEFAULT_DOMAIN` and the frontend's `PUBLIC_SHORT_DOMAIN`.
+- **What moves with the default, at once:** the domain of new links (the API's, a campaign's, the MCP's), the
+  link a code names when the API isn't told the domain, and where a request on a host Shurly doesn't know looks.
+- **What doesn't:** a link keeps its domain, so `s.griddo.io`'s keep resolving there. A restart with the old
+  `DEFAULT_DOMAIN` keeps the new default, since the row marked default wins at startup. `BASE_URL` still moves
+  only `DEFAULT_DOMAIN`'s links.
+
+### Fixed — the Shlink export stopped at the first link whose visits Shlink failed on (8.4)
+- **`export --visits` aborted on production's Shlink** with `Shlink answered 500 to
+  /rest/v3/short-urls/23q4griddo/visits.`: 12 of the ~91 links with visits answer 500 to their visits, whatever the
+  parameters. Shlink's log names the cause: some `visit_locations` rows have a NULL `region_name`, and Shlink 4
+  can't serialize a visit with one (`VisitLocation::$regionName must not be accessed before initialization`), so
+  any page holding one fails whole. `server/tools/shlink/README.md` has the count and the fix in Shlink's data.
+- **The export now carries on:** a 5xx is asked again twice, after 0.5 s and 1 s. If it persists, the link gets
+  `visits_error` (status and Shlink's detail), its code goes in the snapshot's `visits_failed`, and its visits are
+  recovered by date range: a range that fails is cut in two down to one second, and that second is read one visit
+  per page, so only the visit Shlink can't serialize is lost. The ranges lost are the link's `visits_gaps`
+  (`{start, end}`, both ends included). A failing list of short URLs, or a 4xx, still stops it.
+- **It says what it brought:** the links exported, the links whose visits came whole and how many of those have
+  visits, and the codes whose visits failed, with what was recovered and lost.
+- **The review and the import carry the gaps on:** the sheet's `visits_export` (`complete`, `recovered`,
+  `partial`, `failed`) and `visits_lost` columns; the import brings the recovered visits, never more, and its report
+  names each lost range.
+
 ### Fixed — MCP tools returned dates without a time zone
 - **MCP tools returned dates without a time zone, which claude.ai rejects:** `create_short_url` made the link, and
   then claude.ai threw the whole answer away ("`created_at` does not match format date-time"), so the assistant

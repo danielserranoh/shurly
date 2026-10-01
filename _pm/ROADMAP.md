@@ -26,15 +26,15 @@ Order agreed in the 2026-09-27 review; confirm each item before starting it.
    both. The code of both is done (3.13's backend and frontend, 5.8), and in production since release #81
    (2026-09-28) on `shurly.griddo.io`, which the deploy's smoke test checks. The MCP's Google sign-in is live.
    The frontend is hosted since 2026-09-29, and a person completed the web sign-in there that day (3.13.6).
-   Left: the MCP's end-to-end check, from Claude Code and a claude.ai connector (5.8).
+   The MCP works end to end from claude.ai (2026-09-30). Left: Claude Code's own sign-in to the MCP (5.8).
 5. ✅ **MCP install guide**, in the app and in the user manual (5.9): `/manual/install-mcp/` and Settings → API &
    MCP. Its address comes from the build: `https://shurly.griddo.io/mcp/` in production's.
 6. **Internal dogfood** with the frontend and the MCP (5.6).
 7. **Replace Shlink on `go.griddo.io`** (Phase 8): after the dogfood and error alerting (6.4). Done on `dev`: a
    link is its code and its domain (8.3); exporting, reviewing and importing Shlink's links and visits, and a
-   visit's country and city (8.4). Left: running the import in production (8.4: the one-off task is ready; its
-   bucket and IAM are made by hand), filling older visits' cities there once GeoLite2 City serves (8.4), the
-   `go.griddo.io` domain row and switching the default to it (8.3), error alerting (6.4), and the cutover (8.5).
+   visit's country and city (8.4), and the default domain's switch (8.3: a one-off task, run in 8.5's window).
+   Left: running the import in production (8.4: the one-off task is ready; its bucket and IAM are made by hand),
+   error alerting (6.4), and the cutover (8.5).
 
 Also landed on 2026-09-28, outside this list: the account profile (3.12: name, country, time zone and a photo;
 people by name in Settings → Organization and "Created by"), analytics days in the viewer's time zone (3.12.8),
@@ -1523,7 +1523,9 @@ for this.
 - [x] Production build values: `PUBLIC_API_URL=https://shurly.griddo.io` and `PUBLIC_SHORT_DOMAIN=s.griddo.io`
       (`go.griddo.io` from Phase 8). Without `PUBLIC_SHORT_DOMAIN` the app shows short links on the API's host
       (`shurly.griddo.io/abc`). The MCP address in the manual and Settings then derives as
-      `https://shurly.griddo.io/mcp/` (`PUBLIC_MCP_URL` only to override it)
+      `https://shurly.griddo.io/mcp/` (`PUBLIC_MCP_URL` only to override it). Since 2026-10-01
+      `PUBLIC_SHORT_DOMAIN` is the repository variable, `s.griddo.io` while it's unset: the cutover sets it
+      without a release
 - [x] `CORS_ORIGINS` in the task → `'[]'` (set 2026-09-29, with `FRONTEND_URL=https://shurly.griddo.io`) once the frontend is hosted, as it shares the API's host (DEPLOYMENT.md
       § CORS). `deploy_ecs.sh` and `.env.production.example` default to it; production keeps
       `["http://localhost:4232"]` until then (6.3)
@@ -1932,8 +1934,10 @@ with one ALB change, and rolling back restores it. Shurly resolves links by (Hos
 - [x] Shared or personal links 🔎 R7: **the organization's by default, personal only on purpose** (decided
       2026-09-27) → 3.14
 - [x] Owner of the migrated links: the Griddo organization (3.14)
-- [ ] Check `go.griddo.io`'s current not-found redirects in Shlink before the cutover: invalid short URL, base URL,
+- [x] Check `go.griddo.io`'s current not-found redirects in Shlink before the cutover: invalid short URL, base URL,
       regular 404. Set `INVALID_SHORT_URL_REDIRECT` to match the first (3.10.6); Shurly has no setting for the others
+      → it has none of the three (checked 2026-10-01 on the live Shlink service), so Shurly's
+      `INVALID_SHORT_URL_REDIRECT` stays empty
 - [x] Visit history: import it as `Visitor` rows (no schema change, but Shlink exposes no IPs, so unique-visitor
       counts won't cover it) or archive Shlink's export and start counting at the cutover → **decided
       2026-09-28: imported**, with the import's `--visits`: ip "unknown" (which tells imported visits apart), the
@@ -1944,26 +1948,34 @@ with one ALB change, and rolling back restores it. Shurly resolves links by (Hos
 Shlink defaults to `SHORT_URL_MODE=strict`: case-sensitive lookups and mixed-case generated codes. Shurly's
 `loose` lowercases codes when they are created but matches the path exactly; Shlink's `loose` also matches
 case-insensitively.
-- [ ] Check which mode `go.griddo.io` runs
+- [x] Check which mode `go.griddo.io` runs → `strict`: its Shlink leaves `SHORT_URL_MODE` unset, and Shlink 4's
+      default is `strict`, case-sensitive (checked 2026-10-01 on the live Shlink service)
 - [x] `strict` → import codes verbatim (skip `normalize_short_code`); Shurly's exact-match resolver already
       behaves like Shlink's strict mode. Pin it with a test so lookups never get lowercased by accident → the
       import keeps codes verbatim; `test_answers_on_its_domain_with_its_exact_code` pins the redirect
-- [ ] `loose` → case-insensitive lookup on that domain before the cutover
+- [x] `loose` → case-insensitive lookup on that domain before the cutover → not needed: it runs `strict`
 - [ ] If wanted after that decision, for Shurly's own `loose` mode: an exact match first, then a case-insensitive
       fallback only when exactly one link matches. Not plain lowercasing: imported codes stay exact, so `AbC12` and
       `abc12` can both exist (the pin above). Today `/ABC123` is an orphan visit even when `abc123` exists, and
       "Typos & broken links" suggests `abc123` for it (3.10.4). Not coded until the user decides
 
 ### 8.3 Finish multi-domain (3.10.1 shipped the model only)
-- [ ] `Domain` row for `go.griddo.io`
+- [x] `Domain` row for `go.griddo.io` → the Shlink import makes it, with its links; the switch below makes it if
+      it's missing
 - [x] `build_short_url()` uses the link's own domain; today it always builds on the default one, so a migrated
       link would be shown as `s.griddo.io/<code>` → `link_short_url` everywhere a link's short URL is shown:
       responses, campaigns and their CSV, the overview, previews. BASE_URL still moves only the default domain's
-- [ ] Make `go.griddo.io` the default domain at the cutover. Changing `DEFAULT_DOMAIN` alone won't do it:
+- [x] Make `go.griddo.io` the default domain at the cutover. Changing `DEFAULT_DOMAIN` alone won't do it:
       `get_or_create_default_domain()` keeps the row already marked default (`s.griddo.io`), so new links would
       still be created there (and, until the previous item lands, shown on `go.griddo.io`). Demote `s.` and
-      promote `go.` explicitly, with a test
-- [ ] No per-link domain choice needed: every new link goes on `go.griddo.io`
+      promote `go.` explicitly, with a test → `python -m server.tools.domains promote go.griddo.io`, run as a
+      one-off ECS task by `scripts/run_promote_domain.sh` (decision B): it makes the row if it's missing, marks it
+      the default and unmarks `s.griddo.io`, in one transaction; a dry run unless `--for-real`, and a second run
+      does nothing. New links, the link a code names without `?domain=` and unknown hosts move at once; links keep
+      their domain; a restart with the old `DEFAULT_DOMAIN` keeps it; `BASE_URL` moves `DEFAULT_DOMAIN`'s links,
+      before it moves too and after (`tests/test_phase83_promote_domain.py`). Run in 8.5's window
+- [x] No per-link domain choice needed: every new link goes on `go.griddo.io` → none added: a new link takes the
+      default domain, pinned after the switch
 - [x] A link's analytics count its own visits: keyed on `visits.url_id`, never on the code, which can name
       links on both domains while Shlink's are imported next to the test links (`tests/test_visits_per_link.py`)
 - [x] The API finds a link by its code alone (`/urls/{code}`, its analytics, rules…): the first of the links
@@ -1980,6 +1992,11 @@ the import can be re-run.
       key → raw JSON snapshot, archived untouched → `python -m server.tools.shlink export`
       (`server/tools/shlink/README.md`). The snapshot can hold personal data: `_exchange/` or an encrypted store,
       never the repo
+  - [x] A link whose visits Shlink fails on doesn't stop it: production's answered 500 for 12 links (visit
+        locations with a NULL `region_name`, which Shlink 4 can't serialize; the fix in Shlink's data is in the
+        README). A 5xx is retried, then the link gets `visits_error`, its code `visits_failed`, and its visits are
+        recovered by date range bisected to the second, one visit per page there; what's lost is its
+        `visits_gaps`, which the review (`visits_export`, `visits_lost`) and the import's report name
 - [x] Review sheet (CSV), one row per link: code, domain, destination, title, tags, created, visits, last visit,
       expired/capped, destination HTTP status, duplicate-of, and a `decision` column: `keep`, `archive` or `drop`
       → `… review`, plus the redirect-rule conditions Shurly lacks and codes that differ only in case (8.2). The
@@ -2034,7 +2051,10 @@ the import can be re-run.
 - [ ] ALB: add `go.griddo.io` to the host condition of rule 12 (Shurly), then delete rule 10 (Shlink). Rollback:
       recreate rule 10. Update `RULE_SYNC_MAP` in `infra/ecs-alb-rule-sync/`. The `go.griddo.io` certificate is
       already on the listener
-- [ ] Switch the default domain to `go.griddo.io` (8.3) in the same window
+- [ ] Switch the default domain to `go.griddo.io` (8.3) in the same window → `scripts/run_promote_domain.sh
+      go.griddo.io`, then `DEFAULT_DOMAIN` on the service, and the repository variable `PUBLIC_SHORT_DOMAIN` with
+      a run of the frontend deploy (DEPLOYMENT.md § The cutover). No `BASE_URL` step: the live service sets none
+      (checked 2026-10-01). Before `s.griddo.io`'s row is deleted: it's the default until then
 - [ ] Delete `s.griddo.io` entirely: out of rule 12's host condition, its certificate off the listener and deleted,
       its Route 53 record (griddo-production), its `Domain` row and test links; the docs and scripts that still
       name it

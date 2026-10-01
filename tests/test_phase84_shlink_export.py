@@ -55,14 +55,49 @@ def visit(date: str) -> dict:
     }
 
 
-class FakeShlink:
-    """Shlink's REST API, from its spec: paginated lists, `X-Api-Key` required."""
+# Shlink's answer when it fails: production's, on the links whose visits it can't serialize.
+INTERNAL_ERROR = {
+    "title": "Internal Server Error",
+    "type": "https://shlink.io/api/error/internal-server-error",
+    "status": 500,
+    "detail": "An unknown error occurred.",
+}
 
-    def __init__(self, links, rules=None, visits=None, version="4.2.1"):
+
+def _moment(value: str) -> datetime:
+    """An ISO date as Shlink compares it, to the second; 3.10's fromisoformat reads no "Z"."""
+    return datetime.fromisoformat(value.replace("Z", "+00:00")).replace(microsecond=0)
+
+
+class FakeShlink:
+    """
+    Shlink's REST API, from its spec: paginated lists, `X-Api-Key` required. A link's
+    visits take `startDate` and `endDate`, both included, to the second, and a page past
+    the last one fails, as Shlink's paginator does.
+
+    To fail as production does: `broken` names, per link, the visits it can't serialize
+    (an answer holding one is a 500); `flaky`, how many times a link's visits answer 500
+    first; `listing_fails`, that the list of short URLs itself does.
+    """
+
+    def __init__(
+        self,
+        links,
+        rules=None,
+        visits=None,
+        version="4.2.1",
+        *,
+        broken=None,
+        flaky=None,
+        listing_fails=False,
+    ):
         self.links = links
         self.rules = rules or {}
         self.visits = visits or {}
         self.version = version
+        self.broken = broken or {}
+        self.flaky = dict(flaky or {})
+        self.listing_fails = listing_fails
         self.requests: list[httpx.Request] = []
 
     def handle(self, request: httpx.Request) -> httpx.Response:
@@ -73,7 +108,9 @@ class FakeShlink:
         if path == "/rest/health":
             return httpx.Response(200, json={"status": "pass", "version": self.version})
         if path == "/rest/v3/short-urls":
-            return self._page(request, "shortUrls", self.links)
+            if self.listing_fails:
+                return self._error()
+            return self._page(request, "shortUrls", list(enumerate(self.links)))
         # The raw path: `url.path` is decoded, and a code may hold an escaped slash.
         raw_path = request.url.raw_path.decode("ascii").split("?")[0]
         found = re.fullmatch(r"/rest/v3/short-urls/([^/]+)/(redirect-rules|visits)", raw_path)
@@ -82,21 +119,45 @@ class FakeShlink:
         key = (request.url.params.get("domain"), unquote(found[1]))
         if found[2] == "redirect-rules":
             return httpx.Response(200, json=self.rules[key])
-        return self._page(request, "visits", self.visits.get(key, []))
+        if self.flaky.get(key):
+            self.flaky[key] -= 1
+            return self._error()
+        visits = list(enumerate(self.visits.get(key, [])))
+        start, end = request.url.params.get("startDate"), request.url.params.get("endDate")
+        if start:
+            visits = [(i, v) for i, v in visits if _moment(v["date"]) >= _moment(start)]
+        if end:
+            visits = [(i, v) for i, v in visits if _moment(v["date"]) <= _moment(end)]
+        return self._page(request, "visits", visits, self.broken.get(key, set()))
 
     @staticmethod
-    def _page(request: httpx.Request, name: str, items: list) -> httpx.Response:
+    def _error() -> httpx.Response:
+        return httpx.Response(
+            500, json=INTERNAL_ERROR, headers={"content-type": "application/problem+json"}
+        )
+
+    @classmethod
+    def _page(
+        cls, request: httpx.Request, name: str, items: list, broken: set = frozenset()
+    ) -> httpx.Response:
+        """`items` as (index, item): an answer holding a `broken` index fails."""
         page = int(request.url.params.get("page", 1))
         per_page = int(request.url.params.get("itemsPerPage", 10))
+        pages = max(1, -(-len(items) // per_page))
+        if page > pages:
+            return cls._error()  # Pagerfanta's OutOfRangeCurrentPageException
         chunk = items[(page - 1) * per_page : page * per_page]
+        if any(index in broken for index, _ in chunk):
+            return cls._error()
         pagination = {
             "currentPage": page,
-            "pagesCount": max(1, -(-len(items) // per_page)),
+            "pagesCount": pages,
             "itemsPerPage": per_page,
             "itemsInCurrentPage": len(chunk),
             "totalItems": len(items),
         }
-        return httpx.Response(200, json={name: {"data": chunk, "pagination": pagination}})
+        data = [item for _, item in chunk]
+        return httpx.Response(200, json={name: {"data": data, "pagination": pagination}})
 
 
 def _client(fake: FakeShlink, key: str = KEY) -> httpx.Client:
@@ -159,6 +220,212 @@ class TestSnapshot:
         assert fake.requests and all(r.headers["x-api-key"] == KEY for r in fake.requests)
 
 
+def _export(fake: FakeShlink, **options) -> tuple[dict, list[float]]:
+    """With visits, and the waits between retries recorded instead of slept."""
+    waits: list[float] = []
+    snapshot = export_snapshot(_client(fake), visits=True, now=NOW, sleep=waits.append, **options)
+    return snapshot, waits
+
+
+def _by_date(visits: list[dict]) -> list[str]:
+    return sorted(v["date"] for v in visits)
+
+
+def _visit_requests(fake: FakeShlink, code: str) -> list[httpx.Request]:
+    return [r for r in fake.requests if r.url.path == f"/rest/v3/short-urls/{code}/visits"]
+
+
+# A year of visits, one of them Shlink can't serialize, another in its very second.
+YEAR = [visit(f"2025-{m:02}-{d:02}T10:00:00+00:00") for m in range(1, 13) for d in (3, 17)]
+BAD_SECOND = "2025-03-04T10:00:07+00:00"
+SAME_SECOND = [
+    {**visit(BAD_SECOND), "userAgent": "broken"},
+    {**visit("2025-03-04T11:00:07+01:00"), "userAgent": "fine"},  # the same second
+]
+GAP = {"start": BAD_SECOND, "end": BAD_SECOND}
+
+
+class TestShlinkFailsOnALinksVisits:
+    """Production's Shlink answers 500 to a few links' visits, whatever the parameters:
+    most likely one visit it can't serialize. The export carries on, and recovers what it
+    can by date range."""
+
+    def test_it_doesnt_stop_the_export(self):
+        links = [short_url("before"), short_url("23q4griddo"), short_url("after")]
+        fake = FakeShlink(
+            links,
+            visits={
+                (None, code): [visit("2025-01-01T00:00:00+00:00")] for code in ("before", "after")
+            }
+            | {(None, "23q4griddo"): SAME_SECOND},
+            broken={(None, "23q4griddo"): {0}},
+        )
+
+        snapshot, _ = _export(fake)
+
+        assert [entry["short_url"] for entry in snapshot["links"]] == links
+        before, failing, after = snapshot["links"]
+        assert before["visits"] and after["visits"]
+        assert "visits_error" not in before and "visits_gaps" not in after
+        assert failing["visits_error"] == {"status": 500, "detail": "An unknown error occurred."}
+        assert snapshot["visits_failed"] == ["23q4griddo"]
+
+    def test_a_5xx_is_asked_again_before_it_counts(self):
+        visits = [visit("2025-01-01T00:00:00+00:00")]
+        fake = FakeShlink(
+            [short_url("abc")], visits={(None, "abc"): visits}, flaky={(None, "abc"): 2}
+        )
+
+        snapshot, waits = _export(fake)
+
+        (entry,) = snapshot["links"]
+        assert entry["visits"] == visits and "visits_error" not in entry
+        assert snapshot["visits_failed"] == []
+        assert waits == [0.5, 1.0]  # a short backoff, longer each time
+        assert len(_visit_requests(fake, "abc")) == 3
+
+    def test_it_counts_after_the_retries(self):
+        """Three asks of the whole list, then the date ranges begin."""
+        fake = FakeShlink(
+            [short_url("abc")], visits={(None, "abc"): YEAR}, flaky={(None, "abc"): 3}
+        )
+
+        snapshot, waits = _export(fake)
+
+        first = _visit_requests(fake, "abc")[:4]
+        assert ["startDate" in r.url.params for r in first] == [False, False, False, True]
+        assert waits == [0.5, 1.0]
+        # The ranges then answer, so nothing was lost: the 500s were passing.
+        (entry,) = snapshot["links"]
+        assert entry["visits_error"]["status"] == 500
+        assert (_by_date(entry["visits"]), entry["visits_gaps"]) == (_by_date(YEAR), [])
+
+    def test_date_ranges_recover_all_but_the_bad_second(self):
+        visits = YEAR[:4] + SAME_SECOND + YEAR[4:]
+        broken = visits.index(SAME_SECOND[0])
+        fake = FakeShlink(
+            [short_url("abc", visitsSummary={"total": len(visits)})],
+            visits={(None, "abc"): visits},
+            broken={(None, "abc"): {broken}},
+        )
+
+        snapshot, _ = _export(fake)
+
+        (entry,) = snapshot["links"]
+        # Every visit but the one Shlink can't serialize: its second's other one too.
+        assert _by_date(entry["visits"]) == _by_date(visits[:broken] + visits[broken + 1 :])
+        assert {"userAgent": "fine"}.items() <= next(
+            v for v in entry["visits"] if v["date"] == SAME_SECOND[1]["date"]
+        ).items()
+        assert entry["visits_gaps"] == [GAP]
+
+    def test_the_dates_shlink_is_asked_for(self):
+        """ISO 8601 with the offset, which Shlink parses, the "+" escaped in the query."""
+        fake = FakeShlink(
+            [short_url("abc")], visits={(None, "abc"): SAME_SECOND}, broken={(None, "abc"): {0}}
+        )
+
+        _export(fake, clock=lambda: NOW)
+
+        (first, *_) = [r for r in _visit_requests(fake, "abc") if "startDate" in r.url.params]
+        assert (first.url.params["startDate"], first.url.params["endDate"]) == (
+            "1970-01-01T00:00:00+00:00",
+            "2026-09-28T10:15:00+00:00",
+        )
+        assert b"%2B00" in first.url.query and b"+" not in first.url.query
+        # The narrowest range, one second, is then read one visit per page.
+        singles = [
+            r.url.params
+            for r in _visit_requests(fake, "abc")
+            if r.url.params.get("itemsPerPage") == "1"
+        ]
+        assert {(p["startDate"], p["endDate"]) for p in singles} == {(BAD_SECOND, BAD_SECOND)}
+        assert [p["page"] for p in singles] == ["1"] * 3 + ["2"]  # page 1 retried, then 2
+
+    def test_two_bad_visits_two_gaps_oldest_first(self):
+        visits = [visit("2025-06-01T08:00:00+00:00"), *YEAR, visit("2024-02-29T23:59:59+00:00")]
+        fake = FakeShlink(
+            [short_url("abc")], visits={(None, "abc"): visits}, broken={(None, "abc"): {0, 25}}
+        )
+
+        snapshot, _ = _export(fake)
+
+        (entry,) = snapshot["links"]
+        assert _by_date(entry["visits"]) == _by_date(YEAR)
+        assert entry["visits_gaps"] == [
+            {"start": "2024-02-29T23:59:59+00:00", "end": "2024-02-29T23:59:59+00:00"},
+            {"start": "2025-06-01T08:00:00+00:00", "end": "2025-06-01T08:00:00+00:00"},
+        ]
+
+    def test_newest_first_as_shlink_lists_them(self):
+        newest_first = sorted(YEAR, key=lambda v: v["date"], reverse=True)
+        fake = FakeShlink(
+            [short_url("abc")],
+            visits={(None, "abc"): [visit(BAD_SECOND), *newest_first]},
+            broken={(None, "abc"): {0}},
+        )
+
+        snapshot, _ = _export(fake)
+
+        assert snapshot["links"][0]["visits"] == newest_first
+
+    def test_past_its_budget_whats_left_is_a_gap(self):
+        """A link Shlink can't answer for at all mustn't take a request per second."""
+        fake = FakeShlink(
+            [short_url("abc")], visits={(None, "abc"): YEAR}, flaky={(None, "abc"): 10**6}
+        )
+
+        snapshot, _ = _export(fake, recovery_requests=10, clock=lambda: NOW)
+
+        (entry,) = snapshot["links"]
+        assert entry["visits"] == []
+        gaps = entry["visits_gaps"]
+        assert len(gaps) == 11  # the ten failed ranges' halves, newest first, until the budget
+        assert gaps[0]["start"] == "1970-01-01T00:00:00+00:00"
+        assert gaps[-1]["end"] == "2026-09-28T10:15:00+00:00"
+        assert len(_visit_requests(fake, "abc")) == 3 + 10 * 3
+
+    def test_a_count_no_date_reaches_is_a_gap_with_no_ends(self):
+        """The whole list failed, every range answered, and Shlink counts more visits."""
+        fake = FakeShlink(
+            [short_url("abc", visitsSummary={"total": len(YEAR) + 1})],
+            visits={(None, "abc"): YEAR},
+            flaky={(None, "abc"): 3},
+        )
+
+        snapshot, _ = _export(fake)
+
+        (entry,) = snapshot["links"]
+        assert entry["visits_gaps"] == [{"start": None, "end": None}]
+        assert _by_date(entry["visits"]) == _by_date(YEAR)
+
+    def test_the_list_of_short_urls_failing_still_stops_it(self):
+        fake = FakeShlink([short_url("abc")], listing_fails=True)
+
+        with pytest.raises(httpx.HTTPStatusError):
+            _export(fake)
+
+        assert len(fake.requests) == 1 + 3  # health, then the list asked three times
+
+    def test_a_4xx_on_visits_still_stops_it(self):
+        """Not Shlink failing on a link: a refused key, a link gone."""
+        fake = FakeShlink([short_url("gone")])
+
+        def handle(request: httpx.Request) -> httpx.Response:
+            if request.url.path.endswith("/visits"):
+                return httpx.Response(404, json={"status": 404, "title": "Short URL not found"})
+            return fake.handle(request)
+
+        client = shlink_client(URL, KEY, transport=httpx.MockTransport(handle))
+        with pytest.raises(httpx.HTTPStatusError):
+            export_snapshot(client, visits=True, now=NOW, sleep=lambda _: None)
+
+    def test_without_visits_no_visits_fields(self):
+        snapshot = export_snapshot(_client(FakeShlink([short_url("abc")])), now=NOW)
+
+        assert "visits_failed" not in snapshot
+
+
 class TestFile:
     def test_named_with_the_host_and_the_time(self, tmp_path):
         path = write_snapshot({"shlink": {"url": URL}}, tmp_path, now=NOW)
@@ -204,6 +471,37 @@ class TestCommand:
         output = capsys.readouterr()
         assert str(path) in output.out
         assert KEY not in path.read_text() + output.out + output.err
+
+    def test_a_link_whose_visits_fail_is_summed_up(self, fake, monkeypatch, tmp_path, capsys):
+        fake.links = [short_url("abc"), short_url("quiet"), short_url("23q4griddo")]
+        fake.visits = {(None, "abc"): YEAR[:2], (None, "23q4griddo"): [visit(BAD_SECOND), *YEAR]}
+        fake.broken = {(None, "23q4griddo"): {0}}
+        monkeypatch.setenv("SHLINK_API_KEY", KEY)
+        monkeypatch.setattr("time.sleep", lambda seconds: None)
+
+        assert cli.main(["export", "--visits", "--out-dir", str(tmp_path)]) == 0
+
+        (path,) = tmp_path.glob("*.snapshot.json")
+        assert json.loads(path.read_text())["visits_failed"] == ["23q4griddo"]
+        output = capsys.readouterr()
+        assert output.out.splitlines()[1:] == [
+            "3 links exported.",
+            "Visits exported whole for 2 links, 1 of them with visits (2 visits).",
+            "Visits failed for 1 link: 23q4griddo",
+            "  23q4griddo: Shlink answered 500 (An unknown error occurred.). Recovered 24 visits "
+            f"by date, lost 1 range: {BAD_SECOND}/{BAD_SECOND}",
+        ]
+        assert "23q4griddo: Shlink answered 500 to its visits" in output.err  # as it goes
+
+    def test_the_list_failing_stops_it(self, fake, monkeypatch, tmp_path, capsys):
+        fake.listing_fails = True
+        monkeypatch.setenv("SHLINK_API_KEY", KEY)
+        monkeypatch.setattr("time.sleep", lambda seconds: None)
+
+        assert cli.main(["export", "--visits", "--out-dir", str(tmp_path)]) == 1
+
+        assert "500 to /rest/v3/short-urls." in capsys.readouterr().err
+        assert not list(tmp_path.iterdir())
 
     def test_a_refused_key_says_so_without_printing_it(self, fake, monkeypatch, tmp_path, capsys):
         monkeypatch.setenv("SHLINK_API_KEY", "wrong-" + KEY)
