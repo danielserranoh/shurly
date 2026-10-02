@@ -2117,8 +2117,13 @@ the import can be re-run.
 
 ### 8.6 Decommission
 - [ ] Shlink stopped but restorable during the rollback window; final RDS snapshot
-- [ ] Delete shlink-api and shlink-web, ALB rules 10/11, their `RULE_SYNC_MAP` entries and Shlink's RDS
-- [ ] Point `links.griddo.io` at the Shurly frontend, if 4.10 chooses it
+- [ ] Delete shlink-api and shlink-web, Express rules 1/3 with them, and Shlink's RDS. Rule 10 is already gone;
+      rule 11 stays, as `links.griddo.io`'s redirect, with its certificate and Route 53 record. `RULE_SYNC_MAP`
+      already lost Shlink's entries
+- [x] Point `links.griddo.io` at the Shurly frontend, if 4.10 chooses it → decided 2026-10-03: rule 11 redirects
+      (302) to `https://shurly.griddo.io/dashboard/`, which sends a signed-out visitor to the login and back. The
+      rule-sync Lambda first lost Shlink's mappings and skips a rule that doesn't forward: with `"3": "11"` still
+      mapped, a redirect on rule 11 would have stopped it before Shurly's `"4": "12"` on every deploy
 
 ---
 

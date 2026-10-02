@@ -26,6 +26,12 @@ implementation lifecycle and is independent of the URL version segment.
 
 ## [Unreleased]
 
+### Changed — links.griddo.io redirects to the app (8.6)
+- **`links.griddo.io`**, Shlink's web client, redirects (302) to `https://shurly.griddo.io/dashboard/`: ALB rule 11
+  is a redirect now. Shlink's web client goes with Shlink at 8.6.
+- **The `ecs-alb-rule-sync` Lambda** syncs Shurly's rule alone (`"4": "12"`), and skips a mapped rule that doesn't
+  forward. Before, a redirect on a mapped rule would have stopped it before Shurly's rule on every deploy.
+
 ### Added — retiring a domain (8.5)
 - **`python -m server.tools.domains retire HOST [--for-real]`** deletes a domain's row and its links, with their
   visits, redirect rules and tag associations (campaign links among them), in one transaction. The tags and

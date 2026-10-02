@@ -16,7 +16,7 @@ Internet
    ↓
 shared ALB (eu-south-2) — created by ECS Express for Shlink, reused for Shurly
    ↓
-   ├─ priority 11 → shlink-web      → links.griddo.io
+   ├─ priority 11 → redirect        → links.griddo.io → https://shurly.griddo.io/dashboard/ (Shlink's web client retired)
    └─ priority 12 → shurly-api      → shurly.griddo.io (the app, API, MCP), go.griddo.io (short links)
         ↓
         Fargate task (x86_64, 0.25 vCPU / 0.5 GB)
@@ -199,8 +199,7 @@ The `ecs-alb-rule-sync` Lambda (created during the Shlink deploy, see Shlink Pha
 ```python
 # In the Lambda code (deployed in griddo-main):
 RULE_SYNC_MAP = {
-    "1": "10",  # shlink-api; rule 10 deleted at the cutover, skipped
-    "3": "11",  # shlink-web  → links.griddo.io
+    # Shlink's "1": "10" and "3": "11" went at the cutover: rule 10 deleted, rule 11 a redirect
     "<N>": "12",  # shurly-api  → shurly.griddo.io, go.griddo.io   ← NEW (the priority setup_custom_domain.sh printed)
 }
 ```

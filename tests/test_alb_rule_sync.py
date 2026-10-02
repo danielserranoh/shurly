@@ -253,17 +253,38 @@ def test_log_reports_real_percentages(lam):
     ]
 
 
-def test_other_services_mappings_are_still_synced(lam):
-    """The Lambda is shared: go.griddo.io (1→10) and links.griddo.io (3→11) too."""
+def test_shlinks_mappings_are_gone(lam):
+    """Phase 8.5 — go.griddo.io went to Shurly (rule 10 deleted) and links.griddo.io became a
+    redirect: Shlink's rules 1→10 and 3→11 aren't synced any more, only Shurly's 4→12."""
     extra = [
         _rule("1", {"arn:tg/api-new": 100}),
         _rule("10", {"arn:tg/api-old": 100}),
-        _rule("3", {"arn:tg/web": 100}),
-        _rule("11", {"arn:tg/web": 100}),
+        _rule("3", {"arn:tg/web-new": 100}),
+        _rule("11", {"arn:tg/web-old": 100}),
     ]
-    lam.elbv2 = FakeElb([{NEW_TG: 100}], {NEW_TG: 100}, extra_rules=extra)
+    lam.elbv2 = FakeElb([{NEW_TG: 100}], {OLD_TG: 100}, extra_rules=extra)
     lam.ecs = FakeEcs(in_progress_polls=0)
 
     lam.lambda_handler({}, FakeContext())
 
-    assert lam.elbv2.modified == [("arn:rule/10", {"arn:tg/api-new": 100})]
+    assert lam.RULE_SYNC_MAP == {"4": "12"}
+    assert lam.elbv2.modified == [("arn:rule/12", {NEW_TG: 100})]
+
+
+def test_a_rule_that_doesnt_forward_is_left_alone(lam, monkeypatch):
+    """A mapped rule whose action is a redirect (links.griddo.io's rule 11 since Phase 8.5) has
+    no target groups to sync: it's skipped, and the mappings after it are still synced."""
+    redirect = {
+        "Priority": "11",
+        "RuleArn": "arn:rule/11",
+        "Actions": [{"Type": "redirect", "RedirectConfig": {"Host": "shurly.griddo.io"}}],
+    }
+    monkeypatch.setattr(lam, "RULE_SYNC_MAP", {"3": "11", "4": "12"})
+    lam.elbv2 = FakeElb(
+        [{NEW_TG: 100}], {OLD_TG: 100}, extra_rules=[_rule("3", {"arn:tg/web": 100}), redirect]
+    )
+    lam.ecs = FakeEcs(in_progress_polls=0)
+
+    lam.lambda_handler({}, FakeContext())
+
+    assert lam.elbv2.modified == [("arn:rule/12", {NEW_TG: 100})]
