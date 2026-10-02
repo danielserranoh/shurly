@@ -9,10 +9,12 @@ stops it. With `--visits` (decision A, 2026-09-28), Shlink's visits come too.
 
 import csv
 import json
+import warnings
 from datetime import datetime
 
 import httpx
 import pytest
+from sqlalchemy import exc as sa_exc
 
 from server.core.auth import hash_password
 from server.core.config import settings
@@ -162,6 +164,39 @@ class TestALink:
         assert (url.valid_since.year, url.valid_until.year) == (2025, 2027)
         assert sorted(tag.name for tag in url.tags) == ["email", "q4 promo"]
         assert report.tags_created == ["q4 promo"]
+
+
+class TestSharedTags:
+    def test_links_sharing_new_tags_import_without_a_sawarning(self, db_session, owner):
+        """
+        Phase 8.5 — a link used to be added to the session only after its tags were attached, so
+        the next tag's flush (or an autoflushing query) saw a Tag holding a transient URL:
+        "SAWarning: Object of type <URL> not in session, add operation along 'Tag.urls' won't
+        proceed". The associations were stored all the same; the warning is gone now.
+        """
+        links = [
+            {"short_url": short_url("one", "https://example.com/1", tags=["Q4", "email", "ads"])},
+            {"short_url": short_url("two", "https://example.com/2", tags=["email", "Q4"])},
+            {"short_url": short_url("three", "https://example.com/3", tags=["ads", "new-one"])},
+            {"short_url": short_url("four", "https://example.com/4", tags=["Q4", "new-one"])},
+            {"short_url": short_url("five", "https://example.com/5")},
+        ]
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", sa_exc.SAWarning)
+            report = run(db_session, owner, *links, decisions={(HOST, "four"): "archive"})
+            db_session.commit()
+
+        db_session.expire_all()
+        tags = {url.short_code: sorted(t.name for t in url.tags) for url in db_session.query(URL)}
+        assert tags == {
+            "one": ["ads", "email", "q4"],
+            "two": ["email", "q4"],
+            "three": ["ads", "new-one"],
+            "four": ["legacy", "new-one", "q4"],
+            "five": [],
+        }
+        assert sorted(report.tags_created) == ["ads", "email", "legacy", "new-one", "q4"]
 
 
 class TestRules:

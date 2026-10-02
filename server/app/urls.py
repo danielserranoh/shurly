@@ -1230,12 +1230,25 @@ def favicon() -> Response:
     )
 
 
-def _with_query(destination: str, params: dict) -> str:
-    """`destination`, with `params` appended to its query."""
+def _with_query(destination: str, params: list[tuple[str, str]]) -> str:
+    """`destination`, with `params` appended to its own query, in their order."""
     if not params:
         return destination
     separator = "&" if "?" in destination else "?"
     return f"{destination}{separator}{urlencode(params)}"
+
+
+def _forwardable_query(request: Request) -> list[tuple[str, str]]:
+    """
+    Phase 8.5 — the query a redirect passes on: the address's own parameters, in their order and
+    with their repeats, less DISABLE_TRACK_PARAM (with any value or none). That one tells us not
+    to log the visit; it means nothing to the destination, and Shlink doesn't forward it either.
+    """
+    return [
+        (key, value)
+        for key, value in request.query_params.multi_items()
+        if key != settings.disable_track_param
+    ]
 
 
 @redirect_router.get(
@@ -1337,8 +1350,13 @@ def redirect_short_url(short_code: str, request: Request, db: Session = Depends(
     # For campaign URLs, ALWAYS append user data (personalization)
     personal = url.user_data if url.url_type == URLType.CAMPAIGN and url.user_data else {}
     # For regular query params, respect forward_parameters flag (attribution tracking)
-    forwarded = dict(request.query_params) if url.forward_parameters else {}
-    redirect_url = _with_query(destination, {**personal, **forwarded})
+    forwarded = _forwardable_query(request) if url.forward_parameters else []
+    # A forwarded parameter wins a clash with the recipient's row, as it always has.
+    clashing = {key for key, _ in forwarded}
+    redirect_url = _with_query(
+        destination,
+        [(key, value) for key, value in personal.items() if key not in clashing] + forwarded,
+    )
 
     # Check User-Agent for social media crawlers
     user_agent = request.headers.get("user-agent", "")
