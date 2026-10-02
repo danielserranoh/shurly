@@ -6,7 +6,7 @@ visit, not an email open. This sets it to each link's latest click, or NULL with
 
 Data only, in two statements whatever the number of links: the previous release keeps working
 during the rollout, and may set a bot's time again until it ends. Not here: dropping
-users.api_key, which the model no longer maps. That's 0013's.
+users.api_key, which the model no longer maps. That's 0014's.
 
 Revision ID: 0010
 Revises: 0009

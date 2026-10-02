@@ -3,7 +3,7 @@
 Adds organizations.logo (a WebP within 512×512), its content type and when it was
 uploaded. New nullable columns only: the previous release never selects them.
 
-Not here: dropping users.api_key, which the model no longer maps. That's 0013's.
+Not here: dropping users.api_key, which the model no longer maps. That's 0014's.
 
 Revision ID: 0012
 Revises: 0011

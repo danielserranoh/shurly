@@ -5,7 +5,8 @@ app on a real PostgreSQL, with two things swapped so a run stays on this machine
 - Google is the pytest suite's fake (tests/fake_google.py). Its sign-in page is
   GET /__e2e/google/authorize, which sends the browser straight back to the real
   callback with a code; the fake token endpoint redeems it for a real RS256 ID
-  token for OWNER, the organization's first owner.
+  token for OWNER, the organization's first owner, or for MEMBER when the browser
+  carries the cookie e2e_as=member (identities.py).
 - Link previews: nothing is fetched, every link has an empty one.
 
 Playwright starts it (frontend/playwright.config.ts); by hand:
@@ -31,12 +32,12 @@ from pydantic import SecretStr  # noqa: E402
 
 import server.utils.google_oidc as google_oidc  # noqa: E402
 from server.core.config import settings  # noqa: E402
+from tests.e2e.identities import COOKIE, OWNER, identity  # noqa: E402
 from tests.fake_google import CLIENT_ID, CLIENT_SECRET, FakeGoogle  # noqa: E402
 
 # As frontend/e2e/env.ts has them.
 API_URL = os.environ.get("E2E_API_URL", "http://127.0.0.1:18000")
 WEB_URL = os.environ.get("E2E_WEB_URL", "http://127.0.0.1:14321")
-OWNER = "e2e.owner@griddo.io"
 
 # Before main builds the app, which reads the CORS origins then.
 settings.frontend_url = WEB_URL
@@ -55,7 +56,7 @@ from server.app.google_auth import get_google_http  # noqa: E402
 from server.utils.opengraph import OpenGraphMetadata  # noqa: E402
 
 GOOGLE = FakeGoogle()
-GOOGLE.claims.update(email=OWNER, sub="e2e-owner", hd="griddo.io")
+GOOGLE.claims.update(identity(None), hd="griddo.io")
 _google_http = google_oidc.GoogleHttp(GOOGLE.http())
 app.dependency_overrides[get_google_http] = lambda: _google_http
 
@@ -69,12 +70,18 @@ urls.fetch_opengraph_metadata = _no_preview
 
 
 async def authorize(request: Request) -> RedirectResponse:
-    """Google's sign-in page, signed in already: back to the callback, as Google would."""
+    """Google's sign-in page, signed in already: back to the callback, as Google would.
+    The person is the owner, or whoever the e2e_as cookie names. The code is redeemed
+    right after, by this sign-in's callback (the specs run one at a time)."""
     query = request.query_params
     if query.get("redirect_uri") != settings.google_redirect_uri or not query.get("state"):
         raise HTTPException(status_code=400, detail="Not the registered redirect_uri, or no state")
+    try:
+        person = identity(request.cookies.get(COOKIE))
+    except KeyError:
+        raise HTTPException(status_code=400, detail=f"No such e2e identity: {COOKIE}") from None
     now = int(time.time())
-    GOOGLE.claims.update(iat=now, exp=now + 3600)
+    GOOGLE.claims.update(person, iat=now, exp=now + 3600)
     answer = urlencode({"state": query["state"], "code": "fake-google-code"})
     return RedirectResponse(f"{settings.google_redirect_uri}?{answer}", status_code=302)
 

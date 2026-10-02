@@ -151,7 +151,7 @@ const uiScale = [
   { px: 15, cls: 'text-[15px] leading-7', sample: 'Every short link you’ve made — and who’s clicking.', use: 'Page descriptions, marketing body' },
   { px: 14, cls: 'text-sm', sample: 'Forward query parameters', use: 'Default UI: buttons, inputs, menus, tables' },
   { px: 13, cls: 'text-[13px]', sample: 'Created Sep 12 · Updated 2h ago', use: 'Meta rows, small buttons' },
-  { px: 12, cls: 'text-xs', sample: '3–20 letters, numbers, hyphens or underscores.', use: 'Hints, badges, errors' },
+  { px: 12, cls: 'text-xs', sample: '3–64 letters, numbers, hyphens or underscores.', use: 'Hints, badges, errors' },
 ];
 const weights = [
   { w: '400', cls: 'font-normal', name: 'Regular', use: 'Body text' },
@@ -1275,7 +1275,7 @@ const colorCount = allColors.length;
                 <span class="addon shortlink">{SHORT}/</span>
                 <input id="sg-backhalf" value="acme-proposal" spellcheck="false" autocomplete="off" aria-describedby="sg-backhalf-hint" />
               </div>
-              <p id="sg-backhalf-hint" class="hint">3–20 letters, numbers, hyphens or underscores.</p>
+              <p id="sg-backhalf-hint" class="hint">3–64 letters, numbers, hyphens or underscores.</p>
             </div>
             <div class="grid gap-1.5">
               <label for="sg-backhalf-taken" class="label">Back-half</label>

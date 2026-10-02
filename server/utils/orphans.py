@@ -15,11 +15,11 @@ from sqlalchemy.orm import Session, joinedload
 from server.core.config import settings
 from server.core.models import URL, OrphanVisit, OrphanVisitType
 from server.utils.access import Viewer
-from server.utils.url import link_hostname, link_short_url
+from server.utils.url import MAX_SHORT_CODE_LENGTH, link_hostname, link_short_url
 
 # What a code is made of (server/utils/url.py: generated codes and custom slugs), and its length.
 CODE_CHARACTERS = frozenset(string.ascii_letters + string.digits + "_-")
-LONGEST_CODE = URL.__table__.c.short_code.type.length
+LONGEST_CODE = MAX_SHORT_CODE_LENGTH
 SUGGESTIONS = 3  # at most, per path
 
 

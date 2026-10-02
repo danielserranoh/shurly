@@ -2,6 +2,7 @@
 Phase 6.1 — the end-to-end API (tests/e2e/app.py) signs anyone in through a fake
 Google, so it stays out of what's deployed: it starts only with E2E=1 on a local
 database, nothing outside tests/ imports it, and the image never copies tests/.
+Who it signs in, the owner or a member, is a cookie only the harness reads.
 """
 
 import json
@@ -14,6 +15,7 @@ from pathlib import Path
 import pytest
 
 from tests.e2e.guard import refuse_unless_local
+from tests.e2e.identities import COOKIE, MEMBER, OWNER, identity
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -131,3 +133,28 @@ def test_nothing_outside_tests_imports_it():
         if re.search(r"^\s*(from|import)\s+tests\b", path.read_text(), re.MULTILINE)
     ]
     assert importing == []
+
+
+class TestWhoItSignsIn:
+    """The member's identity is the harness's: a cookie the fake Google page reads, and nothing else does."""
+
+    def test_the_owner_without_the_cookie(self):
+        assert identity(None) == {"email": OWNER, "sub": "e2e-owner"}
+
+    def test_a_member_with_it(self):
+        assert identity("member") == {"email": MEMBER, "sub": "e2e-member"}
+        assert MEMBER.endswith("@griddo.io")  # the Workspace domain, so they join the organization
+
+    def test_a_name_it_doesnt_know_is_refused_not_signed_in_as_the_owner(self):
+        with pytest.raises(KeyError):
+            identity("admin")
+
+    def test_only_the_harness_reads_the_cookie(self):
+        code = [
+            ROOT / "main.py",
+            *(ROOT / "server").rglob("*.py"),
+            *(ROOT / "mcp_server").rglob("*.py"),
+            *(path for path in (ROOT / "frontend" / "src").rglob("*") if path.is_file()),
+        ]
+        reading = [str(p.relative_to(ROOT)) for p in code if COOKIE in p.read_text(errors="ignore")]
+        assert reading == []

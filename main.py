@@ -12,6 +12,7 @@ from server.app import api_router
 from server.app.urls import redirect_router
 from server.core import get_db
 from server.core.config import settings
+from server.utils.app_paths import serve_on_the_app_host_only
 from server.utils.event_log import log_event
 from server.utils.network import ForwardedProtoMiddleware, client_ip_and_source, request_host
 from server.utils.nul import NulMiddleware, nul_value_error
@@ -228,6 +229,9 @@ def create_app(mcp_auth=None) -> FastAPI:
     # billion six-character combinations, and closes the trap where anyone
     # could claim the very URL people mistype when configuring a client.
     # Only the literal path is claimed: `/mcpx`, `/notmcp` etc. still resolve.
+    # Phase 8.4 — and only on the app's host: on a short domain the mount and
+    # its 308 don't match (`serve_on_the_app_host_only` below), and "mcp" is a
+    # code like any other there.
     mcp_app = _try_build_mcp_app(app, auth=mcp_auth)
     if mcp_app is not None:
         # A Starlette `Mount("/mcp")` compiles to `^/mcp(?P<path>/.*)$` — it
@@ -260,6 +264,12 @@ def create_app(mcp_auth=None) -> FastAPI:
         # at app-construction time (it's built right above), so we attach a
         # router-level startup that delegates to the MCP lifespan.
         app.state.mcp_app = mcp_app
+
+    # Phase 8.4 — what the app serves itself above (the MCP, its 308 and OAuth metadata, the
+    # docs and the OpenAPI document) is on its own host only (server/utils/app_paths.py). On a
+    # short domain those routes don't match, and `/{short_code}` below gets `/mcp`, `/docs` and
+    # `/redoc` like any code: Shlink's go.griddo.io/mcp is a link.
+    serve_on_the_app_host_only(app.router.routes)
 
     # Public unversioned routes (redirect, robots, pixel, landing). Registered
     # last so `/{short_code}` — the broadest pattern in the app — cannot shadow

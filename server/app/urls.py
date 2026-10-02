@@ -53,6 +53,7 @@ from server.utils.network import UNKNOWN_IP, visit_ip
 from server.utils.opengraph import fetch_opengraph_metadata, is_social_media_crawler
 from server.utils.redirect_rules import pick_target
 from server.utils.url import (
+    MAX_SHORT_CODE_LENGTH,
     build_short_url,  # Phase 3.11 — moved to utils; still importable from here
     generate_short_code,
     is_reserved_short_code,
@@ -302,7 +303,7 @@ async def create_custom_url(
 
     **Request Body:**
     - **url**: The original URL to shorten (must be valid http/https URL)
-    - **custom_code**: Custom short code (3-20 alphanumeric characters, hyphens, underscores)
+    - **custom_code**: Custom short code (3-64 alphanumeric characters, hyphens, underscores)
     - **title**: Optional user-friendly title (max 255 chars)
     - **forward_parameters**: Forward query params to destination (default: true)
     - **og_title**: Custom Open Graph title (optional)
@@ -324,7 +325,8 @@ async def create_custom_url(
     if not is_valid_custom_code(url_data.custom_code):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid custom code. Must be 3-20 characters (alphanumeric, hyphens, underscores only).",
+            detail=f"Invalid custom code. Must be 3-{MAX_SHORT_CODE_LENGTH} characters "
+            "(alphanumeric, hyphens, underscores only).",
         )
 
     # Phase 3.9.6 — apply SHORT_URL_MODE to user-supplied slugs.
@@ -337,8 +339,9 @@ async def create_custom_url(
 
     def is_unavailable(code: str) -> bool:
         # Reserved codes (/mcp, /docs, …) are paths the app serves itself, so a
-        # short link there could never resolve: treat them as taken.
-        if is_reserved_short_code(code):
+        # short link there could never resolve: treat them as taken. Phase 8.4 —
+        # on the app's host only: on a short domain they're codes like any other.
+        if is_reserved_short_code(code, domain.hostname):
             return True
         return (
             db.query(URL).filter(URL.domain_id == domain.id, URL.short_code == code).first()
@@ -362,7 +365,8 @@ async def create_custom_url(
                 detail="Failed to generate unique short code. Please try again.",
             )
 
-        reason = "is reserved" if is_reserved_short_code(requested_code) else "was already taken"
+        reserved = is_reserved_short_code(requested_code, domain.hostname)
+        reason = "is reserved" if reserved else "was already taken"
         warning = (
             f"The requested code '{url_data.custom_code}' {reason}. Modified to '{short_code}'."
         )

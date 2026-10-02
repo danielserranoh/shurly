@@ -177,6 +177,48 @@ class TestRows:
 
         assert [row["last_visit"] for row in rows] == ["2025-05-02T08:00:00+02:00", ""]
 
+    def test_visits_shlink_failed_on_are_flagged(self):
+        """The export's `visits_error` and `visits_gaps`: what the import will lack."""
+        error = {"status": 500, "detail": "An unknown error occurred."}
+        second = "2025-03-04T10:00:07+00:00"
+        some = [visit("2025-03-01T10:00:00+00:00")]
+        rows = review_rows(
+            snapshot(
+                {"short_url": short_url("unexported")},
+                {"short_url": short_url("whole"), "visits": some},
+                {
+                    "short_url": short_url("recovered"),
+                    "visits": some,
+                    "visits_error": error,
+                    "visits_gaps": [],
+                },
+                {
+                    "short_url": short_url("partial"),
+                    "visits": some,
+                    "visits_error": error,
+                    "visits_gaps": [
+                        {"start": second, "end": second},
+                        {"start": None, "end": None},
+                    ],
+                },
+                {
+                    "short_url": short_url("failed"),
+                    "visits": [],
+                    "visits_error": error,
+                    "visits_gaps": [{"start": "1970-01-01T00:00:00+00:00", "end": second}],
+                },
+            ),
+            now=NOW,
+        )
+
+        assert [(row["visits_export"], row["visits_lost"]) for row in rows] == [
+            ("", ""),
+            ("complete", ""),
+            ("recovered", ""),
+            ("partial", f"{second}/{second}; …/…"),
+            ("failed", f"1970-01-01T00:00:00+00:00/{second}"),
+        ]
+
     def test_rules_shurly_cannot_follow_are_flagged(self):
         rules = {
             "defaultLongUrl": "https://example.com/",

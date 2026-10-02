@@ -26,6 +26,90 @@ implementation lifecycle and is independent of the URL version segment.
 
 ## [Unreleased]
 
+### Changed — the MCP and the docs on the app's host only (8.4)
+- **The app's own paths answer on its host only:** the MCP (`/mcp`, its 308, `/mcp/…`), its OAuth metadata
+  (`/.well-known/oauth-*`), `/docs`, `/redoc` and `/openapi.json`, on the host of `MCP_PUBLIC_URL` (else of
+  `FRONTEND_URL`), `shurly.griddo.io` in production. On a short domain, `/mcp`, `/docs` and `/redoc` are codes like
+  any other: a redirect and a visit, or an orphan visit and a 404. The `Host` header decides, as the ALB and
+  CloudFront pass it; `X-Forwarded-Host` isn't read.
+- **A code is reserved only on the app host's domain:** a custom `mcp` on `go.griddo.io` is a link, through the API
+  and the MCP, and the Shlink import keeps `go.griddo.io/mcp` (a video, 41 visits). On the app's own domain it's
+  still refused.
+- **Without `MCP_PUBLIC_URL` or `FRONTEND_URL`** (local development, tests), every host is the app's, as before.
+- The README said custom codes were 3-20 characters: 3-64 since `0013`.
+
+### Changed — short codes up to 64 characters (8.4)
+- **A short code can be 64 characters long, up from 20.** Shlink's links on `go.griddo.io` run to 44
+  (personalized outreach links, out there already), and the import refused the 57 longer than 20. Custom codes
+  take up to 64 in the API, the MCP's `create_custom_url` and the create page; generated codes stay 6 characters.
+  A code over 64 is still a 400, which now says 64.
+- **Migration `0013`** widens `urls.short_code` and `visits.short_code` to VARCHAR(64). PostgreSQL only changes its
+  catalog, and the previous release keeps working during the rollout. Its downgrade fails while a code longer
+  than 20 is kept. So `users.api_key`'s drop takes `0014`.
+- **"Typos & broken links"** looks for paths up to 64 characters, so a typo in a long code is suggested its link
+  too.
+
+### Changed — a locked control's tooltip names owners too
+- **"Only its creator, or an admin or owner, can change it"**, in the API's words, where it said "Only its creator
+  or an admin can change it". The tooltip and what a click on the control says now share one phrase
+  (`src/utils/viewer.ts`), and `e2e/member.spec.ts` pins both.
+- The member spec hovers a locked control before its forced click, so a menu that's still opening can't take it.
+
+### Added — end-to-end tests as a member
+- **The e2e harness signs in a member too:** a second account on the Workspace domain (`e2e.member@griddo.io`),
+  which joins as a member through the real sign-in. The fake Google page picks who by a cookie only the harness
+  reads (`tests/e2e/identities.py`, pinned by `tests/test_e2e_guard.py`). `e2e/member.setup.ts` saves the session;
+  a spec becomes the member with `test.use({ storageState: MEMBER_STATE })`.
+- **The organization's logo, as a member:** they see it in Settings and in the account menu, with nothing to change
+  it with, and a dropped or picked file sends nothing. axe on a desktop and a phone.
+- **The rest of what a member sees** (`e2e/member.spec.ts`):
+  - the owner's links and campaigns are locked for them, saying why, and a click sends nothing;
+  - their own link they edit and save;
+  - tagging in bulk skips the owner's link and says so;
+  - the members card has no role menus;
+  - the welcome greets them.
+
+  axe on each page, on a desktop and on a phone. A `memberApi` fixture makes what's theirs.
+- **The Logo section says who can change it once:** its description no longer repeats the hint's "Owners and admins
+  can change it."
+
+### Changed — the frontend's short-link host is a repository variable
+- **`PUBLIC_SHORT_DOMAIN`**, the host the app shows before a new link's code, is the repository variable of the
+  same name in the frontend deploy, and `s.griddo.io` while it's unset, as before. At the cutover it moves to
+  `go.griddo.io` with `gh variable set` and a run of the deploy by hand, with no release (DEPLOYMENT.md § The
+  cutover, which also notes there's no `BASE_URL` step: the live service sets none).
+
+### Added — the default domain's switch, for the cutover (8.3)
+- **`python -m server.tools.domains promote go.griddo.io`** makes a domain the default: the one new links go on.
+  It makes the domain's row if it's missing, marks it the default and unmarks the one that was (`s.griddo.io`),
+  in one transaction. A dry run unless `--for-real`, and a second run does nothing. It prints the domains, their
+  links and what changes, and says so while `DEFAULT_DOMAIN` still names another domain.
+- **In production it runs as a one-off ECS task,** like the import and the backfill:
+  `scripts/run_promote_domain.sh go.griddo.io [--for-real]`, which needs the domain typed back. DEPLOYMENT.md
+  § The cutover has the runbook for 8.5's window, with `DEFAULT_DOMAIN` and the frontend's `PUBLIC_SHORT_DOMAIN`.
+- **What moves with the default, at once:** the domain of new links (the API's, a campaign's, the MCP's), the
+  link a code names when the API isn't told the domain, and where a request on a host Shurly doesn't know looks.
+- **What doesn't:** a link keeps its domain, so `s.griddo.io`'s keep resolving there. A restart with the old
+  `DEFAULT_DOMAIN` keeps the new default, since the row marked default wins at startup. `BASE_URL` still moves
+  only `DEFAULT_DOMAIN`'s links.
+
+### Fixed — the Shlink export stopped at the first link whose visits Shlink failed on (8.4)
+- **`export --visits` aborted on production's Shlink** with `Shlink answered 500 to
+  /rest/v3/short-urls/23q4griddo/visits.`: 12 of the ~91 links with visits answer 500 to their visits, whatever the
+  parameters. Shlink's log names the cause: some `visit_locations` rows have a NULL `region_name`, and Shlink 4
+  can't serialize a visit with one (`VisitLocation::$regionName must not be accessed before initialization`), so
+  any page holding one fails whole. `server/tools/shlink/README.md` has the count and the fix in Shlink's data.
+- **The export now carries on:** a 5xx is asked again twice, after 0.5 s and 1 s. If it persists, the link gets
+  `visits_error` (status and Shlink's detail), its code goes in the snapshot's `visits_failed`, and its visits are
+  recovered by date range: a range that fails is cut in two down to one second, and that second is read one visit
+  per page, so only the visit Shlink can't serialize is lost. The ranges lost are the link's `visits_gaps`
+  (`{start, end}`, both ends included). A failing list of short URLs, or a 4xx, still stops it.
+- **It says what it brought:** the links exported, the links whose visits came whole and how many of those have
+  visits, and the codes whose visits failed, with what was recovered and lost.
+- **The review and the import carry the gaps on:** the sheet's `visits_export` (`complete`, `recovered`,
+  `partial`, `failed`) and `visits_lost` columns; the import brings the recovered visits, never more, and its report
+  names each lost range.
+
 ### Fixed — MCP tools returned dates without a time zone
 - **MCP tools returned dates without a time zone, which claude.ai rejects:** `create_short_url` made the link, and
   then claude.ai threw the whole answer away ("`created_at` does not match format date-time"), so the assistant
@@ -61,7 +145,7 @@ implementation lifecycle and is independent of the URL version segment.
   streams in, 4096 pixels a side, a decompression bomb refused, stored as WebP without metadata. But a logo isn't a
   face: it keeps its shape, fit within 512×512 and never enlarged, and its transparency.
 - **Migration `0012`** adds `organizations.logo`, its content type and when it was uploaded: nullable columns
-  only. So `users.api_key`'s drop takes `0013`.
+  only. So `users.api_key`'s drop takes `0014` (`0013` is longer short codes, 8.4).
 - Each upload and removal writes `org.logo_changed` (who, and which) to the event log.
 
 ### Security — only `main` can deploy to production
@@ -215,8 +299,8 @@ implementation lifecycle and is independent of the URL version segment.
   address. It fills only what's empty, and a city only where the country agrees.
   - In production, `scripts/run_backfill_places.sh` runs it as a one-off ECS task, a dry run first.
   - It and the Shlink import's runner share `scripts/one_off_task.sh`.
-- **Migration numbers:** `0011` is the city, and `0012` the organization's logo (3.14.4), so `users.api_key`'s drop
-  takes `0013`.
+- **Migration numbers:** `0011` is the city, `0012` the organization's logo (3.14.4) and `0013` longer short codes
+  (8.4), so `users.api_key`'s drop takes `0014`.
 
 ### Added — GeoLite2 City in the image, kept within MaxMind's 30 days (8.4)
 - **The image carries MaxMind's GeoLite2 City**, the data for a visit's city, which comes next. A visit's country
@@ -592,7 +676,8 @@ implementation lifecycle and is independent of the URL version segment.
   `?nostat` hit. The Shlink import counted Shlink's potential bots the same way; it doesn't anymore.
 - **Migration `0010` repairs what's stored:** each link's latest click, or nothing. Data only, in two
   statements. During the rollout, the previous release can still set a bot's time. So `users.api_key`'s drop
-  takes `0013` (`0011` is a visit's city, 8.4; `0012` the organization's logo, 3.14.4).
+  takes `0014` (`0011` is a visit's city, 8.4; `0012` the organization's logo, 3.14.4; `0013` longer short
+  codes, 8.4).
 - **Unique visitors don't count an unknown address.** Every visit imported from Shlink has ip "unknown" (it
   exposes none), and so does a visit whose address Shurly couldn't read. They made one extra "visitor" in the
   overview, a campaign's summary, top performers and users, and the MCP's link summary. So unique-visitor counts
@@ -905,7 +990,7 @@ implementation lifecycle and is independent of the URL version segment.
   running this one, mid-rollout: signing in, every authenticated call, the MCP.
 - This release doesn't map it. A PostgreSQL test drops the column by hand and runs this release against the result:
   signing in, generating an API key, `/me`, an MCP tool call with the key, revoking.
-- The release after drops it, in migration `0013` (0009 is the avatar, 3.12; 0010 repairs `last_click_at`; 0011 is a visit's city, 8.4; 0012 is the organization's logo, 3.14.4). Until then the migration drift test ignores exactly that column
+- The release after drops it, in migration `0014` (0009 is the avatar, 3.12; 0010 repairs `last_click_at`; 0011 is a visit's city, 8.4; 0012 is the organization's logo, 3.14.4; 0013 is longer short codes, 8.4). Until then the migration drift test ignores exactly that column
   and its index, and a guard fails once they're gone.
 
 ### Security — the client IP behind CloudFront (Phase 6.3)

@@ -26,15 +26,15 @@ Order agreed in the 2026-09-27 review; confirm each item before starting it.
    both. The code of both is done (3.13's backend and frontend, 5.8), and in production since release #81
    (2026-09-28) on `shurly.griddo.io`, which the deploy's smoke test checks. The MCP's Google sign-in is live.
    The frontend is hosted since 2026-09-29, and a person completed the web sign-in there that day (3.13.6).
-   Left: the MCP's end-to-end check, from Claude Code and a claude.ai connector (5.8).
+   The MCP works end to end from claude.ai (2026-09-30). Left: Claude Code's own sign-in to the MCP (5.8).
 5. ✅ **MCP install guide**, in the app and in the user manual (5.9): `/manual/install-mcp/` and Settings → API &
    MCP. Its address comes from the build: `https://shurly.griddo.io/mcp/` in production's.
 6. **Internal dogfood** with the frontend and the MCP (5.6).
 7. **Replace Shlink on `go.griddo.io`** (Phase 8): after the dogfood and error alerting (6.4). Done on `dev`: a
    link is its code and its domain (8.3); exporting, reviewing and importing Shlink's links and visits, and a
-   visit's country and city (8.4). Left: running the import in production (8.4: the one-off task is ready; its
-   bucket and IAM are made by hand), filling older visits' cities there once GeoLite2 City serves (8.4), the
-   `go.griddo.io` domain row and switching the default to it (8.3), error alerting (6.4), and the cutover (8.5).
+   visit's country and city (8.4), and the default domain's switch (8.3: a one-off task, run in 8.5's window).
+   Left: running the import in production (8.4: the one-off task is ready; its bucket and IAM are made by hand),
+   error alerting (6.4), and the cutover (8.5).
 
 Also landed on 2026-09-28, outside this list: the account profile (3.12: name, country, time zone and a photo;
 people by name in Settings → Organization and "Created by"), analytics days in the viewer's time zone (3.12.8),
@@ -958,7 +958,7 @@ copied (`server/utils/images.py`, `server/utils/stored_image.py`; `frontend/src/
       404 (`editable_organization`, `server/utils/organization.py`). A member's upload is refused before it's
       read. Each change writes `org.logo_changed` to the event log
 - [x] Storage: migration `0012`, additive: `organizations.logo` (deferred), `logo_content_type`, `logo_updated_at`,
-      all nullable. So `users.api_key`'s drop moves to `0013`
+      all nullable. So `users.api_key`'s drop moves to `0013` (then `0014`, after 8.4's longer short codes)
 - [x] Processing: JPEG, PNG or WebP by their magic bytes, 2 MB at most (refused as it streams in), 4096 px a side,
       Pillow's pixel limit (a decompression bomb is a 413), metadata stripped, WebP. Unlike a face, a logo keeps its
       shape (fit within 512×512, never cropped, never enlarged) and its transparency (RGBA). No SVG
@@ -969,7 +969,8 @@ copied (`server/utils/images.py`, `server/utils/stored_image.py`; `frontend/src/
       the members card's header shows it. The account menu shows the organization, its logo or else the name's
       initial (`components/ui/OrgMark.astro`)
 - [x] Tests: `tests/test_phase3144_organization_logo.py`, `frontend/tests/image-file.test.mjs`,
-      `frontend/e2e/organization-logo.spec.ts` (upload and display, axe on a desktop and a phone)
+      `frontend/e2e/organization-logo.spec.ts` (upload and display as the owner, seen as a member; axe on a desktop
+      and a phone)
 
 ### 3.14.5 Verification
 - [x] Tests (TDD): visibility matrix (A sees B's organization links, not B's personal ones), organization by
@@ -978,6 +979,14 @@ copied (`server/utils/images.py`, `server/utils/stored_image.py`; `frontend/src/
       follow the same scope (`tests/test_phase3142_organization_roles.py`,
       `tests/test_phase3143_organization_links.py`)
 - [x] Migrations run against PostgreSQL (docker-compose), not only the in-memory SQLite of the test suite → PostgreSQL 17 service in CI (`--require-postgres`)
+- [x] What a member sees, in the browser, before the dogfood's members arrive (5.6.1). The end-to-end harness signs
+      in a second account, which joins as a member (`e2e/member.setup.ts`; the fake Google page picks who by a
+      cookie only the harness reads, `tests/e2e/identities.py`)
+  - [x] The logo: they see it in Settings and in the account menu, with nothing to change it with, and a dropped or
+        picked file sends nothing (`e2e/organization-logo.spec.ts`). The section says who can change it once
+  - [x] The owner's links and campaigns locked for them, saying why, and a click sends nothing; their own they edit
+        and save; bulk tagging skips the owner's and says so; the members card has no role menus; the welcome greets
+        them. axe on each page, desktop and phone (`e2e/member.spec.ts`)
 
 ---
 
@@ -1516,7 +1525,9 @@ for this.
 - [x] Production build values: `PUBLIC_API_URL=https://shurly.griddo.io` and `PUBLIC_SHORT_DOMAIN=s.griddo.io`
       (`go.griddo.io` from Phase 8). Without `PUBLIC_SHORT_DOMAIN` the app shows short links on the API's host
       (`shurly.griddo.io/abc`). The MCP address in the manual and Settings then derives as
-      `https://shurly.griddo.io/mcp/` (`PUBLIC_MCP_URL` only to override it)
+      `https://shurly.griddo.io/mcp/` (`PUBLIC_MCP_URL` only to override it). Since 2026-10-01
+      `PUBLIC_SHORT_DOMAIN` is the repository variable, `s.griddo.io` while it's unset: the cutover sets it
+      without a release
 - [x] `CORS_ORIGINS` in the task → `'[]'` (set 2026-09-29, with `FRONTEND_URL=https://shurly.griddo.io`) once the frontend is hosted, as it shares the API's host (DEPLOYMENT.md
       § CORS). `deploy_ecs.sh` and `.env.production.example` default to it; production keeps
       `["http://localhost:4232"]` until then (6.3)
@@ -1700,9 +1711,10 @@ added there; Claude Code gets by with `--header`.
       (no `form-action`, on purpose); `tests/test_phase58_mcp_pages.py` pins them through a fastmcp upgrade
   - [x] The renderers, the headers and the tests
   - [x] The templates in the brand: `server/templates/mcp_consent.html` and `mcp_error.html`
-- [ ] Check it end to end: Claude Code (`claude mcp add --transport http …`, sign-in in the browser) and a
-      claude.ai custom connector → in production (2026-09-28) the metadata documents and the 401 with
-      `resource_metadata` are verified; nobody has completed a sign-in from claude.ai or Claude Code yet
+- [x] Check it end to end: Claude Code (`claude mcp add --transport http …`, sign-in in the browser) and a
+      claude.ai custom connector → done 2026-09-30 from claude.ai: the branded consent page (#167), Google
+      sign-in, and `create_short_url` returning its short link after release #195 (the dates fix, #194).
+      Claude Code's own sign-in is still to be tried
   - [x] Found from claude.ai (2026-09-30): every tool answer with a date was rejected, "does not match format
         date-time" (the API wrote naive UTC, without an offset), so `create_short_url` made the link and the
         assistant never got its code → every datetime the API returns is UTC with `Z`, or the analytics' local
@@ -1836,10 +1848,11 @@ live in `mcp_server/README.md`, written for developers. There is no user manual 
         so dropping it while a task of that release serves fails every user query mid-rollout. A test drops it by
         hand and runs this release against it: signing in, an API key, `/me`, the MCP, revoking
         (`tests/test_phase63_api_keys.py`)
-  - [ ] Migration `0013` drops `users.api_key` and `ix_users_api_key`, and the drift test's `_PENDING_DROP` goes:
+  - [ ] Migration `0014` drops `users.api_key` and `ix_users_api_key`, and the drift test's `_PENDING_DROP` goes:
         **only after the release that stopped mapping it is in production**, since until then a running task still
-        names the column. It takes `0013`: `0010` (the `last_click_at` repair), `0011` (a visit's city, 8.4) and
-        `0012` (the organization's logo, 3.14.4) took the numbers it had been given (2026-09-29)
+        names the column. It takes `0014`: `0010` (the `last_click_at` repair), `0011` (a visit's city, 8.4),
+        `0012` (the organization's logo, 3.14.4) and `0013` (longer short codes, 8.4) took the numbers it had been
+        given (2026-09-29, 2026-10-01)
   - [x] The MCP can't generate or revoke a key: talked into it by untrusted text, an assistant would get
         the new key in its context. Nor `login` or `change_password`: no password or JWT passes through an
         assistant (`EXCLUDED_ROUTE_MAPS`, pinned by `tests/test_phase52_mcp_tools.py`)
@@ -1924,8 +1937,10 @@ with one ALB change, and rolling back restores it. Shurly resolves links by (Hos
 - [x] Shared or personal links 🔎 R7: **the organization's by default, personal only on purpose** (decided
       2026-09-27) → 3.14
 - [x] Owner of the migrated links: the Griddo organization (3.14)
-- [ ] Check `go.griddo.io`'s current not-found redirects in Shlink before the cutover: invalid short URL, base URL,
+- [x] Check `go.griddo.io`'s current not-found redirects in Shlink before the cutover: invalid short URL, base URL,
       regular 404. Set `INVALID_SHORT_URL_REDIRECT` to match the first (3.10.6); Shurly has no setting for the others
+      → it has none of the three (checked 2026-10-01 on the live Shlink service), so Shurly's
+      `INVALID_SHORT_URL_REDIRECT` stays empty
 - [x] Visit history: import it as `Visitor` rows (no schema change, but Shlink exposes no IPs, so unique-visitor
       counts won't cover it) or archive Shlink's export and start counting at the cutover → **decided
       2026-09-28: imported**, with the import's `--visits`: ip "unknown" (which tells imported visits apart), the
@@ -1936,26 +1951,34 @@ with one ALB change, and rolling back restores it. Shurly resolves links by (Hos
 Shlink defaults to `SHORT_URL_MODE=strict`: case-sensitive lookups and mixed-case generated codes. Shurly's
 `loose` lowercases codes when they are created but matches the path exactly; Shlink's `loose` also matches
 case-insensitively.
-- [ ] Check which mode `go.griddo.io` runs
+- [x] Check which mode `go.griddo.io` runs → `strict`: its Shlink leaves `SHORT_URL_MODE` unset, and Shlink 4's
+      default is `strict`, case-sensitive (checked 2026-10-01 on the live Shlink service)
 - [x] `strict` → import codes verbatim (skip `normalize_short_code`); Shurly's exact-match resolver already
       behaves like Shlink's strict mode. Pin it with a test so lookups never get lowercased by accident → the
       import keeps codes verbatim; `test_answers_on_its_domain_with_its_exact_code` pins the redirect
-- [ ] `loose` → case-insensitive lookup on that domain before the cutover
+- [x] `loose` → case-insensitive lookup on that domain before the cutover → not needed: it runs `strict`
 - [ ] If wanted after that decision, for Shurly's own `loose` mode: an exact match first, then a case-insensitive
       fallback only when exactly one link matches. Not plain lowercasing: imported codes stay exact, so `AbC12` and
       `abc12` can both exist (the pin above). Today `/ABC123` is an orphan visit even when `abc123` exists, and
       "Typos & broken links" suggests `abc123` for it (3.10.4). Not coded until the user decides
 
 ### 8.3 Finish multi-domain (3.10.1 shipped the model only)
-- [ ] `Domain` row for `go.griddo.io`
+- [x] `Domain` row for `go.griddo.io` → the Shlink import makes it, with its links; the switch below makes it if
+      it's missing
 - [x] `build_short_url()` uses the link's own domain; today it always builds on the default one, so a migrated
       link would be shown as `s.griddo.io/<code>` → `link_short_url` everywhere a link's short URL is shown:
       responses, campaigns and their CSV, the overview, previews. BASE_URL still moves only the default domain's
-- [ ] Make `go.griddo.io` the default domain at the cutover. Changing `DEFAULT_DOMAIN` alone won't do it:
+- [x] Make `go.griddo.io` the default domain at the cutover. Changing `DEFAULT_DOMAIN` alone won't do it:
       `get_or_create_default_domain()` keeps the row already marked default (`s.griddo.io`), so new links would
       still be created there (and, until the previous item lands, shown on `go.griddo.io`). Demote `s.` and
-      promote `go.` explicitly, with a test
-- [ ] No per-link domain choice needed: every new link goes on `go.griddo.io`
+      promote `go.` explicitly, with a test → `python -m server.tools.domains promote go.griddo.io`, run as a
+      one-off ECS task by `scripts/run_promote_domain.sh` (decision B): it makes the row if it's missing, marks it
+      the default and unmarks `s.griddo.io`, in one transaction; a dry run unless `--for-real`, and a second run
+      does nothing. New links, the link a code names without `?domain=` and unknown hosts move at once; links keep
+      their domain; a restart with the old `DEFAULT_DOMAIN` keeps it; `BASE_URL` moves `DEFAULT_DOMAIN`'s links,
+      before it moves too and after (`tests/test_phase83_promote_domain.py`). Run in 8.5's window
+- [x] No per-link domain choice needed: every new link goes on `go.griddo.io` → none added: a new link takes the
+      default domain, pinned after the switch
 - [x] A link's analytics count its own visits: keyed on `visits.url_id`, never on the code, which can name
       links on both domains while Shlink's are imported next to the test links (`tests/test_visits_per_link.py`)
 - [x] The API finds a link by its code alone (`/urls/{code}`, its analytics, rules…): the first of the links
@@ -1972,6 +1995,11 @@ the import can be re-run.
       key → raw JSON snapshot, archived untouched → `python -m server.tools.shlink export`
       (`server/tools/shlink/README.md`). The snapshot can hold personal data: `_exchange/` or an encrypted store,
       never the repo
+  - [x] A link whose visits Shlink fails on doesn't stop it: production's answered 500 for 12 links (visit
+        locations with a NULL `region_name`, which Shlink 4 can't serialize; the fix in Shlink's data is in the
+        README). A 5xx is retried, then the link gets `visits_error`, its code `visits_failed`, and its visits are
+        recovered by date range bisected to the second, one visit per page there; what's lost is its
+        `visits_gaps`, which the review (`visits_export`, `visits_lost`) and the import's report name
 - [x] Review sheet (CSV), one row per link: code, domain, destination, title, tags, created, visits, last visit,
       expired/capped, destination HTTP status, duplicate-of, and a `decision` column: `keep`, `archive` or `drop`
       → `… review`, plus the redirect-rule conditions Shurly lacks and codes that differ only in case (8.2). The
@@ -1992,6 +2020,21 @@ the import can be re-run.
         a one-off ECS task (decided 2026-09-29): `scripts/run_shlink_import.sh`, the live service's image,
         environment and network, and a task role that reads one S3 prefix. Dry run unless `--for-real`.
         DEPLOYMENT.md has the runbook and the IAM, to make once by hand
+  - [x] Codes up to 64 characters 🔎 R15: production's dry run of the import (2026-10-01) stopped on 57 links
+        whose codes are longer than 20, the longest 44, 17 of them with visits (388 in all): personalized
+        outreach links, out there already, which keep working as they are → `MAX_SHORT_CODE_LENGTH` 64;
+        `urls.short_code` and `visits.short_code` VARCHAR(64), migration `0013` (a catalog change in
+        PostgreSQL; its downgrade fails while a longer code is kept); custom codes up to 64 in the API, the MCP
+        and the create page; generated codes stay 6; "Typos & broken links" looks for codes that long.
+        `users.api_key`'s drop takes `0014` (`tests/test_phase84_long_codes.py`)
+  - [x] `/mcp`, `/docs` and `/redoc` on short domains 🔎 R16: Shlink's `go.griddo.io/mcp` points at a video, has 41
+        visits and is out there, and Shurly served the MCP at `/mcp` on every host. The user's choice (option A,
+        2026-10-02) → the app's own paths (the MCP, its 308 and OAuth metadata, `/docs`, `/redoc`, `/openapi.json`)
+        answer on the app's host only, the host of `MCP_PUBLIC_URL`, else of `FRONTEND_URL`
+        (`server/utils/app_paths.py`). On a short domain they're codes like any other, by the `Host` header, which
+        the ALB and CloudFront pass as the viewer's. A code is reserved only on the app host's domain, so a custom
+        `mcp` on `go.griddo.io` is a link and the import keeps it. Without either setting, every host is the app's
+        (`tests/test_phase84_app_paths.py`)
 - [x] Fill `Visitor.country` for Shurly's own visits (geolocation: 2.x's deferred "IP geolocation service
       integration"). Nothing fills it today, so once Shlink's history is imported the geo view shows only that
       history, and would mislead → the ISO code, from DB-IP's IP to Country Lite (CC BY 4.0, no account),
@@ -2026,7 +2069,10 @@ the import can be re-run.
 - [ ] ALB: add `go.griddo.io` to the host condition of rule 12 (Shurly), then delete rule 10 (Shlink). Rollback:
       recreate rule 10. Update `RULE_SYNC_MAP` in `infra/ecs-alb-rule-sync/`. The `go.griddo.io` certificate is
       already on the listener
-- [ ] Switch the default domain to `go.griddo.io` (8.3) in the same window
+- [ ] Switch the default domain to `go.griddo.io` (8.3) in the same window → `scripts/run_promote_domain.sh
+      go.griddo.io`, then `DEFAULT_DOMAIN` on the service, and the repository variable `PUBLIC_SHORT_DOMAIN` with
+      a run of the frontend deploy (DEPLOYMENT.md § The cutover). No `BASE_URL` step: the live service sets none
+      (checked 2026-10-01). Before `s.griddo.io`'s row is deleted: it's the default until then
 - [ ] Delete `s.griddo.io` entirely: out of rule 12's host condition, its certificate off the listener and deleted,
       its Route 53 record (griddo-production), its `Domain` row and test links; the docs and scripts that still
       name it
@@ -2241,4 +2287,25 @@ check earlier in the next project.
   heads and one doc line, not in the script
 - **Lesson:** when the source of truth for a setting moves, check every tool that still writes it. A rule about
   when not to run a script belongs in the script
+
+### R15 — Shurly's codes stopped at 20 characters; Shlink's run to 44 · missed · found 2026-10-01
+- **What:** a short code was at most 20 characters, from the first schema on. Shlink's on `go.griddo.io` aren't:
+  57 links have longer codes, the longest 44, personalized outreach links already out there, 17 of them with
+  visits → codes up to 64 (8.4)
+- **How it surfaced:** the import's dry run in production, which stopped on them before writing anything
+- **Why it slipped:** the import refused a code longer than Shurly's column from the start, but nobody counted
+  how many of Shlink's links that was until the dry run ran on the real snapshot. The tests' links have short codes
+- **Lesson:** when an import refuses what doesn't fit the schema, measure the real data against those limits
+  early, not at the production dry run
+
+### R16 — The app's own paths took their codes on every domain · missed · found 2026-10-01
+- **What:** `/mcp`, `/docs` and `/redoc` were the app's on every host, so those codes were reserved on every domain
+  (5.5). Shlink's `go.griddo.io/mcp` is a link, out there, with 41 visits: after the cutover it would have opened
+  the MCP → the app's paths on its own host only (8.4, option A)
+- **How it surfaced:** the import's dry run in production, which refuses a code the app serves itself, next to R15's
+  long codes
+- **Why it slipped:** the reservation was decided when one host served everything. Multi-domain (3.10.1, 8.3) gave
+  links their domains, but left the app's own paths on all of them
+- **Lesson:** when one service answers on several hosts, decide per host which paths are whose. A path reserved on
+  one host is a code taken from every other
 

@@ -161,8 +161,8 @@ DB_HOST=127.0.0.1 DB_PORT=55433 DB_USER=postgres DB_PASSWORD=postgres DB_NAME=sh
 ```
 
 Playwright builds the pages, starts the API on `127.0.0.1:18000` and the pages on `127.0.0.1:14321` (both
-ports must be free), signs in once (`e2e/auth.setup.ts`), runs `e2e/*.spec.ts` one at a time, and stops both
-servers. The API's log is `frontend/e2e/.logs/api.log`; a failed test leaves a screenshot in
+ports must be free), signs in once as the owner and once as a member (`e2e/auth.setup.ts`, `e2e/member.setup.ts`),
+runs `e2e/*.spec.ts` one at a time, and stops both servers. The API's log is `frontend/e2e/.logs/api.log`; a failed test leaves a screenshot in
 `frontend/test-results/`. Add `--headed` or `--ui` to watch.
 
 Writing a spec: import `test` and `expect` from `e2e/fixtures.ts`, never from `@playwright/test`, so the rules
@@ -170,6 +170,11 @@ apply. Make what the spec tests the way a person would; make what it only needs 
 (the `ownerApi` fixture). `e2e/helpers.ts` has a person's click and email open (straight to the API, with a
 browser's user agent), picking an option of a segmented control, and a downloaded CSV's lines. Wait on what the
 page shows, never on time, and give each spec data of its own: a run shares one database.
+
+Specs run as the owner. To be a member instead, a second account on the Workspace domain, add
+`test.use({ storageState: MEMBER_STATE })` (from `e2e/env.ts`); the `memberApi` fixture makes what's theirs. `e2e/member.setup.ts` signs them in with the cookie
+`e2e_as=member`, which tells the fake Google page who it is (`tests/e2e/identities.py`); nothing but the harness
+reads it (`tests/test_e2e_guard.py`).
 
 Accessibility: `e2e/a11y.spec.ts` runs axe on the landing, login, dashboard, link, campaign and Settings pages and
 the manual, once their content is in, on a desktop and on a phone (390 px, where the menu is a dialog, checked
@@ -535,7 +540,8 @@ curl -X POST http://localhost:8000/api/urls \
 - [ ] Create URL with very long original URL (1000+ chars) → Should work
 - [ ] Create custom code with special characters → Should reject
 - [ ] Create custom code that's already taken → Should modify and warn
-- [ ] Create custom code `mcp` (or `docs`) → Should modify and warn that it's reserved
+- [ ] Create custom code `mcp` (or `docs`) → Should modify and warn that it's reserved, where the default domain is
+      the app's host or neither `MCP_PUBLIC_URL` nor `FRONTEND_URL` is set (locally). On a short domain it's a link
 - [ ] Create URL without protocol → Should show error
 - [ ] Create URL with localhost/internal IP → Should work (for testing)
 

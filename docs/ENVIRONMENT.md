@@ -71,7 +71,7 @@ Reviewed on 2026-09-29. **Update this reference in the same PR as any new or cha
 
 | Variable | Default | What it does |
 |---|---|---|
-| `DEFAULT_DOMAIN` | `shurl.griddo.io` | The default short-link host, seeded at startup. The default is a placeholder that doesn't resolve: set it wherever Shurly runs |
+| `DEFAULT_DOMAIN` | `shurl.griddo.io` | The default short-link host, seeded at startup. The default is a placeholder that doesn't resolve: set it wherever Shurly runs. Once seeded, the database's default wins: moving it takes `python -m server.tools.domains promote` too (DEPLOYMENT.md § The cutover) |
 | `BASE_URL` | (empty) | The base of every short URL the API writes, when the short-link host isn't the one `DEFAULT_DOMAIN` gives. Rare |
 | `SHORT_URL_MODE` | `loose` | `loose` lowercases generated codes and custom slugs; `strict` keeps their case |
 | `DISABLE_TRACK_PARAM` | `nostat` | A query parameter that makes a redirect log no visit: for QA |
@@ -90,14 +90,14 @@ Reviewed on 2026-09-29. **Update this reference in the same PR as any new or cha
 | `GOOGLE_CLIENT_ID` | (empty) | The Google OAuth client. Until it, the secret, the redirect URI, `FRONTEND_URL` and `ORGANIZATION_DOMAIN` are set, Google's endpoints answer 503 |
 | `GOOGLE_CLIENT_SECRET` | (empty) | Its secret. A secret |
 | `GOOGLE_REDIRECT_URI` | (empty) | This API's `/api/v1/auth/google/callback`, as registered with the client |
-| `FRONTEND_URL` | (empty) | The frontend: after Google, the browser goes to its `/login/` with a one-time code |
+| `FRONTEND_URL` | (empty) | The frontend: after Google, the browser goes to its `/login/` with a one-time code. Without `MCP_PUBLIC_URL`, its host is the app's (below) |
 | `ALLOW_PASSWORD_SIGNUP` | `false` | Turns `POST /api/v1/auth/register` on. Local development and tests only |
 
 ### MCP
 
 | Variable | Default | What it does |
 |---|---|---|
-| `MCP_PUBLIC_URL` | (empty) | The MCP endpoint as clients reach it, without the trailing slash. With the Google client, `ORGANIZATION_DOMAIN` and the signing key, it turns on sign-in with Google for MCP clients |
+| `MCP_PUBLIC_URL` | (empty) | The MCP endpoint as clients reach it, without the trailing slash. With the Google client, `ORGANIZATION_DOMAIN` and the signing key, it turns on sign-in with Google for MCP clients. Its host is the app's: the MCP, its OAuth metadata and the docs answer there only, and on any other host `/mcp`, `/docs` and `/redoc` are short links. Without it or `FRONTEND_URL`, every host is the app's |
 | `MCP_OAUTH_SIGNING_KEY` | (empty) | Signs the MCP's OAuth tokens and encrypts what it stores. The same on every task; changing it signs every MCP client out. A secret |
 | `MCP_OAUTH_ALLOWED_REDIRECT_URIS` | `["https://claude.ai/api/mcp/auth_callback", "https://claude.com/api/mcp/auth_callback", "http://localhost:*", "http://127.0.0.1:*"]` | The redirect URIs an MCP client may register: claude.ai's, and Claude Code's loopback. Nothing else can ask a person to consent |
 

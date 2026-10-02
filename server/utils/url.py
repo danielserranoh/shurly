@@ -6,15 +6,18 @@ import string
 from urllib.parse import urlparse
 
 from server.core.config import settings
-from server.utils.domain import normalize_hostname
+from server.utils.domain import normalize_hostname, serves_app_paths
 
-# Matches the `URL.short_code` column (String(20)).
-MAX_SHORT_CODE_LENGTH = 20
+# Matches the columns that keep a code, `URL.short_code` and `Visitor.short_code` (String(64)).
+# 64 since Phase 8.4: Shlink's links on go.griddo.io run to 44 characters (migration 0013).
+MAX_SHORT_CODE_LENGTH = 64
 
 # Single-segment paths the app serves itself, ahead of `/{short_code}`: a short
 # link with one of these codes could never be reached. Custom codes that hit
 # one are treated as taken. `test_reserved_codes_cover_the_app_routes` checks
-# this set against the app's routes.
+# this set against the app's routes. Phase 8.4 — on the app's host only: on a
+# short domain those routes don't match, and the paths are codes like any other
+# (server/utils/app_paths.py, `is_reserved_short_code`).
 RESERVED_SHORT_CODES = frozenset(
     {
         "mcp",  # MCP endpoint: the bare /mcp 308s to the /mcp/ mount (main.py)
@@ -83,14 +86,19 @@ def normalize_short_code(code: str) -> str:
     return code.lower() if settings.short_url_mode == "loose" else code
 
 
-def is_reserved_short_code(code: str) -> bool:
+def is_reserved_short_code(code: str, hostname: str) -> bool:
     """
-    True if `code` is a path the app serves itself (see RESERVED_SHORT_CODES).
+    True if `code` is a path the app serves itself (see RESERVED_SHORT_CODES) on
+    `hostname`, the domain the link would be on.
 
     Compared after SHORT_URL_MODE normalization: routes are case-sensitive, so
     in strict mode only the exact lowercase path collides.
+
+    Phase 8.4 — the app serves those paths on its own host only (`app_host`): on
+    any other domain they're codes like any other (go.griddo.io/mcp is a link).
+    With no app host set, on every domain.
     """
-    return normalize_short_code(code) in RESERVED_SHORT_CODES
+    return serves_app_paths(hostname) and normalize_short_code(code) in RESERVED_SHORT_CODES
 
 
 def make_code_unique(code: str, append_length: int = 3) -> str:
@@ -115,7 +123,7 @@ def is_valid_custom_code(code: str) -> bool:
     Validate a custom short code.
 
     Rules:
-    - Length between 3 and 20 characters
+    - Length between 3 and MAX_SHORT_CODE_LENGTH (64) characters
     - Only alphanumeric, hyphens, and underscores allowed
     - No spaces or special characters
 

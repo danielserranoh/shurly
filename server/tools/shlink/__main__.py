@@ -16,7 +16,7 @@ from sqlalchemy import func
 
 from server.core.models import User
 from server.tools.shlink import importer
-from server.tools.shlink.export import export_snapshot, shlink_client, write_snapshot
+from server.tools.shlink.export import export_snapshot, shlink_client, summary, write_snapshot
 from server.tools.shlink.review import check_destinations, review_rows, write_review
 
 
@@ -75,7 +75,12 @@ def _export(args: argparse.Namespace) -> int:
     now = datetime.now(timezone.utc)
     try:
         with shlink_client(url, api_key) as client:
-            snapshot = export_snapshot(client, visits=args.visits, now=now)
+            snapshot = export_snapshot(
+                client,
+                visits=args.visits,
+                now=now,
+                progress=lambda message: print(message, file=sys.stderr, flush=True),
+            )
     except httpx.HTTPStatusError as error:
         status = error.response.status_code
         hint = " Check SHLINK_API_KEY." if status in (401, 403) else ""
@@ -85,8 +90,8 @@ def _export(args: argparse.Namespace) -> int:
         print(f"Couldn't reach Shlink at SHLINK_URL: {type(error).__name__}.", file=sys.stderr)
         return 1
     path = write_snapshot(snapshot, args.out_dir, now=now)
-    what = "links and their visits" if args.visits else "links"
-    print(f"{path}: {len(snapshot['links'])} {what}. It stays out of the repository (README.md).")
+    print(f"{path}: it stays out of the repository (README.md).")
+    print("\n".join(summary(snapshot)))
     return 0
 
 
