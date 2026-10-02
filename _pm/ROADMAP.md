@@ -2036,11 +2036,14 @@ the import can be re-run.
         `mcp` on `go.griddo.io` is a link and the import keeps it. Without either setting, every host is the app's
         (`tests/test_phase84_app_paths.py`)
   - [x] An export that's whole, or none 🔎 R17: production's export (2026-10-02) of 344 links held 343 distinct
-        codes, `co-upb-luis-ochoa` twice, because Shlink's default order isn't stable across pages; the import
-        then failed on `uq_urls_domain_code` with a traceback → the list is asked with `orderBy=shortCode-ASC`; a
-        link's visits up to the export's start (`endDate`), so new ones can't shift their pages; every list must
-        bring Shlink's `totalItems`, with a count that holds from page to page, and each (domain, code) once, or
-        the export stops and writes no snapshot. The review and the import refuse a snapshot that lists a link
+        codes, `co-upb-luis-ochoa` twice, and the import then failed on `uq_urls_domain_code` with a traceback.
+        Shlink holds that link twice (a double submit on the default domain: its unique key doesn't compare NULL
+        `domain_id`s) → identical copies Shlink holds, confirmed by `searchTerm`, are exported once and named in
+        `duplicates_collapsed`; copies that differ stop the export, naming the fields, for someone to decide which
+        stays. Also the list is asked with `orderBy=shortCode-ASC`, a link's visits up to the export's start
+        (`endDate`), and every list must bring Shlink's `totalItems`, counted before any collapse, with a count
+        that holds from page to page; a link listed more times than Shlink holds it (pages that moved) stops it.
+        No snapshot is written when it stops. The review and the import refuse a snapshot that still lists a link
         twice, by name, before writing anything (`tests/test_phase84_shlink_export_order.py`)
 - [x] Fill `Visitor.country` for Shurly's own visits (geolocation: 2.x's deferred "IP geolocation service
       integration"). Nothing fills it today, so once Shlink's history is imported the geo view shows only that
@@ -2316,15 +2319,22 @@ check earlier in the next project.
 - **Lesson:** when one service answers on several hosts, decide per host which paths are whose. A path reserved on
   one host is a code taken from every other
 
-### R17 — Shlink's export listed a link twice, and very likely skipped one · missed · found 2026-10-02
-- **What:** the export paged `GET /rest/v3/short-urls` without `orderBy`, and Shlink's default order isn't stable
-  across pages. Production's export of 344 links held 343 distinct codes: `co-upb-luis-ochoa` twice, as identical
-  copies, so another link was very likely never exported. The import then failed on `uq_urls_domain_code` with a
-  raw IntegrityError → the list in code order, every list checked against Shlink's count, each link once, and a
-  snapshot that lists one twice refused by the review and the import (8.4)
-- **How it surfaced:** the import of the real snapshot, which crashed on the database's unique code
-- **Why it slipped:** the fake Shlink in the tests answered its pages in one fixed order, so paging looked safe.
-  Nothing checked that the pages brought as many links as Shlink counts, though every page says so
-- **Lesson:** paging an API without an order is a sample, not a list. Ask for an order that holds, and check the
-  total the API reports against what came, before anything relies on it
+### R17 — Shlink holds a link twice, and the export passed both on · missed · found 2026-10-02
+- **What:** production's export of 344 links held 343 distinct codes: `co-upb-luis-ochoa` twice, as identical
+  copies. The import then failed on `uq_urls_domain_code` with a raw IntegrityError. It looked like paging, since
+  the export asked for no `orderBy` and Shlink's default order isn't stable across pages. But Shlink really holds
+  two rows: `searchTerm` counts 2, same second, same destination, title and tags, no visits. A double submit,
+  which Shlink's unique key `(short_code, domain_id)` lets through on the default domain, since PostgreSQL doesn't
+  compare NULLs → identical copies collapse to one, confirmed with Shlink and recorded in the snapshot; copies
+  that differ stop the export for a person to decide; the list in code order, checked against Shlink's count
+  before any collapse; a snapshot that still lists a link twice refused by the review and the import (8.4)
+- **How it surfaced:** the import of the real snapshot, which crashed on the database's unique code. The first
+  fix took it for paging. The duplicate check it added fired on the next real export, and asking Shlink for the
+  code showed two rows
+- **Why it slipped:** the source's uniqueness was assumed, not checked: the import trusted that a Shlink export
+  can't hold one (domain, code) twice. The fake Shlink answered its pages in one fixed order, and nothing checked
+  that the pages brought as many links as Shlink counts, though every page says so
+- **Lesson:** don't assume a source system enforces its own keys, above all where a NULL is part of one. Check the
+  key in the data before importing it. And before fixing a symptom, ask the source directly: here one search
+  would have told paging from a real duplicate
 

@@ -81,8 +81,10 @@ class FakeShlink:
 
     The list of short URLs takes `orderBy` (`<field>-ASC|DESC`, as Shlink's spec says).
     Without it, the links come in insertion order, unless `unstable`: then each page of the
-    list sees them in another order, as production's did (R17), so pages overlap. `miscount`
-    is added to the list's `totalItems`.
+    list sees them in another order, so pages overlap; `ignores_order` keeps them unstable
+    even with `orderBy`. `miscount` is added to the list's `totalItems`. `searchTerm`
+    narrows the list to the links whose code, destination, title or a tag holds it, as
+    Shlink's does. `links` may hold one link twice: production's Shlink does (R17).
     """
 
     def __init__(
@@ -96,6 +98,7 @@ class FakeShlink:
         flaky=None,
         listing_fails=False,
         unstable=False,
+        ignores_order=False,
         miscount=0,
     ):
         self.links = links
@@ -106,6 +109,7 @@ class FakeShlink:
         self.flaky = dict(flaky or {})
         self.listing_fails = listing_fails
         self.unstable = unstable
+        self.ignores_order = ignores_order
         self.miscount = miscount
         self.listings = 0
         self.requests: list[httpx.Request] = []
@@ -120,7 +124,9 @@ class FakeShlink:
         if path == "/rest/v3/short-urls":
             if self.listing_fails:
                 return self._error()
-            links = self._ordered(request.url.params.get("orderBy"))
+            links = self._ordered(
+                request.url.params.get("orderBy"), request.url.params.get("searchTerm")
+            )
             if links is None:
                 return httpx.Response(400, json={"title": "Invalid data", "status": 400})
             self.listings += 1
@@ -152,17 +158,30 @@ class FakeShlink:
         "visits": lambda link: (link.get("visitsSummary") or {}).get("total", 0),
     }
 
-    def _ordered(self, order: str | None) -> list | None:
-        """The links in `order`; None for one Shlink refuses."""
-        if order is None:
-            if not self.unstable or not self.links:
-                return list(self.links)
-            turn = self.listings % len(self.links)  # another order for every page asked
-            return self.links[turn:] + self.links[:turn]
-        field, _, direction = order.rpartition("-")
-        if field not in self.ORDER_FIELDS or direction not in ("ASC", "DESC"):
-            return None
-        return sorted(self.links, key=self.ORDER_FIELDS[field], reverse=direction == "DESC")
+    def _ordered(self, order: str | None, term: str | None = None) -> list | None:
+        """The links holding `term`, in `order`; None for an order Shlink refuses."""
+        links = self.links
+        if term:
+            term = term.lower()
+            links = [
+                link
+                for link in links
+                if any(
+                    term in (text or "").lower()
+                    for text in (link["shortCode"], link["longUrl"], link.get("title"))
+                    + tuple(link.get("tags") or [])
+                )
+            ]
+        if order is not None:
+            field, _, direction = order.rpartition("-")
+            if field not in self.ORDER_FIELDS or direction not in ("ASC", "DESC"):
+                return None
+        if order is None or self.ignores_order:
+            if not self.unstable or not links:
+                return list(links)
+            turn = self.listings % len(links)  # another order for every page asked
+            return links[turn:] + links[:turn]
+        return sorted(links, key=self.ORDER_FIELDS[field], reverse=direction == "DESC")
 
     @staticmethod
     def _error() -> httpx.Response:

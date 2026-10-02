@@ -195,6 +195,10 @@ def format_report(report: Report, snapshot: dict, *, visits: bool) -> str:
         f"  dropped    {len(report.dropped)}, as the review says",
         f"  kept       {len(report.not_reviewed)} the review left out",
     ]
+    for item in snapshot.get("duplicates_collapsed") or []:
+        lines.append(
+            f"  Shlink held identical copies of {item['link']} ({item['copies']}), imported once"
+        )
     if report.domains_created:
         lines.append(f"  domains created: {', '.join(report.domains_created)}")
     if report.tags_created:

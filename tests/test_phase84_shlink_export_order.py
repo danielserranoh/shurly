@@ -1,13 +1,17 @@
 """
-Phase 8.4 — an export that's whole, or none (R17). Production's Shlink listed 344 links with
-343 distinct codes: its default order isn't stable across pages, so one link came twice and
-another, very likely, not at all. The import then failed on the database's unique code.
+Phase 8.4 — an export that's whole, or none (R17). Production's export listed 344 links with
+343 distinct codes, and the import failed on the database's unique code. Shlink's default
+order isn't stable across pages, but that wasn't it: Shlink holds two rows for
+`co-upb-luis-ochoa`, a double submit on the default domain, whose NULL domain_id its unique
+key doesn't catch.
 
 So the list of short URLs is asked in code order, the export checks that its pages bring as
-many links as Shlink counts, each once, and a link's visits are asked up to the moment the
-export started, so new ones can't shift their pages. Anything that doesn't add up stops the
-export before a snapshot is written. The review and the import refuse a snapshot that lists
-a link twice (tests/test_phase84_shlink_review.py, tests/test_phase84_shlink_import.py).
+many links as Shlink counts, and a link's visits are asked up to the moment the export
+started, so new ones can't shift their pages. A link listed twice is confirmed with Shlink
+(`searchTerm`): identical copies it really holds collapse to one, recorded in the snapshot;
+copies that differ, or copies Shlink doesn't hold (pages that moved), stop the export before
+a snapshot is written. The review and the import refuse a snapshot that still lists a link
+twice (tests/test_phase84_shlink_review.py, tests/test_phase84_shlink_import.py).
 """
 
 import httpx
@@ -36,6 +40,12 @@ def _export(fake_or_handle, **options) -> dict:
 
 def _codes(snapshot: dict) -> list[str]:
     return [entry["short_url"]["shortCode"] for entry in snapshot["links"]]
+
+
+def _double_submit(**fields) -> list[dict]:
+    """Production's: the same link twice, a moment apart, with no visits."""
+    first = short_url(TWICE, visitsSummary={"total": 0, "nonBots": 0, "bots": 0})
+    return [first, {**first, "dateCreated": "2026-07-27T16:36:07+02:00", **fields}]
 
 
 class TestTheListOfShortUrls:
@@ -71,12 +81,13 @@ class TestTheListOfShortUrls:
 
         assert _codes(snapshot) == [link["shortCode"] for link in links]
 
-    def test_a_link_listed_twice_stops_it(self):
-        """Even in order: two links can share a code on different domains, and tie."""
-        link = short_url(TWICE)
-        fake = FakeShlink([short_url("a"), link, link])
+    def test_an_overlap_is_caught_though_its_copies_are_identical(self):
+        """Pages that move bring one link twice and miss another, and the count still adds
+        up. The copies are one row, so identical: collapsing them would hide the missing
+        link. Shlink, asked for that code, holds one, so the export stops."""
+        fake = FakeShlink(_links(), unstable=True, ignores_order=True)
 
-        with pytest.raises(SnapshotError, match=f"go.shlink.test/{TWICE}"):
+        with pytest.raises(SnapshotError, match="go.shlink.test/c1 2 times, but holds 1"):
             _export(fake, page_size=2)
 
     def test_the_same_code_on_two_domains_is_two_links(self):
@@ -105,12 +116,79 @@ class TestTheListOfShortUrls:
             _export(handle, page_size=2)
 
     def test_it_stops_before_asking_for_anyones_visits(self):
-        fake = FakeShlink([short_url(TWICE), short_url(TWICE)])
+        fake = FakeShlink(_double_submit(longUrl="https://example.com/other"))
 
         with pytest.raises(SnapshotError):
             _export(fake, visits=True)
 
         assert not [r for r in fake.requests if r.url.path.endswith("/visits")]
+
+
+class TestALinkShlinkHoldsTwice:
+    """Production's Shlink holds `co-upb-luis-ochoa` twice: a double submit on the default
+    domain. Its unique key is (short_code, domain_id), and PostgreSQL doesn't compare NULLs."""
+
+    def test_identical_copies_collapse_to_one(self):
+        fake = FakeShlink([short_url("a"), *_double_submit(), short_url("z")])
+
+        snapshot = _export(fake, page_size=2)
+
+        assert _codes(snapshot) == ["a", TWICE, "z"]
+        assert snapshot["links"][1]["short_url"] == _double_submit()[0]  # the first listed
+        assert snapshot["duplicates_collapsed"] == [
+            {"link": f"go.shlink.test/{TWICE}", "copies": 2, "visits": [0, 0]}
+        ]
+
+    def test_confirmed_with_shlink_by_its_code(self):
+        fake = FakeShlink([short_url("a"), *_double_submit()])
+
+        _export(fake)
+
+        (search,) = [r for r in fake.requests if "searchTerm" in r.url.params]
+        assert search.url.params["searchTerm"] == TWICE
+
+    def test_its_visits_are_asked_once(self):
+        """Shlink answers a link's visits by its domain and code, for one of its rows."""
+        visits = [visit("2026-08-01T10:00:00+00:00")]
+        fake = FakeShlink(_double_submit(), visits={(None, TWICE): visits})
+
+        snapshot = _export(fake, visits=True)
+
+        (entry,) = snapshot["links"]
+        assert entry["visits"] == visits
+        assert len([r for r in fake.requests if r.url.path.endswith("/visits")]) == 1
+
+    def test_without_one_no_record_of_it(self):
+        snapshot = _export(FakeShlink(_links()))
+
+        assert "duplicates_collapsed" not in snapshot
+
+    @pytest.mark.parametrize(
+        ("fields", "named"),
+        [
+            ({"longUrl": "https://example.com/other"}, "longUrl"),
+            ({"title": "Other", "tags": ["x"]}, "title, tags"),
+            ({"meta": {"validSince": None, "validUntil": None, "maxVisits": 5}}, "meta"),
+            ({"forwardQuery": False, "crawlable": True}, "forwardQuery, crawlable"),
+        ],
+    )
+    def test_copies_that_differ_stop_it_naming_the_fields(self, fields, named):
+        fake = FakeShlink(_double_submit(**fields))
+
+        with pytest.raises(SnapshotError) as stopped:
+            _export(fake)
+
+        message = str(stopped.value)
+        assert f"go.shlink.test/{TWICE}" in message and f"differ in {named}" in message
+        assert "Exporting again won't help" in message and "decide which" in message
+
+    def test_the_same_tags_in_another_order_are_identical(self):
+        first, second = _double_submit()
+        first["tags"], second["tags"] = ["a", "b"], ["b", "a"]
+
+        snapshot = _export(FakeShlink([first, second]))
+
+        assert _codes(snapshot) == [TWICE]
 
 
 class TestALinksVisits:
@@ -185,8 +263,20 @@ class TestCommand:
         monkeypatch.setenv("SHLINK_API_KEY", KEY)
         return fake
 
-    def test_a_repeated_link_writes_no_snapshot(self, fake, tmp_path, capsys):
-        fake.links = [short_url(TWICE), short_url(TWICE)]
+    def test_identical_copies_are_named_in_one_line(self, fake, tmp_path, capsys):
+        fake.links = _double_submit()
+
+        assert cli.main(["export", "--out-dir", str(tmp_path)]) == 0
+
+        (path,) = tmp_path.glob("*.snapshot.json")
+        notices = [line for line in capsys.readouterr().out.splitlines() if TWICE in line]
+        assert notices == [
+            f"Shlink holds identical copies of 1 link, exported once: go.shlink.test/{TWICE} "
+            "(2 copies, 0 and 0 visits)."
+        ]
+
+    def test_copies_that_differ_write_no_snapshot(self, fake, tmp_path, capsys):
+        fake.links = _double_submit(title="Other")
 
         assert cli.main(["export", "--out-dir", str(tmp_path)]) == 1
 

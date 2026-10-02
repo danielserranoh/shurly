@@ -485,8 +485,22 @@ class TestOwner:
 
 
 class TestALinkListedTwice:
-    """R17: production's export listed `co-upb-luis-ochoa` twice, and the import failed on
-    the database's unique code with a traceback. It's refused first, by name."""
+    """R17: production's Shlink holds `co-upb-luis-ochoa` twice, the export listed it twice,
+    and the import failed on the database's unique code with a traceback. Today's export
+    collapses identical copies; a snapshot that still lists a link twice (edited by hand, or
+    from the export before) is refused first, by name."""
+
+    def test_a_collapsed_snapshot_imports_and_says_so(self, db_session, owner):
+        exported = snapshot({"short_url": short_url("co-upb-luis-ochoa")})
+        exported["duplicates_collapsed"] = [
+            {"link": f"{HOST}/co-upb-luis-ochoa", "copies": 2, "visits": [0, 0]}
+        ]
+
+        report = import_snapshot(db_session, exported, {}, owner)
+
+        assert report.created == [f"{HOST}/co-upb-luis-ochoa"]
+        text = importer.format_report(report, exported, visits=False)
+        assert f"  Shlink held identical copies of {HOST}/co-upb-luis-ochoa (2)" in text
 
     def test_is_refused_before_anything_is_written(self, db_session, owner):
         twice = {"short_url": short_url("co-upb-luis-ochoa")}
