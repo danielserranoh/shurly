@@ -9,10 +9,12 @@ stops it. With `--visits` (decision A, 2026-09-28), Shlink's visits come too.
 
 import csv
 import json
+import warnings
 from datetime import datetime
 
 import httpx
 import pytest
+from sqlalchemy import exc as sa_exc
 
 from server.core.auth import hash_password
 from server.core.config import settings
@@ -162,6 +164,39 @@ class TestALink:
         assert (url.valid_since.year, url.valid_until.year) == (2025, 2027)
         assert sorted(tag.name for tag in url.tags) == ["email", "q4 promo"]
         assert report.tags_created == ["q4 promo"]
+
+
+class TestSharedTags:
+    def test_links_sharing_new_tags_import_without_a_sawarning(self, db_session, owner):
+        """
+        Phase 8.5 — a link used to be added to the session only after its tags were attached, so
+        the next tag's flush (or an autoflushing query) saw a Tag holding a transient URL:
+        "SAWarning: Object of type <URL> not in session, add operation along 'Tag.urls' won't
+        proceed". The associations were stored all the same; the warning is gone now.
+        """
+        links = [
+            {"short_url": short_url("one", "https://example.com/1", tags=["Q4", "email", "ads"])},
+            {"short_url": short_url("two", "https://example.com/2", tags=["email", "Q4"])},
+            {"short_url": short_url("three", "https://example.com/3", tags=["ads", "new-one"])},
+            {"short_url": short_url("four", "https://example.com/4", tags=["Q4", "new-one"])},
+            {"short_url": short_url("five", "https://example.com/5")},
+        ]
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", sa_exc.SAWarning)
+            report = run(db_session, owner, *links, decisions={(HOST, "four"): "archive"})
+            db_session.commit()
+
+        db_session.expire_all()
+        tags = {url.short_code: sorted(t.name for t in url.tags) for url in db_session.query(URL)}
+        assert tags == {
+            "one": ["ads", "email", "q4"],
+            "two": ["email", "q4"],
+            "three": ["ads", "new-one"],
+            "four": ["legacy", "new-one", "q4"],
+            "five": [],
+        }
+        assert sorted(report.tags_created) == ["ads", "email", "legacy", "new-one", "q4"]
 
 
 class TestRules:
@@ -482,6 +517,64 @@ class TestOwner:
 
         with pytest.raises(ImportRefused, match="owner"):
             run(db_session, member, {"short_url": short_url("abc")})
+
+
+class TestALinkListedTwice:
+    """R17: production's Shlink holds `co-upb-luis-ochoa` twice, the export listed it twice,
+    and the import failed on the database's unique code with a traceback. Today's export
+    collapses identical copies; a snapshot that still lists a link twice (edited by hand, or
+    from the export before) is refused first, by name."""
+
+    def test_a_collapsed_snapshot_imports_and_says_so(self, db_session, owner):
+        exported = snapshot({"short_url": short_url("co-upb-luis-ochoa")})
+        exported["duplicates_collapsed"] = [
+            {"link": f"{HOST}/co-upb-luis-ochoa", "copies": 2, "visits": [0, 0]}
+        ]
+
+        report = import_snapshot(db_session, exported, {}, owner)
+
+        assert report.created == [f"{HOST}/co-upb-luis-ochoa"]
+        text = importer.format_report(report, exported, visits=False)
+        assert f"  Shlink held identical copies of {HOST}/co-upb-luis-ochoa (2)" in text
+
+    def test_is_refused_before_anything_is_written(self, db_session, owner):
+        twice = {"short_url": short_url("co-upb-luis-ochoa")}
+
+        with pytest.raises(ImportRefused, match=f"{HOST}/co-upb-luis-ochoa"):
+            run(db_session, owner, {"short_url": short_url("abc")}, twice, twice)
+
+        assert db_session.query(URL).count() == 0
+        assert db_session.query(Domain).count() == 0
+
+    def test_even_when_the_review_drops_it(self, db_session, owner):
+        """Another link may be missing from such a snapshot: export it again."""
+        twice = {"short_url": short_url("co-upb-luis-ochoa")}
+
+        with pytest.raises(ImportRefused, match="Export"):
+            run(
+                db_session,
+                owner,
+                twice,
+                twice,
+                decisions={(HOST, "co-upb-luis-ochoa"): "drop"},
+            )
+
+    def test_the_command_says_which_and_exits_2(
+        self, tmp_path, owner, db_session, monkeypatch, capsys
+    ):
+        monkeypatch.setattr(importer, "session_factory", TestingSessionLocal)
+        twice = {"short_url": short_url("co-upb-luis-ochoa")}
+        path = tmp_path / "shlink.snapshot.json"
+        path.write_text(json.dumps(snapshot(twice, twice)))
+        review = tmp_path / "shlink.review.csv"
+        review.write_text("code,domain,decision\n")
+
+        assert cli.main(["import", str(path), str(review), "--as", owner.email]) == 2
+
+        error = capsys.readouterr().err
+        assert f"{HOST}/co-upb-luis-ochoa" in error and "Traceback" not in error
+        db_session.expire_all()
+        assert db_session.query(URL).count() == 0
 
 
 class TestCommand:

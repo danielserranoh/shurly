@@ -3,8 +3,8 @@
 ## Project Overview
 Modern URL shortener for B2B campaigns with analytics, running on AWS.
 
-**Hosts**: `shurly.griddo.io` for the web, the app, the API and the MCP; `go.griddo.io` for short links, once
-Shurly replaces Shlink there (Phase 8). Until then test links live on `s.griddo.io`, deleted at the cutover.
+**Hosts**: `shurly.griddo.io` for the web, the app, the API and the MCP; `go.griddo.io` for short links, Shurly's
+since the Phase 8 cutover (2026-10-02).
 **Expected Volume**: ~100-150 URLs/month (20-50 standard + 1 campaign of ~100 users)
 **Deployment**: ECS Express (Fargate, behind the shared ALB) + RDS PostgreSQL for the API and the MCP;
 S3 + CloudFront for the frontend (4.10, pending).
@@ -525,6 +525,7 @@ System creates:
 - [x] **DISABLE_TRACK_PARAM**
   - [x] Config: query param name (default `nostat`) that suppresses visit logging
   - [x] Tests confirming the redirect still happens but no Visitor row is inserted
+  - [x] Not forwarded to the destination, as in Shlink (8.5, `tests/test_phase85_nostat_forwarding.py`)
 - [x] **API key scoping (data model only, single scope at launch)**
   - [x] `User.api_key_scope` enum + `User.api_key_constraints` JSON column
   - [x] Enum: `FULL_ACCESS` (only enforced value at launch); reserved `READ_ONLY`, `CREATE_ONLY`, `DOMAIN_SPECIFIC`
@@ -1848,11 +1849,12 @@ live in `mcp_server/README.md`, written for developers. There is no user manual 
         so dropping it while a task of that release serves fails every user query mid-rollout. A test drops it by
         hand and runs this release against it: signing in, an API key, `/me`, the MCP, revoking
         (`tests/test_phase63_api_keys.py`)
-  - [ ] Migration `0014` drops `users.api_key` and `ix_users_api_key`, and the drift test's `_PENDING_DROP` goes:
+  - [x] Migration `0014` drops `users.api_key` and `ix_users_api_key`, and the drift test's `_PENDING_DROP` goes:
         **only after the release that stopped mapping it is in production**, since until then a running task still
         names the column. It takes `0014`: `0010` (the `last_click_at` repair), `0011` (a visit's city, 8.4),
         `0012` (the organization's logo, 3.14.4) and `0013` (longer short codes, 8.4) took the numbers it had been
-        given (2026-09-29, 2026-10-01)
+        given (2026-09-29, 2026-10-01). Written once 0013 was in production (2026-10-02); its downgrade adds
+        the column back empty (`tests/test_phase63_api_keys.py`)
   - [x] The MCP can't generate or revoke a key: talked into it by untrusted text, an assistant would get
         the new key in its context. Nor `login` or `change_password`: no password or JWT passes through an
         assistant (`EXCLUDED_ROUTE_MAPS`, pinned by `tests/test_phase52_mcp_tools.py`)
@@ -2035,6 +2037,16 @@ the import can be re-run.
         the ALB and CloudFront pass as the viewer's. A code is reserved only on the app host's domain, so a custom
         `mcp` on `go.griddo.io` is a link and the import keeps it. Without either setting, every host is the app's
         (`tests/test_phase84_app_paths.py`)
+  - [x] An export that's whole, or none 🔎 R17: production's export (2026-10-02) of 344 links held 343 distinct
+        codes, `co-upb-luis-ochoa` twice, and the import then failed on `uq_urls_domain_code` with a traceback.
+        Shlink holds that link twice (a double submit on the default domain: its unique key doesn't compare NULL
+        `domain_id`s) → identical copies Shlink holds, confirmed by `searchTerm`, are exported once and named in
+        `duplicates_collapsed`; copies that differ stop the export, naming the fields, for someone to decide which
+        stays. Also the list is asked with `orderBy=shortCode-ASC`, a link's visits up to the export's start
+        (`endDate`), and every list must bring Shlink's `totalItems`, counted before any collapse, with a count
+        that holds from page to page; a link listed more times than Shlink holds it (pages that moved) stops it.
+        No snapshot is written when it stops. The review and the import refuse a snapshot that still lists a link
+        twice, by name, before writing anything (`tests/test_phase84_shlink_export_order.py`)
 - [x] Fill `Visitor.country` for Shurly's own visits (geolocation: 2.x's deferred "IP geolocation service
       integration"). Nothing fills it today, so once Shlink's history is imported the geo view shows only that
       history, and would mislead → the ISO code, from DB-IP's IP to Country Lite (CC BY 4.0, no account),
@@ -2065,18 +2077,38 @@ the import can be re-run.
         find the task definition on ECS Express
 
 ### 8.5 Cutover
-- [ ] Freeze link creation in Shlink; final delta export + import
-- [ ] ALB: add `go.griddo.io` to the host condition of rule 12 (Shurly), then delete rule 10 (Shlink). Rollback:
-      recreate rule 10. Update `RULE_SYNC_MAP` in `infra/ecs-alb-rule-sync/`. The `go.griddo.io` certificate is
-      already on the listener
-- [ ] Switch the default domain to `go.griddo.io` (8.3) in the same window → `scripts/run_promote_domain.sh
+- [x] Freeze link creation in Shlink; final delta export + import — 2026-10-02: export 17:46 UTC (346 links, the
+      duplicated `co-upb-luis-ochoa` collapsed, 4116 visits whole), review all `keep`, imported for real into
+      `go.griddo.io` (shurly-db snapshot `shurly-db-before-shlink-import-202610021746` first). Shlink logged no link
+      visit between the export and the ALB switch; the S3 files are deleted
+- [x] ALB: add `go.griddo.io` to the host condition of rule 12 (Shurly), then delete rule 10 (Shlink). Rollback:
+      recreate rule 10. The `go.griddo.io` certificate is already on the listener — 2026-10-02. The deployed
+      Lambda's `RULE_SYNC_MAP` still lists `"1": "10"`; it skips a rule that's gone, so the entry goes with the
+      Lambda's redeploy at 8.6
+- [x] Switch the default domain to `go.griddo.io` (8.3) in the same window → `scripts/run_promote_domain.sh
       go.griddo.io`, then `DEFAULT_DOMAIN` on the service, and the repository variable `PUBLIC_SHORT_DOMAIN` with
       a run of the frontend deploy (DEPLOYMENT.md § The cutover). No `BASE_URL` step: the live service sets none
-      (checked 2026-10-01). Before `s.griddo.io`'s row is deleted: it's the default until then
-- [ ] Delete `s.griddo.io` entirely: out of rule 12's host condition, its certificate off the listener and deleted,
-      its Route 53 record (griddo-production), its `Domain` row and test links; the docs and scripts that still
-      name it
-- [ ] Smoke on `go.griddo.io` with a sample of migrated codes, mixed case included
+      (checked 2026-10-01). Before `s.griddo.io`'s row is deleted: it's the default until then — 2026-10-02:
+      promoted, `DEFAULT_DOMAIN` on task definition 35, the frontend deployed with the variable
+- [ ] Delete `s.griddo.io` entirely, with no redirects kept:
+  - [ ] Out of rule 12's host condition, its certificate off the listener and deleted, its Route 53 record
+        (griddo-production)
+  - [ ] Its `Domain` row and its 2 test links → `scripts/run_retire_domain.sh s.griddo.io`, a dry run then
+        `--for-real` (DEPLOYMENT.md § Retiring a domain). `python -m server.tools.domains retire` deletes a
+        domain's row and its links, with their visits, redirect rules and tag associations, in one transaction;
+        it refuses the default domain and an unknown one, and its report names the links by code, with counts
+  - [x] The docs and scripts that still named it → `go.griddo.io` (`DEFAULT_DOMAIN` in `.env.production.example`
+        and `scripts/deploy_ecs.sh`, the frontend deploy's `PUBLIC_SHORT_DOMAIN` fallback,
+        `scripts/setup_custom_domain.sh`, the docs' hosts and diagrams), a neutral host in tests, or gone. What
+        still names it is history (the CHANGELOG, past ROADMAP entries, the deploy log's phase status) and the
+        notes on its removal
+- [x] Smoke on `go.griddo.io` with a sample of migrated codes, mixed case included — 2026-10-02: `mcp`, a
+      44-character code, `CO-Utadeo-…`, the collapsed duplicate → 302; an unknown code → 404; `/docs` → 404 there
+- [x] `?nostat` leaked to the destination: `go.griddo.io/mcp?nostat` reached YouTube with `&nostat=` → the redirect,
+      a rule's target and a crawler's preview drop it before forwarding the query, which otherwise goes on whole,
+      repeated keys included (`tests/test_phase85_nostat_forwarding.py`)
+- [x] The import printed a SAWarning (`Tag.urls`, a URL not in the session yet): harmless, every association was
+      stored → a link is added to the session before its tags (`tests/test_phase84_shlink_import.py`)
 - [ ] Watch orphan visits on `go.griddo.io` for 2–4 weeks: hits on dropped codes show what was still in use →
       re-import them from the raw export
 
@@ -2308,4 +2340,23 @@ check earlier in the next project.
   links their domains, but left the app's own paths on all of them
 - **Lesson:** when one service answers on several hosts, decide per host which paths are whose. A path reserved on
   one host is a code taken from every other
+
+### R17 — Shlink holds a link twice, and the export passed both on · missed · found 2026-10-02
+- **What:** production's export of 344 links held 343 distinct codes: `co-upb-luis-ochoa` twice, as identical
+  copies. The import then failed on `uq_urls_domain_code` with a raw IntegrityError. It looked like paging, since
+  the export asked for no `orderBy` and Shlink's default order isn't stable across pages. But Shlink really holds
+  two rows: `searchTerm` counts 2, same second, same destination, title and tags, no visits. A double submit,
+  which Shlink's unique key `(short_code, domain_id)` lets through on the default domain, since PostgreSQL doesn't
+  compare NULLs → identical copies collapse to one, confirmed with Shlink and recorded in the snapshot; copies
+  that differ stop the export for a person to decide; the list in code order, checked against Shlink's count
+  before any collapse; a snapshot that still lists a link twice refused by the review and the import (8.4)
+- **How it surfaced:** the import of the real snapshot, which crashed on the database's unique code. The first
+  fix took it for paging. The duplicate check it added fired on the next real export, and asking Shlink for the
+  code showed two rows
+- **Why it slipped:** the source's uniqueness was assumed, not checked: the import trusted that a Shlink export
+  can't hold one (domain, code) twice. The fake Shlink answered its pages in one fixed order, and nothing checked
+  that the pages brought as many links as Shlink counts, though every page says so
+- **Lesson:** don't assume a source system enforces its own keys, above all where a NULL is part of one. Check the
+  key in the data before importing it. And before fixing a symptom, ask the source directly: here one search
+  would have told paging from a real duplicate
 

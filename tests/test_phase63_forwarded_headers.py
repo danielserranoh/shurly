@@ -4,7 +4,7 @@ TRUSTED_PROXIES (server/utils/network.py), never from uvicorn.
 
 uvicorn ran with `--proxy-headers --forwarded-allow-ips "*"`: it trusted every peer, took the leftmost
 X-Forwarded-For entry, which the client itself writes, and put it in place of the connection's
-address before the app ran. On the path straight to the ALB (s.griddo.io) anyone could choose their
+address before the app ran. On the path straight to the ALB (go.griddo.io) anyone could choose their
 address. The per-IP rate limits keyed on it, and visits stored it, their country and city too (found
 in production on 2026-09-29).
 

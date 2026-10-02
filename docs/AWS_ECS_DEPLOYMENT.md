@@ -2,7 +2,7 @@
 
 > **Audience:** anyone deploying, operating, or debugging Shurly in production.
 > **Scope:** ECS Express on Fargate in `griddo-main` (eu-south-2), serving `shurly.griddo.io` (the API and the
-> MCP; the frontend from 4.10) and `s.griddo.io` (test links until the Phase 8 cutover), both on ALB rule 12.
+> MCP; the frontend from 4.10) and `go.griddo.io` (the short links, since the Phase 8 cutover), both on ALB rule 12.
 >
 > This document is a complement to [`DEPLOYMENT.md`](../DEPLOYMENT.md), not a replacement:
 > - `DEPLOYMENT.md` is the **step-by-step walkthrough** for deploying from scratch.
@@ -16,7 +16,7 @@
 
 ```
 ┌────────────────────────────────────────────────────────────────────┐
-│  Production: shurly.griddo.io (API, MCP), s.griddo.io (links)      │
+│  Production: shurly.griddo.io (API, MCP), go.griddo.io (links)     │
 │  Account:    griddo-main (686255983646)  /  Region: eu-south-2     │
 │                                                                    │
 │  ECS service:        shurly-api  (cluster: default)                │
@@ -25,7 +25,7 @@
 │  ALB:                ecs-express-gateway-alb-d37ca364              │
 │  Listener:           …8d6cb22fed5c0e8b/f182b836d7cff456            │
 │  Express priority:   4         (auto-managed by Express Mode)      │
-│  Custom rule:        priority 12  → shurly.griddo.io, s.griddo.io  │
+│  Custom rule:        priority 12  → shurly.griddo.io, go.griddo.io │
 │  Lambda rule-sync:   ecs-alb-rule-sync                             │
 │  CloudWatch logs:    /aws/ecs/default/shurly-api-5fdb              │
 │                                                                    │
@@ -51,12 +51,12 @@
             ┌──────────────────────────────────────────┐
             │                                          │
    user ────►  https://shurly.griddo.io/api/…, /mcp/   │
-            │  https://s.griddo.io/<short_code>        │
+            │  https://go.griddo.io/<short_code>       │
    (any HTTP client; browser, curl, MCP, ...)         │
             │                                          │
             │   DNS (Route 53 in griddo-production):   │
             │     shurly.griddo.io  ALIAS A → ALB      │
-            │     s.griddo.io       ALIAS A → ALB      │
+            │     go.griddo.io      ALIAS A → ALB      │
             │                                          │
             └────────────────┬─────────────────────────┘
                              │
@@ -68,17 +68,15 @@
    │  HTTPS listener (port 443):                                 │
    │   • cert *.ecs.eu-south-2.on.aws  (auto from Express Mode)  │
    │   • cert shurly.griddo.io          (manual, ACM)            │
-   │   • cert s.griddo.io               (manual, ACM)            │
-   │   • cert go.griddo.io              (Shlink — coexists)      │
+   │   • cert go.griddo.io              (manual, ACM)            │
    │   • cert links.griddo.io           (Shlink web client)      │
    │                                                             │
    │  Rules:                                                     │
    │   priority 1   sh-<hex>.ecs.…  → shlink-api active TG       │
    │   priority 3   sh-<hex>.ecs.…  → shlink-web active TG       │
    │   priority 4   sh-<hex>.ecs.…  → shurly-api active TG ◄──┐  │
-   │   priority 10  go.griddo.io    → shlink-api active TG    │  │
    │   priority 11  links.griddo.io → shlink-web active TG    │  │
-   │   priority 12  s.griddo.io     → shurly-api active TG    │  │  follows priority 4
+   │   priority 12  go.griddo.io    → shurly-api active TG    │  │  follows priority 4
    │                shurly.griddo.io (same rule)              │  │  via ecs-alb-rule-sync
    │  Default rule: 404                                       │  │  Lambda
    └──────────────────────────────────────────────────────────┼──┘
@@ -306,7 +304,7 @@ Expected output: `["Synced priority 12 with 4"]` or `["No changes needed"]`.
 **C. DNS hasn't propagated.** Less common but possible right after `setup_custom_domain.sh`.
 
 ```bash
-dig shurly.griddo.io +short  # and s.griddo.io: both should return the ALB's IPs
+dig shurly.griddo.io +short  # and go.griddo.io: both should return the ALB's IPs
 ```
 
 If empty, wait 60s and try again. Route 53 propagation is normally <30s but can spike.

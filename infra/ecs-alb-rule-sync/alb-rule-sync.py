@@ -6,9 +6,9 @@ Las reglas manuales para custom domains (prioridad 10+) deben reflejar los
 mismos weights para que el tráfico llegue al TG activo.
 
 Mapeo de reglas:
-  - Prioridad 1 (Express Mode, shlink-api) → Prioridad 10 (go.griddo.io)
+  - Prioridad 1 (Express Mode, shlink-api) → Prioridad 10 (borrada en el cutover, 2 oct 2026)
   - Prioridad 3 (Express Mode, shlink-web) → Prioridad 11 (links.griddo.io)
-  - Prioridad 4 (Express Mode, shurly-api) → Prioridad 12 (shurly.griddo.io, s.griddo.io)
+  - Prioridad 4 (Express Mode, shurly-api) → Prioridad 12 (shurly.griddo.io, go.griddo.io)
 
 Cuándo se ejecuta (EventBridge "ECS Deployment State Change"):
   - SERVICE_DEPLOYMENT_IN_PROGRESS → sigue el despliegue: sincroniza cada
@@ -22,7 +22,7 @@ Cuándo se ejecuta (EventBridge "ECS Deployment State Change"):
 Por qué hace falta seguir el despliegue: antes solo reaccionaba a COMPLETED,
 y ECS para la task vieja ~1 min antes de emitir ese evento. En ese hueco la
 regla del custom domain apuntaba a un TG vacío y el ALB respondía 503
-(s.griddo.io, 27 sep 2026: 00:16:20 → 00:17:16). Y durante todo el canary el
+(el custom domain de Shurly, 27 sep 2026: 00:16:20 → 00:17:16). Y durante todo el canary el
 custom domain seguía al 100% en la versión vieja.
 """
 
@@ -37,9 +37,9 @@ lambda_ = boto3.client("lambda", region_name="eu-south-2")
 
 # Express Mode priority → custom rule priority
 RULE_SYNC_MAP = {
-    "1": "10",  # shlink-api → go.griddo.io
+    "1": "10",  # shlink-api; rule 10 deleted at the cutover (2026-10-02), skipped. Goes at 8.6
     "3": "11",  # shlink-web → links.griddo.io
-    "4": "12",  # shurly-api → shurly.griddo.io, s.griddo.io
+    "4": "12",  # shurly-api → shurly.griddo.io, go.griddo.io
 }
 
 LISTENER_ARN = "arn:aws:elasticloadbalancing:eu-south-2:686255983646:listener/app/ecs-express-gateway-alb-d37ca364/8d6cb22fed5c0e8b/f182b836d7cff456"

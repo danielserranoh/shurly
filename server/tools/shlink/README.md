@@ -23,10 +23,12 @@ uv run python -m server.tools.shlink export [--visits] [--out-dir _exchange]
 
 - **Output:** `_exchange/shlink-<host>-<UTC time>.snapshot.json`. An existing file is
   never overwritten.
-- **What it reads:** every page of `GET /rest/v3/short-urls`, then, for each link:
+- **What it reads:** every page of `GET /rest/v3/short-urls`, in code order (`orderBy=shortCode-ASC`), then,
+  for each link:
   - `…/redirect-rules` when Shlink says it has some;
-  - every page of `…/visits`, with `--visits`.
+  - every page of `…/visits`, with `--visits`, up to the moment the export started (`endDate`).
   - `GET /rest/health` gives Shlink's version.
+- **It's whole, or there's none** (below): a list that doesn't add up stops it before a snapshot is written.
 - **The API key** travels only in the `X-Api-Key` header. It never goes in the snapshot
   or its name, and is never printed, errors included.
 - **At the end** it prints how many links it exported, how many links' visits came whole (and how many
@@ -53,9 +55,55 @@ The snapshot:
       "visits_gaps": [{"start": "2025-03-04T10:00:07+00:00", "end": "2025-03-04T10:00:07+00:00"}]
     }
   ],
-  "visits_failed": ["23q4griddo"]
+  "visits_failed": ["23q4griddo"],
+  "duplicates_collapsed": [{"link": "go.griddo.io/co-upb-luis-ochoa", "copies": 2, "visits": [0, 0]}]
 }
 ```
+
+`duplicates_collapsed` is there only when Shlink holds identical copies of a link (below).
+
+### An export that's whole, or none
+
+Production's export (Shlink 4.6, 344 links) came out with 343 distinct codes: `co-upb-luis-ochoa` twice, as
+identical copies. The import then failed on the database's unique code (ROADMAP R17). It looked like paging,
+since Shlink's default order isn't stable across pages, but Shlink really holds two rows for it:
+`?searchTerm=co-upb-luis-ochoa` counts 2, both on the default domain, created the same second, with the same
+destination, title and tags and no visits. A double submit. Shlink's unique key is `(short_code, domain_id)`,
+and PostgreSQL doesn't compare the default domain's NULL `domain_id`s, so nothing stopped it. So:
+
+- **The list is asked in code order**, `orderBy=shortCode-ASC`, which holds from one page to the next.
+- **A link's visits are asked up to the moment the export started** (`endDate`, included). Shlink lists them
+  newest first, so a visit made mid-export would push one onto the next page, which would bring it again.
+  The next export brings the newer ones, and the import adds only visits newer than a link's last one.
+- **Every list must add up.** Each page says how many items there are in all (`pagination.totalItems`). If
+  the pages bring a different number, or the count changes from one page to the next (a link made or deleted
+  mid-export), the export stops. Shlink's count includes every copy of a link, so it's checked before any
+  collapse.
+- **A link listed more than once** (its domain, null for the default one, and its code) is one of three things:
+  - **Identical copies Shlink holds** are exported once, the first listed kept. "Identical": the same
+    destination (`longUrl`), `title`, `tags` (in any order), `meta` (`validSince`, `validUntil`,
+    `maxVisits`), `forwardQuery`, `crawlable` and `hasRedirectRules`; `dateCreated` may differ. The snapshot
+    names them in `duplicates_collapsed` (`link`, `copies`, each copy's `visits` from `visitsSummary`), and
+    the export prints one line, `Shlink holds identical copies of 1 link, exported once:
+    go.griddo.io/co-upb-luis-ochoa (2 copies, 0 and 0 visits).` Its rules and visits are asked once, by
+    domain and code: Shlink 4.6 finds one row for them (`ShortUrlRepository::findOne`), so another copy's
+    visits can't be reached through the API. The visit counts show if any had some.
+  - **Copies that differ** in any of those stop the export, naming the link and the fields. Exporting again
+    won't help: someone has to decide which copy stays, delete the others in Shlink or give them another
+    code, and export again.
+  - **One row that moving pages brought twice**, while another link went missing and the count still added
+    up. The copies are then identical too, so before collapsing, the export asks Shlink for that code
+    (`?searchTerm=<code>`, keeping the exact matches): it must hold as many copies as were listed. Otherwise
+    the export stops: `Shlink listed … 2 times, but holds 1: its pages moved during the export`. Run it again.
+- **It stops before writing anything:** the message, then `No snapshot was written.`, exit status `1`. A list
+  of short URLs that doesn't add up stops it before any link's visits are asked for.
+- A link's visits Shlink answers 5xx to are still recovered by date range, as below: the count is checked on
+  the lists that answer.
+
+The review and the import refuse a snapshot that still lists a link twice, before they write anything (exit
+status `2`), naming it. The export lists each once, so such a snapshot was edited by hand or made by an
+export from before the fix. A collapsed snapshot is accepted, and the import's report names its collapsed
+links.
 
 ### When Shlink fails on a link's visits
 
@@ -125,7 +173,9 @@ uv run python -m server.tools.shlink review _exchange/shlink-go.griddo.io-….sn
 
 It writes one row per link, next to the snapshot (`….review.csv`) unless `--out` says
 otherwise. It never overwrites a sheet, which may already hold decisions. Every cell is
-spreadsheet-safe: a title that starts like a formula gets a leading quote.
+spreadsheet-safe: a title that starts like a formula gets a leading quote. A snapshot that
+still lists a link twice gets no sheet (exit status `2`): export again. A collapsed link
+(`duplicates_collapsed`) is one row.
 
 | Column | What |
 |---|---|
@@ -173,6 +223,11 @@ It writes to the database the `DB_*` settings name. **Run it with `--dry-run` fi
 prints the report, and rolls back. Against production's private RDS it runs as a one-off ECS task:
 `scripts/run_shlink_import.sh` (DEPLOYMENT.md § The import as a one-off ECS task). A rehearsal runs locally
 against a restored copy.
+
+**A snapshot that still lists a link twice** (its domain and code) is refused before anything is written,
+whatever the review decided for it, with exit status `2` and the link named. The export lists each link once,
+so it was edited by hand or made by an export from before the fix, and may miss a link (An export that's
+whole, or none, above). Export again. A link the export collapsed arrives once, and the report names it.
 
 **Each link the review keeps** (`keep`, `archive`, or left out of the review) arrives with:
 - its exact code, never lowercased, so `AbC` and `abc` stay two links, as in Shlink's default `strict` mode;

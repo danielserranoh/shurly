@@ -156,7 +156,7 @@ CONTAINER_JSON=$(jq -n \
     --arg trusted_proxies "${TRUSTED_PROXIES:-[\"172.31.0.0/16\"]}" \
     --arg disable_track  "${DISABLE_TRACK_PARAM:-nostat}" \
     --arg short_url_mode "${SHORT_URL_MODE:-loose}" \
-    --arg default_domain "${DEFAULT_DOMAIN:-s.griddo.io}" \
+    --arg default_domain "${DEFAULT_DOMAIN:-go.griddo.io}" \
     --arg redirect_status "${REDIRECT_STATUS_CODE:-302}" \
     --arg redirect_cache "${REDIRECT_CACHE_LIFETIME:-0}" \
     --arg bootstrap_owner "${BOOTSTRAP_OWNER_EMAIL:-}" \

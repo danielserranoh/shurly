@@ -14,7 +14,7 @@ feat/*                        ← feature branches
  main                          ← production; auto-deploys on merge
    │
    ▼
- ECS Express @ s.griddo.io
+ ECS Express @ shurly.griddo.io (app, API, MCP) + go.griddo.io (short links)
 ```
 
 ## Branches
@@ -51,8 +51,8 @@ feat/*                        ← feature branches
 3. Tests run (yes, again — they ran on the PR but we re-verify on the merged code).
 4. Docker image built for `linux/amd64,linux/arm64`, tagged `<sha>-<timestamp>`, pushed to ECR.
 5. `update-express-gateway-service` rolls out the new image.
-6. The `ecs-alb-rule-sync` Lambda follows the active TG so `s.griddo.io` stays up.
-7. Smoke test against `s.griddo.io/api/v1/health` from the workflow.
+6. The `ecs-alb-rule-sync` Lambda follows the active TG so `shurly.griddo.io` and `go.griddo.io` stay up.
+7. Smoke test against `shurly.griddo.io/api/v1/health` from the workflow.
 
 ### Rollback
 - **Preferred**: `git revert` the offending commit, PR back to `main`, merge. Re-fires the deploy with the previous code. Keeps history honest.

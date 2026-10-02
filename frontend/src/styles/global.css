@@ -407,7 +407,7 @@
     background-size: 1rem;
     cursor: pointer;
   }
-  /* Prefix group, e.g. "s.griddo.io/" + slug input */
+  /* Prefix group, e.g. "go.griddo.io/" + slug input */
   .input-group {
     display: flex;
     align-items: stretch;

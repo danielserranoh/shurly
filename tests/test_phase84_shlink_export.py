@@ -78,6 +78,13 @@ class FakeShlink:
     To fail as production does: `broken` names, per link, the visits it can't serialize
     (an answer holding one is a 500); `flaky`, how many times a link's visits answer 500
     first; `listing_fails`, that the list of short URLs itself does.
+
+    The list of short URLs takes `orderBy` (`<field>-ASC|DESC`, as Shlink's spec says).
+    Without it, the links come in insertion order, unless `unstable`: then each page of the
+    list sees them in another order, so pages overlap; `ignores_order` keeps them unstable
+    even with `orderBy`. `miscount` is added to the list's `totalItems`. `searchTerm`
+    narrows the list to the links whose code, destination, title or a tag holds it, as
+    Shlink's does. `links` may hold one link twice: production's Shlink does (R17).
     """
 
     def __init__(
@@ -90,6 +97,9 @@ class FakeShlink:
         broken=None,
         flaky=None,
         listing_fails=False,
+        unstable=False,
+        ignores_order=False,
+        miscount=0,
     ):
         self.links = links
         self.rules = rules or {}
@@ -98,6 +108,10 @@ class FakeShlink:
         self.broken = broken or {}
         self.flaky = dict(flaky or {})
         self.listing_fails = listing_fails
+        self.unstable = unstable
+        self.ignores_order = ignores_order
+        self.miscount = miscount
+        self.listings = 0
         self.requests: list[httpx.Request] = []
 
     def handle(self, request: httpx.Request) -> httpx.Response:
@@ -110,7 +124,13 @@ class FakeShlink:
         if path == "/rest/v3/short-urls":
             if self.listing_fails:
                 return self._error()
-            return self._page(request, "shortUrls", list(enumerate(self.links)))
+            links = self._ordered(
+                request.url.params.get("orderBy"), request.url.params.get("searchTerm")
+            )
+            if links is None:
+                return httpx.Response(400, json={"title": "Invalid data", "status": 400})
+            self.listings += 1
+            return self._page(request, "shortUrls", list(enumerate(links)), miscount=self.miscount)
         # The raw path: `url.path` is decoded, and a code may hold an escaped slash.
         raw_path = request.url.raw_path.decode("ascii").split("?")[0]
         found = re.fullmatch(r"/rest/v3/short-urls/([^/]+)/(redirect-rules|visits)", raw_path)
@@ -130,6 +150,39 @@ class FakeShlink:
             visits = [(i, v) for i, v in visits if _moment(v["date"]) <= _moment(end)]
         return self._page(request, "visits", visits, self.broken.get(key, set()))
 
+    ORDER_FIELDS = {
+        "shortCode": lambda link: link["shortCode"],
+        "dateCreated": lambda link: link["dateCreated"],
+        "longUrl": lambda link: link["longUrl"],
+        "title": lambda link: link.get("title") or "",
+        "visits": lambda link: (link.get("visitsSummary") or {}).get("total", 0),
+    }
+
+    def _ordered(self, order: str | None, term: str | None = None) -> list | None:
+        """The links holding `term`, in `order`; None for an order Shlink refuses."""
+        links = self.links
+        if term:
+            term = term.lower()
+            links = [
+                link
+                for link in links
+                if any(
+                    term in (text or "").lower()
+                    for text in (link["shortCode"], link["longUrl"], link.get("title"))
+                    + tuple(link.get("tags") or [])
+                )
+            ]
+        if order is not None:
+            field, _, direction = order.rpartition("-")
+            if field not in self.ORDER_FIELDS or direction not in ("ASC", "DESC"):
+                return None
+        if order is None or self.ignores_order:
+            if not self.unstable or not links:
+                return list(links)
+            turn = self.listings % len(links)  # another order for every page asked
+            return links[turn:] + links[:turn]
+        return sorted(links, key=self.ORDER_FIELDS[field], reverse=direction == "DESC")
+
     @staticmethod
     def _error() -> httpx.Response:
         return httpx.Response(
@@ -138,7 +191,12 @@ class FakeShlink:
 
     @classmethod
     def _page(
-        cls, request: httpx.Request, name: str, items: list, broken: set = frozenset()
+        cls,
+        request: httpx.Request,
+        name: str,
+        items: list,
+        broken: set = frozenset(),
+        miscount: int = 0,
     ) -> httpx.Response:
         """`items` as (index, item): an answer holding a `broken` index fails."""
         page = int(request.url.params.get("page", 1))
@@ -154,7 +212,7 @@ class FakeShlink:
             "pagesCount": pages,
             "itemsPerPage": per_page,
             "itemsInCurrentPage": len(chunk),
-            "totalItems": len(items),
+            "totalItems": len(items) + miscount,
         }
         data = [item for _, item in chunk]
         return httpx.Response(200, json={name: {"data": data, "pagination": pagination}})
@@ -190,7 +248,10 @@ class TestSnapshot:
 
         snapshot = export_snapshot(_client(fake), now=NOW)
 
-        assert [entry.get("redirect_rules") for entry in snapshot["links"]] == [None, rules, rules]
+        assert {
+            entry["short_url"]["shortCode"]: entry.get("redirect_rules")
+            for entry in snapshot["links"]
+        } == {"plain": None, "ruled": rules, "other": rules}
 
     def test_visits_only_when_asked_every_page(self):
         visits = [visit(f"2025-0{m}-01T00:00:00+00:00") for m in range(1, 6)]
@@ -263,8 +324,9 @@ class TestShlinkFailsOnALinksVisits:
 
         snapshot, _ = _export(fake)
 
-        assert [entry["short_url"] for entry in snapshot["links"]] == links
-        before, failing, after = snapshot["links"]
+        # In code order, as the list is asked for (R17).
+        assert [entry["short_url"] for entry in snapshot["links"]] == [links[1], links[2], links[0]]
+        failing, after, before = snapshot["links"]
         assert before["visits"] and after["visits"]
         assert "visits_error" not in before and "visits_gaps" not in after
         assert failing["visits_error"] == {"status": 500, "detail": "An unknown error occurred."}

@@ -12,7 +12,7 @@ const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf
 describe('mcpUrl', () => {
   test('defaults to the API’s /mcp/, with the trailing slash', () => {
     assert.equal(mcpUrl({}), 'http://localhost:8000/mcp/');
-    assert.equal(mcpUrl({ PUBLIC_API_URL: 'https://s.griddo.io/' }), 'https://s.griddo.io/mcp/');
+    assert.equal(mcpUrl({ PUBLIC_API_URL: 'https://shurly.griddo.io/' }), 'https://shurly.griddo.io/mcp/');
   });
 
   test('takes PUBLIC_MCP_URL, and always ends it with one slash', () => {
@@ -24,7 +24,7 @@ describe('mcpUrl', () => {
 describe('fillPlaceholders', () => {
   test('fills every occurrence', () => {
     const html = '<pre><code>claude mcp add shurly {{MCP_URL}}</code></pre><p>{{MCP_URL}}</p>';
-    assert.equal(fillPlaceholders(html, { MCP_URL: 'https://s.griddo.io/mcp/' }), '<pre><code>claude mcp add shurly https://s.griddo.io/mcp/</code></pre><p>https://s.griddo.io/mcp/</p>');
+    assert.equal(fillPlaceholders(html, { MCP_URL: 'https://shurly.griddo.io/mcp/' }), '<pre><code>claude mcp add shurly https://shurly.griddo.io/mcp/</code></pre><p>https://shurly.griddo.io/mcp/</p>');
   });
 
   test('an unknown placeholder fails the build', () => {

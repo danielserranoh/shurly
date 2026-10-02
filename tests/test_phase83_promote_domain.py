@@ -1,6 +1,6 @@
 """
 Phase 8.3 — the cutover's default domain (ROADMAP 8.5). `python -m server.tools.domains promote
-go.griddo.io` makes go.griddo.io the domain new links go on, and s.griddo.io stops being it. In
+go.griddo.io` makes go.griddo.io the domain new links go on, and the old default stops being it. In
 production it runs as a one-off ECS task, scripts/run_promote_domain.sh
 (tests/test_run_promote_domain.py).
 
@@ -8,7 +8,7 @@ production it runs as a one-off ECS task, scripts/run_promote_domain.sh
 - What the default decides changes at once, without a restart: the domain of new links (the API's, a
   campaign's, the MCP's), the link a code names when the API isn't told the domain (`find_url`), and
   where a request on a host Shurly doesn't know looks.
-- What it doesn't change: a link keeps its domain, so s.griddo.io's keep resolving there. A restart
+- What it doesn't change: a link keeps its domain, so the old default's keep resolving there. A restart
   with the old DEFAULT_DOMAIN keeps the new default. BASE_URL moves only DEFAULT_DOMAIN's links, before
   DEFAULT_DOMAIN moves too and after.
 """
@@ -23,13 +23,13 @@ from server.utils.domain import backfill_campaign_url_domains, get_or_create_def
 from server.utils.opengraph import OpenGraphMetadata
 from tests.conftest import TestingSessionLocal
 
-S, GO = "s.griddo.io", "go.griddo.io"
+OLD, GO = "old.example.com", "go.griddo.io"
 
 
 @pytest.fixture(autouse=True)
 def production(monkeypatch):
-    """As production is before the cutover: DEFAULT_DOMAIN is s.griddo.io, and no BASE_URL."""
-    monkeypatch.setattr(settings, "default_domain", S)
+    """As production is before the cutover: DEFAULT_DOMAIN the old default, and no BASE_URL."""
+    monkeypatch.setattr(settings, "default_domain", OLD)
     monkeypatch.setattr(settings, "base_url", "")
     monkeypatch.setattr(domains, "session_factory", TestingSessionLocal)
 
@@ -49,14 +49,14 @@ def _link(db, user, domain: Domain | None, code: str) -> URL:
 
 @pytest.fixture
 def before(db_session, test_user) -> dict[str, URL]:
-    """s.griddo.io the default, with a test link. go.griddo.io as the Shlink import leaves it: not
+    """The old default, with a test link. go.griddo.io as the Shlink import leaves it: not
     the default, with its links, their codes' case kept."""
-    s = get_or_create_default_domain(db_session)
+    old = get_or_create_default_domain(db_session)
     go = Domain(hostname=GO, is_default=False)
     db_session.add(go)
     db_session.commit()
     return {
-        S: _link(db_session, test_user, s, "test01"),
+        OLD: _link(db_session, test_user, old, "test01"),
         GO: _link(db_session, test_user, go, "Promo"),
     }
 
@@ -85,20 +85,22 @@ class TestPromote:
     def test_a_dry_run_by_default(self, db_session, before, promote, capsys):
         assert promote(GO) == 0
 
-        assert _defaults(db_session) == [S]
+        assert _defaults(db_session) == [OLD]
         assert "Dry run: nothing was written." in capsys.readouterr().out
 
-    def test_for_real_go_is_the_default_and_s_is_not(self, db_session, before, promote, capsys):
+    def test_for_real_go_is_the_default_and_the_old_one_is_not(
+        self, db_session, before, promote, capsys
+    ):
         assert promote(GO, "--for-real") == 0
 
         assert _defaults(db_session) == [GO]
-        assert f"{GO} is the default domain now, and {S} isn't." in capsys.readouterr().out
+        assert f"{GO} is the default domain now, and {OLD} isn't." in capsys.readouterr().out
 
     def test_every_link_keeps_its_domain(self, db_session, before, promote):
         promote(GO, "--for-real")
 
         assert {url.short_code: url.domain.hostname for url in db_session.query(URL)} == {
-            "test01": S,
+            "test01": OLD,
             "Promo": GO,
         }
 
@@ -112,11 +114,11 @@ class TestPromote:
         assert f"{GO} is the default domain already: nothing to do." in capsys.readouterr().out
 
     def test_it_makes_the_domain_when_its_missing(self, db_session, promote, capsys):
-        get_or_create_default_domain(db_session)  # s.griddo.io, and nothing imported
+        get_or_create_default_domain(db_session)  # the old default, and nothing imported
 
         assert promote(GO, "--for-real") == 0
 
-        assert (_hostnames(db_session), _defaults(db_session)) == ([GO, S], [GO])
+        assert (_hostnames(db_session), _defaults(db_session)) == ([GO, OLD], [GO])
         assert f"{GO} isn't a domain here yet" in capsys.readouterr().out
 
     def test_a_dry_run_doesnt_make_it(self, db_session, promote, capsys):
@@ -124,14 +126,14 @@ class TestPromote:
 
         promote(GO)
 
-        assert _hostnames(db_session) == [S]
+        assert _hostnames(db_session) == [OLD]
         assert f"{GO} isn't a domain here yet" in capsys.readouterr().out
 
     @pytest.mark.parametrize("written", ["GO.Griddo.IO", "go.griddo.io.", "go.griddo.io:443"])
     def test_the_domain_is_read_as_a_requests_host_is(self, db_session, before, promote, written):
         assert promote(written, "--for-real") == 0
 
-        assert (_hostnames(db_session), _defaults(db_session)) == ([GO, S], [GO])
+        assert (_hostnames(db_session), _defaults(db_session)) == ([GO, OLD], [GO])
 
     @pytest.mark.parametrize(
         "written",
@@ -150,7 +152,7 @@ class TestPromote:
 
         assert exited.value.code == 2
         assert "isn't a domain" in capsys.readouterr().err
-        assert (_hostnames(db_session), _defaults(db_session)) == ([GO, S], [S])
+        assert (_hostnames(db_session), _defaults(db_session)) == ([GO, OLD], [OLD])
 
     def test_two_defaults_are_mended(self, db_session, before, promote):
         """Nothing in the schema stops two rows marked default. After a promotion, one is."""
@@ -167,14 +169,14 @@ class TestWhatItSays:
         promote(GO)
 
         output = capsys.readouterr().out
-        assert f"{S}: the default, 1 link" in output
+        assert f"{OLD}: the default, 1 link" in output
         assert f"{GO}: 1 link" in output
-        assert f"{GO} becomes the default domain, and {S} stops being it." in output
-        assert f"{S}'s keep resolving there" in output
+        assert f"{GO} becomes the default domain, and {OLD} stops being it." in output
+        assert f"{OLD}'s keep resolving there" in output
 
     def test_it_says_to_move_default_domain_too(self, before, promote, capsys, monkeypatch):
         promote(GO)
-        assert f"DEFAULT_DOMAIN is {S} here: set it to {GO}" in capsys.readouterr().out
+        assert f"DEFAULT_DOMAIN is {OLD} here: set it to {GO}" in capsys.readouterr().out
 
         monkeypatch.setattr(settings, "default_domain", GO)
         promote(GO)
@@ -257,25 +259,27 @@ class TestWhatTheDefaultDecides:
     def test_a_code_on_both_domains_names_gos_link_unless_told(
         self, client, auth_headers, db_session, test_user, before, promote
     ):
-        s, go = (db_session.query(Domain).filter(Domain.hostname == host).one() for host in (S, GO))
-        _link(db_session, test_user, s, "both01")
+        old, go = (
+            db_session.query(Domain).filter(Domain.hostname == host).one() for host in (OLD, GO)
+        )
+        _link(db_session, test_user, old, "both01")
         _link(db_session, test_user, go, "both01")
-        assert client.get("/api/v1/urls/both01", headers=auth_headers).json()["domain"] == S
+        assert client.get("/api/v1/urls/both01", headers=auth_headers).json()["domain"] == OLD
 
         promote(GO, "--for-real")
 
         plain = client.get("/api/v1/urls/both01", headers=auth_headers).json()
-        named = client.get(f"/api/v1/urls/both01?domain={S}", headers=auth_headers).json()
-        assert (plain["domain"], named["domain"]) == (GO, S)
+        named = client.get(f"/api/v1/urls/both01?domain={OLD}", headers=auth_headers).json()
+        assert (plain["domain"], named["domain"]) == (GO, OLD)
 
-    def test_s_links_keep_resolving_on_s(self, client, before, promote):
+    def test_the_old_ones_links_keep_resolving_there(self, client, before, promote):
         promote(GO, "--for-real")
 
-        on_s = client.get("/test01", headers={"Host": S}, follow_redirects=False)
+        on_old = client.get("/test01", headers={"Host": OLD}, follow_redirects=False)
         on_go = client.get("/Promo", headers={"Host": GO}, follow_redirects=False)
-        pixel = client.get("/test01/track", headers={"Host": S})
+        pixel = client.get("/test01/track", headers={"Host": OLD})
 
-        assert (on_s.status_code, on_s.headers["location"]) == (302, before[S].original_url)
+        assert (on_old.status_code, on_old.headers["location"]) == (302, before[OLD].original_url)
         assert (on_go.status_code, on_go.headers["location"]) == (302, before[GO].original_url)
         assert pixel.status_code == 200
 
@@ -295,8 +299,8 @@ class TestWhatTheDefaultDecides:
 
 class TestWhatStays:
     def test_a_restart_with_the_old_default_domain_keeps_go(self, db_session, before, promote):
-        """What startup does with domains (`main._seed_database`), DEFAULT_DOMAIN still s.griddo.io:
-        the row marked default wins."""
+        """What startup does with domains (`main._seed_database`), DEFAULT_DOMAIN still the old
+        default: the row marked default wins."""
         promote(GO, "--for-real")
 
         assert get_or_create_default_domain(db_session).hostname == GO
@@ -306,8 +310,8 @@ class TestWhatStays:
     def test_base_url_moves_default_domains_links_before_it_moves_and_after(
         self, client, auth_headers, before, promote, monkeypatch
     ):
-        """Every short URL is on its link's own domain. BASE_URL moves DEFAULT_DOMAIN's: s.griddo.io's
-        until DEFAULT_DOMAIN moves too, then go.griddo.io's."""
+        """Every short URL is on its link's own domain. BASE_URL moves DEFAULT_DOMAIN's: the old
+        default's until DEFAULT_DOMAIN moves too, then go.griddo.io's."""
         monkeypatch.setattr(settings, "base_url", "http://localhost:8000")
         promote(GO, "--for-real")
 
@@ -321,8 +325,8 @@ class TestWhatStays:
         }
         monkeypatch.setattr(settings, "default_domain", GO)
         assert short_urls() == {
-            "test01": f"https://{S}/test01",
+            "test01": f"https://{OLD}/test01",
             "Promo": "http://localhost:8000/Promo",
         }
         monkeypatch.setattr(settings, "base_url", "")
-        assert short_urls() == {"test01": f"https://{S}/test01", "Promo": f"https://{GO}/Promo"}
+        assert short_urls() == {"test01": f"https://{OLD}/test01", "Promo": f"https://{GO}/Promo"}

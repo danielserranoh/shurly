@@ -6,7 +6,7 @@ import { before, describe, test } from 'node:test';
 import { escapeHtml, html, raw, safeUrl, setHTML } from '../src/utils/html.ts';
 
 before(() => {
-  globalThis.window = { location: { origin: 'https://s.griddo.io' } };
+  globalThis.window = { location: { origin: 'https://shurly.griddo.io' } };
 });
 
 describe('html', () => {
@@ -54,7 +54,7 @@ describe('safeUrl', () => {
   });
 
   test('a path is resolved on this site', () => {
-    assert.equal(safeUrl('/dashboard/'), 'https://s.griddo.io/dashboard/');
+    assert.equal(safeUrl('/dashboard/'), 'https://shurly.griddo.io/dashboard/');
   });
 });
 

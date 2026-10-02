@@ -188,8 +188,58 @@ def test_migration_0007_moves_every_key_to_its_hash(pg_engine):
         assert get_user_by_api_key(db, legacy).email == "smoke@griddo.io"
 
 
+def test_migration_0014_drops_the_plaintext_column_and_its_index(pg_engine):
+    """
+    Phase 8.5 — users.api_key, empty since 0007 and unmapped since the release after, goes, with
+    its unique index. A downgrade brings the column back as it was, nullable and indexed, but
+    empty: 0007 had already moved every key to its hash.
+    """
+    from alembic import command
+    from sqlalchemy import inspect
+
+    from server.core.migrations import alembic_config, run_migrations
+
+    def users_schema():
+        users = inspect(pg_engine)
+        columns = {column["name"]: column for column in users.get_columns("users")}
+        indexes = {index["name"]: index for index in users.get_indexes("users")}
+        return columns, indexes
+
+    run_migrations(pg_engine)
+    columns, indexes = users_schema()
+    assert "api_key" not in columns
+    assert "ix_users_api_key" not in indexes
+    assert {"api_key_hash", "api_key_prefix", "api_key_scope"} <= set(columns)
+
+    config = alembic_config()
+    with pg_engine.begin() as conn:
+        config.attributes["connection"] = conn
+        conn.execute(
+            text(
+                "INSERT INTO users (id, email, password_hash, api_key_scope, is_active,"
+                " created_at) VALUES (gen_random_uuid(), 'kept@griddo.io', 'x', 'FULL_ACCESS',"
+                " true, now())"
+            )
+        )
+        command.downgrade(config, "0013")
+    columns, indexes = users_schema()
+    assert columns["api_key"]["nullable"] is True
+    assert columns["api_key"]["type"].length == 64
+    assert indexes["ix_users_api_key"]["column_names"] == ["api_key"]
+    assert indexes["ix_users_api_key"]["unique"]
+    with pg_engine.connect() as conn:
+        assert conn.execute(text("SELECT email, api_key FROM users")).one() == (
+            "kept@griddo.io",
+            None,
+        )
+
+    run_migrations(pg_engine)  # and up again
+    columns, indexes = users_schema()
+    assert "api_key" not in columns and "ix_users_api_key" not in indexes
+
+
 def test_the_model_no_longer_maps_the_plaintext_column():
-    """0014 drops users.api_key while this release still serves: nothing may name it."""
+    """0014 dropped users.api_key while the previous release still served: nothing names it."""
     from server.core.models import User
 
     assert "api_key" not in User.__table__.columns
@@ -197,15 +247,16 @@ def test_the_model_no_longer_maps_the_plaintext_column():
 
 def test_this_release_works_once_0014_drops_the_plaintext_column(pg_engine, monkeypatch):
     """
-    Rolling deploys: 0014 drops users.api_key at the next release's startup, while this
-    release's task still serves. The ORM names every mapped column in its SELECTs and
-    INSERTs, so this release must not map it. Signing in, an API key, /me, the MCP
-    (which loads the user itself, in ShurlyTokenVerifier) and revoking, without it.
+    Rolling deploys: 0014 drops users.api_key at this release's startup, while the previous
+    release's task still serves; it doesn't map the column either. The ORM names every mapped
+    column in its SELECTs and INSERTs, so neither may map it. Signing in, an API key, /me, the
+    MCP (which loads the user itself, in ShurlyTokenVerifier) and revoking, without it.
     """
     pytest.importorskip("fastmcp")
     import json
 
     from fastapi.testclient import TestClient
+    from sqlalchemy import inspect
     from sqlalchemy.orm import sessionmaker
 
     from main import create_app
@@ -216,9 +267,8 @@ def test_this_release_works_once_0014_drops_the_plaintext_column(pg_engine, monk
     from server.core.models import User
     from server.utils import rate_limit
 
-    run_migrations(pg_engine)
-    with pg_engine.begin() as conn:
-        conn.execute(text("ALTER TABLE users DROP COLUMN api_key"))  # what 0014 will do
+    run_migrations(pg_engine)  # 0014 included
+    assert "api_key" not in {column["name"] for column in inspect(pg_engine).get_columns("users")}
 
     sessions = sessionmaker(bind=pg_engine)
     with sessions() as db:

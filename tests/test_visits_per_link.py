@@ -1,7 +1,7 @@
 """
 A link's analytics count its own visits: they're keyed on the link (`visits.url_id`), never
-on its code. At the Phase 8 cutover, Shlink's links arrive on go.griddo.io while test links
-live on s.griddo.io, so one code can name two links on two domains; keyed on the code, their
+on its code. The same code can name two links on two domains (at the Phase 8 cutover, Shlink's
+arrived on go.griddo.io while test links lived on another domain); keyed on the code, their
 visits would mix. `visits.short_code` stays, for orphan visits and debugging.
 
 And the MCP's analytics summary counts clicks the way the app does: a tracking-pixel hit is

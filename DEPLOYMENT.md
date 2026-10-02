@@ -16,9 +16,8 @@ Internet
    ↓
 shared ALB (eu-south-2) — created by ECS Express for Shlink, reused for Shurly
    ↓
-   ├─ priority 10 → shlink-api      → go.griddo.io
    ├─ priority 11 → shlink-web      → links.griddo.io
-   └─ priority 12 → shurly-api      → shurly.griddo.io (the app, API, MCP), s.griddo.io (interim, until Phase 8)
+   └─ priority 12 → shurly-api      → shurly.griddo.io (the app, API, MCP), go.griddo.io (short links)
         ↓
         Fargate task (x86_64, 0.25 vCPU / 0.5 GB)
         FastAPI + uvicorn  ⇄  RDS PostgreSQL t4g.micro
@@ -37,15 +36,17 @@ Hostnames:
 | Host | Service | Phase |
 |---|---|---|
 | `shurly.griddo.io` | The web, the app (`/dashboard/`), the API (`/api/v1/*`) and the MCP (`/mcp/`) | 4; the frontend at 4.10 |
-| `go.griddo.io` | Short links only | Shlink until Phase 8, then Shurly |
-| `s.griddo.io` | Interim: the API and test links until Phase 8, then deleted entirely | 4 |
+| `go.griddo.io` | Short links only | Shlink until Phase 8, Shurly since the cutover (2026-10-02) |
+| `s.griddo.io` | Deleted 2026-10-02. It was the interim host of the API and test links | 4 to 8.5 |
 
-Decided 2026-09-28. Nothing was published on `s.griddo.io`, so it goes at the Phase 8 cutover with no redirects kept.
+Decided 2026-09-28. Nothing was published on `s.griddo.io`, so it goes at the Phase 8 cutover with no redirects
+kept: its `Domain` row and test links with `scripts/run_retire_domain.sh` (§ Retiring a domain), its ALB host,
+certificate and DNS record separately. Shlink's rule 10 went at the cutover too, and `go.griddo.io` joined rule 12.
 
 **The app's own paths are on its host only** (Phase 8.4, decided 2026-10-02): the MCP (`/mcp`, its 308 and
 `/mcp/…`), its OAuth metadata (`/.well-known/oauth-*`), `/docs`, `/redoc` and `/openapi.json` answer on the app's
-host, `shurly.griddo.io`: the host of `MCP_PUBLIC_URL`, else of `FRONTEND_URL`. On a short domain (`s.griddo.io`,
-`go.griddo.io`), `/mcp`, `/docs` and `/redoc` are codes like any other: Shlink's `go.griddo.io/mcp` is a link, and
+host, `shurly.griddo.io`: the host of `MCP_PUBLIC_URL`, else of `FRONTEND_URL`. On a short domain
+(`go.griddo.io`), `/mcp`, `/docs` and `/redoc` are codes like any other: Shlink's `go.griddo.io/mcp` is a link, and
 the import keeps it. Both hosts reach the same service through rule 12, so the `Host` header decides: the ALB passes
 the original one, and CloudFront forwards the viewer's (§ The distribution). `X-Forwarded-Host` isn't read.
 Without either setting, every host is the app's (`server/utils/app_paths.py`).
@@ -85,17 +86,17 @@ The script:
 
 The instance takes ~5–10 minutes to become available. The script blocks until it does.
 
-### 2. ACM certificate for `s.griddo.io`
+### 2. ACM certificate for `go.griddo.io`
 
 ```bash
 # 2.1 Request the cert from griddo-main
 aws acm request-certificate --region eu-south-2 --profile griddo-main \
-    --domain-name s.griddo.io \
+    --domain-name go.griddo.io \
     --validation-method DNS
 
 # Capture its ARN
 CERT_ARN=$(aws acm list-certificates --region eu-south-2 --profile griddo-main \
-    --query "CertificateSummaryList[?DomainName=='s.griddo.io'].CertificateArn" \
+    --query "CertificateSummaryList[?DomainName=='go.griddo.io'].CertificateArn" \
     --output text)
 
 # 2.2 Inspect the validation CNAME
@@ -173,7 +174,7 @@ curl https://shurly-api.ecs.eu-south-2.on.aws/api/v1/health
 # {"status":"ok"}
 ```
 
-### 5. Custom domain `s.griddo.io`
+### 5. Custom domain `go.griddo.io`
 
 ```bash
 AWS_PROFILE=griddo-main ./scripts/setup_custom_domain.sh
@@ -182,23 +183,25 @@ AWS_PROFILE=griddo-main ./scripts/setup_custom_domain.sh
 This wires the three things ECS Express does NOT handle for custom domains:
 
 1. Adds the validated ACM cert to the shared ALB's HTTPS listener.
-2. Creates a routing rule at priority **12** (next free after Shlink's 10 / 11) that matches `host-header=s.griddo.io` and forwards to Shurly's currently-active target group.
+2. Creates a routing rule at priority **12** (next free after Shlink's 10 / 11) that matches `host-header=go.griddo.io` and forwards to Shurly's currently-active target group. Rule 12 hosts
+   `shurly.griddo.io` too: the script, run on an existing rule, replaces its hosts with `DOMAIN` alone, so a host
+   added later joins rule 12 by hand, or takes another priority (`RULE_PRIORITY=13`).
 3. Writes the Route 53 A-alias from `griddo-production` (cross-account boundary).
 
 The script prints the **Express Mode rule priority** that points at Shurly's auto-generated host. **Note that priority** — you need it for the next step.
 
 ### 6. Extend the ALB rule-sync Lambda
 
-Express Mode flips traffic between two target groups for blue/green deploys. Manual rules (priority 12) need to follow the active TG; otherwise, after each rollout, `s.griddo.io` would point at an inactive TG and 503.
+Express Mode flips traffic between two target groups for blue/green deploys. Manual rules (priority 12) need to follow the active TG; otherwise, after each rollout, `shurly.griddo.io` and `go.griddo.io` would point at an inactive TG and 503.
 
 The `ecs-alb-rule-sync` Lambda (created during the Shlink deploy, see Shlink Phase 10) already handles this for Shlink. Its source now lives in [infra/ecs-alb-rule-sync/](infra/ecs-alb-rule-sync/README.md), which documents its triggers, permissions, deploy and rollback. Since 27 Sep 2026 it follows each rollout from `IN_PROGRESS` instead of syncing only on `COMPLETED`, which removed a ~1 min 503 per deploy. To add a service, edit its `RULE_SYNC_MAP`:
 
 ```python
 # In the Lambda code (deployed in griddo-main):
 RULE_SYNC_MAP = {
-    "1": "10",  # shlink-api  → go.griddo.io
+    "1": "10",  # shlink-api; rule 10 deleted at the cutover, skipped
     "3": "11",  # shlink-web  → links.griddo.io
-    "<N>": "12",  # shurly-api  → s.griddo.io   ← NEW (use the priority printed by setup_custom_domain.sh)
+    "<N>": "12",  # shurly-api  → shurly.griddo.io, go.griddo.io   ← NEW (the priority setup_custom_domain.sh printed)
 }
 ```
 
@@ -222,7 +225,7 @@ aws lambda invoke --region eu-south-2 --profile griddo-main \
 # Expect ["No changes needed"] or a "Synced priority 12 with N" entry.
 ```
 
-Force a redeploy and confirm `s.griddo.io` stays up:
+Force a redeploy and confirm `go.griddo.io` stays up:
 
 ```bash
 SERVICE_ARN=$(aws ecs list-services --region eu-south-2 --profile griddo-main \
@@ -260,16 +263,16 @@ curl -X POST https://shurly.griddo.io/api/v1/urls \
     -d '{"url":"https://griddo.io"}'
 
 # Redirect (302)
-curl -I https://s.griddo.io/<short-code-from-above>
+curl -I https://go.griddo.io/<short-code-from-above>
 
 # Tracking pixel (43-byte GIF, no-store)
-curl -I https://s.griddo.io/<short-code>/track
+curl -I https://go.griddo.io/<short-code>/track
 
 # robots.txt (default-deny)
-curl https://s.griddo.io/robots.txt
+curl https://go.griddo.io/robots.txt
 
 # Orphan visit logging
-curl https://s.griddo.io/typoXYZ
+curl https://go.griddo.io/typoXYZ
 curl -H "Authorization: Bearer $TOKEN" \
     https://shurly.griddo.io/api/v1/analytics/orphan-visits
 ```
@@ -439,7 +442,7 @@ behind CloudFront).
 - **The ALB origin:** HTTPS only, with the custom origin header `X-Origin-Verify` (§ Client IPs behind CloudFront).
 - **What each path is:** `/mcp*` covers the bare `/mcp` (the API's 308 to `/mcp/`), the MCP itself and its OAuth
   endpoints (`/mcp/authorize`, `/mcp/token`, …). `/.well-known/*` carries the OAuth metadata (5.8).
-- **Short links:** they live on `s.griddo.io` and later `go.griddo.io`, which keep going straight to the ALB. On
+- **Short links:** they live on `go.griddo.io`, which goes straight to the ALB. On
   `shurly.griddo.io`, a path that isn't listed above is a page, not a short code.
 
 ### The function
@@ -618,7 +621,7 @@ What the workflow does, on merges to `main` that touch `frontend/**` and by hand
 - Otherwise it runs `npm ci`, `npm test` and `npm run build` with the production values:
   - `PUBLIC_API_URL=https://shurly.griddo.io`
   - `PUBLIC_SITE_URL=https://shurly.griddo.io`
-  - `PUBLIC_SHORT_DOMAIN`: the variable's value, `s.griddo.io` while it's unset
+  - `PUBLIC_SHORT_DOMAIN`: the variable's value, `go.griddo.io` while it's unset
 - It uploads `_astro/` first, with `max-age=31536000, immutable`: those names carry a hash, and old files are
   kept for pages still open in someone's browser.
 - It uploads everything else with `max-age=0, must-revalidate`, and removes pages that are gone.
@@ -644,7 +647,7 @@ answers as before. The pages come back with the next attempt.
 
 ### Client IPs behind CloudFront (Phase 6.3)
 
-Two paths reach the ALB: **directly**, for `s.griddo.io` and later `go.griddo.io`, and **through CloudFront**, for
+Two paths reach the ALB: **directly**, for `go.griddo.io`, the short links, and **through CloudFront**, for
 `shurly.griddo.io` (the API and the MCP). Through CloudFront, the ALB's peer is an edge, and the last address in
 `X-Forwarded-For` is the edge's: the rate limits would count edges instead of people.
 
@@ -671,7 +674,7 @@ filter event = "http.request" and path != "/api/v1/health"
 - **`shurly.griddo.io` should read `cloudfront` only.** `xff` there means the viewer address isn't used, and the rate
   limits count CloudFront's edges. The origin request policy doesn't add `CloudFront-Viewer-Address`, the task's
   secret isn't the distribution's, or the ALB stopped appending.
-- **`s.griddo.io`, and later `go.griddo.io`, should read `xff`.** `socket` there means `TRUSTED_PROXIES` doesn't name
+- **`go.griddo.io` should read `xff`.** `socket` there means `TRUSTED_PROXIES` doesn't name
   the ALB, so every client looks like the ALB.
 - The health checks, left out above, read `socket`: the ALB asks them itself.
 
@@ -700,7 +703,7 @@ filter event = "http.request" and path != "/api/v1/health"
 
 **Defence in depth, at the ALB (optional):** the ALB can refuse requests for `shurly.griddo.io` that skip
 CloudFront, so they never reach the app. The app doesn't depend on it. It has to be per host: the ALB is shared,
-priority 12 also serves `s.griddo.io`, and `s.griddo.io` and `go.griddo.io` are reached directly. So neither a
+priority 12 also serves `go.griddo.io`, which is reached directly. So neither a
 condition on priority 12 nor a security group limited to CloudFront's origin-facing prefix list
 (`com.amazonaws.global.cloudfront.origin-facing`) will do. Instead:
 
@@ -708,7 +711,7 @@ condition on priority 12 nor a security group limited to CloudFront's origin-fac
   values during a rotation), forwarding to Shurly. It must follow the active target group, so it goes in the rule-sync
   Lambda's `RULE_SYNC_MAP` too (§ 6). The Lambda only changes a rule's actions, so the condition stays.
 - After it, a rule for `shurly.griddo.io` answering a fixed `403`.
-- Priority 12 then serves only `s.griddo.io`.
+- Priority 12 then serves only `go.griddo.io`.
 
 ### Check after the first deploy
 
@@ -782,7 +785,7 @@ The resolver (`server/utils/network.py::resolve_client_ip`) checks the request's
 
 Behind CloudFront (`shurly.griddo.io`, Phase 4.10) the client IP comes from `CloudFront-Viewer-Address` instead, on requests that prove they came through the distribution: § Frontend hosting, "Client IPs behind CloudFront". Don't add CloudFront's ranges here.
 
-**uvicorn's proxy headers stay off** (`--no-proxy-headers` in the dockerfile's CMD). They're on by default, and they replace the connection's address before the app sees the request. Until 2026-09-29 the image ran them with `--forwarded-allow-ips "*"`, which takes the leftmost `X-Forwarded-For` entry, the one the client writes. So on `s.griddo.io` anyone could choose their address: the per-IP rate limits counted it, and visits stored it, with its country and city. Never turn them back on, and don't add `--forwarded-allow-ips`. The app reads `X-Forwarded-Proto` itself, from `TRUSTED_PROXIES` only (`ForwardedProtoMiddleware`), so what Starlette builds from the scheme, like a trailing-slash redirect, stays `https` behind the ALB. `tests/test_phase63_forwarded_headers.py` runs the real uvicorn with the CMD's flags.
+**uvicorn's proxy headers stay off** (`--no-proxy-headers` in the dockerfile's CMD). They're on by default, and they replace the connection's address before the app sees the request. Until 2026-09-29 the image ran them with `--forwarded-allow-ips "*"`, which takes the leftmost `X-Forwarded-For` entry, the one the client writes. So on the short domain, straight to the ALB, anyone could choose their address: the per-IP rate limits counted it, and visits stored it, with its country and city. Never turn them back on, and don't add `--forwarded-allow-ips`. The app reads `X-Forwarded-Proto` itself, from `TRUSTED_PROXIES` only (`ForwardedProtoMiddleware`), so what Starlette builds from the scheme, like a trailing-slash redirect, stays `https` behind the ALB. `tests/test_phase63_forwarded_headers.py` runs the real uvicorn with the CMD's flags.
 
 ## Rate limits (Phase 6.3)
 
@@ -829,8 +832,9 @@ An API key is kept as its SHA-256 hash and its first 12 characters (`users.api_k
   gets a 401 from it. The same key works again once the rollout ends. JWTs and signing in with Google
   aren't affected.
 - `users.api_key`, empty from then on, is no longer mapped from the release after `0007`'s: the ORM named it in every
-  SELECT and INSERT of a user. The release after that drops it (`0014`). Not sooner: a task still running the
-  previous release would fail every user query mid-rollout.
+  SELECT and INSERT of a user. Migration `0014` drops it and its index, once that release was in production: a task
+  still running a release that mapped it would have failed every user query mid-rollout. Its downgrade brings the
+  column back empty.
 - A downgrade past `0007` can't give the keys back: everyone generates a new one.
 
 ## Sign in with Google (Phase 3.13)
@@ -1327,10 +1331,10 @@ Three settings name it, and all three move in the window:
 - **`DEFAULT_DOMAIN`**, on the service, decides which links `BASE_URL` moves, and the domain of a link from before
   domains. The live service sets no `BASE_URL` (checked 2026-10-01), so there's no `BASE_URL` step.
 - **`PUBLIC_SHORT_DOMAIN`**, the repository variable the frontend deploy builds with, is the host the create page
-  shows before a new link's code. Unset, it's `s.griddo.io`.
+  shows before a new link's code. Unset, it's `go.griddo.io`.
 
-A link keeps its domain: `s.griddo.io`'s keep resolving there until it's deleted. Delete its `Domain` row only
-after this: until then it's the default.
+A link keeps its domain: the old default's keep resolving there until it's retired (§ Retiring a domain). Retire
+it only after this: until then it's the default, and the tool refuses it.
 
 `scripts/run_promote_domain.sh` runs `python -m server.tools.domains promote` as a one-off ECS task, like the
 backfill (`scripts/one_off_task.sh`): the live service's image, environment and network, one container,
@@ -1355,12 +1359,43 @@ gh workflow run deploy-frontend.yml --ref main --repo danielserranoh/shurly
 
 - **If the dry run says `go.griddo.io` "isn't a domain here yet", stop.** The Shlink import makes its row, with its
   links: either the import didn't run on this database, or the name is wrong.
-- **Rollback:** `scripts/run_promote_domain.sh s.griddo.io --for-real` while it exists, `DEFAULT_DOMAIN` back, and
+- **Rollback:** `scripts/run_promote_domain.sh` with the old default, `--for-real`, while its row exists (it's
+  retired now, so the window's rollback is gone), `DEFAULT_DOMAIN` back, and
   `gh variable delete PUBLIC_SHORT_DOMAIN` with another run of the frontend deploy. Links made in between stay on
   `go.griddo.io`, which Shlink doesn't know, if the ALB goes back to it too.
 
 `tests/test_run_promote_domain.py` runs the script against the import's fake `aws`, and
 `tests/test_phase83_promote_domain.py` pins what the switch moves and what it leaves.
+
+### Retiring a domain
+
+`scripts/run_retire_domain.sh` runs `python -m server.tools.domains retire` the same way, as a one-off ECS task
+with one container, `retire`, and no task role. It deletes a domain's `Domain` row and its links, with everything
+that hangs off them, in one transaction: their visits, redirect rules and tag associations, campaign links among
+them. The tags and campaigns themselves stay, the campaigns with their links on other domains. Orphan visits stay
+too: they record no domain. Its output goes to the service's log group, in streams `retire-domain/…`.
+
+- **It refuses the default domain**, the row marked so or `DEFAULT_DOMAIN`'s (the links from before domains count as
+  its), **and a domain that isn't there**. It exits 1 then, with nothing written, and the script fails.
+- **A dry run unless `--for-real`**, which needs the domain typed back. The dry run runs the deletes and rolls them
+  back, so it checks them too.
+- **The report** lists the domain's links by code, each with its visits, redirect rules and tags, then what goes
+  with them. Codes and counts only: a destination can carry a recipient's details.
+- **No redirect is kept.** A request on the retired host, while the ALB still sends it, looks on the default domain,
+  like any host Shurly doesn't know: its codes answer `404`, as orphan visits.
+- **It doesn't touch AWS.** The host's ALB rule, its certificate and its DNS record go separately.
+
+```bash
+# 1. A dry run: the domain's links, by code, and what goes with them
+scripts/run_retire_domain.sh s.griddo.io
+
+# 2. For real (it asks for the domain again). There's no undo: a database snapshot first if in doubt
+scripts/run_retire_domain.sh s.griddo.io --for-real
+```
+
+That's how `s.griddo.io` goes after the cutover: its row and its 2 test links. `tests/test_run_retire_domain.py`
+runs the script against the import's fake `aws`, and `tests/test_phase85_retire_domain.py` pins what goes and what
+stays.
 
 ## Routine operations
 
@@ -1420,7 +1455,7 @@ aws ecs describe-express-gateway-service --region eu-south-2 --profile griddo-ma
     --query "service.{status:status,runningCount:runningCount,desiredCount:desiredCount}"
 ```
 
-### `s.griddo.io` returns 503 / "no healthy upstream" after a deploy
+### `go.griddo.io` or `shurly.griddo.io` returns 503 / "no healthy upstream" after a deploy
 
 The ALB rule at priority 12 is pointing at the inactive target group. Either:
 - The Lambda `ecs-alb-rule-sync`'s `RULE_SYNC_MAP` is missing Shurly's mapping. Add it (see step 6 above).

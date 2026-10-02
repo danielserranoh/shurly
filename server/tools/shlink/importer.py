@@ -33,7 +33,7 @@ from sqlalchemy.orm import Session
 from server.core import SessionLocal
 from server.core.config import settings
 from server.core.models import URL, Domain, OrgRole, RedirectRule, Tag, URLType, User, Visitor
-from server.tools.shlink.export import format_gap, visits_state
+from server.tools.shlink.export import SnapshotError, check_links, format_gap, visits_state
 from server.tools.shlink.mapping import is_bot, is_pixel, map_condition
 from server.utils.columns import fit, stored_referer, stored_user_agent
 from server.utils.csv_export import unquote_spreadsheet_text
@@ -54,7 +54,8 @@ DECISIONS = ("keep", "archive", "drop")
 
 
 class ImportRefused(Exception):
-    """The import can't run at all: its owner can't import."""
+    """The import can't run at all: its owner can't import, or its snapshot lists a link
+    twice (R17), so another may be missing."""
 
 
 @dataclass
@@ -94,6 +95,10 @@ def import_snapshot(
     review's `decisions`, keyed by (domain, code). Flushes, never commits: the caller
     commits, or rolls back a dry run or a blocked import.
     """
+    try:
+        check_links(entry["short_url"] for entry in snapshot["links"])
+    except SnapshotError as error:
+        raise ImportRefused(f"{error} Nothing was written.") from None
     membership = get_membership(db, owner)
     if not owner.is_active or membership is None or membership.role != OrgRole.OWNER:
         raise ImportRefused(
@@ -190,6 +195,10 @@ def format_report(report: Report, snapshot: dict, *, visits: bool) -> str:
         f"  dropped    {len(report.dropped)}, as the review says",
         f"  kept       {len(report.not_reviewed)} the review left out",
     ]
+    for item in snapshot.get("duplicates_collapsed") or []:
+        lines.append(
+            f"  Shlink held identical copies of {item['link']} ({item['copies']}), imported once"
+        )
     if report.domains_created:
         lines.append(f"  domains created: {', '.join(report.domains_created)}")
     if report.tags_created:
@@ -279,11 +288,13 @@ def _create(db, report, entry, host, code, owner, organization_id, domains, tags
         created_at=created,
         updated_at=created,
     )
+    # In the session before its tags: `_tag`'s flush (and any autoflushing query) would otherwise
+    # meet a Tag whose `urls` holds a transient URL, and SQLAlchemy warns it won't cascade it.
+    db.add(url)
     for raw in link.get("tags") or []:
         tag = _tag(db, report, raw, owner, tags)
         if tag is not None and tag not in url.tags:
             url.tags.append(tag)
-    db.add(url)
     db.flush()
     return url
 

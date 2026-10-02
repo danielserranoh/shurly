@@ -26,6 +26,68 @@ implementation lifecycle and is independent of the URL version segment.
 
 ## [Unreleased]
 
+### Added — retiring a domain (8.5)
+- **`python -m server.tools.domains retire HOST [--for-real]`** deletes a domain's row and its links, with their
+  visits, redirect rules and tag associations (campaign links among them), in one transaction. The tags and
+  campaigns themselves stay, and so do orphan visits, which record no domain. No redirect is kept.
+- **It refuses the default domain**, the row marked so or `DEFAULT_DOMAIN`'s, **and one that isn't there**: it
+  exits 1, with nothing written.
+- **A dry run unless `--for-real`**: the deletes run and roll back. The report names the links by code, each with
+  its visits, redirect rules and tags, and never a destination.
+- **`scripts/run_retire_domain.sh HOST [--for-real]`** runs it as a one-off ECS task, like
+  `run_promote_domain.sh`, with the domain typed back for real (DEPLOYMENT.md § Retiring a domain). For
+  `s.griddo.io`'s row and test links after the cutover.
+
+### Changed — `go.griddo.io` where the interim host was (8.5)
+- The defaults that still named the interim short domain name `go.griddo.io`: the frontend deploy's
+  `PUBLIC_SHORT_DOMAIN` fallback, `DEFAULT_DOMAIN` in `.env.production.example` and `scripts/deploy_ecs.sh`, and
+  `scripts/setup_custom_domain.sh`'s `DOMAIN`. Tests use `go.griddo.io` or a neutral host, the docs the live hosts.
+
+### Fixed — `?nostat` stays with us (8.5)
+- **DISABLE_TRACK_PARAM isn't forwarded to the destination any more.** It skipped the visit as it should, but a
+  link that forwards its query passed it on too: `go.griddo.io/mcp?nostat` went to YouTube with `&nostat=` on the
+  end. Now it's dropped before the query is forwarded, with any value or none (`?nostat`, `?nostat=1`), in the
+  redirect, a redirect rule's target and a crawler's preview. Shlink does the same.
+- **The rest of the query goes on as it came:** the other parameters in their order, after the destination's own
+  query, and a repeated one now with each of its values (`?tag=a&tag=b`), where only the last went before. A
+  forwarded parameter still wins a clash with a campaign recipient's row.
+
+### Removed — `users.api_key` (8.5)
+- **Migration `0014` drops the plaintext API key column and its unique index** (`ix_users_api_key`). `0007` had
+  emptied it, moving every key to its hash, and the release after stopped mapping it; that release is in
+  production, so a task still serving the previous release during the rollout never names it. The downgrade adds
+  the column back, nullable and indexed as it was, but empty. The drift test no longer ignores anything
+  (`_PENDING_DROP` is gone).
+
+### Fixed — the Shlink import without a SAWarning (8.5)
+- **The import added a link to the session only after attaching its tags**, so the next new tag's flush saw a tag
+  holding a link outside the session: "SAWarning: Object of type <URL> not in session, add operation along
+  'Tag.urls' won't proceed". Nothing was lost (every link's tags were
+  stored); the link is in the session first now, and the warning is gone.
+
+### Fixed — the Shlink export is whole, or there's none (8.4)
+- **Production's export of 344 links held 343 distinct codes**, `co-upb-luis-ochoa` twice, and the import then
+  failed on `uq_urls_domain_code` with a traceback. Shlink really holds that link twice: a double submit on the
+  default domain, whose NULL `domain_id` its unique key doesn't catch on PostgreSQL.
+- **Identical copies Shlink holds collapse to one:** the same destination, title, tags, `meta`, `forwardQuery`,
+  `crawlable` and `hasRedirectRules` (`dateCreated` may differ). The export confirms them with Shlink by the
+  code (`searchTerm`), asks for their rules and visits once, names them in the snapshot's
+  `duplicates_collapsed`, and prints one line. Shlink answers a link's visits for one of its rows only, so each
+  copy's visit count is recorded too.
+- **Copies that differ stop the export**, naming the link and the fields: someone has to decide which stays,
+  and exporting again won't help.
+- **The export asks for Shlink's short URLs in code order** (`orderBy=shortCode-ASC`), since Shlink's default
+  order isn't stable across pages, **and checks what it brought:** as many links as Shlink's
+  `pagination.totalItems`, counted before any collapse, with a count that doesn't change from page to page. A
+  link listed more times than Shlink holds it (pages that moved, with another link missing) stops it too.
+  A link's visits are asked up to the moment the export started (`endDate`), so a visit made meanwhile can't
+  shift their pages, and their count is checked the same way. Anything that doesn't add up stops the export
+  with a message and exit status 1, and no snapshot is written. Visits Shlink answers 5xx to are still
+  recovered by date range.
+- **The review and the import refuse a snapshot that still lists a link twice** (edited by hand, or from an
+  older export), naming it, before they write anything (exit status 2), instead of a sheet with two rows for it
+  or an IntegrityError. They take a collapsed one, and the import's report names its collapsed links.
+
 ### Changed — the MCP and the docs on the app's host only (8.4)
 - **The app's own paths answer on its host only:** the MCP (`/mcp`, its 308, `/mcp/…`), its OAuth metadata
   (`/.well-known/oauth-*`), `/docs`, `/redoc` and `/openapi.json`, on the host of `MCP_PUBLIC_URL` (else of

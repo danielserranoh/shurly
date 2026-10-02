@@ -1,8 +1,8 @@
 """
 Phase 8.4 — the paths the app serves itself, on its own host only. The user's choice (option A,
 2026-10-02): the MCP, its OAuth metadata and the API's docs live on the app's host,
-shurly.griddo.io (MCP_PUBLIC_URL's, else FRONTEND_URL's). On a short domain (go.griddo.io, and
-s.griddo.io until the cutover), `/mcp`, `/docs` and `/redoc` are links like any other code:
+shurly.griddo.io (MCP_PUBLIC_URL's, else FRONTEND_URL's). On a short domain (go.griddo.io),
+`/mcp`, `/docs` and `/redoc` are links like any other code:
 Shlink's go.griddo.io/mcp points at a video, has 41 visits, and is out there.
 
 Both hosts reach the same service (the ALB's rule 12), so the Host header decides. The ALB passes
