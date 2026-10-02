@@ -2027,6 +2027,14 @@ the import can be re-run.
         PostgreSQL; its downgrade fails while a longer code is kept); custom codes up to 64 in the API, the MCP
         and the create page; generated codes stay 6; "Typos & broken links" looks for codes that long.
         `users.api_key`'s drop takes `0014` (`tests/test_phase84_long_codes.py`)
+  - [x] `/mcp`, `/docs` and `/redoc` on short domains 🔎 R16: Shlink's `go.griddo.io/mcp` points at a video, has 41
+        visits and is out there, and Shurly served the MCP at `/mcp` on every host. The user's choice (option A,
+        2026-10-02) → the app's own paths (the MCP, its 308 and OAuth metadata, `/docs`, `/redoc`, `/openapi.json`)
+        answer on the app's host only, the host of `MCP_PUBLIC_URL`, else of `FRONTEND_URL`
+        (`server/utils/app_paths.py`). On a short domain they're codes like any other, by the `Host` header, which
+        the ALB and CloudFront pass as the viewer's. A code is reserved only on the app host's domain, so a custom
+        `mcp` on `go.griddo.io` is a link and the import keeps it. Without either setting, every host is the app's
+        (`tests/test_phase84_app_paths.py`)
 - [x] Fill `Visitor.country` for Shurly's own visits (geolocation: 2.x's deferred "IP geolocation service
       integration"). Nothing fills it today, so once Shlink's history is imported the geo view shows only that
       history, and would mislead → the ISO code, from DB-IP's IP to Country Lite (CC BY 4.0, no account),
@@ -2289,4 +2297,15 @@ check earlier in the next project.
   how many of Shlink's links that was until the dry run ran on the real snapshot. The tests' links have short codes
 - **Lesson:** when an import refuses what doesn't fit the schema, measure the real data against those limits
   early, not at the production dry run
+
+### R16 — The app's own paths took their codes on every domain · missed · found 2026-10-01
+- **What:** `/mcp`, `/docs` and `/redoc` were the app's on every host, so those codes were reserved on every domain
+  (5.5). Shlink's `go.griddo.io/mcp` is a link, out there, with 41 visits: after the cutover it would have opened
+  the MCP → the app's paths on its own host only (8.4, option A)
+- **How it surfaced:** the import's dry run in production, which refuses a code the app serves itself, next to R15's
+  long codes
+- **Why it slipped:** the reservation was decided when one host served everything. Multi-domain (3.10.1, 8.3) gave
+  links their domains, but left the app's own paths on all of them
+- **Lesson:** when one service answers on several hosts, decide per host which paths are whose. A path reserved on
+  one host is a code taken from every other
 

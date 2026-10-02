@@ -117,6 +117,7 @@ class Settings(BaseSettings):
     google_redirect_uri: str = ""
     # The static frontend. After Google, the browser goes to {frontend_url}/login/
     # with a one-time code in the fragment (server/app/google_auth.py).
+    # Phase 8.4 — without `mcp_public_url`, its host is the app's (`app_host`).
     frontend_url: str = ""
     # POST /auth/register. Accounts come from Google, so it's off; turn it on only
     # for local development and tests, never in production.
@@ -127,6 +128,10 @@ class Settings(BaseSettings):
     # `organization_domain` are set; the MCP then takes API keys and JWTs only.
     # The MCP endpoint as clients reach it, without the trailing slash, e.g.
     # https://shurly.griddo.io/mcp. People connect to it with the slash.
+    # Phase 8.4 — its host is the app's (server/utils/domain.py, `app_host`): the
+    # MCP, its OAuth metadata and the docs answer there only, and on any other host
+    # `/mcp`, `/docs` and `/redoc` are short links. Else FRONTEND_URL's host; with
+    # neither, every host is the app's.
     mcp_public_url: str = ""
     # Signs the MCP's OAuth tokens and, derived, encrypts what it stores. The same
     # value on every task; changing it signs every MCP client out.

@@ -42,6 +42,14 @@ Hostnames:
 
 Decided 2026-09-28. Nothing was published on `s.griddo.io`, so it goes at the Phase 8 cutover with no redirects kept.
 
+**The app's own paths are on its host only** (Phase 8.4, decided 2026-10-02): the MCP (`/mcp`, its 308 and
+`/mcp/…`), its OAuth metadata (`/.well-known/oauth-*`), `/docs`, `/redoc` and `/openapi.json` answer on the app's
+host, `shurly.griddo.io`: the host of `MCP_PUBLIC_URL`, else of `FRONTEND_URL`. On a short domain (`s.griddo.io`,
+`go.griddo.io`), `/mcp`, `/docs` and `/redoc` are codes like any other: Shlink's `go.griddo.io/mcp` is a link, and
+the import keeps it. Both hosts reach the same service through rule 12, so the `Host` header decides: the ALB passes
+the original one, and CloudFront forwards the viewer's (§ The distribution). `X-Forwarded-Host` isn't read.
+Without either setting, every host is the app's (`server/utils/app_paths.py`).
+
 ## Prerequisites
 
 - AWS CLI configured with two SSO profiles (`griddo-main`, `griddo-production`).

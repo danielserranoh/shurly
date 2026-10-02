@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from urllib.parse import urlsplit
 
 from sqlalchemy import exists, update
 from sqlalchemy.orm import Session, aliased
@@ -49,6 +50,30 @@ def normalize_hostname(host: str | None) -> str:
     if host.startswith("["):  # an IPv6 literal, maybe with a port
         return host[1 : host.find("]")] if "]" in host else host
     return host.split(":", 1)[0].rstrip(".")
+
+
+def app_host() -> str | None:
+    """
+    Phase 8.4 — the host the app serves itself on: the MCP, its OAuth metadata and the API's
+    docs (shurly.griddo.io). MCP_PUBLIC_URL's host, else FRONTEND_URL's. On any other host,
+    those paths are links like any code (server/utils/app_paths.py). None without either
+    (local development, tests): there are no short domains then.
+    """
+    for url in (settings.mcp_public_url, settings.frontend_url):
+        try:
+            host = urlsplit(url).hostname if url else None
+        except ValueError:  # a malformed URL names no host
+            host = None
+        if host:
+            return normalize_hostname(host)
+    return None
+
+
+def serves_app_paths(hostname: str | None) -> bool:
+    """Phase 8.4 — whether the app serves its own paths on `hostname`: on its host, or on every
+    host when it has none (`app_host`)."""
+    app = app_host()
+    return app is None or normalize_hostname(hostname) == app
 
 
 def resolve_domain_for_host(db: Session, host_header: str | None) -> Domain:

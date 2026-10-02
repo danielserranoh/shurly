@@ -139,6 +139,12 @@ short code `mcp` is reserved as a consequence: asking for it as a custom code
 gets a suffixed code and a warning, like a taken one (see `RESERVED_SHORT_CODES`
 in `server/utils/url.py`). Every other code still resolves.
 
+Phase 8.4 — only on the app's host, the host of `MCP_PUBLIC_URL` (shurly.griddo.io).
+On a short domain the MCP, its 308 and its OAuth metadata aren't there, and
+`/mcp` is a code like any other: Shlink's go.griddo.io/mcp is a link
+(`server/utils/app_paths.py`). With no `MCP_PUBLIC_URL` or `FRONTEND_URL`, every
+host is the app's, as before.
+
 Single deployment, single Dockerfile, single ALB rule — same SLO as the
 rest of the API. The `_try_build_mcp_app` hook in `main.py` is conditional
 on the `[mcp]` extra, so dev environments running `uv sync` (without

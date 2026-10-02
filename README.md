@@ -469,9 +469,11 @@ Per-link analytics as on Shlink's link page (Phase 3.16, contract in ROADMAP 3.1
 Shurly supports three types of URLs:
 
 1. **Standard**: Auto-generated 6-character short codes
-2. **Custom**: User-defined short codes (3-20 alphanumeric characters and hyphens).
+2. **Custom**: User-defined short codes (3-64 letters, numbers, hyphens or underscores).
    A code that's taken, or reserved because Shurly serves that path itself
-   (`mcp`, `docs`, `redoc`), gets a random suffix and a warning.
+   (`mcp`, `docs`, `redoc`), gets a random suffix and a warning. Those paths are
+   reserved on the app's own host only (the host of `MCP_PUBLIC_URL`, else of
+   `FRONTEND_URL`): on a short domain they're codes like any other.
 3. **Campaign**: Generated from CSV imports with personalized user data
 
 Each URL can also carry: validity window (`valid_since`/`valid_until`), visit cap
