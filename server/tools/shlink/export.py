@@ -9,6 +9,13 @@ whatever the parameters, most likely over one visit it can't serialize. A 5xx is
 if it persists, the export records the failure on that link and recovers what it can of
 its visits by date range (`_recover`), then carries on. Every other failure stops it.
 
+An export is whole or there's none (R17). Shlink's default order isn't stable across pages:
+production's listed one link twice and, very likely, skipped another. So the list is asked
+in code order, a link's visits up to the moment the export started (newer ones would shift
+their pages), and every list must bring as many items as Shlink counts, and each link once.
+Otherwise SnapshotError, and no snapshot is written. The review and the import refuse a
+snapshot that lists a link twice (`check_links`).
+
 The API key only ever travels in the `X-Api-Key` header: it's never written to the
 snapshot, put in its name, or printed.
 """
@@ -16,7 +23,8 @@ snapshot, put in its name, or printed.
 import json
 import os
 import time
-from collections.abc import Callable, Iterator
+from collections import Counter
+from collections.abc import Callable, Iterable, Iterator
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import quote, urlsplit
@@ -24,6 +32,9 @@ from urllib.parse import quote, urlsplit
 import httpx
 
 FORMAT = "shurly.shlink-snapshot/1"
+
+# The list of short URLs, in an order that holds across pages (Shlink's spec: `orderBy`).
+ORDER = "shortCode-ASC"
 
 # A 5xx is asked again this many times, after BACKOFF seconds, then twice that.
 RETRIES = 2
@@ -34,6 +45,30 @@ RECOVERY_REQUESTS = 600
 EARLIEST = datetime(1970, 1, 1, tzinfo=timezone.utc)
 
 Get = Callable[[str, dict | None], dict]
+
+
+class SnapshotError(Exception):
+    """An export that isn't whole: the export writes no snapshot, and the review and the
+    import refuse one."""
+
+
+def check_links(links: Iterable[dict]) -> None:
+    """
+    SnapshotError naming each link listed more than once, by `shortUrl`'s host and its code.
+    Shlink identifies a short URL by its domain (null for the default one) and its code.
+    """
+    counts, names = Counter(), {}
+    for link in links:
+        key = (link.get("domain") or None, link["shortCode"])
+        counts[key] += 1
+        host = urlsplit(link.get("shortUrl") or "").hostname or key[0]
+        names[key] = f"{host}/{key[1]}"
+    repeated = [f"{names[key]} ({count} times)" for key, count in counts.items() if count > 1]
+    if repeated:
+        raise SnapshotError(
+            f"Shlink listed {', '.join(repeated)}: its pages moved during the export, so "
+            "another link may be missing. Export again."
+        )
 
 
 def shlink_client(
@@ -70,11 +105,19 @@ def export_snapshot(
     A link whose visits Shlink keeps answering 5xx to gets `visits_error` (the status and
     Shlink's detail), the visits recovered by date range in `visits`, and the ranges that
     stayed out in `visits_gaps`; its code goes in the snapshot's `visits_failed`.
+
+    SnapshotError when a list doesn't bring what Shlink counts, or brings a link twice.
     """
     get = _retrying(client, retries, backoff, sleep or time.sleep)
     health = get("/rest/health", None)
+    # Visits up to now, both ends included: one made during the export can't shift the pages.
+    until = clock()
+    short_urls = list(
+        _pages(get, "/rest/v3/short-urls", "shortUrls", page_size, {"orderBy": ORDER})
+    )
+    check_links(short_urls)
     links, failed = [], []
-    for short_url in _pages(get, "/rest/v3/short-urls", "shortUrls", page_size):
+    for short_url in short_urls:
         entry = {"short_url": short_url}
         code = short_url["shortCode"]
         path = f"/rest/v3/short-urls/{quote(code, safe='')}"
@@ -84,8 +127,9 @@ def export_snapshot(
             entry["redirect_rules"] = get(f"{path}/redirect-rules", domain)
         if visits:
             try:
+                listed = {**domain, "endDate": _iso(_seconds(until))}
                 entry["visits"] = list(
-                    _pages(get, f"{path}/visits", "visits", visits_page_size, domain)
+                    _pages(get, f"{path}/visits", "visits", visits_page_size, listed)
                 )
             except httpx.HTTPStatusError as error:
                 if not _is_5xx(error):
@@ -101,7 +145,7 @@ def export_snapshot(
                     domain,
                     page_size=visits_page_size,
                     budget=recovery_requests,
-                    until=clock(),
+                    until=until,
                     expected=(short_url.get("visitsSummary") or {}).get("total"),
                 )
                 entry["visits"], entry["visits_gaps"] = found, gaps
@@ -213,13 +257,25 @@ def _retrying(client: httpx.Client, retries: int, backoff: float, sleep) -> Get:
 def _pages(
     get: Get, path: str, name: str, page_size: int, params: dict | None = None
 ) -> Iterator[dict]:
-    page = 1
+    """Every page's items. Each page says how many there are in all (`totalItems`): when
+    the pages don't bring that many, or the count changes on the way, the list moved under
+    the export, and SnapshotError says so after the last page."""
+    page, brought, counts = 1, 0, set()
     while True:
         body = get(path, {**(params or {}), "page": page, "itemsPerPage": page_size})
-        yield from body[name]["data"]
-        if page >= body[name]["pagination"]["pagesCount"]:
-            return
+        items, pagination = body[name]["data"], body[name]["pagination"]
+        counts.add(pagination["totalItems"])
+        brought += len(items)
+        yield from items
+        if page >= pagination["pagesCount"]:
+            break
         page += 1
+    if counts != {brought}:
+        counted = " then ".join(map(str, sorted(counts)))
+        raise SnapshotError(
+            f"{path}: Shlink counts {counted} {name} but its pages brought {brought}: the "
+            "list moved during the export. Export again."
+        )
 
 
 def _detail(response: httpx.Response) -> str:

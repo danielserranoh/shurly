@@ -23,10 +23,12 @@ uv run python -m server.tools.shlink export [--visits] [--out-dir _exchange]
 
 - **Output:** `_exchange/shlink-<host>-<UTC time>.snapshot.json`. An existing file is
   never overwritten.
-- **What it reads:** every page of `GET /rest/v3/short-urls`, then, for each link:
+- **What it reads:** every page of `GET /rest/v3/short-urls`, in code order (`orderBy=shortCode-ASC`), then,
+  for each link:
   - `…/redirect-rules` when Shlink says it has some;
-  - every page of `…/visits`, with `--visits`.
+  - every page of `…/visits`, with `--visits`, up to the moment the export started (`endDate`).
   - `GET /rest/health` gives Shlink's version.
+- **It's whole, or there's none** (below): a list that doesn't add up stops it before a snapshot is written.
 - **The API key** travels only in the `X-Api-Key` header. It never goes in the snapshot
   or its name, and is never printed, errors included.
 - **At the end** it prints how many links it exported, how many links' visits came whole (and how many
@@ -56,6 +58,29 @@ The snapshot:
   "visits_failed": ["23q4griddo"]
 }
 ```
+
+### An export that's whole, or none
+
+Shlink's default order for its short URLs isn't stable across pages. Production's export (Shlink 4.6, 344
+links) came out with 343 distinct codes: `co-upb-luis-ochoa` twice, as identical copies, and very likely
+another link never. The import then failed on the database's unique code (ROADMAP R17). So:
+
+- **The list is asked in code order**, `orderBy=shortCode-ASC`, which holds from one page to the next.
+- **A link's visits are asked up to the moment the export started** (`endDate`, included). Shlink lists them
+  newest first, so a visit made mid-export would push one onto the next page, which would bring it again.
+  The next export brings the newer ones, and the import adds only visits newer than a link's last one.
+- **Every list must add up.** Each page says how many items there are in all (`pagination.totalItems`). If
+  the pages bring a different number, or the count changes from one page to the next (a link made or deleted
+  mid-export), the export stops. So it does if a link (its domain, null for the default one, and its code)
+  comes twice, which an order can still allow: two links can share a code on different domains, and tie.
+- **It stops before writing anything:** `Shlink listed go.griddo.io/co-upb-luis-ochoa (2 times): …`, `No
+  snapshot was written.`, exit status `1`. Run it again. A list of short URLs that doesn't add up stops it
+  before any link's visits are asked for.
+- A link's visits Shlink answers 5xx to are still recovered by date range, as below: the count is checked on
+  the lists that answer.
+
+The review and the import refuse a snapshot that lists a link twice, before they write anything (exit status
+`2`), naming it: an older snapshot, from before the fix, may be one.
 
 ### When Shlink fails on a link's visits
 
@@ -125,7 +150,8 @@ uv run python -m server.tools.shlink review _exchange/shlink-go.griddo.io-….sn
 
 It writes one row per link, next to the snapshot (`….review.csv`) unless `--out` says
 otherwise. It never overwrites a sheet, which may already hold decisions. Every cell is
-spreadsheet-safe: a title that starts like a formula gets a leading quote.
+spreadsheet-safe: a title that starts like a formula gets a leading quote. A snapshot that
+lists a link twice gets no sheet (exit status `2`): export again.
 
 | Column | What |
 |---|---|
@@ -173,6 +199,10 @@ It writes to the database the `DB_*` settings name. **Run it with `--dry-run` fi
 prints the report, and rolls back. Against production's private RDS it runs as a one-off ECS task:
 `scripts/run_shlink_import.sh` (DEPLOYMENT.md § The import as a one-off ECS task). A rehearsal runs locally
 against a restored copy.
+
+**A snapshot that lists a link twice** (its domain and code) is refused before anything is written, whatever
+the review decided for it, with exit status `2` and the link named: its export wasn't whole, so another link
+may be missing (An export that's whole, or none, above). Export again.
 
 **Each link the review keeps** (`keep`, `archive`, or left out of the review) arrives with:
 - its exact code, never lowercased, so `AbC` and `abc` stay two links, as in Shlink's default `strict` mode;

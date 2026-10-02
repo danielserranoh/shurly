@@ -2035,6 +2035,13 @@ the import can be re-run.
         the ALB and CloudFront pass as the viewer's. A code is reserved only on the app host's domain, so a custom
         `mcp` on `go.griddo.io` is a link and the import keeps it. Without either setting, every host is the app's
         (`tests/test_phase84_app_paths.py`)
+  - [x] An export that's whole, or none 🔎 R17: production's export (2026-10-02) of 344 links held 343 distinct
+        codes, `co-upb-luis-ochoa` twice, because Shlink's default order isn't stable across pages; the import
+        then failed on `uq_urls_domain_code` with a traceback → the list is asked with `orderBy=shortCode-ASC`; a
+        link's visits up to the export's start (`endDate`), so new ones can't shift their pages; every list must
+        bring Shlink's `totalItems`, with a count that holds from page to page, and each (domain, code) once, or
+        the export stops and writes no snapshot. The review and the import refuse a snapshot that lists a link
+        twice, by name, before writing anything (`tests/test_phase84_shlink_export_order.py`)
 - [x] Fill `Visitor.country` for Shurly's own visits (geolocation: 2.x's deferred "IP geolocation service
       integration"). Nothing fills it today, so once Shlink's history is imported the geo view shows only that
       history, and would mislead → the ISO code, from DB-IP's IP to Country Lite (CC BY 4.0, no account),
@@ -2308,4 +2315,16 @@ check earlier in the next project.
   links their domains, but left the app's own paths on all of them
 - **Lesson:** when one service answers on several hosts, decide per host which paths are whose. A path reserved on
   one host is a code taken from every other
+
+### R17 — Shlink's export listed a link twice, and very likely skipped one · missed · found 2026-10-02
+- **What:** the export paged `GET /rest/v3/short-urls` without `orderBy`, and Shlink's default order isn't stable
+  across pages. Production's export of 344 links held 343 distinct codes: `co-upb-luis-ochoa` twice, as identical
+  copies, so another link was very likely never exported. The import then failed on `uq_urls_domain_code` with a
+  raw IntegrityError → the list in code order, every list checked against Shlink's count, each link once, and a
+  snapshot that lists one twice refused by the review and the import (8.4)
+- **How it surfaced:** the import of the real snapshot, which crashed on the database's unique code
+- **Why it slipped:** the fake Shlink in the tests answered its pages in one fixed order, so paging looked safe.
+  Nothing checked that the pages brought as many links as Shlink counts, though every page says so
+- **Lesson:** paging an API without an order is a sample, not a list. Ask for an order that holds, and check the
+  total the API reports against what came, before anything relies on it
 

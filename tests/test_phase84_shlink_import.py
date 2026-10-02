@@ -484,6 +484,50 @@ class TestOwner:
             run(db_session, member, {"short_url": short_url("abc")})
 
 
+class TestALinkListedTwice:
+    """R17: production's export listed `co-upb-luis-ochoa` twice, and the import failed on
+    the database's unique code with a traceback. It's refused first, by name."""
+
+    def test_is_refused_before_anything_is_written(self, db_session, owner):
+        twice = {"short_url": short_url("co-upb-luis-ochoa")}
+
+        with pytest.raises(ImportRefused, match=f"{HOST}/co-upb-luis-ochoa"):
+            run(db_session, owner, {"short_url": short_url("abc")}, twice, twice)
+
+        assert db_session.query(URL).count() == 0
+        assert db_session.query(Domain).count() == 0
+
+    def test_even_when_the_review_drops_it(self, db_session, owner):
+        """Another link may be missing from such a snapshot: export it again."""
+        twice = {"short_url": short_url("co-upb-luis-ochoa")}
+
+        with pytest.raises(ImportRefused, match="Export"):
+            run(
+                db_session,
+                owner,
+                twice,
+                twice,
+                decisions={(HOST, "co-upb-luis-ochoa"): "drop"},
+            )
+
+    def test_the_command_says_which_and_exits_2(
+        self, tmp_path, owner, db_session, monkeypatch, capsys
+    ):
+        monkeypatch.setattr(importer, "session_factory", TestingSessionLocal)
+        twice = {"short_url": short_url("co-upb-luis-ochoa")}
+        path = tmp_path / "shlink.snapshot.json"
+        path.write_text(json.dumps(snapshot(twice, twice)))
+        review = tmp_path / "shlink.review.csv"
+        review.write_text("code,domain,decision\n")
+
+        assert cli.main(["import", str(path), str(review), "--as", owner.email]) == 2
+
+        error = capsys.readouterr().err
+        assert f"{HOST}/co-upb-luis-ochoa" in error and "Traceback" not in error
+        db_session.expire_all()
+        assert db_session.query(URL).count() == 0
+
+
 class TestCommand:
     @pytest.fixture
     def files(self, tmp_path, monkeypatch):

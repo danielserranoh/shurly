@@ -15,6 +15,7 @@ import pytest
 
 from server.core.config import settings
 from server.tools.shlink import __main__ as cli
+from server.tools.shlink.export import SnapshotError
 from server.tools.shlink.review import COLUMNS, check_destinations, review_rows
 from tests.test_opengraph_ssrf import PUBLIC_IP, FakeDNS, FakeWeb
 from tests.test_phase84_shlink_export import NOW, short_url, visit
@@ -253,6 +254,28 @@ class TestRows:
             (0, ""),
         ]
 
+    def test_a_snapshot_that_lists_a_link_twice_is_refused(self):
+        """R17: an export whose pages overlapped. Its review would hold two rows for one
+        link, and the import would fail on it."""
+        twice = {"short_url": short_url("co-upb-luis-ochoa")}
+
+        with pytest.raises(SnapshotError, match="go.shlink.test/co-upb-luis-ochoa"):
+            review_rows(snapshot({"short_url": short_url("abc")}, twice, twice), now=NOW)
+
+    def test_the_same_code_on_two_domains_is_two_links(self):
+        rows = review_rows(
+            snapshot(
+                {"short_url": short_url("abc")},
+                {"short_url": short_url("abc", domain="s.shlink.test")},
+            ),
+            now=NOW,
+        )
+
+        assert [(row["domain"], row["code"]) for row in rows] == [
+            ("go.shlink.test", "abc"),
+            ("s.shlink.test", "abc"),
+        ]
+
 
 class TestCommand:
     def test_writes_the_sheet_next_to_the_snapshot(self, tmp_path):
@@ -278,6 +301,16 @@ class TestCommand:
 
         assert sheet.read_text() == "code,decision\nabc,drop\n"
         assert "--out" in capsys.readouterr().err
+
+    def test_a_snapshot_that_lists_a_link_twice_writes_no_sheet(self, tmp_path, capsys):
+        path = tmp_path / "x.snapshot.json"
+        twice = {"short_url": short_url("co-upb-luis-ochoa")}
+        path.write_text(json.dumps(snapshot(twice, twice)))
+
+        assert cli.main(["review", str(path)]) == 2
+
+        assert "go.shlink.test/co-upb-luis-ochoa" in capsys.readouterr().err
+        assert not (tmp_path / "x.review.csv").exists()
 
 
 # --- Destinations, through the link previews' SSRF guard -----------------------------

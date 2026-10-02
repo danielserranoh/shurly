@@ -26,6 +26,20 @@ implementation lifecycle and is independent of the URL version segment.
 
 ## [Unreleased]
 
+### Fixed — the Shlink export is whole, or there's none (8.4)
+- **The export asks for Shlink's short URLs in code order** (`orderBy=shortCode-ASC`). Shlink's default order
+  isn't stable across pages: production's export of 344 links held 343 distinct codes, `co-upb-luis-ochoa`
+  twice and very likely another link never, and the import then failed on `uq_urls_domain_code` with a
+  traceback.
+- **It checks what it brought:** as many links as Shlink's `pagination.totalItems`, a count that doesn't
+  change from page to page, and each link (its domain, null for the default one, and its code) once. A link's
+  visits are asked up to the moment the export started (`endDate`), so a visit made meanwhile can't shift
+  their pages, and their count is checked the same way. Anything that doesn't add up stops the export with a
+  message and exit status 1, and no snapshot is written. Visits Shlink answers 5xx to are still recovered by
+  date range.
+- **The review and the import refuse a snapshot that lists a link twice**, naming it, before they write
+  anything (exit status 2), instead of a sheet with two rows for it or an IntegrityError.
+
 ### Changed — the MCP and the docs on the app's host only (8.4)
 - **The app's own paths answer on its host only:** the MCP (`/mcp`, its 308, `/mcp/…`), its OAuth metadata
   (`/.well-known/oauth-*`), `/docs`, `/redoc` and `/openapi.json`, on the host of `MCP_PUBLIC_URL` (else of
