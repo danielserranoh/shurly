@@ -19,7 +19,7 @@ from urllib.parse import urlsplit
 
 import httpx
 
-from server.tools.shlink.export import format_gap, visits_state
+from server.tools.shlink.export import check_links, format_gap, visits_state
 from server.tools.shlink.mapping import CONDITION_TYPES, is_click
 from server.utils.csv_export import spreadsheet_safe
 from server.utils.opengraph import FetchRefusedError, guarded_request
@@ -51,9 +51,12 @@ COLUMNS = [
 def review_rows(
     snapshot: dict, *, statuses: dict[str, str] | None = None, now: datetime | None = None
 ) -> list[dict]:
+    """One row per link. SnapshotError (export.py) for a snapshot that lists a link twice:
+    its export wasn't whole (R17)."""
     now = now or datetime.now(timezone.utc)
     statuses = statuses or {}
     links = [entry["short_url"] for entry in snapshot["links"]]
+    check_links(links)
     duplicate_of = _duplicates(links)
     collisions = _case_collisions(links)
     rows = []

@@ -16,7 +16,14 @@ from sqlalchemy import func
 
 from server.core.models import User
 from server.tools.shlink import importer
-from server.tools.shlink.export import export_snapshot, shlink_client, summary, write_snapshot
+from server.tools.shlink.export import (
+    SnapshotError,
+    check_links,
+    export_snapshot,
+    shlink_client,
+    summary,
+    write_snapshot,
+)
 from server.tools.shlink.review import check_destinations, review_rows, write_review
 
 
@@ -89,6 +96,9 @@ def _export(args: argparse.Namespace) -> int:
     except httpx.HTTPError as error:
         print(f"Couldn't reach Shlink at SHLINK_URL: {type(error).__name__}.", file=sys.stderr)
         return 1
+    except SnapshotError as error:
+        print(f"{error}\nNo snapshot was written.", file=sys.stderr)
+        return 1
     path = write_snapshot(snapshot, args.out_dir, now=now)
     print(f"{path}: it stays out of the repository (README.md).")
     print("\n".join(summary(snapshot)))
@@ -97,6 +107,11 @@ def _export(args: argparse.Namespace) -> int:
 
 def _review(args: argparse.Namespace) -> int:
     snapshot = json.loads(args.snapshot.read_text(encoding="utf-8"))
+    try:
+        check_links(entry["short_url"] for entry in snapshot["links"])
+    except SnapshotError as error:
+        print(f"{error}\nNo sheet was written.", file=sys.stderr)
+        return 2
     statuses = {}
     if args.check_destinations:
         destinations = [entry["short_url"]["longUrl"] for entry in snapshot["links"]]
