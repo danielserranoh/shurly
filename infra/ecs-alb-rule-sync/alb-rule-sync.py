@@ -37,9 +37,9 @@ lambda_ = boto3.client("lambda", region_name="eu-south-2")
 
 # Express Mode priority → custom rule priority
 RULE_SYNC_MAP = {
-    "1": "10",  # shlink-api → go.griddo.io
+    "1": "10",  # shlink-api; rule 10 deleted at the cutover (2026-10-02), skipped. Goes at 8.6
     "3": "11",  # shlink-web → links.griddo.io
-    "4": "12",  # shurly-api → shurly.griddo.io, s.griddo.io
+    "4": "12",  # shurly-api → shurly.griddo.io, go.griddo.io, s.griddo.io
 }
 
 LISTENER_ARN = "arn:aws:elasticloadbalancing:eu-south-2:686255983646:listener/app/ecs-express-gateway-alb-d37ca364/8d6cb22fed5c0e8b/f182b836d7cff456"
