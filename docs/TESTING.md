@@ -540,7 +540,8 @@ curl -X POST http://localhost:8000/api/urls \
 - [ ] Create URL with very long original URL (1000+ chars) → Should work
 - [ ] Create custom code with special characters → Should reject
 - [ ] Create custom code that's already taken → Should modify and warn
-- [ ] Create custom code `mcp` (or `docs`) → Should modify and warn that it's reserved
+- [ ] Create custom code `mcp` (or `docs`) → Should modify and warn that it's reserved, where the default domain is
+      the app's host or neither `MCP_PUBLIC_URL` nor `FRONTEND_URL` is set (locally). On a short domain it's a link
 - [ ] Create URL without protocol → Should show error
 - [ ] Create URL with localhost/internal IP → Should work (for testing)
 

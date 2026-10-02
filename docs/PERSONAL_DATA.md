@@ -125,15 +125,18 @@ of the same module that the route calls.
 | `DELETE /api/v1/urls/{short_code}/rules/{rule_id}` | none | who can change the link | `visible_url_or_404` | `delete_redirect_rule` |
 | `PATCH /api/v1/urls/{short_code}/rules/{rule_id}` | none | who can change the link | `visible_url_or_404` | `update_redirect_rule` |
 | `PATCH /api/v1/urls/{short_code}/tags` | none | who can change the link | `visible_url_or_404` | `update_url_tags` |
-| `DELETE /mcp` | none: a redirect to `/mcp/` | anyone | public | excluded |
-| `GET /mcp` | none: a redirect to `/mcp/` | anyone | public | excluded |
-| `POST /mcp` | none: a redirect to `/mcp/` | anyone | public | excluded |
+| `DELETE /mcp` | none: a redirect to `/mcp/`, on the app's host only (8.4) | anyone | public | excluded |
+| `GET /mcp` | none: a redirect to `/mcp/`, on the app's host only (8.4) | anyone | public | excluded |
+| `POST /mcp` | none: a redirect to `/mcp/`, on the app's host only (8.4) | anyone | public | excluded |
 | `GET /favicon.ico` | none: a 204 | anyone | public | excluded |
 | `GET /robots.txt` | none | anyone | public | excluded |
 | `GET /{short_code}` | **recipients' rows**: a campaign link adds its recipient's `user_data` to the destination's query, for people (personalization). A crawler's preview page never carries it (finding 1, fixed) | anyone with the link (by design) | public | excluded |
 | `GET /{short_code}/track` | none | anyone | public | excluded |
 
 ## The MCP's own routes
+
+On the app's host only (Phase 8.4: the host of `MCP_PUBLIC_URL`, else of `FRONTEND_URL`). On a short domain these
+routes and the OAuth metadata at the root don't answer, and `/mcp` is a link's code, `GET /{short_code}` above.
 
 | Route | People's data it returns | Who sees it | Guard | MCP |
 |---|---|---|---|---|

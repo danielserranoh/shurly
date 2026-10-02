@@ -37,7 +37,7 @@ from server.tools.shlink.export import format_gap, visits_state
 from server.tools.shlink.mapping import is_bot, is_pixel, map_condition
 from server.utils.columns import fit, stored_referer, stored_user_agent
 from server.utils.csv_export import unquote_spreadsheet_text
-from server.utils.domain import normalize_hostname
+from server.utils.domain import normalize_hostname, serves_app_paths
 from server.utils.network import UNKNOWN_IP
 from server.utils.organization import get_membership
 from server.utils.tags import normalize_tag_name, validate_tag_name
@@ -113,7 +113,7 @@ def import_snapshot(
         if decision == "drop":
             report.dropped.append(name)
             continue
-        why = _refusal(code, link["longUrl"])
+        why = _refusal(host, code, link["longUrl"])
         if why:
             report.refused.append(f"{name}: {why}")
             continue
@@ -231,10 +231,12 @@ def _address(link: dict) -> tuple[str, str]:
     return normalize_hostname(urlsplit(link["shortUrl"]).hostname), link["shortCode"]
 
 
-def _refusal(code: str, destination: str) -> str | None:
+def _refusal(host: str, code: str, destination: str) -> str | None:
     if len(code) > MAX_SHORT_CODE_LENGTH:
         return f"longer than {MAX_SHORT_CODE_LENGTH} characters"
-    if code in RESERVED_SHORT_CODES:  # exactly: imported codes keep their case
+    # Exactly: imported codes keep their case. Phase 8.4 — on the app's host only: on a short
+    # domain, `/mcp` is a code like any other (go.griddo.io's is a link).
+    if code in RESERVED_SHORT_CODES and serves_app_paths(host):
         return "a path Shurly serves itself"
     if not is_valid_url(destination):
         return "not an http(s) destination"

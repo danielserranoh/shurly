@@ -26,6 +26,18 @@ implementation lifecycle and is independent of the URL version segment.
 
 ## [Unreleased]
 
+### Changed — the MCP and the docs on the app's host only (8.4)
+- **The app's own paths answer on its host only:** the MCP (`/mcp`, its 308, `/mcp/…`), its OAuth metadata
+  (`/.well-known/oauth-*`), `/docs`, `/redoc` and `/openapi.json`, on the host of `MCP_PUBLIC_URL` (else of
+  `FRONTEND_URL`), `shurly.griddo.io` in production. On a short domain, `/mcp`, `/docs` and `/redoc` are codes like
+  any other: a redirect and a visit, or an orphan visit and a 404. The `Host` header decides, as the ALB and
+  CloudFront pass it; `X-Forwarded-Host` isn't read.
+- **A code is reserved only on the app host's domain:** a custom `mcp` on `go.griddo.io` is a link, through the API
+  and the MCP, and the Shlink import keeps `go.griddo.io/mcp` (a video, 41 visits). On the app's own domain it's
+  still refused.
+- **Without `MCP_PUBLIC_URL` or `FRONTEND_URL`** (local development, tests), every host is the app's, as before.
+- The README said custom codes were 3-20 characters: 3-64 since `0013`.
+
 ### Changed — short codes up to 64 characters (8.4)
 - **A short code can be 64 characters long, up from 20.** Shlink's links on `go.griddo.io` run to 44
   (personalized outreach links, out there already), and the import refused the 57 longer than 20. Custom codes

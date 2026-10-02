@@ -15,6 +15,7 @@ import httpx
 import pytest
 
 from server.core.auth import hash_password
+from server.core.config import settings
 from server.core.models import (
     URL,
     Domain,
@@ -113,6 +114,22 @@ class TestALink:
         assert db_session.query(Visitor.short_code).scalar() == LONG
         hit = client.get(f"/{LONG}", headers={"host": HOST}, follow_redirects=False)
         assert (hit.status_code, hit.headers["location"]) == (302, "https://example.com/offer")
+
+    def test_a_path_the_app_serves_on_its_own_host_only(
+        self, client, db_session, owner, monkeypatch
+    ):
+        """Phase 8.4: `/mcp` is the MCP on the app's host, and a link on a short domain:
+        go.griddo.io's points at a video, with 41 visits. Without an app host (the other tests),
+        it's refused on every domain."""
+        monkeypatch.setattr(settings, "mcp_public_url", "https://shurly.griddo.io/mcp")
+        video = "https://www.youtube.com/watch?v=abc"
+
+        report = run(db_session, owner, {"short_url": short_url("mcp", video)})
+        db_session.commit()
+
+        assert (report.blocked, report.created) == (False, [f"{HOST}/mcp"])
+        hit = client.get("/mcp", headers={"host": HOST}, follow_redirects=False)
+        assert (hit.status_code, hit.headers["location"]) == (302, video)
 
     def test_the_fields_that_map(self, db_session, owner):
         db_session.add(
