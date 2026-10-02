@@ -256,7 +256,12 @@ def seeded(db_session, bound) -> dict:
 # ---------------------------------------------------------------------------
 
 _TODAY = date.today()
-_PERIOD = {"from": (_TODAY - timedelta(days=7)).isoformat(), "to": _TODAY.isoformat()}
+# Through tomorrow: a tool reads the dates in the viewer's zone, and from 18:30 UTC a visit seeded an
+# hour ago is already tomorrow in LOCAL_ZONE (+05:30), outside a period that ends on UTC's today.
+_PERIOD = {
+    "from": (_TODAY - timedelta(days=7)).isoformat(),
+    "to": (_TODAY + timedelta(days=1)).isoformat(),
+}
 _SOON = (datetime.now(timezone.utc) + timedelta(days=1)).isoformat()
 _LATER = (datetime.now(timezone.utc) + timedelta(days=10)).isoformat()
 
