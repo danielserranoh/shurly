@@ -2075,18 +2075,24 @@ the import can be re-run.
         find the task definition on ECS Express
 
 ### 8.5 Cutover
-- [ ] Freeze link creation in Shlink; final delta export + import
-- [ ] ALB: add `go.griddo.io` to the host condition of rule 12 (Shurly), then delete rule 10 (Shlink). Rollback:
-      recreate rule 10. Update `RULE_SYNC_MAP` in `infra/ecs-alb-rule-sync/`. The `go.griddo.io` certificate is
-      already on the listener
-- [ ] Switch the default domain to `go.griddo.io` (8.3) in the same window → `scripts/run_promote_domain.sh
+- [x] Freeze link creation in Shlink; final delta export + import — 2026-10-02: export 17:46 UTC (346 links, the
+      duplicated `co-upb-luis-ochoa` collapsed, 4116 visits whole), review all `keep`, imported for real into
+      `go.griddo.io` (shurly-db snapshot `shurly-db-before-shlink-import-202610021746` first). Shlink logged no link
+      visit between the export and the ALB switch; the S3 files are deleted
+- [x] ALB: add `go.griddo.io` to the host condition of rule 12 (Shurly), then delete rule 10 (Shlink). Rollback:
+      recreate rule 10. The `go.griddo.io` certificate is already on the listener — 2026-10-02. The deployed
+      Lambda's `RULE_SYNC_MAP` still lists `"1": "10"`; it skips a rule that's gone, so the entry goes with the
+      Lambda's redeploy at 8.6
+- [x] Switch the default domain to `go.griddo.io` (8.3) in the same window → `scripts/run_promote_domain.sh
       go.griddo.io`, then `DEFAULT_DOMAIN` on the service, and the repository variable `PUBLIC_SHORT_DOMAIN` with
       a run of the frontend deploy (DEPLOYMENT.md § The cutover). No `BASE_URL` step: the live service sets none
-      (checked 2026-10-01). Before `s.griddo.io`'s row is deleted: it's the default until then
+      (checked 2026-10-01). Before `s.griddo.io`'s row is deleted: it's the default until then — 2026-10-02:
+      promoted, `DEFAULT_DOMAIN` on task definition 35, the frontend deployed with the variable
 - [ ] Delete `s.griddo.io` entirely: out of rule 12's host condition, its certificate off the listener and deleted,
       its Route 53 record (griddo-production), its `Domain` row and test links; the docs and scripts that still
       name it
-- [ ] Smoke on `go.griddo.io` with a sample of migrated codes, mixed case included
+- [x] Smoke on `go.griddo.io` with a sample of migrated codes, mixed case included — 2026-10-02: `mcp`, a
+      44-character code, `CO-Utadeo-…`, the collapsed duplicate → 302; an unknown code → 404; `/docs` → 404 there
 - [ ] Watch orphan visits on `go.griddo.io` for 2–4 weeks: hits on dropped codes show what was still in use →
       re-import them from the raw export
 
