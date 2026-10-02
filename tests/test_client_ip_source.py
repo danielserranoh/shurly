@@ -7,7 +7,7 @@ the address itself (`client_ip_and_source`, server/utils/network.py).
 - socket: the connection's peer, with no trusted proxy in front of it.
 
 With the request's host next to it, CloudWatch can count them: in production shurly.griddo.io
-reads cloudfront and s.griddo.io xff. xff on shurly.griddo.io means the viewer address isn't
+reads cloudfront and go.griddo.io xff. xff on shurly.griddo.io means the viewer address isn't
 used, and the rate limits count CloudFront's edges; socket, the health checks aside, means
 TRUSTED_PROXIES doesn't name the ALB (DEPLOYMENT.md § Monitoring).
 """
@@ -72,7 +72,7 @@ def test_without_trusted_proxies_always_the_socket(monkeypatch):
     ("host", "shown"),
     [
         ("Shurly.Griddo.io", "shurly.griddo.io"),
-        ("s.griddo.io:443", "s.griddo.io"),
+        ("go.griddo.io:443", "go.griddo.io"),
         ("[2001:DB8::1]:8000", "[2001:db8::1]"),
         ("", ""),
         ("x" * 300, "x" * 255),
@@ -109,9 +109,9 @@ class TestTheLogLine:
         alb = TestClient(app, client=(ALB, 50000))
         capsys.readouterr()
 
-        alb.get("/api/v1/health", headers={"x-forwarded-for": VIEWER, "host": "s.griddo.io"})
+        alb.get("/api/v1/health", headers={"x-forwarded-for": VIEWER, "host": "go.griddo.io"})
 
         line = _line(capsys.readouterr().err)
-        assert (line["host"], line["client_ip_source"]) == ("s.griddo.io", "xff")
+        assert (line["host"], line["client_ip_source"]) == ("go.griddo.io", "xff")
         logged = json.dumps(line)
         assert VIEWER not in logged and "203.0.113.0" not in logged and ALB not in logged

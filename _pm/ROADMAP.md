@@ -3,8 +3,8 @@
 ## Project Overview
 Modern URL shortener for B2B campaigns with analytics, running on AWS.
 
-**Hosts**: `shurly.griddo.io` for the web, the app, the API and the MCP; `go.griddo.io` for short links, once
-Shurly replaces Shlink there (Phase 8). Until then test links live on `s.griddo.io`, deleted at the cutover.
+**Hosts**: `shurly.griddo.io` for the web, the app, the API and the MCP; `go.griddo.io` for short links, Shurly's
+since the Phase 8 cutover (2026-10-02).
 **Expected Volume**: ~100-150 URLs/month (20-50 standard + 1 campaign of ~100 users)
 **Deployment**: ECS Express (Fargate, behind the shared ALB) + RDS PostgreSQL for the API and the MCP;
 S3 + CloudFront for the frontend (4.10, pending).
@@ -2088,9 +2088,18 @@ the import can be re-run.
       a run of the frontend deploy (DEPLOYMENT.md § The cutover). No `BASE_URL` step: the live service sets none
       (checked 2026-10-01). Before `s.griddo.io`'s row is deleted: it's the default until then — 2026-10-02:
       promoted, `DEFAULT_DOMAIN` on task definition 35, the frontend deployed with the variable
-- [ ] Delete `s.griddo.io` entirely: out of rule 12's host condition, its certificate off the listener and deleted,
-      its Route 53 record (griddo-production), its `Domain` row and test links; the docs and scripts that still
-      name it
+- [ ] Delete `s.griddo.io` entirely, with no redirects kept:
+  - [ ] Out of rule 12's host condition, its certificate off the listener and deleted, its Route 53 record
+        (griddo-production)
+  - [ ] Its `Domain` row and its 2 test links → `scripts/run_retire_domain.sh s.griddo.io`, a dry run then
+        `--for-real` (DEPLOYMENT.md § Retiring a domain). `python -m server.tools.domains retire` deletes a
+        domain's row and its links, with their visits, redirect rules and tag associations, in one transaction;
+        it refuses the default domain and an unknown one, and its report names the links by code, with counts
+  - [x] The docs and scripts that still named it → `go.griddo.io` (`DEFAULT_DOMAIN` in `.env.production.example`
+        and `scripts/deploy_ecs.sh`, the frontend deploy's `PUBLIC_SHORT_DOMAIN` fallback,
+        `scripts/setup_custom_domain.sh`, the docs' hosts and diagrams), a neutral host in tests, or gone. What
+        still names it is history (the CHANGELOG, past ROADMAP entries, the deploy log's phase status) and the
+        notes on its removal
 - [x] Smoke on `go.griddo.io` with a sample of migrated codes, mixed case included — 2026-10-02: `mcp`, a
       44-character code, `CO-Utadeo-…`, the collapsed duplicate → 302; an unknown code → 404; `/docs` → 404 there
 - [ ] Watch orphan visits on `go.griddo.io` for 2–4 weeks: hits on dropped codes show what was still in use →

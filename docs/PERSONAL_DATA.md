@@ -193,7 +193,8 @@ These were questions for the user. On 2026-09-29 both were kept as they are, to 
    - Now the preview's refresh target is the destination the rules pick, with only what the shared address itself
      forwards. People still get their personalized redirect, unchanged
      (`tests/test_campaign_link_preview.py`).
-2. **A client could choose the address its visits were stored under, on `s.griddo.io`. Fixed on 2026-09-29.**
+2. **A client could choose the address its visits were stored under, on the path straight to the ALB. Fixed on
+   2026-09-29.**
    - uvicorn ran with `--forwarded-allow-ips "*"`, and replaced the connection's address with the leftmost
      `X-Forwarded-For` entry, which the client writes, before the app's own resolution ran.
    - So on the path straight to the ALB, a visit's and an orphan visit's IP, and so their country and city, were
@@ -202,8 +203,8 @@ These were questions for the user. On 2026-09-29 both were kept as they are, to 
    - Now the app alone reads the header, from the right, and only from `TRUSTED_PROXIES` (DEPLOYMENT.md §
      Trusted-Proxy Configuration). Visits stored before keep what they have.
    - Verified in production on 2026-09-29, after hotfix #174:
-     - 22 bad logins on `s.griddo.io`, each with a new forged `X-Forwarded-For`, and the 21st is a `429`: the
-       limit counts the real address;
+     - 22 bad logins on the short domain, straight to the ALB, each with a new forged `X-Forwarded-For`, and the
+       21st is a `429`: the limit counts the real address;
      - CloudWatch shows `client_ip_source` reading `xff` there, where it had read `socket`.
 3. **`PATCH /api/v1/campaigns/{campaign_id}/tags` answers a malformed id with another 400 message**
    (`Invalid campaign ID: …`, where the others say `Invalid campaign ID format`). It's left as it is: this audit

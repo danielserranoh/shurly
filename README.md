@@ -148,7 +148,7 @@ OG_FETCH_ALLOW_PRIVATE=false               # true only to preview localhost page
 ```
 
 `DEFAULT_DOMAIN`'s default, `shurl.griddo.io`, is a placeholder that doesn't resolve. Production's short links are
-on `s.griddo.io` (`go.griddo.io` after the Shlink cutover, ROADMAP 8.5), set on the ECS service.
+on `go.griddo.io`, set on the ECS service.
 
 #### Initialize the Database
 

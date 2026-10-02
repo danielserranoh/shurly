@@ -7,9 +7,9 @@ griddo-main / `eu-south-2`) in step with the rules ECS Express manages.
 
 | Express rule | Custom rule | Domains | Service |
 |---|---|---|---|
-| 1 | 10 | `go.griddo.io` | shlink-api |
+| 1 | 10 | none: deleted at the cutover (2026-10-02), skipped | shlink-api |
 | 3 | 11 | `links.griddo.io` | shlink-web |
-| 4 | 12 | `shurly.griddo.io`, `s.griddo.io` | shurly-api |
+| 4 | 12 | `shurly.griddo.io`, `go.griddo.io` | shurly-api |
 
 A change here changes routing for all three.
 
@@ -41,8 +41,8 @@ can't run forever.
 
 **Why it follows the deployment.** Until 27 Sep 2026 it ran only on `COMPLETED`.
 ECS stops the old task about a minute *before* emitting that event, so the custom
-rule pointed at an empty target group and the ALB returned 503 (`s.griddo.io`,
-00:16:20 → 00:17:16). The custom domains also never got the canary: they stayed
+rule pointed at an empty target group and the ALB returned 503 (Shurly's custom
+domain, 00:16:20 → 00:17:16). The custom domains also never got the canary: they stayed
 100% on the old image for the whole rollout.
 
 ## Permissions

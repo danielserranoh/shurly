@@ -127,7 +127,7 @@ def test_a_failed_run_fails_the_script_and_still_cleans_up(aws):
         (),
         ("--typo",),
         (GO, "--typo"),
-        (GO, "s.griddo.io"),
+        (GO, "old.example.com"),
         ("https://go.griddo.io",),
         ("go.griddo.io/x",),
         ("localhost",),

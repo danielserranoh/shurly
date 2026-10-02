@@ -26,6 +26,23 @@ implementation lifecycle and is independent of the URL version segment.
 
 ## [Unreleased]
 
+### Added — retiring a domain (8.5)
+- **`python -m server.tools.domains retire HOST [--for-real]`** deletes a domain's row and its links, with their
+  visits, redirect rules and tag associations (campaign links among them), in one transaction. The tags and
+  campaigns themselves stay, and so do orphan visits, which record no domain. No redirect is kept.
+- **It refuses the default domain**, the row marked so or `DEFAULT_DOMAIN`'s, **and one that isn't there**: it
+  exits 1, with nothing written.
+- **A dry run unless `--for-real`**: the deletes run and roll back. The report names the links by code, each with
+  its visits, redirect rules and tags, and never a destination.
+- **`scripts/run_retire_domain.sh HOST [--for-real]`** runs it as a one-off ECS task, like
+  `run_promote_domain.sh`, with the domain typed back for real (DEPLOYMENT.md § Retiring a domain). For
+  `s.griddo.io`'s row and test links after the cutover.
+
+### Changed — `go.griddo.io` where the interim host was (8.5)
+- The defaults that still named the interim short domain name `go.griddo.io`: the frontend deploy's
+  `PUBLIC_SHORT_DOMAIN` fallback, `DEFAULT_DOMAIN` in `.env.production.example` and `scripts/deploy_ecs.sh`, and
+  `scripts/setup_custom_domain.sh`'s `DOMAIN`. Tests use `go.griddo.io` or a neutral host, the docs the live hosts.
+
 ### Fixed — the Shlink export is whole, or there's none (8.4)
 - **Production's export of 344 links held 343 distinct codes**, `co-upb-luis-ochoa` twice, and the import then
   failed on `uq_urls_domain_code` with a traceback. Shlink really holds that link twice: a double submit on the
