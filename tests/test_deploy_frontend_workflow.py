@@ -1,8 +1,8 @@
 """
 deploy-frontend.yml's build values (DEPLOYMENT.md § Frontend hosting). The host the app shows before
-a link's code, PUBLIC_SHORT_DOMAIN, is the repository variable of the same name, and s.griddo.io
-while it's unset. At the cutover (ROADMAP 8.5) it moves to go.griddo.io with `gh variable set` and a
-run of the workflow by hand, with no release (DEPLOYMENT.md § The cutover).
+a link's code, PUBLIC_SHORT_DOMAIN, is the repository variable of the same name, and go.griddo.io
+while it's unset. The cutover (ROADMAP 8.5) moved it with `gh variable set` and a run of the
+workflow by hand, with no release (DEPLOYMENT.md § The cutover).
 """
 
 from pathlib import Path
@@ -22,9 +22,9 @@ def _build_env() -> dict[str, str]:
     return build["env"]
 
 
-def test_the_short_domain_is_the_repository_variable_and_s_griddo_io_until_its_set():
+def test_the_short_domain_is_the_repository_variable_and_go_griddo_io_until_its_set():
     assert _build_env()["PUBLIC_SHORT_DOMAIN"] == (
-        "${{ vars.PUBLIC_SHORT_DOMAIN || 's.griddo.io' }}"
+        "${{ vars.PUBLIC_SHORT_DOMAIN || 'go.griddo.io' }}"
     )
 
 

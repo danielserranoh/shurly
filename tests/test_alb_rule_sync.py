@@ -4,7 +4,7 @@ The ecs-alb-rule-sync Lambda (infra/ecs-alb-rule-sync/alb-rule-sync.py).
 It keeps the custom-domain ALB rules (priority 10+) in step with the rules
 ECS Express manages (priority 1-5). It used to sync only on
 SERVICE_DEPLOYMENT_COMPLETED, which ECS emits ~1 min after stopping the old
-task — so s.griddo.io pointed at an empty target group and returned 503 in
+task — so Shurly's custom domain pointed at an empty target group and returned 503 in
 between, and never followed the canary. These tests pin the fix: on
 IN_PROGRESS it follows the deployment until ECS reports it finished.
 

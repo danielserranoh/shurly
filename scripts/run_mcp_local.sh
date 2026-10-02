@@ -10,7 +10,7 @@
 # the test suite uses), letting the MCP server boot purely against the route
 # graph for tool listing. Tool *invocation* against real data needs a live DB
 # and is wired up in Phase 5.4 (auth + per-user scoping against the deployed
-# API at s.griddo.io).
+# API at shurly.griddo.io).
 #
 # Register with Claude Code:
 #   claude mcp add shurly-local -- /Users/<you>/Tools/shurly/scripts/run_mcp_local.sh

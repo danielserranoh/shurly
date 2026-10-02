@@ -8,7 +8,7 @@ import { beforeEach, describe, test } from 'node:test';
 
 import { rememberNext, safeNext, takeNext } from '../src/utils/auth.ts';
 
-const ORIGIN = 'https://s.griddo.io';
+const ORIGIN = 'https://shurly.griddo.io';
 const FALLBACK = '/dashboard/';
 
 const staysHere = (path) => path.startsWith('/') && !path.startsWith('//') && new URL(path, ORIGIN).origin === ORIGIN;

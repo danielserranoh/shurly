@@ -1,18 +1,22 @@
 #!/bin/bash
-# Wire s.griddo.io to the ECS Express ALB.
+# Wire a custom domain (DOMAIN, go.griddo.io by default) to the ECS Express ALB.
 #
 # Mirrors Shlink Phase 6. Three manual steps Express Mode does NOT do for
 # custom domains:
 #
 #   1. Add the ACM cert to the ALB's HTTPS listener.
 #   2. Create a routing rule (priority 12, the next free slot after Shlink's
-#      10/11) that matches host-header s.griddo.io and forwards to Shurly's
+#      10/11) that matches host-header DOMAIN and forwards to Shurly's
 #      target group.
 #   3. Create the Route 53 alias from the griddo-production account.
 #
+# Rule 12 exists already, and hosts shurly.griddo.io and go.griddo.io: run on it,
+# step 2 replaces its hosts with DOMAIN alone. Another host takes another
+# priority (RULE_PRIORITY=13), or joins rule 12's hosts by hand.
+#
 # Prerequisites:
 #   * Run AFTER ./scripts/deploy_ecs.sh succeeds and the service is healthy.
-#   * Run AFTER ACM cert for s.griddo.io is requested AND validated.
+#   * Run AFTER ACM cert for DOMAIN is requested AND validated.
 #   * Two profiles configured locally:
 #       - griddo-main          (service account, eu-south-2)
 #       - griddo-production    (DNS account, global Route 53)
@@ -26,7 +30,7 @@
 set -euo pipefail
 
 REGION="${REGION:-eu-south-2}"
-DOMAIN="${DOMAIN:-s.griddo.io}"
+DOMAIN="${DOMAIN:-go.griddo.io}"
 SERVICE_NAME="${SERVICE_NAME:-shurly-api}"
 RULE_PRIORITY="${RULE_PRIORITY:-12}"
 PROFILE_MAIN="${PROFILE_MAIN:-griddo-main}"

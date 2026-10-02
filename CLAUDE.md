@@ -212,8 +212,8 @@ docker compose up -d
 - `TRUSTED_PROXIES=[]` → **never trust** `X-Forwarded-For` until configured
 - `DISABLE_TRACK_PARAM=nostat` → `?nostat` skips visit logging but still redirects
 - `REDIRECT_STATUS_CODE=302` → `Cache-Control: private, max-age=0`
-- `DEFAULT_DOMAIN=shurl.griddo.io` → the code's placeholder, which doesn't resolve; production sets `s.griddo.io`
-  (`go.griddo.io` after Phase 8). Seeded at startup; legacy NULL `domain_id` URLs are matched as a fallback
+- `DEFAULT_DOMAIN=shurl.griddo.io` → the code's placeholder, which doesn't resolve; production sets `go.griddo.io`.
+  Seeded at startup; legacy NULL `domain_id` URLs are matched as a fallback
 - `OG_FETCH_ALLOW_PRIVATE=false` → OG previews refuse destinations resolving to loopback/private/link-local IPs (SSRF guard), so `localhost` pages get empty previews unless this is set to `true` locally
 
 ### Git Workflow

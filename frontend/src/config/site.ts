@@ -15,8 +15,8 @@ export const site = {
   tagline: 'Send the link. Know who opened it.',
   description: 'Trackable short links for small marketing teams.',
   /**
-   * Host shown in front of back-halves ("s.griddo.io/"): PUBLIC_SHORT_DOMAIN. Production sets it (s.griddo.io,
-   * go.griddo.io from Phase 8), since the API lives on shurly.griddo.io. The API's host is only the fallback,
+   * Host shown in front of back-halves ("go.griddo.io/"): PUBLIC_SHORT_DOMAIN. Production sets it (go.griddo.io),
+   * since the API lives on shurly.griddo.io. The API's host is only the fallback,
    * right where the API also serves the redirects, as in local development.
    */
   shortDomain: (import.meta.env.PUBLIC_SHORT_DOMAIN as string | undefined) || hostOf(API_BASE_URL),
