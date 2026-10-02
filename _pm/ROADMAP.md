@@ -2097,6 +2097,8 @@ the import can be re-run.
 - [x] `?nostat` leaked to the destination: `go.griddo.io/mcp?nostat` reached YouTube with `&nostat=` → the redirect,
       a rule's target and a crawler's preview drop it before forwarding the query, which otherwise goes on whole,
       repeated keys included (`tests/test_phase85_nostat_forwarding.py`)
+- [x] The import printed a SAWarning (`Tag.urls`, a URL not in the session yet): harmless, every association was
+      stored → a link is added to the session before its tags (`tests/test_phase84_shlink_import.py`)
 - [ ] Watch orphan visits on `go.griddo.io` for 2–4 weeks: hits on dropped codes show what was still in use →
       re-import them from the raw export
 

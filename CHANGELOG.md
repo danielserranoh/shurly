@@ -35,6 +35,12 @@ implementation lifecycle and is independent of the URL version segment.
   query, and a repeated one now with each of its values (`?tag=a&tag=b`), where only the last went before. A
   forwarded parameter still wins a clash with a campaign recipient's row.
 
+### Fixed — the Shlink import without a SAWarning (8.5)
+- **The import added a link to the session only after attaching its tags**, so the next new tag's flush saw a tag
+  holding a link outside the session: "SAWarning: Object of type <URL> not in session, add operation along
+  'Tag.urls' won't proceed". Nothing was lost (every link's tags were
+  stored); the link is in the session first now, and the warning is gone.
+
 ### Fixed — the Shlink export is whole, or there's none (8.4)
 - **Production's export of 344 links held 343 distinct codes**, `co-upb-luis-ochoa` twice, and the import then
   failed on `uq_urls_domain_code` with a traceback. Shlink really holds that link twice: a double submit on the
