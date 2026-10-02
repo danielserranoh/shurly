@@ -1849,11 +1849,12 @@ live in `mcp_server/README.md`, written for developers. There is no user manual 
         so dropping it while a task of that release serves fails every user query mid-rollout. A test drops it by
         hand and runs this release against it: signing in, an API key, `/me`, the MCP, revoking
         (`tests/test_phase63_api_keys.py`)
-  - [ ] Migration `0014` drops `users.api_key` and `ix_users_api_key`, and the drift test's `_PENDING_DROP` goes:
+  - [x] Migration `0014` drops `users.api_key` and `ix_users_api_key`, and the drift test's `_PENDING_DROP` goes:
         **only after the release that stopped mapping it is in production**, since until then a running task still
         names the column. It takes `0014`: `0010` (the `last_click_at` repair), `0011` (a visit's city, 8.4),
         `0012` (the organization's logo, 3.14.4) and `0013` (longer short codes, 8.4) took the numbers it had been
-        given (2026-09-29, 2026-10-01)
+        given (2026-09-29, 2026-10-01). Written once 0013 was in production (2026-10-02); its downgrade adds
+        the column back empty (`tests/test_phase63_api_keys.py`)
   - [x] The MCP can't generate or revoke a key: talked into it by untrusted text, an assistant would get
         the new key in its context. Nor `login` or `change_password`: no password or JWT passes through an
         assistant (`EXCLUDED_ROUTE_MAPS`, pinned by `tests/test_phase52_mcp_tools.py`)

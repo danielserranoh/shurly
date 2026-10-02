@@ -35,6 +35,13 @@ implementation lifecycle and is independent of the URL version segment.
   query, and a repeated one now with each of its values (`?tag=a&tag=b`), where only the last went before. A
   forwarded parameter still wins a clash with a campaign recipient's row.
 
+### Removed — `users.api_key` (8.5)
+- **Migration `0014` drops the plaintext API key column and its unique index** (`ix_users_api_key`). `0007` had
+  emptied it, moving every key to its hash, and the release after stopped mapping it; that release is in
+  production, so a task still serving the previous release during the rollout never names it. The downgrade adds
+  the column back, nullable and indexed as it was, but empty. The drift test no longer ignores anything
+  (`_PENDING_DROP` is gone).
+
 ### Fixed — the Shlink import without a SAWarning (8.5)
 - **The import added a link to the session only after attaching its tags**, so the next new tag's flush saw a tag
   holding a link outside the session: "SAWarning: Object of type <URL> not in session, add operation along
