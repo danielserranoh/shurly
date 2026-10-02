@@ -288,11 +288,13 @@ def _create(db, report, entry, host, code, owner, organization_id, domains, tags
         created_at=created,
         updated_at=created,
     )
+    # In the session before its tags: `_tag`'s flush (and any autoflushing query) would otherwise
+    # meet a Tag whose `urls` holds a transient URL, and SQLAlchemy warns it won't cascade it.
+    db.add(url)
     for raw in link.get("tags") or []:
         tag = _tag(db, report, raw, owner, tags)
         if tag is not None and tag not in url.tags:
             url.tags.append(tag)
-    db.add(url)
     db.flush()
     return url
 

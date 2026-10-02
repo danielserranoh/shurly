@@ -525,6 +525,7 @@ System creates:
 - [x] **DISABLE_TRACK_PARAM**
   - [x] Config: query param name (default `nostat`) that suppresses visit logging
   - [x] Tests confirming the redirect still happens but no Visitor row is inserted
+  - [x] Not forwarded to the destination, as in Shlink (8.5, `tests/test_phase85_nostat_forwarding.py`)
 - [x] **API key scoping (data model only, single scope at launch)**
   - [x] `User.api_key_scope` enum + `User.api_key_constraints` JSON column
   - [x] Enum: `FULL_ACCESS` (only enforced value at launch); reserved `READ_ONLY`, `CREATE_ONLY`, `DOMAIN_SPECIFIC`
@@ -1848,11 +1849,12 @@ live in `mcp_server/README.md`, written for developers. There is no user manual 
         so dropping it while a task of that release serves fails every user query mid-rollout. A test drops it by
         hand and runs this release against it: signing in, an API key, `/me`, the MCP, revoking
         (`tests/test_phase63_api_keys.py`)
-  - [ ] Migration `0014` drops `users.api_key` and `ix_users_api_key`, and the drift test's `_PENDING_DROP` goes:
+  - [x] Migration `0014` drops `users.api_key` and `ix_users_api_key`, and the drift test's `_PENDING_DROP` goes:
         **only after the release that stopped mapping it is in production**, since until then a running task still
         names the column. It takes `0014`: `0010` (the `last_click_at` repair), `0011` (a visit's city, 8.4),
         `0012` (the organization's logo, 3.14.4) and `0013` (longer short codes, 8.4) took the numbers it had been
-        given (2026-09-29, 2026-10-01)
+        given (2026-09-29, 2026-10-01). Written once 0013 was in production (2026-10-02); its downgrade adds
+        the column back empty (`tests/test_phase63_api_keys.py`)
   - [x] The MCP can't generate or revoke a key: talked into it by untrusted text, an assistant would get
         the new key in its context. Nor `login` or `change_password`: no password or JWT passes through an
         assistant (`EXCLUDED_ROUTE_MAPS`, pinned by `tests/test_phase52_mcp_tools.py`)
@@ -2093,6 +2095,11 @@ the import can be re-run.
       name it
 - [x] Smoke on `go.griddo.io` with a sample of migrated codes, mixed case included — 2026-10-02: `mcp`, a
       44-character code, `CO-Utadeo-…`, the collapsed duplicate → 302; an unknown code → 404; `/docs` → 404 there
+- [x] `?nostat` leaked to the destination: `go.griddo.io/mcp?nostat` reached YouTube with `&nostat=` → the redirect,
+      a rule's target and a crawler's preview drop it before forwarding the query, which otherwise goes on whole,
+      repeated keys included (`tests/test_phase85_nostat_forwarding.py`)
+- [x] The import printed a SAWarning (`Tag.urls`, a URL not in the session yet): harmless, every association was
+      stored → a link is added to the session before its tags (`tests/test_phase84_shlink_import.py`)
 - [ ] Watch orphan visits on `go.griddo.io` for 2–4 weeks: hits on dropped codes show what was still in use →
       re-import them from the raw export
 

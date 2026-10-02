@@ -45,9 +45,7 @@ class User(Base):
     password_hash = Column(String(255), nullable=True)
     # Phase 6.3 — API keys are kept as a hash and a prefix, never as themselves: a key
     # is shown once, when it's made (set_api_key). The plaintext column, users.api_key,
-    # is empty since migration 0007 and isn't mapped: the ORM names every mapped column
-    # in its SELECTs and INSERTs, and 0014 drops it in the next release while this one
-    # still serves.
+    # emptied by migration 0007 and unmapped the release after, is dropped by 0014.
     api_key_hash = Column(String(64), unique=True, nullable=True, index=True)
     api_key_prefix = Column(String(API_KEY_PREFIX_LENGTH), nullable=True)
     api_key_scope = Column(Enum(ApiKeyScope), nullable=False, default=ApiKeyScope.FULL_ACCESS)
