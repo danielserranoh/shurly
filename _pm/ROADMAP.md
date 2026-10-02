@@ -525,6 +525,7 @@ System creates:
 - [x] **DISABLE_TRACK_PARAM**
   - [x] Config: query param name (default `nostat`) that suppresses visit logging
   - [x] Tests confirming the redirect still happens but no Visitor row is inserted
+  - [x] Not forwarded to the destination, as in Shlink (8.5, `tests/test_phase85_nostat_forwarding.py`)
 - [x] **API key scoping (data model only, single scope at launch)**
   - [x] `User.api_key_scope` enum + `User.api_key_constraints` JSON column
   - [x] Enum: `FULL_ACCESS` (only enforced value at launch); reserved `READ_ONLY`, `CREATE_ONLY`, `DOMAIN_SPECIFIC`
@@ -2093,6 +2094,9 @@ the import can be re-run.
       name it
 - [x] Smoke on `go.griddo.io` with a sample of migrated codes, mixed case included — 2026-10-02: `mcp`, a
       44-character code, `CO-Utadeo-…`, the collapsed duplicate → 302; an unknown code → 404; `/docs` → 404 there
+- [x] `?nostat` leaked to the destination: `go.griddo.io/mcp?nostat` reached YouTube with `&nostat=` → the redirect,
+      a rule's target and a crawler's preview drop it before forwarding the query, which otherwise goes on whole,
+      repeated keys included (`tests/test_phase85_nostat_forwarding.py`)
 - [ ] Watch orphan visits on `go.griddo.io` for 2–4 weeks: hits on dropped codes show what was still in use →
       re-import them from the raw export
 

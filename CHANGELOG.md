@@ -26,6 +26,15 @@ implementation lifecycle and is independent of the URL version segment.
 
 ## [Unreleased]
 
+### Fixed — `?nostat` stays with us (8.5)
+- **DISABLE_TRACK_PARAM isn't forwarded to the destination any more.** It skipped the visit as it should, but a
+  link that forwards its query passed it on too: `go.griddo.io/mcp?nostat` went to YouTube with `&nostat=` on the
+  end. Now it's dropped before the query is forwarded, with any value or none (`?nostat`, `?nostat=1`), in the
+  redirect, a redirect rule's target and a crawler's preview. Shlink does the same.
+- **The rest of the query goes on as it came:** the other parameters in their order, after the destination's own
+  query, and a repeated one now with each of its values (`?tag=a&tag=b`), where only the last went before. A
+  forwarded parameter still wins a clash with a campaign recipient's row.
+
 ### Fixed — the Shlink export is whole, or there's none (8.4)
 - **Production's export of 344 links held 343 distinct codes**, `co-upb-luis-ochoa` twice, and the import then
   failed on `uq_urls_domain_code` with a traceback. Shlink really holds that link twice: a double submit on the
