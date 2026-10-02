@@ -2090,13 +2090,16 @@ the import can be re-run.
       a run of the frontend deploy (DEPLOYMENT.md § The cutover). No `BASE_URL` step: the live service sets none
       (checked 2026-10-01). Before `s.griddo.io`'s row is deleted: it's the default until then — 2026-10-02:
       promoted, `DEFAULT_DOMAIN` on task definition 35, the frontend deployed with the variable
-- [ ] Delete `s.griddo.io` entirely, with no redirects kept:
-  - [ ] Out of rule 12's host condition, its certificate off the listener and deleted, its Route 53 record
-        (griddo-production)
-  - [ ] Its `Domain` row and its 2 test links → `scripts/run_retire_domain.sh s.griddo.io`, a dry run then
+- [x] Delete `s.griddo.io` entirely, with no redirects kept — 2026-10-02:
+  - [x] Out of rule 12's host condition, its certificate off the listener and deleted, its Route 53 record
+        (griddo-production) — rule 12 hosts `shurly.griddo.io` and `go.griddo.io`; the A alias and the ACM
+        validation CNAME deleted
+  - [x] Its `Domain` row and its 2 test links → `scripts/run_retire_domain.sh s.griddo.io`, a dry run then
         `--for-real` (DEPLOYMENT.md § Retiring a domain). `python -m server.tools.domains retire` deletes a
         domain's row and its links, with their visits, redirect rules and tag associations, in one transaction;
-        it refuses the default domain and an unknown one, and its report names the links by code, with counts
+        it refuses the default domain and an unknown one, and its report names the links by code, with counts.
+        Run 2026-10-02 after the release with #209: 1 link left (`z4d7zk`, 3 visits; the other was deleted
+        before), retired
   - [x] The docs and scripts that still named it → `go.griddo.io` (`DEFAULT_DOMAIN` in `.env.production.example`
         and `scripts/deploy_ecs.sh`, the frontend deploy's `PUBLIC_SHORT_DOMAIN` fallback,
         `scripts/setup_custom_domain.sh`, the docs' hosts and diagrams), a neutral host in tests, or gone. What
