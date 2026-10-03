@@ -173,8 +173,9 @@ import { BROWSERS, DEVICES, LANGUAGES } from '@/utils/rules';
   import { icon } from '@/utils/icons';
   import { downloadVisits, getBreakdown, getTimeseries, getTotals, getVisits } from '@/utils/link-analytics';
   import { openLinkEditor } from '@/utils/link-editor';
-  import { campaignHref, deleteLink, getLink, linkBadges, linkThumb, openQr } from '@/utils/links';
+  import { campaignHref, deleteLink, getLink, linkBadges, linkThumb, openQr, updateLink } from '@/utils/links';
   import { linkApi } from '@/utils/link-address';
+  import { linkPreview, type PreviewField } from '@/utils/preview';
   import { createRule, deleteRule, listRules, renderRule } from '@/utils/rules';
   import { tagPill } from '@/utils/tags';
   import { confirmDialog, copyWithFeedback, hydrateTimes, setLoading, toast } from '@/utils/ui';
@@ -197,6 +198,7 @@ import { BROWSERS, DEVICES, LANGUAGES } from '@/utils/rules';
     viewer = await getViewer();
     if (!link) return;
     renderHeader();
+    renderPreview();
     renderRules();
   });
 
@@ -280,37 +282,70 @@ import { BROWSERS, DEVICES, LANGUAGES } from '@/utils/rules';
   }
 
   // ------------------------------------------------------------------ Social preview
-  function renderPreview(meta?: Partial<PreviewMetadata>) {
-    const title = link.og_title || link.title || hostname(link.original_url);
-    const hasCustom = Boolean(link.og_title || link.og_description || link.og_image_url);
-    const fetchedAt = meta?.fetched_at ?? link.og_fetched_at;
-    setHTML(
-      $('[data-og-meta]'),
-      fetchedAt ? html`Fetched <time data-relative datetime="${fetchedAt}"></time>` : hasCustom ? 'Custom preview' : 'No preview yet',
-    );
+  // Phase 8.7 — the page's own preview, each part rewritten where the link has an override.
+  const PREVIEW_FIELDS: [PreviewField, string, 'page_og_title' | 'page_og_description' | 'page_og_image_url'][] = [
+    ['title', 'Title', 'page_og_title'],
+    ['description', 'Description', 'page_og_description'],
+    ['image', 'Image', 'page_og_image_url'],
+  ];
+
+  function renderPreview() {
+    const preview = linkPreview(link);
+    const title = preview.title || link.title || hostname(link.original_url);
+    const fetchedAt = link.page_fetched_at ?? null;
+    setHTML($('[data-og-meta]'), fetchedAt ? html`Read from the page <time data-relative datetime="${fetchedAt}"></time>` : 'Not read from the page yet');
     hydrateTimes($('[data-og-meta]'));
+    const sources = PREVIEW_FIELDS.map(([field, label, page]) =>
+      preview.overridden[field]
+        ? html`<li class="badge badge-info" data-og-source="${field}">${label}: yours</li>`
+        : link[page]
+          ? html`<li class="badge badge-neutral" data-og-source="${field}">${label}: the page’s</li>`
+          : html`<li class="badge badge-outline" data-og-source="${field}">${label}: none</li>`,
+    );
     setHTML(
       $('[data-og-card]'),
-      html`${link.og_image_url
-          ? html`<div class="aspect-[1200/630] bg-ink-100"><img src="${safeUrl(link.og_image_url)}" alt="" referrerpolicy="no-referrer" class="size-full object-cover" data-fallback /></div>`
+      html`${preview.image
+          ? html`<div class="aspect-[1200/630] bg-ink-100"><img src="${safeUrl(preview.image)}" alt="" referrerpolicy="no-referrer" class="size-full object-cover" data-fallback /></div>`
           : html`<div class="grid aspect-[1200/630] place-items-center bg-ink-50 text-sm text-ink-500"><span class="flex items-center gap-2">${icon('image', 'size-4')}No preview image</span></div>`}
         <div class="grid gap-1 px-5 py-4">
           <p class="truncate text-xs text-ink-500 uppercase">${hostname(link.original_url)}</p>
           <p class="line-clamp-2 font-semibold text-ink-950">${title}</p>
-          ${link.og_description ? html`<p class="line-clamp-3 text-sm text-ink-500">${link.og_description}</p>` : ''}
+          ${preview.description ? html`<p class="line-clamp-3 text-sm text-ink-500">${preview.description}</p>` : ''}
+        </div>
+        <div class="flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-line px-5 py-3">
+          <ul class="flex flex-wrap gap-1.5" aria-label="Where each part comes from">${sources}</ul>
+          ${preview.custom && link.url_type !== 'campaign' ? html`<button type="button" class="btn btn-ghost btn-sm ml-auto" data-reset-og>Use the page’s preview</button>` : ''}
         </div>`,
     );
+    const reset = document.querySelector<HTMLButtonElement>('[data-reset-og]');
+    if (!reset) return;
+    if (changeable()) reset.addEventListener('click', () => void resetPreview());
+    else lockControl(reset, 'link', 'end');
+  }
+
+  async function resetPreview() {
+    const ok = await confirmDialog({
+      title: 'Use the page’s preview?',
+      body: 'The title, description and image you set for this link are cleared, and the page’s own show instead. Sites that already read the link pick it up the next time they do.',
+      confirmLabel: 'Use the page’s preview',
+      onConfirm: async () => {
+        link = await updateLink(link, { og_title: null, og_description: null, og_image_url: null });
+      },
+    });
+    if (!ok) return;
+    renderHeader();
+    renderPreview();
+    toast('Back to the page’s preview', 'success');
   }
 
   async function refreshPreview(btn?: HTMLButtonElement | null) {
     if (btn) setLoading(btn, true, '');
     try {
       const meta = await apiPost<PreviewMetadata>(linkApi(link, '/refresh-preview'));
-      link = { ...link, og_title: meta.og_title, og_description: meta.og_description, og_image_url: meta.og_image_url, og_fetched_at: meta.fetched_at };
       link = await getLink(link);
-      renderPreview(meta);
+      renderPreview();
       renderHeader();
-      toast('Preview refreshed', 'success', { description: meta.has_custom_preview ? 'Fields you set yourself were kept.' : undefined });
+      toast('Preview refreshed', 'success', { description: meta.has_custom_preview ? 'What you set yourself still shows over the page’s.' : undefined });
     } catch (err) {
       toast('Couldn’t refresh the preview', 'error', { description: errorMessage(err) });
     } finally {

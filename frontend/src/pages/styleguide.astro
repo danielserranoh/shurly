@@ -1518,6 +1518,10 @@ const colorCount = allColors.length;
           <ul class="grid gap-3" data-sg-links aria-label="Example links"></ul>
         </Specimen>
 
+        <Specimen title="Link thumbnails" description="linkThumb(): the preview’s image (the one set for the link, else the page’s) with the page’s icon in its corner; the icon on a neutral tile when there’s no image; the monogram when there’s neither. An image that fails to load gives way to the next, and a broken icon badge just goes." code={['linkThumb(link)', 'data-fallback', '<template>']}>
+          <ul class="grid grid-cols-2 gap-6 sm:grid-cols-4" data-sg-thumbs aria-label="Link thumbnails"></ul>
+        </Specimen>
+
         <Specimen title="Disclosure" description="Native details and summary. The chevron turns; the body fades up." code={['.disclosure', '.disclosure-body', '.chevron']}>
           <div class="grid gap-3">
             <details class="disclosure card group px-5 py-4 sm:px-6 sm:py-5">
@@ -1531,7 +1535,7 @@ const colorCount = allColors.length;
               <summary class="px-5 py-4 sm:px-6">
                 <Icon name="share" class="size-4 text-ink-500" />
                 <span class="text-sm font-semibold text-ink-900">Social preview</span>
-                <span class="badge badge-neutral">Automatic</span>
+                <span class="badge badge-neutral">The page’s</span>
                 <Icon name="chevron-down" class="chevron ml-auto size-4 text-ink-400" />
               </summary>
               <div class="disclosure-body border-t border-line px-5 py-4 sm:px-6">
@@ -2033,7 +2037,7 @@ const colorCount = allColors.length;
   import { recipientRows, recipientTable, sortSelect, syncSelection, type Recipient } from '@/utils/recipients';
   import { DEFAULT_SORT, nextSort, type RecipientSort, type SortState } from '@/utils/recipients-view';
   import { html, setHTML } from '@/utils/html';
-  import { renderLinkCard, renderLinkSkeleton } from '@/utils/links';
+  import { linkThumb, renderLinkCard, renderLinkSkeleton } from '@/utils/links';
   import { renderPager } from '@/utils/paging';
   import { closeDialog, confirmDialog, hydrateTimes, setLoading, toast } from '@/utils/ui';
   import { cropAvatar } from '@/utils/avatar-cropper';
@@ -2314,6 +2318,27 @@ const colorCount = allColors.length;
       updated_at: at(-HOUR),
     },
   ];
+
+  // Phase 8.7 — the page's own preview: an image and its icon on the first link, the icon alone on the second.
+  Object.assign(demoLinks[0], { page_og_image_url: '/og-image.png', page_favicon_url: '/favicon.svg' });
+  Object.assign(demoLinks[1], { page_favicon_url: '/favicon-32x32.png' });
+
+  const thumbList = $('[data-sg-thumbs]');
+  if (thumbList) {
+    const thumbs: [string, Partial<ShortLink>][] = [
+      ['Image, with the page’s icon', { page_og_image_url: '/og-image.png', page_favicon_url: '/favicon.svg' }],
+      ['No image: the icon on a tile', { page_favicon_url: '/favicon-32x32.png' }],
+      ['Neither: the monogram', {}],
+      ['A broken image gives way', { page_og_image_url: '/styleguide/no-such-cover.png', page_favicon_url: '/favicon.svg' }],
+    ];
+    setHTML(
+      thumbList,
+      html`${thumbs.map(
+        ([caption, page]) =>
+          html`<li class="grid justify-items-start gap-2">${linkThumb({ ...blank, original_url: 'https://www.acme.com/catalogue', ...page }, 'size-14')}<span class="text-xs text-ink-600">${caption}</span></li>`,
+      )}`,
+    );
+  }
 
   const linkList = $('[data-sg-links]');
   if (linkList) {

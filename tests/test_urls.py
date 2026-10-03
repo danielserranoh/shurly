@@ -831,7 +831,7 @@ class TestPhase37OpenGraphFeatures:
     def test_create_url_without_og_fields(
         self, client: TestClient, auth_headers: dict, monkeypatch: pytest.MonkeyPatch
     ):
-        """Test creating URL without OG fields (should be None)."""
+        """No override typed: none stored. Phase 8.7 — the page's own preview is fetched."""
         # Force OG fetch to return empty so the test does not depend on network reachability
         from server.app import urls as urls_module
         from server.utils.opengraph import OpenGraphMetadata
@@ -852,7 +852,8 @@ class TestPhase37OpenGraphFeatures:
         assert data["og_title"] is None
         assert data["og_description"] is None
         assert data["og_image_url"] is None
-        assert data["og_fetched_at"] is None
+        assert data["has_custom_preview"] is False
+        assert data["page_fetched_at"] is not None  # the page answered, with no preview
 
     def test_get_preview_metadata(
         self, client: TestClient, auth_headers: dict, db_session: Session

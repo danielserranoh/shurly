@@ -10,6 +10,7 @@ from server.core.models.url import URLType
 from server.schemas.datetimes import UtcDateTime
 from server.utils.access import Visibility
 from server.utils.bounds import INT4_MAX
+from server.utils.previews import blank_to_none
 from server.utils.url import MAX_SHORT_CODE_LENGTH, is_valid_url
 
 if TYPE_CHECKING:
@@ -26,10 +27,17 @@ class URLCreate(BaseModel):
     title: str | None = Field(None, max_length=255, description="Optional user-friendly title")
     forward_parameters: bool = Field(True, description="Forward query parameters to destination")
 
-    # Open Graph fields (optional)
-    og_title: str | None = Field(None, max_length=255, description="Custom Open Graph title")
-    og_description: str | None = Field(None, description="Custom Open Graph description")
-    og_image_url: str | None = Field(None, description="Custom Open Graph image URL")
+    # Open Graph overrides (optional). Phase 8.7 — the page's own preview is fetched either way;
+    # each of these rewrites one of its fields.
+    og_title: str | None = Field(
+        None, max_length=255, description="Preview title, instead of the page's own"
+    )
+    og_description: str | None = Field(
+        None, description="Preview description, instead of the page's own"
+    )
+    og_image_url: str | None = Field(
+        None, description="Preview image URL, instead of the page's own"
+    )
 
     # Phase 3.9.2 — validity window and visit cap (all optional, NULL = no constraint)
     valid_since: datetime | None = Field(
@@ -61,6 +69,12 @@ class URLCreate(BaseModel):
             raise ValueError("Invalid URL format. Must be a valid http or https URL.")
         return v
 
+    @field_validator("og_title", "og_description", "og_image_url", mode="before")
+    @classmethod
+    def blank_override_is_none(cls, v: object) -> object:
+        """Phase 8.7 — an override left blank is none: the page's own value shows."""
+        return blank_to_none(v)
+
     @field_validator("og_image_url")
     @classmethod
     def validate_og_image_url(cls, v: str | None) -> str | None:
@@ -81,10 +95,17 @@ class URLCustomCreate(BaseModel):
     title: str | None = Field(None, max_length=255, description="Optional user-friendly title")
     forward_parameters: bool = Field(True, description="Forward query parameters to destination")
 
-    # Open Graph fields (optional)
-    og_title: str | None = Field(None, max_length=255, description="Custom Open Graph title")
-    og_description: str | None = Field(None, description="Custom Open Graph description")
-    og_image_url: str | None = Field(None, description="Custom Open Graph image URL")
+    # Open Graph overrides (optional). Phase 8.7 — the page's own preview is fetched either way;
+    # each of these rewrites one of its fields.
+    og_title: str | None = Field(
+        None, max_length=255, description="Preview title, instead of the page's own"
+    )
+    og_description: str | None = Field(
+        None, description="Preview description, instead of the page's own"
+    )
+    og_image_url: str | None = Field(
+        None, description="Preview image URL, instead of the page's own"
+    )
 
     # Phase 3.9.2 — validity window and visit cap
     valid_since: datetime | None = Field(
@@ -116,6 +137,12 @@ class URLCustomCreate(BaseModel):
             raise ValueError("Invalid URL format. Must be a valid http or https URL.")
         return v
 
+    @field_validator("og_title", "og_description", "og_image_url", mode="before")
+    @classmethod
+    def blank_override_is_none(cls, v: object) -> object:
+        """Phase 8.7 — an override left blank is none: the page's own value shows."""
+        return blank_to_none(v)
+
     @field_validator("og_image_url")
     @classmethod
     def validate_og_image_url(cls, v: str | None) -> str | None:
@@ -131,10 +158,19 @@ class URLUpdate(BaseModel):
     original_url: str | None = Field(None, description="Update destination URL")
     forward_parameters: bool | None = Field(None, description="Update forward parameters setting")
 
-    # Open Graph fields
-    og_title: str | None = Field(None, max_length=255, description="Update Open Graph title")
-    og_description: str | None = Field(None, description="Update Open Graph description")
-    og_image_url: str | None = Field(None, description="Update Open Graph image URL")
+    # Open Graph overrides. Phase 8.7 — null or blank drops the override: the page's own shows.
+    og_title: str | None = Field(
+        None,
+        max_length=255,
+        description="Preview title, instead of the page's own (null or empty: the page's)",
+    )
+    og_description: str | None = Field(
+        None,
+        description="Preview description, instead of the page's own (null or empty: the page's)",
+    )
+    og_image_url: str | None = Field(
+        None, description="Preview image URL, instead of the page's own (null or empty: the page's)"
+    )
 
     # Phase 3.9.2 — validity window and visit cap (passing null clears the field)
     valid_since: datetime | None = Field(
@@ -156,6 +192,12 @@ class URLUpdate(BaseModel):
         if v and not is_valid_url(v):
             raise ValueError("Invalid URL format. Must be a valid http or https URL.")
         return v
+
+    @field_validator("og_title", "og_description", "og_image_url", mode="before")
+    @classmethod
+    def blank_override_is_none(cls, v: object) -> object:
+        """Phase 8.7 — an override left blank is none: the page's own value shows."""
+        return blank_to_none(v)
 
     @field_validator("og_image_url")
     @classmethod
@@ -189,11 +231,27 @@ class URLResponse(BaseModel):
     title: str | None = None
     forward_parameters: bool = True
 
-    # Open Graph fields
-    og_title: str | None = None
-    og_description: str | None = None
-    og_image_url: str | None = None
-    og_fetched_at: UtcDateTime | None = None
+    # The social preview (Phase 8.7), in two layers. og_*: the overrides, what a person typed,
+    # each null when the page's own shows. page_*: what the destination declares, from the
+    # last fetch. A field's effective value is the override, else the page's.
+    og_title: str | None = Field(None, description="Preview title override; null: the page's")
+    og_description: str | None = Field(
+        None, description="Preview description override; null: the page's"
+    )
+    og_image_url: str | None = Field(None, description="Preview image override; null: the page's")
+    page_og_title: str | None = Field(None, description="The destination page's own title")
+    page_og_description: str | None = Field(
+        None, description="The destination page's own description"
+    )
+    page_og_image_url: str | None = Field(None, description="The destination page's own image")
+    page_favicon_url: str | None = Field(None, description="The destination page's icon")
+    page_fetched_at: UtcDateTime | None = Field(
+        None, description="When the page_* fields were fetched; null: not yet"
+    )
+    has_custom_preview: bool = Field(False, description="At least one override is set")
+    og_fetched_at: UtcDateTime | None = Field(
+        None, description="Deprecated: the same as page_fetched_at"
+    )
 
     # Analytics
     last_click_at: UtcDateTime | None = None
@@ -239,14 +297,35 @@ class URLListResponse(BaseModel):
 
 
 class OpenGraphMetadataResponse(BaseModel):
-    """Response for Open Graph preview endpoint."""
+    """
+    A link's social preview: what a share shows (Phase 8.7: each field the override, else the
+    page's own), which fields are overridden, and the page's own values.
+    """
 
-    og_title: str | None
-    og_description: str | None
-    og_image_url: str | None
+    og_title: str | None = Field(
+        description="The preview's title: the override, else the page's, else the link's title"
+    )
+    og_description: str | None = Field(
+        description="The preview's description: the override, else the page's"
+    )
+    og_image_url: str | None = Field(
+        description="The preview's image: the override, else the page's"
+    )
     og_url: str
-    has_custom_preview: bool
-    fetched_at: UtcDateTime | None
+    og_title_overridden: bool = False
+    og_description_overridden: bool = False
+    og_image_url_overridden: bool = False
+    has_custom_preview: bool = Field(
+        description="At least one field is overridden: a social crawler gets Shurly's preview "
+        "page; without one, the redirect, and reads the page's own tags"
+    )
+    page_og_title: str | None = None
+    page_og_description: str | None = None
+    page_og_image_url: str | None = None
+    page_favicon_url: str | None = None
+    fetched_at: UtcDateTime | None = Field(
+        description="When the page's own values were fetched; null: not yet"
+    )
 
 
 class URLMetadataRequest(BaseModel):

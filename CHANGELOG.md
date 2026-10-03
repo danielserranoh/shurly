@@ -26,6 +26,42 @@ implementation lifecycle and is independent of the URL version segment.
 
 ## [Unreleased]
 
+### Changed — previews from the page (8.7)
+- **A link's social preview is its destination's own.** Shurly's preview fields only rewrite it, or add one where the
+  page has none. Each link keeps two layers: `og_title`, `og_description` and `og_image_url` hold only what a person
+  typed, and the new `page_og_title`, `page_og_description`, `page_og_image_url`, `page_favicon_url` and
+  `page_fetched_at` what the page declares (migration 0015). Each field shows the override, else the page's.
+- **A social crawler gets the redirect a person gets** (the same status, cache headers, rules and forwarded query,
+  and never a campaign recipient's data) when nothing is rewritten, and reads the page's own preview, as it did
+  behind Shlink. Shurly's preview page is for a link with an override, each field the override, else the page's.
+  Before, a link with nothing stored was shared with no image and its URL as its title. A crawler's visit is still
+  not logged.
+- **Creating a link fetches the page every time**, overrides or not: a title typed no longer leaves the link without
+  the page's image. **refresh-preview** replaces the page's values with what it declares now, and never touches an
+  override (before, it only filled empty fields, so it never updated a fetched value). A fetch that fails leaves
+  them. **A new destination** is fetched on PATCH.
+- **Going back to the page's preview:** PATCH with `og_title`, `og_description` and `og_image_url` null, or empty
+  (an empty override is none, on create too). The link's page has **Use the page’s preview**, and the editor's
+  **Use the page’s** empties the fields; its **Fetch from page**, which copied the page's values into them, is gone.
+  The editor shows the page's values as each empty field's placeholder, and says which fields are yours.
+- **The API:** a link adds `page_*` and `has_custom_preview`, and its `og_*` are now the overrides alone (null where
+  the page's shows). `og_fetched_at` is deprecated: it gives `page_fetched_at`. `GET …/preview` and refresh-preview
+  add `og_title_overridden`, `og_description_overridden`, `og_image_url_overridden` and the page's own values;
+  `fetched_at` is when the page was read. A relative `og:image` is resolved against the page. The MCP's tools
+  follow, generated from the API.
+- **The destination's icon**, from the same fetch: an SVG, then the largest declared PNG `sizes`, then any icon the
+  page declares (`rel="icon"`, `shortcut icon`, `apple-touch-icon`), resolved against the URL its redirects ended
+  on; else `/favicon.ico` on the link's own origin, then the one the redirects ended on, when one request there,
+  through the SSRF guard, answers 200 with an image.
+- **The dashboard's thumbnail** shows the preview's image with the icon as a badge in its corner, the icon on a
+  neutral tile when there's no image, or the monogram, each image giving way to the next when it fails to load. The
+  link page's preview card says, for each part, whether it's yours, the page's or missing. In `/styleguide/` too.
+- **`python -m server.tools.previews backfill [--for-real]`** gives the links from before 8.7 their page's preview
+  and icon (each distinct destination fetched once, 8 at a time), and clears the old `og_*` values that copy the
+  page's, on links whose `og_fetched_at` says they were fetched; the rest stay overrides. Re-runnable.
+  **`scripts/run_backfill_previews.sh [--for-real]`** runs it as a one-off ECS task (DEPLOYMENT.md § Previews from
+  the page).
+
 ### Changed — links.griddo.io redirects to the app (8.6)
 - **`links.griddo.io`**, Shlink's web client, redirects (302) to `https://shurly.griddo.io/dashboard/`: ALB rule 11
   is a redirect now. Shlink's web client goes with Shlink at 8.6.

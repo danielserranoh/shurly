@@ -51,6 +51,7 @@ from server.utils.geo import place_of
 from server.utils.negotiation import prefers_html
 from server.utils.network import UNKNOWN_IP, visit_ip
 from server.utils.opengraph import fetch_opengraph_metadata, is_social_media_crawler
+from server.utils.previews import clear_page_preview, effective_preview, store_page_preview
 from server.utils.redirect_rules import pick_target
 from server.utils.url import (
     MAX_SHORT_CODE_LENGTH,
@@ -169,6 +170,7 @@ def _click_count(db: Session, url: URL) -> int:
 def _to_url_response(url: URL, click_count: int) -> URLResponse:
     """Serialize a URL row plus its computed `short_url` and `click_count`."""
     response = URLResponse.model_validate(url)
+    response.og_fetched_at = response.page_fetched_at  # Phase 8.7 — deprecated, the same
     response.short_url = link_short_url(url)
     response.domain = link_hostname(url)
     response.click_count = click_count
@@ -193,7 +195,7 @@ async def create_short_url(
     Create a standard short URL.
 
     Generates a random 6-character short code and creates a shortened URL.
-    Automatically fetches Open Graph metadata from the destination URL.
+    Fetches the destination's own preview (Open Graph tags) and icon, every time.
 
     **Authentication:** Required (JWT Bearer token)
 
@@ -201,9 +203,9 @@ async def create_short_url(
     - **url**: The original URL to shorten (must be valid http/https URL)
     - **title**: Optional user-friendly title (max 255 chars)
     - **forward_parameters**: Forward query params to destination (default: true)
-    - **og_title**: Custom Open Graph title (optional)
-    - **og_description**: Custom Open Graph description (optional)
-    - **og_image_url**: Custom Open Graph image URL (optional)
+    - **og_title**: Preview title, instead of the page's own (optional)
+    - **og_description**: Preview description, instead of the page's own (optional)
+    - **og_image_url**: Preview image URL, instead of the page's own (optional)
     - **visibility**: `organization` (default) or `personal` (only you see it)
 
     **Responses:**
@@ -236,20 +238,9 @@ async def create_short_url(
             detail="Failed to generate unique short code. Please try again.",
         )
 
-    # Auto-fetch Open Graph metadata if not provided
-    og_title = url_data.og_title
-    og_description = url_data.og_description
-    og_image_url = url_data.og_image_url
-    og_fetched_at = None
-
-    if not (og_title or og_description or og_image_url):
-        # Fetch metadata from destination URL
-        metadata = await fetch_opengraph_metadata(url_data.url)
-        if metadata.has_metadata():
-            og_title = fit(metadata.title, URL.og_title)
-            og_description = metadata.description
-            og_image_url = metadata.image_url
-            og_fetched_at = datetime.now(timezone.utc)
+    # Phase 8.7 — the page's own preview, fetched every time: the og_* fields typed here are
+    # overrides, each rewriting one of its fields.
+    metadata = await fetch_opengraph_metadata(url_data.url)
 
     # Create the URL
     url = URL(
@@ -259,10 +250,9 @@ async def create_short_url(
         url_type=URLType.STANDARD,
         title=url_data.title,
         forward_parameters=url_data.forward_parameters,
-        og_title=og_title,
-        og_description=og_description,
-        og_image_url=og_image_url,
-        og_fetched_at=og_fetched_at,
+        og_title=url_data.og_title,
+        og_description=url_data.og_description,
+        og_image_url=url_data.og_image_url,
         valid_since=url_data.valid_since,
         valid_until=url_data.valid_until,
         max_visits=url_data.max_visits,
@@ -271,6 +261,7 @@ async def create_short_url(
         organization_id=viewer(db, current_user).organization_for(url_data.visibility),
     )
 
+    store_page_preview(url, metadata)
     db.add(url)
     db.commit()
     db.refresh(url)
@@ -297,7 +288,7 @@ async def create_custom_url(
     Create a custom short URL with a user-specified code.
 
     Allows you to specify a custom short code instead of using a random one.
-    Automatically fetches Open Graph metadata from the destination URL.
+    Fetches the destination's own preview (Open Graph tags) and icon, every time.
 
     **Authentication:** Required (JWT Bearer token)
 
@@ -306,9 +297,9 @@ async def create_custom_url(
     - **custom_code**: Custom short code (3-64 alphanumeric characters, hyphens, underscores)
     - **title**: Optional user-friendly title (max 255 chars)
     - **forward_parameters**: Forward query params to destination (default: true)
-    - **og_title**: Custom Open Graph title (optional)
-    - **og_description**: Custom Open Graph description (optional)
-    - **og_image_url**: Custom Open Graph image URL (optional)
+    - **og_title**: Preview title, instead of the page's own (optional)
+    - **og_description**: Preview description, instead of the page's own (optional)
+    - **og_image_url**: Preview image URL, instead of the page's own (optional)
     - **visibility**: `organization` (default) or `personal` (only you see it)
 
     **Responses:**
@@ -371,20 +362,9 @@ async def create_custom_url(
             f"The requested code '{url_data.custom_code}' {reason}. Modified to '{short_code}'."
         )
 
-    # Auto-fetch Open Graph metadata if not provided
-    og_title = url_data.og_title
-    og_description = url_data.og_description
-    og_image_url = url_data.og_image_url
-    og_fetched_at = None
-
-    if not (og_title or og_description or og_image_url):
-        # Fetch metadata from destination URL
-        metadata = await fetch_opengraph_metadata(url_data.url)
-        if metadata.has_metadata():
-            og_title = fit(metadata.title, URL.og_title)
-            og_description = metadata.description
-            og_image_url = metadata.image_url
-            og_fetched_at = datetime.now(timezone.utc)
+    # Phase 8.7 — the page's own preview, fetched every time: the og_* fields typed here are
+    # overrides, each rewriting one of its fields.
+    metadata = await fetch_opengraph_metadata(url_data.url)
 
     # Create the URL
     url = URL(
@@ -394,10 +374,9 @@ async def create_custom_url(
         url_type=URLType.CUSTOM,
         title=url_data.title,
         forward_parameters=url_data.forward_parameters,
-        og_title=og_title,
-        og_description=og_description,
-        og_image_url=og_image_url,
-        og_fetched_at=og_fetched_at,
+        og_title=url_data.og_title,
+        og_description=url_data.og_description,
+        og_image_url=url_data.og_image_url,
         valid_since=url_data.valid_since,
         valid_until=url_data.valid_until,
         max_visits=url_data.max_visits,
@@ -406,6 +385,7 @@ async def create_custom_url(
         organization_id=viewer(db, current_user).organization_for(url_data.visibility),
     )
 
+    store_page_preview(url, metadata)
     db.add(url)
     db.commit()
     db.refresh(url)
@@ -669,7 +649,7 @@ def delete_url(
         **get_responses(400, 401, 403, 404, 422),
     },
 )
-def update_url(
+async def update_url(
     short_code: str,
     url_update: URLUpdate,
     domain: LinkDomain = None,
@@ -679,7 +659,7 @@ def update_url(
     """
     Update a URL by short code.
 
-    Allows updating title, destination URL, forward parameters, and Open Graph metadata.
+    Allows updating title, destination URL, forward parameters, and the preview overrides.
 
     **Authentication:** Required (JWT Bearer token)
 
@@ -688,11 +668,12 @@ def update_url(
 
     **Request Body (all fields optional):**
     - **title**: Update URL title
-    - **original_url**: Update destination URL
+    - **original_url**: Update destination URL. A new destination's own preview and icon are
+      fetched
     - **forward_parameters**: Update forward parameters setting
-    - **og_title**: Update Open Graph title
-    - **og_description**: Update Open Graph description
-    - **og_image_url**: Update Open Graph image URL
+    - **og_title**: Preview title, instead of the page's own; null or empty goes back to the page's
+    - **og_description**: Preview description, likewise
+    - **og_image_url**: Preview image URL, likewise. All three null: the page's own preview
 
     **Responses:**
     - **200**: URL updated successfully
@@ -713,10 +694,17 @@ def update_url(
             detail="Campaign URLs cannot be updated individually. Update the campaign instead.",
         )
 
-    # Update fields (only non-None values)
+    # Update the fields sent (null clears one: an override, the page's own shows again)
     update_data = url_update.model_dump(exclude_unset=True)
+    new_destination = update_data.get("original_url")
+    moved = new_destination is not None and new_destination != url.original_url
     for field, value in update_data.items():
         setattr(url, field, value)
+
+    # Phase 8.7 — a new destination, its own preview; none, if it didn't answer: the old one's
+    # would describe another page.
+    if moved and not store_page_preview(url, await fetch_opengraph_metadata(new_destination)):
+        clear_page_preview(url)
 
     db.commit()
     db.refresh(url)
@@ -891,9 +879,12 @@ def get_url_preview(
     current_user: User = Depends(get_current_user),
 ):
     """
-    Get Open Graph preview metadata for a URL.
+    Get a link's social preview: what a share shows, and where each field comes from.
 
-    Returns the current Open Graph metadata for social media previews.
+    Phase 8.7 — each field is the override a person typed, else the destination page's own.
+    `og_*_overridden` say which fields are overridden; `page_*` are the page's own values
+    and its icon, from the last fetch (`fetched_at`). With no override, a social crawler gets
+    the same redirect as a person and reads the page's own tags.
 
     **Authentication:** Required (JWT Bearer token)
 
@@ -906,17 +897,7 @@ def get_url_preview(
     - **404**: URL not found, or someone else's personal link
     """
     url = visible_url_or_404(db, current_user, short_code, domain)
-
-    has_custom = bool(url.og_title or url.og_description or url.og_image_url)
-
-    return OpenGraphMetadataResponse(
-        og_title=url.og_title or url.title,
-        og_description=url.og_description,
-        og_image_url=url.og_image_url,
-        og_url=link_short_url(url),
-        has_custom_preview=has_custom,
-        fetched_at=url.og_fetched_at,
-    )
+    return _preview_response(url)
 
 
 @urls_router.post(
@@ -934,10 +915,12 @@ async def refresh_url_preview(
     current_user: User = Depends(get_current_user),
 ):
     """
-    Refresh Open Graph metadata by fetching from destination URL.
+    Fetch the destination page's own preview and icon again.
 
-    Re-fetches Open Graph metadata from the destination URL.
-    Only updates fields that don't have custom values.
+    Phase 8.7 — replaces the page's values (`page_*`) with what it declares now, a field it
+    dropped included. The overrides a person typed are never touched: to go back to the
+    page's own preview, PATCH the link with `og_title`, `og_description` and `og_image_url`
+    null. When the page doesn't answer (refused, timed out, a 5xx), what the link knew stays.
 
     **Authentication:** Required (JWT Bearer token)
 
@@ -949,34 +932,33 @@ async def refresh_url_preview(
     - **401**: Authentication required or invalid token
     - **403**: Only its creator, or an admin or owner, can change this link
     - **404**: URL not found, or someone else's personal link
-
-    **Note:** Custom Open Graph values (manually set) will not be overwritten.
     """
     url = visible_url_or_404(db, current_user, short_code, domain, to_change=True)
 
-    # Fetch metadata from destination
-    metadata = await fetch_opengraph_metadata(str(url.original_url))
-
-    # Update URL with fetched metadata (don't override custom values)
-    if metadata.has_metadata():
-        if not url.og_title:  # Only update if not custom
-            url.og_title = fit(metadata.title, URL.og_title)
-        if not url.og_description:
-            url.og_description = metadata.description
-        if not url.og_image_url:
-            url.og_image_url = metadata.image_url
-
-        url.og_fetched_at = datetime.now(timezone.utc)
+    if store_page_preview(url, await fetch_opengraph_metadata(str(url.original_url))):
         db.commit()
         db.refresh(url)
 
+    return _preview_response(url)
+
+
+def _preview_response(url: URL) -> OpenGraphMetadataResponse:
+    """A link's effective preview (Phase 8.7), its overrides flagged, and the page's own."""
+    preview = effective_preview(url)
     return OpenGraphMetadataResponse(
-        og_title=url.og_title or url.title,
-        og_description=url.og_description,
-        og_image_url=url.og_image_url,
+        og_title=preview.title or url.title,
+        og_description=preview.description,
+        og_image_url=preview.image_url,
         og_url=link_short_url(url),
-        has_custom_preview=bool(url.og_title or url.og_description or url.og_image_url),
-        fetched_at=url.og_fetched_at,
+        og_title_overridden=preview.title_overridden,
+        og_description_overridden=preview.description_overridden,
+        og_image_url_overridden=preview.image_url_overridden,
+        has_custom_preview=preview.has_override,
+        page_og_title=url.page_og_title,
+        page_og_description=url.page_og_description,
+        page_og_image_url=url.page_og_image_url,
+        page_favicon_url=url.page_favicon_url,
+        fetched_at=url.page_fetched_at,
     )
 
 
@@ -1266,15 +1248,16 @@ def redirect_short_url(short_code: str, request: Request, db: Session = Depends(
     """
     Redirect from short URL to original URL.
 
-    Social media crawlers see a preview page with Open Graph tags.
-    Regular browsers get a direct redirect (302).
+    Regular browsers get a direct redirect (302). Social media crawlers get the same redirect
+    and read the destination's own preview, unless the link rewrites it (an `og_*` override):
+    then a preview page with its Open Graph tags.
 
     **Path Parameters:**
     - **short_code**: The short code to redirect from
 
     **Responses:**
-    - **200**: Preview page for social media crawlers (with Open Graph meta tags)
-    - **302**: Temporary redirect to original URL for regular browsers
+    - **200**: Preview page for social media crawlers, for a link whose preview is rewritten
+    - **302**: Temporary redirect to original URL
     - **404**: Short URL not found, or URL is not yet active (`valid_since` in the future)
     - **410**: URL is expired (`valid_until` passed) or has reached its `max_visits` cap
 
@@ -1285,9 +1268,10 @@ def redirect_short_url(short_code: str, request: Request, db: Session = Depends(
     **Note:**
     - Campaign user data is ALWAYS appended as query parameters (for personalization)
     - Regular query params are only forwarded if `forward_parameters=true` (for attribution tracking)
-    - Social media crawlers (Twitter, Facebook, LinkedIn, WhatsApp, etc.) see rich preview cards
+    - Social media crawlers (Twitter, Facebook, LinkedIn, WhatsApp, etc.) never get a recipient's
+      data: neither in their redirect nor in the preview page
     - Only clicks use up `max_visits`, as they count in `click_count`: bot hits and tracking-pixel
-      opens are logged but don't, and crawler previews aren't logged at all
+      opens are logged but don't, and social crawlers' requests aren't logged at all
     """
     # Phase 3.10.1 — resolve the URL by (Host header → domain) + short_code so
     # the same code can live on multiple hostnames. Unknown hosts fall back to
@@ -1358,34 +1342,42 @@ def redirect_short_url(short_code: str, request: Request, db: Session = Depends(
         [(key, value) for key, value in personal.items() if key not in clashing] + forwarded,
     )
 
-    # Check User-Agent for social media crawlers
-    user_agent = request.headers.get("user-agent", "")
-
-    if is_social_media_crawler(user_agent):
-        # Serve preview page with Open Graph tags for social media. Never with the recipient's
-        # data: when a recipient shares their campaign link, the social network's crawler is who
-        # asks (docs/PERSONAL_DATA.md). Its refresh target is the destination as the rules pick
-        # it, with what the shared address itself forwards; people get the personalized redirect.
-        return templates.TemplateResponse(
-            request,
-            PREVIEW_PAGE,
-            {
-                "og_title": url.og_title or url.title or url.original_url,
-                "og_description": url.og_description or f"Visit {url.original_url}",
-                "og_image_url": url.og_image_url,
-                # Phase 8.3 — the domain it was asked on.
-                "short_url": build_short_url(short_code, domain.hostname),
-                "destination_url": _with_query(destination, forwarded),
-            },
-            headers=PREVIEW_HEADERS,
-        )
-
     # Phase 3.10.6 — pull configured status + cache header for each redirect path.
     cache_header = (
         f"public, max-age={settings.redirect_cache_lifetime}"
         if settings.redirect_cache_lifetime > 0
         else "private, max-age=0"
     )
+
+    # Social media crawlers. Never with the recipient's data: when a recipient shares their
+    # campaign link, the social network's crawler is who asks (docs/PERSONAL_DATA.md). It gets
+    # the destination as the rules pick it, with what the shared address itself forwards; people
+    # get the personalized redirect. Its visit isn't logged, as before.
+    if is_social_media_crawler(request.headers.get("user-agent", "")):
+        shared_destination = _with_query(destination, forwarded)
+        preview = effective_preview(url)
+        if not preview.has_override:
+            # Phase 8.7 — nothing rewritten: the redirect a person gets, and the crawler reads
+            # the page's own preview, as it did behind Shlink.
+            return RedirectResponse(
+                url=shared_destination,
+                status_code=settings.redirect_status_code,
+                headers={"Cache-Control": cache_header},
+            )
+        # A rewritten preview: Shurly's preview page, each field the override, else the page's.
+        return templates.TemplateResponse(
+            request,
+            PREVIEW_PAGE,
+            {
+                "og_title": preview.title or url.title or url.original_url,
+                "og_description": preview.description or f"Visit {url.original_url}",
+                "og_image_url": preview.image_url,
+                # Phase 8.3 — the domain it was asked on.
+                "short_url": build_short_url(short_code, domain.hostname),
+                "destination_url": shared_destination,
+            },
+            headers=PREVIEW_HEADERS,
+        )
 
     # Phase 3.9.6 — DISABLE_TRACK_PARAM: a configurable query string ("nostat" by default)
     # that suppresses Visitor logging. Used for QA / internal smoke tests so they don't
@@ -1418,7 +1410,7 @@ def redirect_short_url(short_code: str, request: Request, db: Session = Depends(
 
     db.add(visit)
     # Phase 3.16 — the link's last click is a click, as `/totals` counts one: a bot's visit
-    # doesn't move it, nor do a crawler's preview or a `?nostat` hit, which return above.
+    # doesn't move it, nor do a social crawler's request or a `?nostat` hit, which return above.
     if not visit.is_bot:
         url.last_click_at = now
     db.commit()

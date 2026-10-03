@@ -118,7 +118,7 @@ of the same module that the route calls.
 | `DELETE /api/v1/urls/{short_code}` | none | who can change the link | `visible_url_or_404` | `delete_url` |
 | `GET /api/v1/urls/{short_code}` | **recipients' rows** and **recipients' activity**, for a campaign link. **accounts**: the creator's email and names | who can see the link | `visible_url_or_404` | `get_url` |
 | `PATCH /api/v1/urls/{short_code}` | **recipients' rows** and **recipients' activity**, for a campaign link. **accounts**: the creator's email and names | who can change the link | `visible_url_or_404` | `update_url` |
-| `GET /api/v1/urls/{short_code}/preview` | none: the destination's Open Graph tags | who can see the link | `visible_url_or_404` | `get_url_preview` |
+| `GET /api/v1/urls/{short_code}/preview` | none: the destination's Open Graph tags and icon, and the overrides typed for the link | who can see the link | `visible_url_or_404` | `get_url_preview` |
 | `POST /api/v1/urls/{short_code}/refresh-preview` | none | who can change the link | `visible_url_or_404` | `refresh_url_preview` |
 | `GET /api/v1/urls/{short_code}/rules` | none | who can see the link | `visible_url_or_404` | `list_redirect_rules` |
 | `POST /api/v1/urls/{short_code}/rules` | none | who can change the link | `visible_url_or_404` | `create_redirect_rule` |
@@ -130,7 +130,7 @@ of the same module that the route calls.
 | `POST /mcp` | none: a redirect to `/mcp/`, on the app's host only (8.4) | anyone | public | excluded |
 | `GET /favicon.ico` | none: a 204 | anyone | public | excluded |
 | `GET /robots.txt` | none | anyone | public | excluded |
-| `GET /{short_code}` | **recipients' rows**: a campaign link adds its recipient's `user_data` to the destination's query, for people (personalization). A crawler's preview page never carries it (finding 1, fixed) | anyone with the link (by design) | public | excluded |
+| `GET /{short_code}` | **recipients' rows**: a campaign link adds its recipient's `user_data` to the destination's query, for people (personalization). A social crawler never gets it: neither in its redirect (8.7: a link whose preview isn't rewritten) nor in the preview page (finding 1, fixed) | anyone with the link (by design) | public | excluded |
 | `GET /{short_code}/track` | none | anyone | public | excluded |
 
 ## The MCP's own routes
@@ -193,6 +193,8 @@ These were questions for the user. On 2026-09-29 both were kept as they are, to 
    - Now the preview's refresh target is the destination the rules pick, with only what the shared address itself
      forwards. People still get their personalized redirect, unchanged
      (`tests/test_campaign_link_preview.py`).
+   - Since 8.7 a crawler gets the preview page only for a link whose preview is rewritten; otherwise it gets the
+     redirect, to read the page's own preview. That redirect is the same destination: no `user_data` either.
 2. **A client could choose the address its visits were stored under, on the path straight to the ALB. Fixed on
    2026-09-29.**
    - uvicorn ran with `--forwarded-allow-ips "*"`, and replaced the connection's address with the leftmost

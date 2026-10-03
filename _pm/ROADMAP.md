@@ -2125,6 +2125,42 @@ the import can be re-run.
       rule-sync Lambda first lost Shlink's mappings and skips a rule that doesn't forward: with `"3": "11"` still
       mapped, a redirect on rule 11 would have stopped it before Shurly's `"4": "12"` on every deploy
 
+### 8.7 Previews from the page
+The page's own preview is the default; Shurly's fields only rewrite it, or add one where the page has none. Behind
+Shlink, a crawler followed the redirect and read the destination's Open Graph tags. Shurly answered it with its own
+preview page built from `og_*`, which held the fetched copy or nothing: the 346 imported links were shared with no
+image and the URL as their title.
+- [x] Two layers per link: `og_title`, `og_description`, `og_image_url` hold only what a person typed (the
+      overrides); `page_og_title`, `page_og_description`, `page_og_image_url`, `page_favicon_url`, `page_fetched_at`
+      cache what the page declares (migration 0015, nullable, no network). Each field shows the override, else the
+      page's; `has_custom_preview` means one override is set, and `GET …/preview` flags each field
+      (`og_*_overridden`) and gives the page's own (`server/utils/previews.py`)
+- [x] Creating a link fetches the page every time, overrides or not; refresh-preview replaces `page_*` with what the
+      page declares now and never touches an override (a failed fetch leaves them); a new destination is fetched
+      on PATCH. PATCH with the overrides null or empty goes back to the page's preview; the link page's "Use the
+      page’s preview" and the editor's "Use the page’s" do that (`tests/test_phase87_previews.py`)
+- [x] The page's icon from the same fetch: an SVG, then the largest declared PNG `sizes`, then any icon; else
+      `/favicon.ico` on the link's own origin, then the one its redirects ended on, when one SSRF-guarded request
+      answers 200 with an image (`tests/test_favicons.py`). Relative links, og:image's too, resolve against the
+      final URL. Checked for real on 2026-10-03: griddo.io → `/favicons/favicon.svg`, drive.google.com →
+      `drive.google.com/favicon.ico` (its sign-in page declares none)
+- [x] A social crawler gets the redirect a person gets (status, cache, rules, the forwarded query, never a
+      recipient's data, and its visit still not logged) when nothing is rewritten; Shurly's preview page, with each
+      field the override else the page's, when something is
+- [x] The dashboard's thumbnail: the preview's image with the page's icon as a badge, the icon on a tile, or the
+      monogram, each image giving way to the next when it fails (`linkThumb`, `/styleguide/`)
+- [x] `python -m server.tools.previews backfill [--for-real]` for the links from before: each distinct destination
+      fetched once, a few at a time; og_* values that equal the page's on a link with `og_fetched_at` are cleared,
+      the rest kept; re-runnable. `scripts/run_backfill_previews.sh` runs it as a one-off ECS task (DEPLOYMENT.md
+      § Previews from the page)
+- [ ] Run the backfill in production after the release: a dry run, then `--for-real`
+- [ ] Re-fetch stale `page_*` now and then (a page changes its image; nothing re-reads it but refresh-preview, a
+      change of destination or the backfill). Not in scope of 8.7
+- [ ] Campaign links get the page's preview only from the backfill: fetch a campaign's destination once when it's
+      made. Not in scope of 8.7
+- [ ] Drop `urls.og_fetched_at` in a later migration, once the release before 8.7 is gone: unused since 0015, kept
+      because the previous release writes it and the backfill reads it
+
 ---
 
 ## Development Strategy: TDD + Parallel Agents
