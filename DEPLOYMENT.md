@@ -1396,6 +1396,45 @@ That's how `s.griddo.io` goes after the cutover: its row and its 2 test links. `
 runs the script against the import's fake `aws`, and `tests/test_phase85_retire_domain.py` pins what goes and what
 stays.
 
+## Previews from the page (Phase 8.7)
+
+From 8.7 a link's social preview is its destination's own: creating a link fetches the page (its Open Graph tags
+and its icon) into the `page_*` columns, and `og_*` hold only what a person typed. A social crawler gets the plain
+redirect unless something is rewritten. Migration 0015 adds the columns empty, so the links from before have no
+page preview until the backfill: the 346 imported from Shlink, which never fetched, and the ones made in Shurly, whose
+`og_*` hold a copy of the page's taken at create (`og_fetched_at` set).
+
+`scripts/run_backfill_previews.sh` runs `python -m server.tools.previews backfill` as a one-off ECS task, with one
+container, `backfill`, from the live service's image, environment and network, like the places backfill
+(`scripts/one_off_task.sh`). Run it once the release with 0015 is serving, and after any later Shlink import.
+
+- **It fetches each distinct destination once,** 8 at a time, through the API's own fetcher (SSRF guard, 5-second
+  timeout), so it needs outbound internet: the service's network has it, as the API fetches previews too. Every
+  link with that URL gets the page's values.
+- **It separates the old values.** On a link with `og_fetched_at` set, each `og_*` value that equals the page's,
+  fetched now, was a copy: it's cleared, and the page's shows through. One that differs stays an override, so
+  nobody's text is lost (the link's page offers "Use the page’s preview"). A link without `og_fetched_at` keeps its
+  `og_*`. A done link's `og_fetched_at` is cleared.
+- **A page that doesn't answer** (refused, timed out, a 5xx) leaves its links as they were; a later run picks them
+  up. Running it again is harmless: it refreshes the pages' values and clears nothing new.
+- **A dry run unless `--for-real`,** which needs the service's name typed back. The dry run fetches everything and
+  reports what it would do. The fetches happen outside any transaction; the writes in one, at the end.
+- **The report** is counts: links, distinct destinations fetched, how many had a preview, an icon or didn't answer,
+  and the overrides cleared and kept. Never a destination: one can carry a recipient's details. It goes to the
+  service's log group, in streams `backfill-previews/…`. No task role: it reads nothing from AWS. Not during a
+  rollout: the script stops until there's one deployment.
+
+```bash
+# 1. A dry run: what it would fetch, find and clear
+scripts/run_backfill_previews.sh
+
+# 2. For real (it asks for the service's name)
+scripts/run_backfill_previews.sh --for-real
+```
+
+`tests/test_run_backfill_previews.py` runs the script against the import's fake `aws`, and
+`tests/test_phase87_backfill_previews.py` pins what the backfill fetches, clears and keeps.
+
 ## Routine operations
 
 ### View logs

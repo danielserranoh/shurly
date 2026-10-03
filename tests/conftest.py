@@ -123,6 +123,24 @@ def pytest_configure(config):
         raise pytest.UsageError("--require-postgres: set TEST_DATABASE_URL to a PostgreSQL server.")
 
 
+@pytest.fixture(autouse=True)
+def _no_preview_fetch(request, monkeypatch):
+    """
+    Phase 8.7 — creating a link fetches its destination's preview every time, so no test reaches
+    the network for one: the API's fetcher answers like a page that didn't. A test replaces it
+    with its own, or marks itself `real_og_fetch` to run the real one (tests/test_opengraph_ssrf.py,
+    behind its fake DNS and web).
+    """
+    if request.node.get_closest_marker("real_og_fetch"):
+        return
+    from server.utils.opengraph import OpenGraphMetadata
+
+    async def _unanswered(*_args, **_kwargs):
+        return OpenGraphMetadata.failed()
+
+    monkeypatch.setattr("server.app.urls.fetch_opengraph_metadata", _unanswered)
+
+
 @pytest.fixture(scope="function")
 def db_session():
     """Create a fresh database session for each test."""

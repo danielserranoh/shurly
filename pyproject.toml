@@ -125,4 +125,5 @@ markers = [
     "unit: Unit tests",
     "integration: Integration tests",
     "slow: Slow tests",
+    "real_og_fetch: run the API's real preview fetcher (tests/conftest.py stubs it otherwise)",
 ]

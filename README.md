@@ -17,7 +17,7 @@ To connect Claude to it, see [docs/setup_mcpclient.md](docs/setup_mcpclient.md),
 - **GDPR by default**: visitor IPs truncated to /24 (IPv4) or /64 (IPv6) at insert time
 - **CSV export**: `?format=csv` on most analytics endpoints (streamed)
 - **Orphan visit tracking**: catches typo'd codes leaked into print/QR campaigns
-- **Open Graph previews**: social-media crawlers see rich preview pages with og:tags
+- **Open Graph previews**: a link shares its destination's own preview (and the dashboard shows its image and icon); rewrite any part, and social-media crawlers get a preview page with your og:tags
 - **Versioned API**: stable contract under `/api/v1/`; root path serves redirects
 
 ## Tech Stack

@@ -1,8 +1,9 @@
 """
 A crawler's preview of a campaign link never carries its recipient's data (docs/PERSONAL_DATA.md,
-finding 1). When a recipient shares their link, the social network's crawler asks for it: its
-preview page's refresh target is the link's destination without the recipient's `user_data`,
-which only people, redirected, still get.
+finding 1). When a recipient shares their link, the social network's crawler asks for it: it gets
+the link's destination without the recipient's `user_data`, which only people, redirected, still
+get. Phase 8.7 — as a redirect when nothing in the link's preview is rewritten (the crawler reads
+the page's own), and as the preview page's refresh target when something is.
 """
 
 import html
@@ -62,13 +63,39 @@ def _refresh_target(body: str) -> str:
 def test_a_crawler_gets_no_recipient_data(client, link):
     response = client.get("/q4-zelda", headers={"user-agent": LINKEDIN}, follow_redirects=False)
 
-    assert response.status_code == 200
-    assert _leaks(response.text) == []
-    assert _refresh_target(response.text) == "https://example.com/webinar?lang=es"
+    assert response.status_code == 302
+    assert response.headers["location"] == "https://example.com/webinar?lang=es"
+    assert _leaks(response.headers["location"] + response.text) == []
 
 
 def test_what_the_shared_address_forwards_stays(client, link):
     """Its own query is the sharer's, already public: forwarded as for anyone."""
+    response = client.get(
+        "/q4-zelda?utm_source=linkedin", headers={"user-agent": LINKEDIN}, follow_redirects=False
+    )
+
+    assert response.headers["location"] == "https://example.com/webinar?lang=es&utm_source=linkedin"
+    assert _leaks(response.headers["location"]) == []
+
+
+@pytest.fixture
+def rewritten(db_session, link) -> URL:
+    """Its preview rewritten: the crawler gets Shurly's preview page."""
+    link.og_title = "Our Q4 webinar"
+    db_session.commit()
+    return link
+
+
+def test_nor_from_the_preview_page(client, rewritten):
+    response = client.get("/q4-zelda", headers={"user-agent": LINKEDIN}, follow_redirects=False)
+
+    assert response.status_code == 200
+    assert "Our Q4 webinar" in response.text
+    assert _leaks(response.text) == []
+    assert _refresh_target(response.text) == "https://example.com/webinar?lang=es"
+
+
+def test_the_preview_page_keeps_what_the_shared_address_forwards(client, rewritten):
     response = client.get(
         "/q4-zelda?utm_source=linkedin", headers={"user-agent": LINKEDIN}, follow_redirects=False
     )

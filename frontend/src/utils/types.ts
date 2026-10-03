@@ -62,10 +62,20 @@ export interface ShortLink {
   url_type: URLType;
   title: string | null;
   forward_parameters: boolean;
+  /** Phase 8.7: the preview overrides, what a person typed; null where the page's own shows. */
   og_title: string | null;
   og_description: string | null;
   og_image_url: string | null;
+  /** Deprecated since 8.7: the same as page_fetched_at. */
   og_fetched_at: string | null;
+  /** Phase 8.7: what the destination page declares, and its icon. Absent from older APIs. */
+  page_og_title?: string | null;
+  page_og_description?: string | null;
+  page_og_image_url?: string | null;
+  page_favicon_url?: string | null;
+  page_fetched_at?: string | null;
+  /** Phase 8.7: at least one override is set. */
+  has_custom_preview?: boolean;
   last_click_at: string | null;
   valid_since: string | null;
   valid_until: string | null;
@@ -129,9 +139,17 @@ export interface LinkMetadata {
   og_image_url: string | null;
 }
 
+/** A link's social preview: each og_* field the override, else the page's own (Phase 8.7). */
 export interface PreviewMetadata extends LinkMetadata {
   og_url: string;
+  og_title_overridden?: boolean;
+  og_description_overridden?: boolean;
+  og_image_url_overridden?: boolean;
   has_custom_preview: boolean;
+  page_og_title?: string | null;
+  page_og_description?: string | null;
+  page_og_image_url?: string | null;
+  page_favicon_url?: string | null;
   fetched_at: string | null;
 }
 

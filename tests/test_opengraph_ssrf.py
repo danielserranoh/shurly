@@ -79,7 +79,12 @@ class FakeWeb:
 
 
 def page(title: str = "Public page") -> Route:
-    html = f'<html><head><meta property="og:title" content="{title}"></head></html>'
+    """A page that declares its icon, so the fetcher asks for nothing else (Phase 8.7: without
+    one, it tries the origin's /favicon.ico; tests/test_favicons.py)."""
+    html = (
+        f'<html><head><meta property="og:title" content="{title}">'
+        '<link rel="icon" href="/icon.svg"></head></html>'
+    )
     return lambda request: httpx.Response(200, html=html)
 
 
@@ -336,6 +341,7 @@ def test_allow_private_setting_is_off_by_default():
 
 
 @pytest.mark.integration
+@pytest.mark.real_og_fetch
 class TestPreviewEndpointsUseTheGuard:
     """Every endpoint that fetches previews is covered, and a refused fetch never fails
     the request: it just yields no preview metadata."""

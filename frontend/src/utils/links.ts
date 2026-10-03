@@ -8,6 +8,7 @@ import { tagPill } from './tags';
 import { openDialog } from './ui';
 import { canChange, creatorEmailBehindName, creatorName, lockedMenuAttrs, personalBadge, type Viewer } from './viewer';
 import { linkApi, linkHref, type LinkAddress } from './link-address';
+import { thumbSteps } from './preview';
 import type { CreateLinkRequest, LinkListResponse, LinkMetadata, ShortLink, Tag, UpdateLinkRequest, URLType } from './types';
 
 export { linkHref, type LinkAddress } from './link-address';
@@ -89,15 +90,29 @@ const TINTS = [
   'bg-amber-100 text-amber-800',
 ];
 
-/** Square thumbnail: the OG image when there is one, otherwise a tinted monogram. */
-export function linkThumb(link: Pick<ShortLink, 'og_image_url' | 'original_url'>, size = 'size-11'): RawHTML {
+type ThumbLink = Pick<ShortLink, 'og_title' | 'og_description' | 'og_image_url' | 'original_url'> &
+  Partial<Pick<ShortLink, 'page_og_title' | 'page_og_description' | 'page_og_image_url' | 'page_favicon_url'>>;
+
+/**
+ * Square thumbnail (Phase 8.7): the preview's image (the one set for the link, else the page's) with the page's
+ * icon as a badge in its corner; with no image, the icon centred on a neutral tile; with neither, a tinted
+ * monogram. Each image that fails to load gives way to the next (the `data-fallback` + `<template>` swap in ui.ts);
+ * a broken badge just goes.
+ */
+export function linkThumb(link: ThumbLink, size = 'size-11'): RawHTML {
   const host = hostname(link.original_url) || '?';
   const tint = TINTS[hashIndex(host, TINTS.length)];
   const monogram = html`<span class="grid ${size} shrink-0 place-items-center rounded-xl font-display text-lg font-medium ${tint}">${initials(host)}</span>`;
-  if (!link.og_image_url) return monogram;
-  return html`<span class="relative block ${size} shrink-0 overflow-hidden rounded-xl bg-ink-100 ring-1 ring-ink-200">
-    <img src="${safeUrl(link.og_image_url)}" alt="" loading="lazy" referrerpolicy="no-referrer" class="size-full object-cover" data-fallback />
-  </span><template>${monogram}</template>`;
+  // Built from the last step back, so each one carries the next as its fallback.
+  return thumbSteps(link).reduceRight<RawHTML>((next, step) => {
+    if (step.kind === 'monogram') return monogram;
+    if (step.kind === 'favicon')
+      return html`<span class="grid ${size} shrink-0 place-items-center rounded-xl bg-ink-50 ring-1 ring-ink-200" data-thumb-kind="favicon"><img src="${safeUrl(step.src)}" alt="" loading="lazy" referrerpolicy="no-referrer" class="size-1/2 object-contain" data-fallback /></span><template>${next}</template>`;
+    const badge = step.badge
+      ? html`<span class="absolute right-0.5 bottom-0.5 grid size-4 place-items-center overflow-hidden rounded-[5px] bg-white shadow-xs ring-1 ring-ink-200"><img src="${safeUrl(step.badge)}" alt="" loading="lazy" referrerpolicy="no-referrer" class="size-3 object-contain" data-fallback /></span><template></template>`
+      : '';
+    return html`<span class="relative block ${size} shrink-0 overflow-hidden rounded-xl bg-ink-100 ring-1 ring-ink-200" data-thumb-kind="image"><img src="${safeUrl(step.src)}" alt="" loading="lazy" referrerpolicy="no-referrer" class="size-full object-cover" data-fallback />${badge}</span><template>${next}</template>`;
+  }, monogram);
 }
 
 /** Only exceptions get a badge: standard, active, forwarding links stay clean. */

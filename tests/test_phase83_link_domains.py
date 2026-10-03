@@ -375,7 +375,9 @@ class TestShortUrls:
 
         assert (top["short_url"], top["domain"]) == (f"https://{GO}/promo", GO)
 
-    def test_a_crawlers_preview_names_the_domain_it_was_asked_on(self, client, both):
+    def test_a_crawlers_preview_names_the_domain_it_was_asked_on(self, client, db_session, both):
+        both[1].og_title = "Rewritten"  # Phase 8.7 — the preview page is for a rewritten preview
+        db_session.commit()
         response = client.get(
             "/promo",
             headers={"host": GO, "user-agent": "facebookexternalhit/1.1"},

@@ -64,7 +64,7 @@ import { MAX_CODE_LENGTH } from '@/utils/short-code';
         <summary class="px-6 py-4">
           <Icon name="share" class="size-4 text-ink-500" />
           <span class="text-sm font-semibold text-ink-900">Social preview</span>
-          <span class="badge badge-neutral" data-og-state>Automatic</span>
+          <span class="badge badge-neutral" data-og-state>The page’s</span>
           <Icon name="chevron-down" class="chevron ml-auto size-4 text-ink-400" />
         </summary>
         <div class="disclosure-body grid gap-4 border-t border-line px-6 py-5">
@@ -241,7 +241,11 @@ import { MAX_CODE_LENGTH } from '@/utils/short-code';
     const description = field<HTMLTextAreaElement>('og_description').value.trim() || fetched?.og_description || '';
     const image = field('og_image_url').value.trim() || fetched?.og_image_url || '';
     const custom = Boolean(field('og_title').value.trim() || field<HTMLTextAreaElement>('og_description').value.trim() || field('og_image_url').value.trim());
-    ogState.textContent = custom ? 'Custom' : 'Automatic';
+    ogState.textContent = custom ? 'Custom' : 'The page’s';
+    // Phase 8.7 — an empty field is the page's own: shown as its placeholder.
+    field('og_title').placeholder = fetched?.og_title ?? '';
+    field<HTMLTextAreaElement>('og_description').placeholder = fetched?.og_description ?? '';
+    field('og_image_url').placeholder = fetched?.og_image_url || 'https://…/image.jpg';
     ogState.className = `badge ${custom ? 'badge-brand' : 'badge-neutral'}`;
 
     q('[data-og-domain]').textContent = valid ? hostname(dest) : 'your-site.com';

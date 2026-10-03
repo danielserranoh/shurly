@@ -1,9 +1,8 @@
 // Behaviour for components/app/EditLinkModal.astro.
 
-import { errorMessage } from './api';
 import { applyApiError, clearErrors, revealFirstError, setFieldError } from './forms';
 import { fromLocalInput, isValidHttpUrl, normalizeUrlInput, toLocalInput } from './format';
-import { fetchMetadata, setLinkTags, updateLink } from './links';
+import { setLinkTags, updateLink } from './links';
 import { mountTagInput, type TagInputHandle } from './tag-input';
 import { closeDialog, openDialog, setLoading, toast } from './ui';
 import type { ShortLink, UpdateLinkRequest } from './types';
@@ -22,10 +21,37 @@ function els() {
   return { dialog, form, field };
 }
 
+// Phase 8.7 — each preview field is an override of the page's own, which shows as its placeholder.
+const PAGE_FIELDS = { og_title: 'page_og_title', og_description: 'page_og_description', og_image_url: 'page_og_image_url' } as const;
+type OverrideField = keyof typeof PAGE_FIELDS;
+const OVERRIDE_FIELDS = Object.keys(PAGE_FIELDS) as OverrideField[];
+
+/** What an empty preview field falls back to: the page's own, unless the destination is being changed. */
+function pageValue(name: OverrideField): string {
+  const { field } = els();
+  if (!current || normalizeUrlInput(field('original_url').value) !== current.original_url) return '';
+  return current[PAGE_FIELDS[name]]?.trim() ?? '';
+}
+
 function summaries() {
   const { form, field } = els();
-  const og = ['og_title', 'og_description', 'og_image_url'].filter((n) => field<HTMLInputElement>(n).value.trim()).length;
-  form.querySelector('[data-og-summary]')!.textContent = og ? '· Custom' : '· Automatic';
+  const moved = Boolean(current) && normalizeUrlInput(field('original_url').value) !== current!.original_url;
+  let og = 0;
+  for (const name of OVERRIDE_FIELDS) {
+    const input = field<HTMLInputElement>(name);
+    const typed = Boolean(input.value.trim());
+    if (typed) og += 1;
+    const page = pageValue(name);
+    input.placeholder = page || (name === 'og_image_url' ? 'https://…/image.jpg' : '');
+    form.querySelector(`[data-og-source-for="${name}"]`)!.textContent = typed
+      ? '· yours'
+      : moved
+        ? '· the new page’s, read when you save'
+        : page
+          ? '· the page’s'
+          : '· the page has none';
+  }
+  form.querySelector('[data-og-summary]')!.textContent = og ? '· Custom' : '· The page’s';
   const adv: string[] = [];
   if (field<HTMLInputElement>('valid_since').value) adv.push('scheduled');
   if (field<HTMLInputElement>('valid_until').value) adv.push('expires');
@@ -44,29 +70,14 @@ function init() {
     summaries();
   });
 
-  form.querySelector<HTMLButtonElement>('[data-fetch-og]')!.addEventListener('click', async (e) => {
-    const btn = e.currentTarget as HTMLButtonElement;
-    const dest = normalizeUrlInput(field('original_url').value);
-    if (!isValidHttpUrl(dest)) {
-      setFieldError(form, 'original_url', 'Enter a valid http(s) link first.');
-      return;
+  // Phase 8.7 — back to the page's own preview: the overrides go, and saving clears them.
+  form.querySelector<HTMLButtonElement>('[data-reset-og]')!.addEventListener('click', () => {
+    for (const name of OVERRIDE_FIELDS) {
+      field<HTMLInputElement>(name).value = '';
+      setFieldError(form, name, null);
     }
-    setLoading(btn, true, 'Fetching…');
-    try {
-      const meta = await fetchMetadata(dest);
-      if (!meta.og_title && !meta.og_description && !meta.og_image_url) {
-        toast('That page doesn’t share a preview', 'info', { description: 'You can write your own below.' });
-      } else {
-        field('og_title').value = meta.og_title ?? '';
-        field<HTMLTextAreaElement>('og_description').value = meta.og_description ?? '';
-        field('og_image_url').value = meta.og_image_url ?? '';
-        summaries();
-      }
-    } catch (err) {
-      toast('Couldn’t fetch the preview', 'error', { description: errorMessage(err) });
-    } finally {
-      setLoading(btn, false);
-    }
+    summaries();
+    field('og_title').focus();
   });
 
   form.addEventListener('submit', async (e) => {

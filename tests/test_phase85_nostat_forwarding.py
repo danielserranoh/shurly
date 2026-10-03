@@ -130,11 +130,22 @@ def test_a_redirect_rule_target_doesnt_get_it_either(client, db_session, test_us
     assert _query(location) == [("x", "1"), ("src", "qa")]
 
 
-def test_a_crawlers_preview_doesnt_carry_it(client, db_session, test_user):
+def test_a_crawlers_redirect_doesnt_carry_it(client, db_session, test_user):
+    """Phase 8.7 — a link whose preview isn't rewritten: the crawler gets the redirect."""
     _link(db_session, test_user, "ns8")
 
+    location = _location(client, "/ns8?a=1&nostat", **{"user-agent": LINKEDIN})
+
+    assert _query(location) == [("v", "abc"), ("t", "2047s"), ("a", "1")]
+
+
+def test_a_crawlers_preview_doesnt_carry_it(client, db_session, test_user):
+    link = _link(db_session, test_user, "ns8p")
+    link.og_title = "Rewritten"
+    db_session.commit()
+
     response = client.get(
-        "/ns8?a=1&nostat", headers={"user-agent": LINKEDIN}, follow_redirects=False
+        "/ns8p?a=1&nostat", headers={"user-agent": LINKEDIN}, follow_redirects=False
     )
 
     assert response.status_code == 200
