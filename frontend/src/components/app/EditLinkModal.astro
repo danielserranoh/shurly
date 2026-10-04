@@ -42,20 +42,20 @@ import Icon from '@/components/ui/Icon.astro';
       </summary>
       <div class="disclosure-body grid gap-4 border-t border-line px-4 py-4">
         <div class="flex items-center justify-between gap-3">
-          <p class="hint">How the link looks when shared on LinkedIn, WhatsApp or Slack. Empty fields use the page’s own.</p>
-          <button type="button" class="btn btn-secondary btn-sm shrink-0" data-fetch-og><Icon name="refresh" />Fetch from page</button>
+          <p class="hint">How the link looks when shared on LinkedIn, WhatsApp or Slack. Empty fields use the page’s own, shown in grey.</p>
+          <button type="button" class="btn btn-secondary btn-sm shrink-0" data-reset-og>Use the page’s</button>
         </div>
         <div class="grid gap-1.5">
-          <label for="edit-og-title" class="label">Preview title</label>
+          <label for="edit-og-title" class="label">Preview title <span class="font-normal text-ink-500" data-og-source-for="og_title"></span></label>
           <input id="edit-og-title" name="og_title" class="input" maxlength="255" />
         </div>
         <div class="grid gap-1.5">
-          <label for="edit-og-description" class="label">Preview description</label>
+          <label for="edit-og-description" class="label">Preview description <span class="font-normal text-ink-500" data-og-source-for="og_description"></span></label>
           <textarea id="edit-og-description" name="og_description" class="textarea" rows="2"></textarea>
         </div>
         <div class="grid gap-1.5">
-          <label for="edit-og-image" class="label">Preview image URL</label>
-          <input id="edit-og-image" name="og_image_url" class="input" type="url" inputmode="url" placeholder="https://…/image.jpg" />
+          <label for="edit-og-image" class="label">Preview image URL <span class="font-normal text-ink-500" data-og-source-for="og_image_url"></span></label>
+          <input id="edit-og-image" name="og_image_url" class="input" type="url" inputmode="url" />
           <p class="hint">1200 × 630 px works everywhere.</p>
           <p class="field-error" data-error-for="og_image_url" hidden></p>
         </div>

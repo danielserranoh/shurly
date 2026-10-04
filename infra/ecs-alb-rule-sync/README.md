@@ -3,15 +3,15 @@
 Keeps the custom-domain rules on the shared ALB (`ecs-express-gateway-alb-d37ca364`,
 griddo-main / `eu-south-2`) in step with the rules ECS Express manages.
 
-**Shared infrastructure.** It serves three services, not just Shurly:
+**Shared infrastructure.** It served three services; since the cutover (2026-10-02) it syncs Shurly's alone:
 
 | Express rule | Custom rule | Domains | Service |
 |---|---|---|---|
-| 1 | 10 | none: deleted at the cutover (2026-10-02), skipped | shlink-api |
-| 3 | 11 | `links.griddo.io` | shlink-web |
+| 1 | 10 | none: rule 10 deleted at the cutover (2026-10-02); unmapped | shlink-api |
+| 3 | 11 | `links.griddo.io`: rule 11 redirects to `https://shurly.griddo.io/dashboard/` since 2026-10-03; unmapped | shlink-web |
 | 4 | 12 | `shurly.griddo.io`, `go.griddo.io` | shurly-api |
 
-A change here changes routing for all three.
+A mapped rule that doesn't forward (a redirect) is skipped, so it can't stop the others' sync.
 
 ## Why it exists
 

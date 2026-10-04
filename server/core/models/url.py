@@ -54,11 +54,21 @@ class URL(Base):
         Boolean, default=True, nullable=False
     )  # Forward query params to destination
 
-    # Open Graph metadata for social media previews
+    # The social preview, in two layers (Phase 8.7). og_*: only what a person typed, each one
+    # rewriting the page's own. page_*: what the destination declares, cached from the last
+    # fetch (create, a change of destination, refresh-preview, the backfill). Each field's
+    # effective value is the override, else the page's (server/utils/previews.py).
     og_title = Column(String(255), nullable=True)
     og_description = Column(Text, nullable=True)
     og_image_url = Column(Text, nullable=True)
+    # Unused since 8.7 (migration 0015), kept for the previous release; a later migration
+    # drops it. The backfill reads it: set, the og_* were most likely copied from the page.
     og_fetched_at = Column(DateTime(timezone=True), nullable=True)
+    page_og_title = Column(String(255), nullable=True)
+    page_og_description = Column(Text, nullable=True)
+    page_og_image_url = Column(Text, nullable=True)
+    page_favicon_url = Column(Text, nullable=True)
+    page_fetched_at = Column(DateTime(timezone=True), nullable=True)
 
     # Analytics tracking
     last_click_at = Column(DateTime(timezone=True), nullable=True)
@@ -106,6 +116,11 @@ class URL(Base):
         # constraint is meaningful in practice.
         UniqueConstraint("domain_id", "short_code", name="uq_urls_domain_code"),
     )
+
+    @property
+    def has_custom_preview(self) -> bool:
+        """Phase 8.7 — at least one preview field is a person's override."""
+        return bool(self.og_title or self.og_description or self.og_image_url)
 
     @property
     def visibility(self) -> str:

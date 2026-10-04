@@ -79,8 +79,9 @@ export function prettyUrl(url: string | null | undefined): string {
 }
 
 /** Human title for a link: explicit title → OG title → destination host. */
-export function linkTitle(link: Pick<ShortLink, 'title' | 'og_title' | 'original_url'>): string {
-  return link.title?.trim() || link.og_title?.trim() || hostname(link.original_url) || 'Untitled link';
+export function linkTitle(link: Pick<ShortLink, 'title' | 'og_title' | 'original_url'> & Partial<Pick<ShortLink, 'page_og_title'>>): string {
+  // Phase 8.7 — the preview's title: the one set for the link, else the page's own.
+  return link.title?.trim() || link.og_title?.trim() || link.page_og_title?.trim() || hostname(link.original_url) || 'Untitled link';
 }
 
 export type LinkStatus = 'active' | 'scheduled' | 'expired' | 'capped';

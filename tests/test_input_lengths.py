@@ -118,7 +118,8 @@ def test_a_page_with_a_long_title_still_gets_its_link(pg_client, monkeypatch):
 
     assert response.status_code == 201, response.text
     with make_session() as db:
-        assert db.query(URL).one().og_title == "T" * 255
+        # Phase 8.7 — the page's own title, kept apart from the overrides.
+        assert db.query(URL).one().page_og_title == "T" * 255
 
 
 def test_a_long_forwarded_for_still_redirects(pg_client, monkeypatch):

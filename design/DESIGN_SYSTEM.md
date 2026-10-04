@@ -152,10 +152,10 @@ becomes stacked rows, and a **Sort by** select offers the same sorts by name.
 | 3 | Illustration style | Minimal line-art in ink with brand-blue accent fills, drawn as inline SVG (`Illustration.astro`). |
 | 4 | Hero message | "Send the link. Know who opened it." It is concrete, fits B2B outreach, and campaigns follow from it. |
 | 5 | Tag colours | A fixed colour per category for predefined tags (blue channel, green intent, purple content type, orange audience, pink lifecycle). Your own tags are neutral gray. No hash colours, so the colour always means something. |
-| 6 | Link preview card | Live in Create (as you type), full on the link details page, and collapsed to a thumbnail on dashboard cards. |
+| 6 | Link preview card | Live in Create (as you type), full on the link details page, and collapsed to a thumbnail on dashboard cards. The thumbnail (`linkThumb`, 8.7) is the preview's image with the page's icon as a badge in its corner, the icon on a neutral tile when there's no image, or the tinted monogram; an image that fails gives way to the next. |
 | 7 | Last click time | Relative on screen ("3h ago"), absolute in the tooltip (`<time data-relative>`). |
 | 8 | Copy feedback | The button changes state, plus a toast only when the button is off-focus (see Patterns). |
-| 9 | OG auto-fetch | Both. It fetches automatically on paste or blur (debounced), and a manual **Fetch preview** / refresh is always available. |
+| 9 | OG auto-fetch | Both. It fetches automatically on paste or blur (debounced), and a manual refresh is always available. Since 8.7 the page's own preview is the default: the fields only rewrite it, an empty one shows the page's value as its placeholder, and the UI says which parts are "yours" and which "the page’s", with **Use the page’s preview** to drop what was set. |
 | 10 | Error handling | A mix by severity: inline, then form alert, then toast, then error page. Confirm dialogs only for destructive actions. |
 
 ## Screens

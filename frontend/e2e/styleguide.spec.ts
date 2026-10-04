@@ -5,6 +5,19 @@ import { expect, test } from './fixtures';
 
 test.use({ storageState: { cookies: [], origins: [] } });
 
+test('the Link thumbnails specimen: an image with its icon, the icon, the monogram, and a broken image giving way', async ({ page }) => {
+  await page.goto('/styleguide/');
+  const thumbs = page.getByRole('list', { name: 'Link thumbnails' }).getByRole('listitem');
+  await thumbs.last().scrollIntoViewIfNeeded(); // the images load lazily
+
+  await expect(thumbs.nth(0).locator('[data-thumb-kind="image"] img')).toHaveCount(2); // the image and its icon badge
+  await expect(thumbs.nth(1).locator('[data-thumb-kind="favicon"]')).toBeVisible();
+  await expect(thumbs.nth(2).locator('[data-thumb-kind]')).toHaveCount(0);
+  await expect(thumbs.nth(2)).toContainText('A'); // the monogram
+  await expect(thumbs.nth(3).locator('[data-thumb-kind="favicon"]')).toBeVisible();
+  await expect(thumbs.nth(3).locator('[data-thumb-kind="image"]')).toHaveCount(0);
+});
+
 test('the Pager specimen pages through 57 links, 20 at a time', async ({ page }) => {
   await page.goto('/styleguide/');
   const pager = page.getByRole('navigation', { name: 'Pagination' });

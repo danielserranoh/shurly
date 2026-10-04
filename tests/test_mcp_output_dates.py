@@ -168,7 +168,9 @@ def seeded(db_session, bound) -> dict:
         url_type=URLType.STANDARD,
         title="Launch",
         og_title="Launch",
-        og_fetched_at=now - timedelta(days=2),
+        og_fetched_at=now - timedelta(days=3),
+        page_og_title="Launch, the page",
+        page_fetched_at=now - timedelta(days=2),
         last_click_at=now - timedelta(hours=1),
         valid_since=now - timedelta(days=3),
         valid_until=now + timedelta(days=30),
@@ -256,7 +258,12 @@ def seeded(db_session, bound) -> dict:
 # ---------------------------------------------------------------------------
 
 _TODAY = date.today()
-_PERIOD = {"from": (_TODAY - timedelta(days=7)).isoformat(), "to": _TODAY.isoformat()}
+# Through tomorrow: a tool reads the dates in the viewer's zone, and from 18:30 UTC a visit seeded an
+# hour ago is already tomorrow in LOCAL_ZONE (+05:30), outside a period that ends on UTC's today.
+_PERIOD = {
+    "from": (_TODAY - timedelta(days=7)).isoformat(),
+    "to": (_TODAY + timedelta(days=1)).isoformat(),
+}
 _SOON = (datetime.now(timezone.utc) + timedelta(days=1)).isoformat()
 _LATER = (datetime.now(timezone.utc) + timedelta(days=10)).isoformat()
 
@@ -412,13 +419,14 @@ def test_create_short_url_gives_utc_times_with_z(mcp_server, seeded):
     assert link["short_code"]
     assert link["created_at"].endswith("Z")
     assert link["updated_at"].endswith("Z")
-    assert link["og_fetched_at"].endswith("Z")
+    assert link["page_fetched_at"].endswith("Z")
+    assert link["og_fetched_at"] == link["page_fetched_at"]  # Phase 8.7 — deprecated, the same
 
 
 def test_list_urls_gives_utc_times_with_z(mcp_server, seeded):
     output = _call(mcp_server, "list_urls", {}).structured_content
     link = next(u for u in output["urls"] if u["short_code"] == seeded["code"])
-    for field in ("created_at", "updated_at", "og_fetched_at", "last_click_at"):
+    for field in ("created_at", "updated_at", "page_fetched_at", "og_fetched_at", "last_click_at"):
         assert link[field].endswith("Z"), (field, link[field])
     for field in ("valid_since", "valid_until"):
         assert link[field].endswith("Z"), (field, link[field])

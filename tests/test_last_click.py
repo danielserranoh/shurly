@@ -117,17 +117,25 @@ def test_migration_0010_repairs_what_is_stored(pg_engine):
         db.flush()
         domain = get_or_create_default_domain(db)
         stale = datetime(2026, 9, 28, 12, 0, tzinfo=timezone.utc)
-        links = {
-            code: URL(
-                short_code=code,
-                original_url="https://example.com",
-                created_by=user.id,
-                domain_id=domain.id,
-                last_click_at=stale,
+        # Only the columns 0009 has, as the visits below: the model maps later ones (0015's
+        # `page_*`), which an ORM INSERT would name.
+        links = {code: uuid.uuid4() for code in ("clicked", "bots", "none")}
+        for code, id_ in links.items():
+            db.execute(
+                URL.__table__.insert().values(
+                    id=id_,
+                    short_code=code,
+                    original_url="https://example.com",
+                    url_type="STANDARD",
+                    forward_parameters=True,
+                    crawlable=False,
+                    created_by=user.id,
+                    created_at=datetime(2026, 9, 1),
+                    updated_at=datetime(2026, 9, 1),
+                    domain_id=domain.id,
+                    last_click_at=stale,
+                )
             )
-            for code in ("clicked", "bots", "none")
-        }
-        db.add_all(links.values())
         db.flush()
         for code, at, flags in [
             ("clicked", datetime(2026, 9, 20, 8, 30), {}),
@@ -141,7 +149,7 @@ def test_migration_0010_repairs_what_is_stored(pg_engine):
             db.execute(
                 Visitor.__table__.insert().values(
                     id=uuid.uuid4(),
-                    url_id=links[code].id,
+                    url_id=links[code],
                     short_code=code,
                     ip="203.0.113.0",
                     visited_at=at,
