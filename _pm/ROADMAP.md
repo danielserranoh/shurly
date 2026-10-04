@@ -2153,7 +2153,9 @@ image and the URL as their title.
       fetched once, a few at a time; og_* values that equal the page's on a link with `og_fetched_at` are cleared,
       the rest kept; re-runnable. `scripts/run_backfill_previews.sh` runs it as a one-off ECS task (DEPLOYMENT.md
       § Previews from the page)
-- [ ] Run the backfill in production after the release: a dry run, then `--for-real`
+- [x] Run the backfill in production after the release: a dry run, then `--for-real` — 2026-10-04, after #214:
+      346 links, 342 destinations, 314 with a preview, 318 with an icon; 7 old copies cleared, 0 overrides kept;
+      2 pages didn't answer (left as they were). 13 griddo destinations answer 404 (reported to the user)
 - [ ] Re-fetch stale `page_*` now and then (a page changes its image; nothing re-reads it but refresh-preview, a
       change of destination or the backfill). Not in scope of 8.7
 - [ ] Campaign links get the page's preview only from the backfill: fetch a campaign's destination once when it's
