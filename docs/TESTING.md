@@ -177,7 +177,7 @@ Specs run as the owner. To be a member instead, a second account on the Workspac
 reads it (`tests/test_e2e_guard.py`).
 
 Accessibility: `e2e/a11y.spec.ts` runs axe on the landing, login, dashboard, link, campaign and Settings pages and
-the manual, once their content is in, on a desktop and on a phone (390 px, where the menu is a dialog, checked
+the manual (and `e2e/waitlist.spec.ts` on both waitlist pages), once their content is in, on a desktop and on a phone (390 px, where the menu is a dialog, checked
 open). A moderate, serious or critical issue fails the test (`IMPACTS`); a minor one doesn't. Fix what it finds, or
 add it to the spec's `ALLOWED` list with a reason and the issue that will fix it; never turn a rule off. axe leaves
 some contrast undecided (text over a gradient, a translucent panel or a scroll fade, SVG text, anything under a

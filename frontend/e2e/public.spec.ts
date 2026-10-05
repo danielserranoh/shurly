@@ -12,6 +12,7 @@ const PAGES: Array<[path: string, heading: string | RegExp]> = [
   ['/manual/install-mcp/', 'Connect Claude to Shurly'],
   ['/manual/make-a-campaign/', 'Make a campaign from a CSV'],
   ['/manual/read-your-analytics/', 'Read your analytics'],
+  ['/waitlist/', 'Shurly is invite-only, for now.'],
 ];
 
 for (const [path, heading] of PAGES) {

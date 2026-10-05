@@ -1,0 +1,250 @@
+---
+// Phase 9.1 — the waitlist (/waitlist/): people outside Griddo who'd like Shurly. How many, individuals or companies,
+// the companies by size, and who they are, newest first, 20 a page. Owners and admins only: anyone else gets the
+// no-access state, and the API a 403. An entry is removed when its person asks.
+import AppLayout from '@/layouts/AppLayout.astro';
+import PageHeader from '@/components/ui/PageHeader.astro';
+import EmptyState from '@/components/ui/EmptyState.astro';
+import StatCard from '@/components/ui/StatCard.astro';
+import Icon from '@/components/ui/Icon.astro';
+import Pager from '@/components/ui/Pager.astro';
+---
+
+<AppLayout title="Waitlist" section="waitlist">
+  <PageHeader title="Waitlist" description="People outside Griddo who’d like Shurly, from the waitlist page. Only owners and admins see them.">
+    <Fragment slot="actions">
+      <a href="/waitlist/" class="btn btn-secondary"><Icon name="external-link" />Open the waitlist page</a>
+      <button type="button" class="btn btn-primary" data-export disabled><Icon name="download" />Export CSV</button>
+    </Fragment>
+  </PageHeader>
+
+  <div id="content" aria-busy="true">
+    <section aria-label="Summary" class="grid grid-cols-1 gap-4 sm:grid-cols-3">
+      <StatCard label="On the waitlist" stat="total" icon="clipboard-list" accent />
+      <StatCard label="Individuals" stat="individual" icon="user" />
+      <StatCard label="Companies" stat="company" icon="building" />
+    </section>
+
+    <section class="card mt-6 p-5 sm:p-6" aria-labelledby="sizes-title">
+      <h2 id="sizes-title" class="text-base font-semibold text-ink-950">Companies by size</h2>
+      <div class="mt-4" data-sizes>
+        <span class="skeleton block h-4 w-2/3"></span>
+        <span class="skeleton mt-3 block h-4 w-1/2"></span>
+      </div>
+    </section>
+
+    <div class="card mt-6 overflow-hidden">
+      <div class="flex items-center justify-between gap-3 border-b border-line px-5 py-4 sm:px-6">
+        <h2 id="entries-title" class="text-base font-semibold text-ink-950" tabindex="-1">Who signed up</h2>
+        <p class="text-sm text-ink-500" data-entries-count></p>
+      </div>
+      <div class="overflow-x-auto" role="region" aria-labelledby="entries-title" tabindex="0">
+        <table class="table min-w-[56rem]">
+          <thead>
+            <tr>
+              <th scope="col">Joined</th>
+              <th scope="col">Person</th>
+              <th scope="col">Signing up as</th>
+              <th scope="col">Role</th>
+              <th scope="col">What for</th>
+              <th scope="col">Heard from</th>
+              <th scope="col"><span class="sr-only">Actions</span></th>
+            </tr>
+          </thead>
+          <tbody data-entries>
+            {
+              [1, 2, 3].map(() => (
+                <tr aria-hidden="true">
+                  <td><span class="skeleton block h-4 w-16" /></td>
+                  <td><span class="skeleton block h-4 w-40" /></td>
+                  <td><span class="skeleton block h-4 w-24" /></td>
+                  <td><span class="skeleton block h-4 w-20" /></td>
+                  <td><span class="skeleton block h-4 w-48" /></td>
+                  <td><span class="skeleton block h-4 w-20" /></td>
+                  <td />
+                </tr>
+              ))
+            }
+          </tbody>
+        </table>
+      </div>
+      <EmptyState id="none" hidden compact level={3} illustration="campaigns" title="No one on the waitlist yet" body="When someone outside Griddo signs up on the waitlist page, they show up here." />
+    </div>
+
+    <Pager />
+  </div>
+
+  <EmptyState id="no-access" hidden illustration="locked" title="Only owners and admins see the waitlist" body="It lists people outside Griddo who’d like Shurly. Ask an owner of your organization if you need it.">
+    <a href="/dashboard/" class="btn btn-primary"><Icon name="arrow-left" />Back to your links</a>
+  </EmptyState>
+
+  <EmptyState id="load-error" hidden illustration="error" title="We couldn’t load the waitlist" body="Check your connection and try again.">
+    <button type="button" class="btn btn-primary" data-retry><Icon name="refresh" />Try again</button>
+  </EmptyState>
+</AppLayout>
+
+<script>
+  import { ApiError, apiDelete, apiDownload, apiGet, errorMessage, qs } from '@/utils/api';
+  import { barList } from '@/utils/charts';
+  import { formatDate, formatDateTime, formatNumber, pluralize } from '@/utils/format';
+  import { html, setHTML } from '@/utils/html';
+  import { icon } from '@/utils/icons';
+  import { pageFromQuery, renderPager } from '@/utils/paging';
+  import { confirmDialog, setLoading, toast } from '@/utils/ui';
+  import { getViewer } from '@/utils/viewer';
+  import { COMPANY_SIZES } from '@/utils/waitlist-form';
+  import type { WaitlistCounts, WaitlistEntry, WaitlistPage } from '@/utils/types';
+
+  const PAGE_SIZE = 20;
+  const content = document.getElementById('content')!;
+  const noAccess = document.getElementById('no-access')!;
+  const errorState = document.getElementById('load-error')!;
+  const none = document.getElementById('none')!;
+  const rows = document.querySelector<HTMLElement>('[data-entries]')!;
+  const table = rows.closest<HTMLElement>('[role="region"]')!;
+  const pagination = document.getElementById('pagination')!;
+  const exportButton = document.querySelector<HTMLButtonElement>('[data-export]')!;
+  let page = pageFromQuery(new URLSearchParams(location.search).get('page'), PAGE_SIZE);
+  let entries: WaitlistEntry[] = [];
+  let requestId = 0;
+
+  const SIZE_LABELS = new Map<string, string>(COMPANY_SIZES.map((size) => [size.value, size.label]));
+
+  function showOnly(el: HTMLElement) {
+    for (const state of [content, noAccess, errorState]) state.hidden = state !== el;
+    exportButton.disabled = el !== content;
+  }
+
+  function syncUrl() {
+    history.replaceState(null, '', page > 1 ? `?page=${page}` : location.pathname);
+  }
+
+  function renderCounts(counts: WaitlistCounts) {
+    for (const key of ['total', 'individual', 'company'] as const) {
+      document.querySelector(`[data-stat="${key}"]`)!.textContent = formatNumber(counts[key]);
+    }
+    const share = (n: number) => (counts.total ? `${Math.round((n / counts.total) * 100)}% of the list` : '');
+    document.querySelector('[data-stat-hint="individual"]')!.textContent = share(counts.individual);
+    document.querySelector('[data-stat-hint="company"]')!.textContent = share(counts.company);
+
+    const sizes = document.querySelector<HTMLElement>('[data-sizes]')!;
+    if (!counts.company) {
+      setHTML(sizes, html`<p class="text-sm text-ink-500">No companies yet.</p>`);
+      return;
+    }
+    const items = [...COMPANY_SIZES.map((size) => ({ label: size.label, value: counts.by_company_size[size.value] ?? 0 })), { label: 'Size not given', value: counts.by_company_size.not_given ?? 0 }];
+    setHTML(sizes, barList(items, ['company', 'companies']));
+  }
+
+  function kindCell(entry: WaitlistEntry) {
+    if (entry.kind === 'individual') return html`<span class="badge badge-outline">${icon('user', 'size-3')}Individual</span>`;
+    const size = entry.company_size ? SIZE_LABELS.get(entry.company_size) ?? entry.company_size : null;
+    return html`<div class="flex flex-col gap-1">
+      <span class="badge badge-brand w-fit">${icon('building', 'size-3')}Company</span>
+      <span class="font-medium text-ink-900">${entry.company ?? ''}</span>
+      ${size ? html`<span class="text-xs text-ink-500">${size}</span>` : ''}
+    </div>`;
+  }
+
+  const dash = html`<span class="text-ink-500">—</span>`;
+
+  function renderEntries() {
+    none.hidden = entries.length > 0;
+    table.hidden = entries.length === 0;
+    setHTML(
+      rows,
+      html`${entries.map(
+        (entry) => html`<tr data-entry="${entry.id}">
+          <td class="whitespace-nowrap"><time datetime="${entry.created_at}" title="${formatDateTime(entry.created_at)}">${formatDate(entry.created_at)}</time></td>
+          <td>
+            <p class="font-medium text-ink-950">${entry.name}</p>
+            <a class="link text-xs" href="mailto:${entry.email}">${entry.email}</a>
+          </td>
+          <td>${kindCell(entry)}</td>
+          <td>${entry.role ?? dash}</td>
+          <td class="max-w-xs">${entry.use_case ? html`<p class="line-clamp-3 whitespace-pre-line" title="${entry.use_case}">${entry.use_case}</p>` : dash}</td>
+          <td>${entry.source ?? dash}</td>
+          <td class="text-right">
+            <button type="button" class="btn btn-ghost btn-sm btn-icon" data-remove="${entry.id}" aria-label="Remove ${entry.name} from the waitlist" data-tooltip="Remove" data-tooltip-align="end">${icon('trash')}</button>
+          </td>
+        </tr>`,
+      )}`,
+    );
+  }
+
+  async function load() {
+    const id = ++requestId;
+    content.setAttribute('aria-busy', 'true');
+    let data: WaitlistPage;
+    try {
+      data = await apiGet<WaitlistPage>(`/api/v1/waitlist${qs({ skip: (page - 1) * PAGE_SIZE, limit: PAGE_SIZE })}`);
+    } catch (err) {
+      if (id !== requestId) return;
+      if (err instanceof ApiError && err.status === 403) return showOnly(noAccess);
+      errorState.querySelector('[data-empty-body]')!.textContent = errorMessage(err);
+      return showOnly(errorState);
+    } finally {
+      if (id === requestId) content.setAttribute('aria-busy', 'false');
+    }
+    if (id !== requestId) return;
+    // A page past the last (a removal, an old address): the first.
+    if (data.entries.length === 0 && page > 1) {
+      page = 1;
+      syncUrl();
+      return load();
+    }
+    entries = data.entries;
+    showOnly(content);
+    renderCounts(data.counts);
+    document.querySelector('[data-entries-count]')!.textContent = pluralize(data.total, 'person', 'people');
+    renderEntries();
+    renderPager(pagination, page, PAGE_SIZE, data.total, entries.length);
+  }
+
+  rows.addEventListener('click', async (e) => {
+    const button = (e.target as HTMLElement).closest<HTMLButtonElement>('[data-remove]');
+    const entry = button && entries.find((x) => x.id === button.dataset.remove);
+    if (!entry) return;
+    const ok = await confirmDialog({
+      title: `Remove ${entry.name} from the waitlist?`,
+      body: `Their entry is deleted for good, ${entry.email} included: do this when they ask to be removed. They can sign up again.`,
+      confirmLabel: 'Remove from waitlist',
+      danger: true,
+      onConfirm: () => apiDelete(`/api/v1/waitlist/${encodeURIComponent(entry.id)}`),
+    });
+    if (ok) {
+      toast('Removed from the waitlist', 'success');
+      await load();
+      document.getElementById('entries-title')?.focus();
+    }
+  });
+
+  exportButton.addEventListener('click', async () => {
+    setLoading(exportButton, true, 'Exporting…');
+    try {
+      await apiDownload('/api/v1/waitlist/export', 'shurly-waitlist.csv');
+    } catch (err) {
+      toast('Couldn’t export the waitlist', 'error', { description: errorMessage(err) });
+    } finally {
+      setLoading(exportButton, false);
+    }
+  });
+
+  function goTo(to: number) {
+    page = to;
+    syncUrl();
+    load().then(() => document.getElementById('entries-title')?.scrollIntoView({ behavior: 'smooth' }));
+  }
+  pagination.querySelector('[data-prev]')!.addEventListener('click', () => goTo(Math.max(1, page - 1)));
+  pagination.querySelector('[data-next]')!.addEventListener('click', () => goTo(page + 1));
+  document.querySelector('[data-retry]')!.addEventListener('click', () => {
+    showOnly(content);
+    void load();
+  });
+
+  // A member never asks: the role the header knows says it. Unknown (it couldn't be read), the API decides.
+  getViewer().then((viewer) => {
+    if (viewer && viewer.role !== 'owner' && viewer.role !== 'admin') showOnly(noAccess);
+    else void load();
+  });
+</script>

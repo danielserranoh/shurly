@@ -26,6 +26,27 @@ implementation lifecycle and is independent of the URL version segment.
 
 ## [Unreleased]
 
+### Added — the waitlist (9.1)
+- **`/waitlist/`, for people outside Griddo**, who can't sign in (accounts come from Google Workspace): a short pitch
+  and a form, with its success on the same page. Email, name, and an individual or a company (then the company's
+  name, and its size if they like); their role, what they'd use Shurly for and how they found us, optionally; and
+  consent to be contacted about Shurly, required, with what's kept and that support@griddo.io removes it.
+- **"Get started" goes there**: the landing's header, hero, plans and last call, which no longer promise "free"
+  ("Join the waitlist"). "Log in" and "I already have an account" stay the login page, whose footer adds "Not at
+  Griddo? Join the waitlist".
+- **`POST /api/v1/waitlist`**, public: every field checked against its column, an email that looks like one, and
+  consent. Limited per client IP (`RATE_LIMIT_WAITLIST_PER_IP`, 10 an hour). The same answer (`201`) for every
+  sign-up, whatever happened: a filled honeypot (`website`) stores nothing, and the same email again updates its
+  entry, so it never says whether an email is listed. No IP is stored. `waitlist.joined` logs the kind and the
+  company size only. Table `waitlist_entries`, migration 0016.
+- **`/dashboard/waitlist/`, for the organization's owners and admins**: how many signed up, individuals and
+  companies, companies by size, and who, newest first, 20 a page; a CSV export (`GET /api/v1/waitlist/export`), and
+  removing someone when they ask (`DELETE /api/v1/waitlist/{entry_id}`). `GET /api/v1/waitlist` pages them with the
+  counts. Its nav link shows for owners and admins only; a member gets a 403 and the page's no-access state.
+- **Not in the MCP**: the sign-up is a public form, and the list is strangers' free text.
+- Kept until the person asks to be removed, or 24 months after their latest sign-up (docs/PERSONAL_DATA.md §
+  The waitlist). Nothing deletes the old ones by itself yet.
+
 ### Changed — previews from the page (8.7)
 - **A link's social preview is its destination's own.** Shurly's preview fields only rewrite it, or add one where the
   page has none. Each link keeps two layers: `og_title`, `og_description` and `og_image_url` hold only what a person

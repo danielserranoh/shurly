@@ -1,0 +1,220 @@
+---
+// Phase 9.1 — the waitlist: accounts come from Google Workspace (3.13), so people outside Griddo can't sign up.
+// They leave their details here, as an individual or for a company, and the organization's owners and admins see
+// them in /dashboard/waitlist/. The success state replaces the form on this page: no navigation.
+import MarketingLayout from '@/layouts/MarketingLayout.astro';
+import Icon from '@/components/ui/Icon.astro';
+import Illustration from '@/components/illustrations/Illustration.astro';
+import { site } from '@/config/site';
+import { COMPANY_SIZES, LIMITS, SOURCES } from '@/utils/waitlist-form';
+
+const points = [
+  { icon: 'link', text: 'Short links that report back: who opened it, and when.' },
+  { icon: 'users', text: 'One personal link per recipient, straight from a CSV.' },
+  { icon: 'terminal', text: 'An API, and an MCP for your AI assistant.' },
+] as const;
+---
+
+<MarketingLayout title="Join the waitlist" description="Shurly is open to the Griddo team for now. Join the waitlist and we’ll write when there’s a place for you.">
+  <section data-hero class="relative overflow-hidden bg-ink-950 pt-28 pb-20 text-white sm:pt-36 sm:pb-28">
+    <div class="bg-dots-dark absolute inset-0 opacity-70" aria-hidden="true"></div>
+    <div class="absolute -top-40 right-[-12rem] size-[44rem] rounded-full bg-[radial-gradient(closest-side,rgb(80_87_255/0.4),transparent)]" aria-hidden="true"></div>
+
+    <div class="relative mx-auto grid max-w-6xl grid-cols-1 items-start gap-12 px-4 sm:px-6 lg:grid-cols-[0.9fr_1.1fr] lg:gap-16">
+      <div class="animate-fade-up lg:pt-6">
+        <p class="eyebrow text-brand-300">Early access</p>
+        <h1 class="display mt-4 text-[2.5rem] sm:text-5xl lg:text-[3.5rem]">Shurly is invite-only, <span class="text-brand-300">for now.</span></h1>
+        <p class="mt-6 max-w-lg text-lg leading-8 text-ink-300">
+          Right now it’s open to the Griddo team. We’re making room for more teams soon. Tell us who you are and what you’d send, and we’ll write when there’s a place for you.
+        </p>
+        <ul class="mt-8 grid max-w-lg gap-3.5 text-[15px] text-ink-200">
+          {
+            points.map((point) => (
+              <li class="flex gap-3">
+                <span class="grid size-7 shrink-0 place-items-center rounded-lg bg-white/10 text-brand-300">
+                  <Icon name={point.icon} class="size-4" />
+                </span>
+                <span class="pt-0.5">{point.text}</span>
+              </li>
+            ))
+          }
+        </ul>
+        <p class="mt-8 text-sm text-ink-300">At Griddo? <a href="/login/" class="font-medium text-white underline decoration-brand-300 decoration-2 underline-offset-4">Log in with your work Google account</a> instead.</p>
+      </div>
+
+      <div class="card animate-fade-up p-6 text-ink-900 shadow-xl [animation-delay:120ms] sm:p-8">
+        <form id="waitlist-form" class="grid gap-5" method="post" novalidate aria-labelledby="waitlist-title">
+          <div>
+            <h2 id="waitlist-title" class="display text-2xl text-ink-950">Join the waitlist</h2>
+            <p class="mt-1 text-sm text-ink-500">Takes a minute. Fields without “optional” are required.</p>
+          </div>
+
+          <div data-form-alert hidden></div>
+
+          <div class="grid gap-5 sm:grid-cols-2">
+            <div class="grid gap-1.5">
+              <label for="wl-name" class="label">Name</label>
+              <input id="wl-name" name="name" type="text" class="input" autocomplete="name" maxlength={LIMITS.name} required aria-describedby="wl-name-error" />
+              <p id="wl-name-error" class="field-error" data-error-for="name" hidden></p>
+            </div>
+            <div class="grid gap-1.5">
+              <label for="wl-email" class="label">Email</label>
+              <input id="wl-email" name="email" type="email" class="input" autocomplete="email" inputmode="email" placeholder="you@company.com" maxlength={LIMITS.email} required aria-describedby="wl-email-error" />
+              <p id="wl-email-error" class="field-error" data-error-for="email" hidden></p>
+            </div>
+          </div>
+
+          <fieldset class="grid gap-2" aria-describedby="wl-kind-error">
+            <legend class="label mb-2">I’m signing up as</legend>
+            <div class="grid gap-2 sm:grid-cols-2">
+              <label class="flex cursor-pointer items-center gap-3 rounded-xl border border-ink-200 bg-white px-4 py-3 text-sm font-medium text-ink-800 shadow-xs transition-colors hover:border-ink-300 has-checked:border-ink-950 has-checked:ring-1 has-checked:ring-ink-950">
+                <input type="radio" name="kind" value="individual" class="checkbox" required />
+                <Icon name="user" class="size-4 text-ink-500" />An individual
+              </label>
+              <label class="flex cursor-pointer items-center gap-3 rounded-xl border border-ink-200 bg-white px-4 py-3 text-sm font-medium text-ink-800 shadow-xs transition-colors hover:border-ink-300 has-checked:border-ink-950 has-checked:ring-1 has-checked:ring-ink-950">
+                <input type="radio" name="kind" value="company" class="checkbox" />
+                <Icon name="building" class="size-4 text-ink-500" />For a company
+              </label>
+            </div>
+            <p id="wl-kind-error" class="field-error" data-error-for="kind" hidden></p>
+          </fieldset>
+
+          <div class="grid gap-5 rounded-xl border border-line bg-canvas p-4 sm:grid-cols-[1.4fr_1fr]" data-company-fields hidden>
+            <div class="grid gap-1.5">
+              <label for="wl-company" class="label">Company name</label>
+              <input id="wl-company" name="company" type="text" class="input" autocomplete="organization" maxlength={LIMITS.company} aria-describedby="wl-company-error" disabled />
+              <p id="wl-company-error" class="field-error" data-error-for="company" hidden></p>
+            </div>
+            <div class="grid gap-1.5">
+              <label for="wl-size" class="label">Company size <span class="font-normal text-ink-500">(optional)</span></label>
+              <select id="wl-size" name="company_size" class="select" disabled>
+                <option value="">Choose a size</option>
+                {COMPANY_SIZES.map((size) => <option value={size.value}>{size.label}</option>)}
+              </select>
+            </div>
+          </div>
+
+          <div class="grid gap-5 sm:grid-cols-2">
+            <div class="grid gap-1.5">
+              <label for="wl-role" class="label">Your role <span class="font-normal text-ink-500">(optional)</span></label>
+              <input id="wl-role" name="role" type="text" class="input" autocomplete="organization-title" placeholder="Head of marketing" maxlength={LIMITS.role} aria-describedby="wl-role-error" />
+              <p id="wl-role-error" class="field-error" data-error-for="role" hidden></p>
+            </div>
+            <div class="grid gap-1.5">
+              <label for="wl-source" class="label">How did you find us? <span class="font-normal text-ink-500">(optional)</span></label>
+              <select id="wl-source" name="source" class="select">
+                <option value="">Choose one</option>
+                {SOURCES.map((source) => <option value={source}>{source}</option>)}
+              </select>
+            </div>
+          </div>
+
+          <div class="grid gap-1.5">
+            <label for="wl-use" class="label">What would you use Shurly for? <span class="font-normal text-ink-500">(optional)</span></label>
+            <textarea id="wl-use" name="use_case" class="textarea" rows="3" maxlength={LIMITS.use_case} placeholder="Proposals to prospects, event follow-ups, a newsletter…" aria-describedby="wl-use-hint wl-use-error"></textarea>
+            <p id="wl-use-hint" class="hint">Up to 1,000 characters.</p>
+            <p id="wl-use-error" class="field-error" data-error-for="use_case" hidden></p>
+          </div>
+
+          <!-- The honeypot: off screen and out of the tab order, so only a bot fills it in (the API stores nothing then). -->
+          <div class="absolute -left-[10000px] h-px w-px overflow-hidden" aria-hidden="true">
+            <label for="wl-website">Leave this field empty</label>
+            <input id="wl-website" name="website" type="text" tabindex="-1" autocomplete="off" />
+          </div>
+
+          <div class="grid gap-1.5">
+            <div class="flex items-start gap-3">
+              <input id="wl-consent" name="consent" type="checkbox" class="checkbox mt-0.5 shrink-0" required aria-describedby="wl-consent-note wl-consent-error" />
+              <label for="wl-consent" class="text-sm font-medium text-ink-800">I agree to be contacted about Shurly.</label>
+            </div>
+            <p id="wl-consent-note" class="hint pl-7">We keep what you type here, and when you agreed, only to tell you about Shurly. Ask us to remove it any time at <a class="link" href={`mailto:${site.supportEmail}`}>{site.supportEmail}</a>.</p>
+            <p id="wl-consent-error" class="field-error pl-7" data-error-for="consent" hidden></p>
+          </div>
+
+          <button type="submit" class="btn btn-primary btn-lg w-full">Join the waitlist<Icon name="arrow-right" /></button>
+        </form>
+
+        <div id="waitlist-done" class="flex flex-col items-center px-2 py-10 text-center" hidden>
+          <Illustration name="success" class="h-32 w-auto" />
+          <h2 class="display mt-5 text-2xl text-ink-950" tabindex="-1" data-done-title>You’re on the list</h2>
+          <p class="mt-2 max-w-sm text-sm leading-6 text-ink-500">Thanks. We’ll write to <b class="font-semibold text-ink-800" data-done-email></b> when there’s a place for you, and not before.</p>
+          <a href="/" class="btn btn-secondary mt-6"><Icon name="arrow-left" />Back to the home page</a>
+        </div>
+      </div>
+    </div>
+  </section>
+</MarketingLayout>
+
+<script>
+  import { apiPost } from '@/utils/api';
+  import { applyApiError, clearErrors, revealFirstError, setFieldError } from '@/utils/forms';
+  import { setLoading } from '@/utils/ui';
+  import { waitlistBody, waitlistErrors, type WaitlistValues } from '@/utils/waitlist-form';
+
+  const form = document.getElementById('waitlist-form') as HTMLFormElement;
+  const done = document.getElementById('waitlist-done')!;
+  const submit = form.querySelector<HTMLButtonElement>('button[type="submit"]')!;
+  const companyFields = form.querySelector<HTMLElement>('[data-company-fields]')!;
+  const field = <T extends HTMLElement = HTMLInputElement>(name: string) => form.elements.namedItem(name) as unknown as T;
+
+  function values(): WaitlistValues {
+    return {
+      email: field('email').value,
+      name: field('name').value,
+      kind: (form.querySelector<HTMLInputElement>('input[name="kind"]:checked')?.value ?? '') as string,
+      company: field('company').value,
+      company_size: field<HTMLSelectElement>('company_size').value,
+      role: field('role').value,
+      use_case: field<HTMLTextAreaElement>('use_case').value,
+      source: field<HTMLSelectElement>('source').value,
+      consent: field('consent').checked,
+      website: field('website').value,
+    };
+  }
+
+  // The company's fields show, and count, only when signing up for one.
+  function showCompany() {
+    const company = values().kind === 'company';
+    companyFields.hidden = !company;
+    for (const name of ['company', 'company_size']) field(name).disabled = !company;
+    field('company').required = company;
+    if (!company) setFieldError(form, 'company', null);
+  }
+  form.querySelectorAll('input[name="kind"]').forEach((radio) =>
+    radio.addEventListener('change', () => {
+      setFieldError(form, 'kind', null);
+      showCompany();
+    }),
+  );
+  showCompany();
+
+  // A field's error goes once it's changed.
+  form.addEventListener('input', (e) => {
+    const t = e.target as HTMLInputElement;
+    if (t.name && t.getAttribute('aria-invalid')) setFieldError(form, t.name, null);
+  });
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    clearErrors(form);
+    const typed = values();
+    const errors = waitlistErrors(typed);
+    if (Object.keys(errors).length) {
+      for (const [name, message] of Object.entries(errors)) setFieldError(form, name, message);
+      revealFirstError(form);
+      return;
+    }
+    setLoading(submit, true, 'Joining…');
+    try {
+      await apiPost('/api/v1/waitlist', waitlistBody(typed), false);
+    } catch (err) {
+      setLoading(submit, false);
+      applyApiError(form, err);
+      return;
+    }
+    done.querySelector('[data-done-email]')!.textContent = typed.email.trim();
+    form.hidden = true;
+    done.hidden = false;
+    done.querySelector<HTMLElement>('[data-done-title]')!.focus();
+  });
+</script>
