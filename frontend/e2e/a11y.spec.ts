@@ -56,6 +56,10 @@ for (const { device, options } of DEVICES) {
         await page.goto('/login/');
         await expect(page.getByRole('button', { name: 'Sign in with Google' })).toBeVisible();
         await expectNoIssues(page, 'login');
+        // And with the password form open (3.13.7), as a person opens it.
+        await page.locator('details[data-password-login] > summary').click();
+        await expect(page.getByLabel('Work email')).toBeFocused();
+        await expectNoIssues(page, 'login, with a password');
       });
 
       test('the manual', async ({ page }) => {
