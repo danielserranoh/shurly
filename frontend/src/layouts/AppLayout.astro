@@ -6,7 +6,7 @@ import OrgMark from '@/components/ui/OrgMark.astro';
 import { site } from '@/config/site';
 import { feedbackHref } from '@/utils/feedback';
 
-type Section = 'links' | 'campaigns' | 'analytics' | 'settings';
+type Section = 'links' | 'campaigns' | 'analytics' | 'waitlist' | 'settings';
 
 interface Props {
   title: string;
@@ -19,10 +19,13 @@ const { title, section, width = 'default' } = Astro.props;
 // Send feedback: an email to the team with this page's path, known here at build time, so no query gets in.
 const feedback = feedbackHref(site.supportEmail, Astro.url.pathname);
 
-const nav: { key: Section; label: string; href: string; icon: 'link' | 'megaphone' | 'chart' }[] = [
+// `admins`: shown to the organization's owners and admins only, once the header knows the viewer's role (the
+// waitlist, 9.1). The API still decides: a member who opens the page gets the no-access state.
+const nav: { key: Section; label: string; href: string; icon: 'link' | 'megaphone' | 'chart' | 'clipboard-list'; admins?: boolean }[] = [
   { key: 'links', label: 'Links', href: '/dashboard/', icon: 'link' },
   { key: 'campaigns', label: 'Campaigns', href: '/dashboard/campaigns/', icon: 'megaphone' },
   { key: 'analytics', label: 'Analytics', href: '/dashboard/analytics/', icon: 'chart' },
+  { key: 'waitlist', label: 'Waitlist', href: '/dashboard/waitlist/', icon: 'clipboard-list', admins: true },
 ];
 const maxWidth = { default: 'max-w-6xl', narrow: 'max-w-3xl', wide: 'max-w-7xl' }[width];
 ---
@@ -37,7 +40,7 @@ const maxWidth = { default: 'max-w-6xl', narrow: 'max-w-3xl', wide: 'max-w-7xl' 
       <nav class="hidden items-center gap-1 md:flex" aria-label="Main">
         {
           nav.map((item) => (
-            <a href={item.href} class="nav-link" aria-current={section === item.key ? 'page' : undefined}>
+            <a href={item.href} class="nav-link" aria-current={section === item.key ? 'page' : undefined} hidden={item.admins} data-nav-admins={item.admins}>
               {item.label}
             </a>
           ))
@@ -108,6 +111,8 @@ const maxWidth = { default: 'max-w-6xl', narrow: 'max-w-3xl', wide: 'max-w-7xl' 
               href={item.href}
               class:list={['menu-item h-11 text-base', section === item.key && 'bg-ink-100 text-ink-950']}
               aria-current={section === item.key ? 'page' : undefined}
+              hidden={item.admins}
+              data-nav-admins={item.admins}
             >
               <Icon name={item.icon} />
               {item.label}
@@ -139,6 +144,9 @@ const maxWidth = { default: 'max-w-6xl', narrow: 'max-w-3xl', wide: 'max-w-7xl' 
 
   const CACHE_KEY = 'shurly_me';
   const ORG_CACHE_KEY = 'shurly_org';
+
+  /** The organization as the header shows it, and keeps it in sessionStorage: its role shows the admins' links. */
+  type ShownOrg = Marked & { role?: Organization['role'] | null };
 
   /** What the header shows, and all it keeps in sessionStorage. */
   interface Shown {
@@ -199,14 +207,16 @@ const maxWidth = { default: 'max-w-6xl', narrow: 'max-w-3xl', wide: 'max-w-7xl' 
   // Phase 3.14.4 — the organization in the account menu: its name, and its logo once loaded
   // (from the browser's cache after the first time: its URL has the version), else the initial.
   const orgRow = document.querySelector<HTMLElement>('[data-user-org]')!;
-  function paintOrg(org: Marked | null) {
+  function paintOrg(org: ShownOrg | null) {
+    const admin = org?.role === 'owner' || org?.role === 'admin';
+    document.querySelectorAll<HTMLElement>('[data-nav-admins]').forEach((el) => (el.hidden = !admin));
     orgRow.hidden = !org;
     if (!org) return;
     orgRow.querySelector<HTMLElement>('[data-user-org-name]')!.textContent = org.name;
     void paintOrgMark(orgRow.querySelector<HTMLElement>('[data-org-mark]')!, org);
   }
   function rememberOrg(org: Organization | null) {
-    if (org) sessionStorage.setItem(ORG_CACHE_KEY, JSON.stringify({ name: org.name, logo_version: org.logo_version ?? null }));
+    if (org) sessionStorage.setItem(ORG_CACHE_KEY, JSON.stringify({ name: org.name, logo_version: org.logo_version ?? null, role: org.role }));
     else sessionStorage.removeItem(ORG_CACHE_KEY);
     paintOrg(org);
   }

@@ -112,6 +112,7 @@ Each is a count per window, and `0` turns it off. The per-IP ones need `TRUSTED_
 | `RATE_LIMIT_SIGN_IN_PER_IP` | `30` | Google's and the MCP's sign-in pages and endpoints, per client IP, per minute |
 | `RATE_LIMIT_MCP_CLIENTS_PER_IP` | `60` | `/mcp/register` and `/mcp/token` per client IP, per minute: claude.ai calls them from shared addresses |
 | `RATE_LIMIT_CLIENT_ERRORS_PER_IP` | `30` | Browser error reports (`POST /api/v1/client-errors`) per client IP, per minute: the web app sends 5 at most per page |
+| `RATE_LIMIT_WAITLIST_PER_IP` | `10` | Sign-ups to the waitlist (`POST /api/v1/waitlist`) per client IP, per hour: public, and each writes a row |
 
 ### Tags
 

@@ -163,13 +163,14 @@ becomes stacked rows, and a **Sort by** select offers the same sorts by name.
 Static routes, so `frontend/dist/` can be served from S3. Record pages take a query parameter
 instead of a dynamic path.
 
-`/` landing · `/login/` (Google first, reading `#code=` / `#error=` back from the API; the password form behind a
-closed disclosure, open for `?method=password`, `#password` or `?email=`, or when left open this session) · `/404` ·
+`/` landing · `/waitlist/` (for people outside Griddo; "Get started" goes there) · `/login/` (Google first,
+reading `#code=` / `#error=` back from the API; the password form behind a closed disclosure, open for
+`?method=password`, `#password` or `?email=`, or when left open this session) · `/404` ·
 `/manual/` user manual (Markdown in `src/content/manual/`, one page per file) ·
 `/styleguide/` · `/dashboard/` links ·
 `/dashboard/create/` · `/dashboard/link/?code=…` · `/dashboard/campaigns/` ·
 `/dashboard/campaigns/create/` (4-step wizard) · `/dashboard/campaign/?id=…` ·
-`/dashboard/analytics/` · `/dashboard/settings/` (`#account`, `#organization`, `#api`, `#tags`, `#notifications`,
+`/dashboard/analytics/` · `/dashboard/waitlist/` (owners and admins; its nav link shows for them only) · `/dashboard/settings/` (`#account`, `#organization`, `#api`, `#tags`, `#notifications`,
 `#plan`).
 
 Settings → Organization lists the members, each with only the actions the viewer's role allows. Owners

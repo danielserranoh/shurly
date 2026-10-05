@@ -459,6 +459,13 @@ Per-link analytics as on Shlink's link page (Phase 3.16, contract in ROADMAP 3.1
   the first and last hit, and "did you mean": the links you see that it's one edit from. Never an IP, a user
   agent or a referrer. Not an MCP tool: `list_orphan_visits_grouped` is its MCP side
 
+### Waitlist (Phase 9.1)
+- `POST /api/v1/waitlist` — public, no account: join the waitlist (limited per IP; the same answer whatever happened)
+- `GET /api/v1/waitlist` — owners and admins: the entries, newest first and paged, with counts by kind and company size
+- `GET /api/v1/waitlist/export` — the same, every entry, as a CSV
+- `DELETE /api/v1/waitlist/{entry_id}` — remove someone, when they ask
+None of them is an MCP tool.
+
 ### Public / unversioned
 - `GET /{short_code}` — Redirect (302 by default; honors validity window, max-visits, redirect rules)
 - `GET /{short_code}/track` — Email tracking pixel (43-byte transparent GIF, `Cache-Control: no-store`)

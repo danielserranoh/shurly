@@ -2173,7 +2173,29 @@ image and the URL as their title.
 
 ---
 
-## Development Strategy: TDD + Parallel Agents
+## Phase 9: Beyond Griddo
+
+### 9.1 Waitlist
+Accounts come from Google Workspace (3.13), so someone outside Griddo who'd buy Shurly can't sign up, and we can't
+tell how many would, or whether they'd come as individuals or for companies.
+- [x] `/waitlist/` (MarketingLayout): a pitch, the form (email, name, individual or company, the company's name and
+      size, role, what for, how they found us) and consent to be contacted, with its success on the page. axe on a
+      desktop and a phone (`e2e/waitlist.spec.ts`)
+- [x] "Get started" and the plans' buttons go there, and say "Join the waitlist" instead of "free"; the login page's
+      footer has "Not at Griddo? Join the waitlist"
+- [x] `POST /api/v1/waitlist`, public: validated, consent required, limited per IP (`RATE_LIMIT_WAITLIST_PER_IP`,
+      10 an hour), a honeypot, one entry per email (the same email updates it), the same answer whatever happened,
+      no IP stored. `waitlist_entries`, migration 0016 (`tests/test_phase91_waitlist.py`)
+- [x] Owners and admins: `/dashboard/waitlist/` (counts by kind and company size, the list, CSV export, remove on
+      request), its nav link for them only; `GET`, `GET /export`, `DELETE /{entry_id}`. A member gets a 403. None of
+      it is an MCP tool
+- [x] docs/PERSONAL_DATA.md: the table, its routes, who sees it, retention (proposed: until asked, or 24 months
+      after the latest sign-up)
+- [ ] Confirm the retention with the user, then delete entries past it by themselves (a startup or scheduled job);
+      until then an owner removes them by hand
+- [ ] Tell the people on it when there's a place: an email, or an invitation once external users exist (3.15)
+
+
 
 ### Test-Driven Development (TDD)
 We're adopting a TDD approach for core functionality:

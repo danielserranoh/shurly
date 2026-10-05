@@ -546,3 +546,33 @@ export interface RemovedMember {
   links: number;
   campaigns: number;
 }
+
+/** Phase 9.1 — one person on the waitlist (GET /api/v1/waitlist): someone outside Griddo who'd like Shurly. */
+export interface WaitlistEntry {
+  id: string;
+  email: string;
+  name: string;
+  kind: 'individual' | 'company';
+  company: string | null;
+  company_size: string | null;
+  role: string | null;
+  use_case: string | null;
+  source: string | null;
+  consent_at: string;
+  created_at: string;
+  updated_at: string | null;
+}
+
+/** Everyone on the waitlist, by kind, and the companies by size (`not_given`: no size). */
+export interface WaitlistCounts {
+  total: number;
+  individual: number;
+  company: number;
+  by_company_size: Record<string, number>;
+}
+
+export interface WaitlistPage {
+  entries: WaitlistEntry[];
+  total: number;
+  counts: WaitlistCounts;
+}

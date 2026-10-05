@@ -29,6 +29,7 @@ This is about what goes *out*: what a route returns, not what Shurly records. Wh
 | **addresses** | Anonymized IPs, with user agents and referrers |
 | **accounts** | Other people's accounts: emails, names, roles |
 | **own account** | The caller's own: email, profile, photo, tokens, API key |
+| **prospects** | The waitlist's entries (9.1): people outside Griddo, with their email, name, whether they came as an individual or for a company, the company's name and size, their role, what they'd use Shurly for and how they heard of it |
 
 ## Guards
 
@@ -47,6 +48,7 @@ of the same module that the route calls.
 | `_my_membership` | A member of the caller's organization |
 | `change_role`, `remove_member`, `transfer_ownership`, `removed_members`, `adopt_personal_links` | The organization's roles (`server/utils/organization.py`) |
 | `editable_organization` | An owner or admin of the caller's organization, for its logo: a member gets a 403, someone outside it a 404 (`server/utils/organization.py`) |
+| `ensure_owner_or_admin` | An owner or admin of the caller's organization: a member, or an account outside any organization, gets a 403 (`server/utils/organization.py`) |
 | `RequireAuthMiddleware` | The MCP: an account's token or API key |
 
 ## Routes
@@ -125,6 +127,10 @@ of the same module that the route calls.
 | `DELETE /api/v1/urls/{short_code}/rules/{rule_id}` | none | who can change the link | `visible_url_or_404` | `delete_redirect_rule` |
 | `PATCH /api/v1/urls/{short_code}/rules/{rule_id}` | none | who can change the link | `visible_url_or_404` | `update_redirect_rule` |
 | `PATCH /api/v1/urls/{short_code}/tags` | none | who can change the link | `visible_url_or_404` | `update_url_tags` |
+| `DELETE /api/v1/waitlist/{entry_id}` | none: it removes the entry, when its person asks (§ The waitlist) | an owner or admin | `ensure_owner_or_admin` | excluded |
+| `GET /api/v1/waitlist` | **prospects**: every entry, newest first and paged, with the counts by kind and by company size | an owner or admin | `ensure_owner_or_admin` | excluded |
+| `GET /api/v1/waitlist/export` | **prospects**: every entry, as a CSV | an owner or admin | `ensure_owner_or_admin` | excluded |
+| `POST /api/v1/waitlist` | none: the same answer for every sign-up, whether the email was listed or not, and nothing typed echoed back | anyone, limited per IP | public | excluded |
 | `DELETE /mcp` | none: a redirect to `/mcp/`, on the app's host only (8.4) | anyone | public | excluded |
 | `GET /mcp` | none: a redirect to `/mcp/`, on the app's host only (8.4) | anyone | public | excluded |
 | `POST /mcp` | none: a redirect to `/mcp/`, on the app's host only (8.4) | anyone | public | excluded |
@@ -162,6 +168,27 @@ Each also runs behind `POST /mcp/`, the MCP's sign-in.
 | MCP `list_orphan_visits_grouped` | **addresses**: the anonymized IPs, user agents and referrers of each path's newest 3 hits on unknown codes, with the paths' counts, first and last hit, and the links each may have meant | any account: they belong to no organization. The links suggested are the caller's to see. **Kept (2026-09-29):** the IPs are shown, to revisit after the dogfood | `RequireAuthMiddleware`, `viewer` | curated |
 | MCP `create_campaign_from_rows` | **own account**: the new campaign | any account | `viewer` | curated |
 | MCP `add_redirect_rule` | none | who can change the link | `find_url`, `can_change` | curated |
+
+## The waitlist (9.1, proposed 2026-10-05)
+
+People outside Griddo can't sign in (accounts come from Google Workspace, 3.13), so `/waitlist/` asks those who'd
+like Shurly to leave their details. `waitlist_entries` (`server/core/models/waitlist.py`) keeps:
+- **What they typed:** email (lowercased, one entry per email), name, individual or company, the company's name and
+  size, role, what they'd use Shurly for, how they heard of it. Signing up again with the same email updates the
+  entry, and the answer never says whether it was listed.
+- **When:** the sign-up (`created_at`), the latest one (`updated_at`), and when they agreed to be contacted
+  (`consent_at`). Consent is required: the form says what's stored and that they can ask to be removed at
+  support@griddo.io.
+- **Never their connection:** no IP, anonymized or not, and no user agent. The rate limit counts an HMAC of the IP
+  (`rate_limits`, gone within the hour), and the event log's `waitlist.joined` has the kind and the company size only.
+
+Who sees it: the organization's owners and admins, in the dashboard (`/dashboard/waitlist/`) and its CSV. Members get
+a 403. It's not in the MCP: the entries are strangers' free text, and an assistant with write tools shouldn't read
+them as its context.
+
+**Retention, proposed:** until the person asks to be removed (an owner or admin removes the entry in the dashboard,
+`DELETE /api/v1/waitlist/{entry_id}`), or 24 months after their latest sign-up, whichever comes first. Nothing deletes
+the old entries by itself yet (ROADMAP 9.1): until it does, an owner removes those past 24 months by hand.
 
 ## Cities (8.4, decided 2026-09-29)
 
