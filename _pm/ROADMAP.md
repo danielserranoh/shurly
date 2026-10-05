@@ -866,6 +866,14 @@ Until then `POST /auth/register` stays reachable through the public API and its 
 - [x] A person completes the web sign-in in production, with a Griddo account → 2026-09-29: the user signed in
       with Google on `https://shurly.griddo.io` and saved their profile
 
+### 3.13.7 The login page leads with Google
+- [x] The password form behind a closed "Log in with email and password" disclosure under "Sign in with Google",
+      since accounts come from Google and people without one got stuck on the password. Native `<details>`;
+      opening it focuses the email. It opens by itself for `?method=password`, `#password` or `?email=`, a
+      password manager's fill, and when it was left open earlier in the session; a password login's error shows in
+      the form → `frontend/src/pages/login.astro`, `src/utils/login-method.ts`; `e2e/login.spec.ts`, and axe on
+      both states in `e2e/a11y.spec.ts`
+
 ---
 
 ## Phase 3.14: Organization and roles — links belong to the organization by default 🔎 R7
@@ -2153,7 +2161,9 @@ image and the URL as their title.
       fetched once, a few at a time; og_* values that equal the page's on a link with `og_fetched_at` are cleared,
       the rest kept; re-runnable. `scripts/run_backfill_previews.sh` runs it as a one-off ECS task (DEPLOYMENT.md
       § Previews from the page)
-- [ ] Run the backfill in production after the release: a dry run, then `--for-real`
+- [x] Run the backfill in production after the release: a dry run, then `--for-real` — 2026-10-04, after #214:
+      346 links, 342 destinations, 314 with a preview, 318 with an icon; 7 old copies cleared, 0 overrides kept;
+      2 pages didn't answer (left as they were). 13 griddo destinations answer 404 (reported to the user)
 - [ ] Re-fetch stale `page_*` now and then (a page changes its image; nothing re-reads it but refresh-preview, a
       change of destination or the backfill). Not in scope of 8.7
 - [ ] Campaign links get the page's preview only from the backfill: fetch a campaign's destination once when it's
@@ -2163,7 +2173,29 @@ image and the URL as their title.
 
 ---
 
-## Development Strategy: TDD + Parallel Agents
+## Phase 9: Beyond Griddo
+
+### 9.1 Waitlist
+Accounts come from Google Workspace (3.13), so someone outside Griddo who'd buy Shurly can't sign up, and we can't
+tell how many would, or whether they'd come as individuals or for companies.
+- [x] `/waitlist/` (MarketingLayout): a pitch, the form (email, name, individual or company, the company's name and
+      size, role, what for, how they found us) and consent to be contacted, with its success on the page. axe on a
+      desktop and a phone (`e2e/waitlist.spec.ts`)
+- [x] "Get started" and the plans' buttons go there, and say "Join the waitlist" instead of "free"; the login page's
+      footer has "Not at Griddo? Join the waitlist"
+- [x] `POST /api/v1/waitlist`, public: validated, consent required, limited per IP (`RATE_LIMIT_WAITLIST_PER_IP`,
+      10 an hour), a honeypot, one entry per email (the same email updates it), the same answer whatever happened,
+      no IP stored. `waitlist_entries`, migration 0016 (`tests/test_phase91_waitlist.py`)
+- [x] Owners and admins: `/dashboard/waitlist/` (counts by kind and company size, the list, CSV export, remove on
+      request), its nav link for them only; `GET`, `GET /export`, `DELETE /{entry_id}`. A member gets a 403. None of
+      it is an MCP tool
+- [x] docs/PERSONAL_DATA.md: the table, its routes, who sees it, retention: until asked, or 12 months after the
+      latest sign-up (confirmed by the user 2026-10-05)
+- [ ] Retention confirmed (12 months, 2026-10-05); delete entries past it by themselves (a startup or scheduled job);
+      until then an owner removes them by hand
+- [ ] Tell the people on it when there's a place: an email, or an invitation once external users exist (3.15)
+
+
 
 ### Test-Driven Development (TDD)
 We're adopting a TDD approach for core functionality:

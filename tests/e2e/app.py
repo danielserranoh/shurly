@@ -45,6 +45,9 @@ settings.cors_origins = [WEB_URL]
 settings.organization_domain = "griddo.io"
 settings.bootstrap_owner_email = OWNER
 settings.allow_password_signup = False
+# Phase 9.1 — every spec signs up to the waitlist from this machine's one address, retries included:
+# 10 an hour would refuse a run's later sign-ups. The limit itself is tests/test_phase91_waitlist.py's.
+settings.rate_limit_waitlist_per_ip = 1000
 settings.google_client_id = CLIENT_ID
 settings.google_client_secret = SecretStr(CLIENT_SECRET)
 settings.google_redirect_uri = f"{API_URL}/api/v1/auth/google/callback"

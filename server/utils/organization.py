@@ -12,6 +12,7 @@ Roles rank member < admin < owner:
   once can't both pass it.
 - The first owner comes from `settings.bootstrap_owner_email`.
 - Owners and admins change the organization's logo (3.14.4); every member sees it.
+- Owners and admins read the waitlist (9.1): people outside Griddo who'd like Shurly.
 - Once someone has been removed, an owner can move their personal links and
   campaigns to the organization, so the team keeps them, then or later: the
   removed people are listed with what they still own.
@@ -83,6 +84,17 @@ def editable_organization(db: Session, actor: User) -> Organization:
     if _RANK[mine.role] < _RANK[OrgRole.ADMIN]:
         raise NotAllowed("Only owners and admins change the organization's logo.")
     return db.get(Organization, mine.organization_id)
+
+
+def ensure_owner_or_admin(db: Session, actor: User) -> OrganizationMember:
+    """
+    The actor's membership, if they're an owner or admin of their organization (Phase 9.1: the
+    waitlist). A member, or someone outside any organization, is NotAllowed.
+    """
+    mine = get_membership(db, actor)
+    if mine is None or _RANK[mine.role] < _RANK[OrgRole.ADMIN]:
+        raise NotAllowed("Only the organization’s owners and admins see the waitlist.")
+    return mine
 
 
 def _is_bootstrap_owner(user: User) -> bool:

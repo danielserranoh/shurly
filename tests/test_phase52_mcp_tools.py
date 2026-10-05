@@ -192,3 +192,13 @@ def test_no_password_or_session_token_passes_through_the_mcp():
     names = _list_tool_names()
     leaked = {n for n in names if n.startswith(("login", "change_password"))}
     assert not leaked, f"Password tools exposed as MCP tools: {sorted(leaked)}"
+
+
+def test_the_waitlist_stays_out_of_the_mcp():
+    """Phase 9.1 — signing up is a public form, and the list, its CSV and removing an entry are for
+    owners and admins. The entries are what strangers typed on a public page: in the context of an
+    assistant with write tools, that's the open internet's prompt.
+    """
+    names = _list_tool_names()
+    leaked = {n for n in names if "waitlist" in n}
+    assert not leaked, f"Waitlist routes exposed as MCP tools: {sorted(leaked)}"

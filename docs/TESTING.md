@@ -177,7 +177,7 @@ Specs run as the owner. To be a member instead, a second account on the Workspac
 reads it (`tests/test_e2e_guard.py`).
 
 Accessibility: `e2e/a11y.spec.ts` runs axe on the landing, login, dashboard, link, campaign and Settings pages and
-the manual, once their content is in, on a desktop and on a phone (390 px, where the menu is a dialog, checked
+the manual (and `e2e/waitlist.spec.ts` on both waitlist pages), once their content is in, on a desktop and on a phone (390 px, where the menu is a dialog, checked
 open). A moderate, serious or critical issue fails the test (`IMPACTS`); a minor one doesn't. Fix what it finds, or
 add it to the spec's `ALLOWED` list with a reason and the issue that will fix it; never turn a rule off. axe leaves
 some contrast undecided (text over a gradient, a translucent panel or a scroll fade, SVG text, anything under a
@@ -210,8 +210,11 @@ locally, from `POST /api/v1/auth/register` with `ALLOW_PASSWORD_SIGNUP=true` (se
       is locked, saying why
 
 **Login:**
-- [ ] Navigate to http://localhost:4321/login
-- [ ] Try logging in with wrong password → Should show error
+- [ ] Navigate to http://localhost:4232/login/: "Sign in with Google" first, and the password form closed under
+      "Log in with email and password"; opening it puts the cursor in the email
+- [ ] `/login/?method=password` (or `#password`) opens it; so does coming back to the page in the same tab after
+      leaving it open. A password manager's fill opens it too (`e2e/login.spec.ts` has the rest)
+- [ ] Try logging in with wrong password → Should show error, in the open form
 - [ ] Try logging in with non-existent user → Should show error
 - [ ] Login with correct credentials → Should redirect to dashboard
 - [ ] Verify navbar shows email and navigation links

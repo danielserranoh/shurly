@@ -10,6 +10,7 @@ from server.app.health import health_router
 from server.app.organization import organization_router
 from server.app.tags import tags_router
 from server.app.urls import urls_router
+from server.app.waitlist import waitlist_router
 
 api_router = APIRouter()
 
@@ -24,3 +25,4 @@ api_router.include_router(campaigns_router, prefix="/campaigns", tags=["campaign
 api_router.include_router(analytics_router, prefix="/analytics", tags=["analytics"])
 api_router.include_router(tags_router, prefix="", tags=["tags"])
 api_router.include_router(client_errors_router, prefix="/client-errors", tags=["client errors"])
+api_router.include_router(waitlist_router, prefix="/waitlist", tags=["waitlist"])

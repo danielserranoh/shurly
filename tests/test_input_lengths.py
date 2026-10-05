@@ -12,10 +12,11 @@ import pytest
 from annotated_types import MaxLen
 from fastapi.testclient import TestClient
 
-from server.core.models import URL, Campaign, Tag, URLType, User
+from server.core.models import URL, Campaign, Tag, URLType, User, WaitlistEntry
 from server.schemas.campaign import CampaignCreate
 from server.schemas.tag import TagCreate, TagUpdate
 from server.schemas.url import URLCreate, URLCustomCreate, URLUpdate
+from server.schemas.waitlist import WaitlistJoin
 from server.utils.columns import fit
 from server.utils.opengraph import OpenGraphMetadata
 
@@ -30,6 +31,13 @@ _BOUNDED_FIELDS = [
     (CampaignCreate, "name", Campaign.name),
     (TagCreate, "name", Tag.name),
     (TagUpdate, "name", Tag.name),
+    # Phase 9.1 — the waitlist's public form.
+    (WaitlistJoin, "email", WaitlistEntry.email),
+    (WaitlistJoin, "name", WaitlistEntry.name),
+    (WaitlistJoin, "company", WaitlistEntry.company),
+    (WaitlistJoin, "role", WaitlistEntry.role),
+    (WaitlistJoin, "use_case", WaitlistEntry.use_case),
+    (WaitlistJoin, "source", WaitlistEntry.source),
 ]
 
 

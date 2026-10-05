@@ -91,6 +91,12 @@ EXCLUDED_ROUTE_MAPS: list[RouteMap] = [
     RouteMap(pattern=r"^/api/v1/organization/logo$", mcp_type=MCPType.EXCLUDE),
     # Phase 6.4 — a browser's error report: for the web app's own use, never an assistant's.
     RouteMap(pattern=r"^/api/v1/client-errors$", mcp_type=MCPType.EXCLUDE),
+    # Phase 9.1 — the waitlist, all of it. Signing up is a public form for people without an
+    # account. The list, its CSV and removing an entry are for owners and admins, like the
+    # organization's other owner-only reads (removed-members, above), and the list is what
+    # strangers typed on a public page: in an assistant's context, with its write tools, it's
+    # the open internet's prompt.
+    RouteMap(pattern=r"^/api/v1/waitlist(/.*)?$", mcp_type=MCPType.EXCLUDE),
     RouteMap(
         methods=["PUT", "DELETE"],
         pattern=r"^/api/v1/auth/password$",

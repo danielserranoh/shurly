@@ -52,12 +52,12 @@ const faqs = [
           Shurly turns your proposals, decks and landing pages into short links you can track — one per client if you like — so you always know who’s interested.
         </p>
         <div class="mt-9 flex flex-col gap-3 sm:flex-row sm:items-center">
-          <a href="/login/" class="btn btn-accent btn-lg">Get started — it’s free<Icon name="arrow-right" /></a>
+          <a href="/waitlist/" class="btn btn-accent btn-lg">Join the waitlist<Icon name="arrow-right" /></a>
           <a href="#how" class="btn btn-lg text-ink-200 hover:bg-white/10 hover:text-white">See how it works</a>
         </div>
         <p class="mt-5 flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-ink-400">
           <span class="inline-flex items-center gap-1.5"><Icon name="check" class="size-4 text-brand-300" />No credit card</span>
-          <span class="inline-flex items-center gap-1.5"><Icon name="check" class="size-4 text-brand-300" />Your first link in under a minute</span>
+          <span class="inline-flex items-center gap-1.5"><Icon name="check" class="size-4 text-brand-300" />Open to Griddo today, more teams soon</span>
         </p>
       </div>
 
@@ -299,8 +299,8 @@ const faqs = [
                   </li>
                 ))}
               </ul>
-              <a href="/login/" class:list={['btn btn-lg mt-8 w-full', plan.id === 'pro' ? 'btn-accent' : 'btn-primary']}>
-                {plan.id === 'pro' ? 'Start free, upgrade later' : 'Create free account'}
+              <a href="/waitlist/" class:list={['btn btn-lg mt-8 w-full', plan.id === 'pro' ? 'btn-accent' : 'btn-primary']}>
+                Join the waitlist
               </a>
             </div>
           ))
@@ -337,9 +337,9 @@ const faqs = [
     <div class="bg-dots-dark absolute inset-0 opacity-60" aria-hidden="true"></div>
     <div class="relative mx-auto max-w-3xl px-4 text-center sm:px-6">
       <h2 class="display text-4xl sm:text-5xl">Your next proposal deserves<br class="hidden sm:block" /> a link that reports back.</h2>
-      <p class="mt-5 text-lg text-ink-300">Create a free account and share your first Shurly link in under a minute.</p>
+      <p class="mt-5 text-lg text-ink-300">Shurly is open to the Griddo team for now. Join the waitlist and we’ll write when there’s a place for you.</p>
       <div class="mt-9 flex flex-col justify-center gap-3 sm:flex-row">
-        <a href="/login/" class="btn btn-accent btn-lg">Get started — it’s free<Icon name="arrow-right" /></a>
+        <a href="/waitlist/" class="btn btn-accent btn-lg">Join the waitlist<Icon name="arrow-right" /></a>
         <a href="/login/" class="btn btn-lg text-ink-200 hover:bg-white/10 hover:text-white">I already have an account</a>
       </div>
       {

@@ -8,6 +8,7 @@ Phase 6.3 — rate limits on what anyone can call.
 - Google's and the MCP's sign-in endpoints write a row per request: per client IP.
   /mcp/register and /mcp/token have their own, generous count: claude.ai calls them
   from Anthropic's addresses, shared by everybody.
+- The waitlist's sign-up (Phase 9.1), public and writing a row: per client IP, per hour.
 Redirects, anything signed in and CORS preflights are never limited.
 
 Fixed windows, counted in the database (`rate_limits`) so both tasks share the
@@ -42,7 +43,7 @@ from server.utils.network import client_ip
 # Tests point this at their database.
 session_factory = SessionLocal
 
-# Seconds a row may sit idle before it's deleted: longer than any window.
+# Seconds a row may sit idle before it's deleted: as long as the longest window, or longer.
 _KEEP = 60 * 60
 
 
@@ -64,6 +65,8 @@ LOGIN_FAILURES_PER_ACCOUNT = Limit(
 SIGN_IN_PER_IP = Limit("sign_in_ip", 60, "rate_limit_sign_in_per_ip")
 MCP_CLIENTS_PER_IP = Limit("mcp_clients_ip", 60, "rate_limit_mcp_clients_per_ip")
 CLIENT_ERRORS_PER_IP = Limit("client_errors_ip", 60, "rate_limit_client_errors_per_ip")
+# Phase 9.1 — sign-ups to the waitlist, an hour at a time: a person signs up once or twice.
+WAITLIST_PER_IP = Limit("waitlist_ip", 60 * 60, "rate_limit_waitlist_per_ip")
 
 
 @dataclass(frozen=True)
@@ -164,6 +167,7 @@ _ROUTES: dict[tuple[str, str], tuple[Limit, str]] = {
     ("POST", "/mcp/register"): (MCP_CLIENTS_PER_IP, _JSON),
     ("POST", "/mcp/token"): (MCP_CLIENTS_PER_IP, _JSON),
     ("POST", "/api/v1/client-errors"): (CLIENT_ERRORS_PER_IP, _JSON),
+    ("POST", "/api/v1/waitlist"): (WAITLIST_PER_IP, _JSON),
 }
 
 
