@@ -30,6 +30,7 @@ PEOPLE = (
     "**visits**",
     "**addresses**",
     "**accounts**",
+    "**prospects**",
 )
 IGNORED_METHODS = {"HEAD", "OPTIONS"}  # answered for every route by the framework
 

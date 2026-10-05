@@ -13,6 +13,7 @@ from server.core.models.url import URL, URLType
 from server.core.models.user import ApiKeyScope, User
 from server.core.models.user_profile import UserProfile
 from server.core.models.visitor import Visitor
+from server.core.models.waitlist import WaitlistEntry
 
 __all__ = [
     "User",
@@ -34,6 +35,7 @@ __all__ = [
     "OrphanVisitType",
     "RedirectRule",
     "Visitor",
+    "WaitlistEntry",
     "Tag",
     "url_tags",
     "campaign_tags",

@@ -165,6 +165,9 @@ class Settings(BaseSettings):
     # Browser error reports (POST /api/v1/client-errors): anyone may send them, signed in
     # or not. The web app sends 5 at most per page it loads.
     rate_limit_client_errors_per_ip: int = 30
+    # Phase 9.1 — sign-ups to the waitlist (POST /api/v1/waitlist), per client IP, per hour:
+    # public, and each writes a row.
+    rate_limit_waitlist_per_ip: int = 10
 
     @property
     def mcp_oauth_configured(self) -> bool:
