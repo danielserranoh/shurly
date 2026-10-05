@@ -4,7 +4,7 @@ individual or for a company.
 
 One row per email (normalized to lowercase): signing up again updates it. What a person typed,
 when they agreed to be contacted, and nothing about their connection: no IP, no user agent.
-Kept until its person asks to be removed, or 24 months after their last sign-up
+Kept until its person asks to be removed, or 12 months after their last sign-up
 (docs/PERSONAL_DATA.md § The waitlist).
 """
 
