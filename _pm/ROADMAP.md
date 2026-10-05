@@ -2189,9 +2189,9 @@ tell how many would, or whether they'd come as individuals or for companies.
 - [x] Owners and admins: `/dashboard/waitlist/` (counts by kind and company size, the list, CSV export, remove on
       request), its nav link for them only; `GET`, `GET /export`, `DELETE /{entry_id}`. A member gets a 403. None of
       it is an MCP tool
-- [x] docs/PERSONAL_DATA.md: the table, its routes, who sees it, retention (proposed: until asked, or 24 months
-      after the latest sign-up)
-- [ ] Confirm the retention with the user, then delete entries past it by themselves (a startup or scheduled job);
+- [x] docs/PERSONAL_DATA.md: the table, its routes, who sees it, retention: until asked, or 12 months after the
+      latest sign-up (confirmed by the user 2026-10-05)
+- [ ] Retention confirmed (12 months, 2026-10-05); delete entries past it by themselves (a startup or scheduled job);
       until then an owner removes them by hand
 - [ ] Tell the people on it when there's a place: an email, or an invitation once external users exist (3.15)
 

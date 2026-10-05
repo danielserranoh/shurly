@@ -44,7 +44,7 @@ implementation lifecycle and is independent of the URL version segment.
   removing someone when they ask (`DELETE /api/v1/waitlist/{entry_id}`). `GET /api/v1/waitlist` pages them with the
   counts. Its nav link shows for owners and admins only; a member gets a 403 and the page's no-access state.
 - **Not in the MCP**: the sign-up is a public form, and the list is strangers' free text.
-- Kept until the person asks to be removed, or 24 months after their latest sign-up (docs/PERSONAL_DATA.md §
+- Kept until the person asks to be removed, or 12 months after their latest sign-up (docs/PERSONAL_DATA.md §
   The waitlist). Nothing deletes the old ones by itself yet.
 ### Changed — the login page leads with Google (3.13.7)
 - **The password form waits behind "Log in with email and password"**, a closed disclosure under "Sign in with

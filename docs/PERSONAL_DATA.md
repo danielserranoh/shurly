@@ -187,8 +187,8 @@ a 403. It's not in the MCP: the entries are strangers' free text, and an assista
 them as its context.
 
 **Retention, proposed:** until the person asks to be removed (an owner or admin removes the entry in the dashboard,
-`DELETE /api/v1/waitlist/{entry_id}`), or 24 months after their latest sign-up, whichever comes first. Nothing deletes
-the old entries by itself yet (ROADMAP 9.1): until it does, an owner removes those past 24 months by hand.
+`DELETE /api/v1/waitlist/{entry_id}`), or 12 months after their latest sign-up, whichever comes first. Nothing deletes
+the old entries by itself yet (ROADMAP 9.1): until it does, an owner removes those past 12 months by hand.
 
 ## Cities (8.4, decided 2026-09-29)
 
