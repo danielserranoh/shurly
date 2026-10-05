@@ -46,6 +46,17 @@ implementation lifecycle and is independent of the URL version segment.
 - **Not in the MCP**: the sign-up is a public form, and the list is strangers' free text.
 - Kept until the person asks to be removed, or 24 months after their latest sign-up (docs/PERSONAL_DATA.md §
   The waitlist). Nothing deletes the old ones by itself yet.
+### Changed — the login page leads with Google (3.13.7)
+- **The password form waits behind "Log in with email and password"**, a closed disclosure under "Sign in with
+  Google": accounts come from Google, and people without one tried the password and got stuck. It's a native
+  `<details>`, so it opens without the script too; opening it moves focus to the email, and a line inside says the
+  password is the one set in Settings → Account.
+- **It opens by itself** for `?method=password`, `#password` or an `?email=` to fill in (focused on the first empty
+  field), when a password manager fills the closed form in, and when it was left open earlier in the tab's session
+  (sessionStorage, `shurly_login_password`; nothing breaks without storage).
+- **A password login's error shows in the form**, next to the fields, instead of above the Google button. Google's
+  errors and the "session expired" and "logged out" notes stay at the top. The form still posts, its autocomplete
+  attributes are the same, and the login API is unchanged.
 
 ### Changed — previews from the page (8.7)
 - **A link's social preview is its destination's own.** Shurly's preview fields only rewrite it, or add one where the

@@ -210,8 +210,11 @@ locally, from `POST /api/v1/auth/register` with `ALLOW_PASSWORD_SIGNUP=true` (se
       is locked, saying why
 
 **Login:**
-- [ ] Navigate to http://localhost:4321/login
-- [ ] Try logging in with wrong password → Should show error
+- [ ] Navigate to http://localhost:4232/login/: "Sign in with Google" first, and the password form closed under
+      "Log in with email and password"; opening it puts the cursor in the email
+- [ ] `/login/?method=password` (or `#password`) opens it; so does coming back to the page in the same tab after
+      leaving it open. A password manager's fill opens it too (`e2e/login.spec.ts` has the rest)
+- [ ] Try logging in with wrong password → Should show error, in the open form
 - [ ] Try logging in with non-existent user → Should show error
 - [ ] Login with correct credentials → Should redirect to dashboard
 - [ ] Verify navbar shows email and navigation links

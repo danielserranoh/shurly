@@ -14,27 +14,40 @@ import PasswordField from '@/components/ui/PasswordField.astro';
 
     <button type="button" class="btn btn-secondary btn-lg w-full" data-google><GoogleLogo />Sign in with Google</button>
 
-    <p class="flex items-center gap-3 text-xs text-ink-500"><span class="h-px flex-1 bg-line"></span>or with your password<span class="h-px flex-1 bg-line"></span></p>
+    <!-- Accounts come from Google, so the password form waits closed (3.13.7). Native details: it opens without
+         the script too. It opens itself for ?method=password, #password or ?email=, a password manager's fill, or
+         when it was left open earlier this session. -->
+    <details class="disclosure" data-password-login>
+      <summary class="rounded-lg py-2 text-sm font-medium text-ink-600 hover:text-ink-950">
+        <span class="h-px flex-1 bg-line"></span>
+        <span>Log in with email and password</span>
+        <Icon name="chevron-down" class="chevron size-4 shrink-0 text-ink-500" />
+        <span class="h-px flex-1 bg-line"></span>
+      </summary>
 
-    <!-- POST: submitted before the script loads, the password must not end up in the URL -->
-    <form id="login-form" class="grid gap-5" method="post" novalidate>
-      <div class="grid gap-1.5">
-        <label for="email" class="label">Work email</label>
-        <input id="email" name="email" type="email" class="input input-lg" autocomplete="email" inputmode="email" placeholder="you@company.com" required aria-describedby="email-error" />
-        <p id="email-error" class="field-error" data-error-for="email" hidden></p>
-      </div>
+      <!-- POST: submitted before the script loads, the password must not end up in the URL -->
+      <form id="login-form" class="disclosure-body grid gap-5 pt-4" method="post" novalidate>
+        <p class="hint">Works once you’ve set a password in Settings → Account.</p>
+        <div data-form-alert hidden></div>
 
-      <PasswordField id="password" label="Password" autocomplete="current-password">
-        <button slot="label-end" type="button" class="text-sm font-medium text-ink-500 hover:text-ink-950" popovertarget="forgot-popover">Forgot password?</button>
-      </PasswordField>
+        <div class="grid gap-1.5">
+          <label for="email" class="label">Work email</label>
+          <input id="email" name="email" type="email" class="input input-lg" autocomplete="email" inputmode="email" placeholder="you@company.com" required aria-describedby="email-error" />
+          <p id="email-error" class="field-error" data-error-for="email" hidden></p>
+        </div>
 
-      <div id="forgot-popover" popover class="menu max-w-xs p-4 text-sm leading-6 text-ink-700" data-align="end">
-        <p class="font-semibold text-ink-950">Sign in with Google instead</p>
-        <p class="mt-1">There are no reset emails. Sign in with Google, then set a new password in Settings → Account.</p>
-      </div>
+        <PasswordField id="password" label="Password" autocomplete="current-password">
+          <button slot="label-end" type="button" class="text-sm font-medium text-ink-500 hover:text-ink-950" popovertarget="forgot-popover">Forgot password?</button>
+        </PasswordField>
 
-      <button type="submit" class="btn btn-primary btn-lg mt-1 w-full">Log in<Icon name="arrow-right" /></button>
-    </form>
+        <div id="forgot-popover" popover class="menu max-w-xs p-4 text-sm leading-6 text-ink-700" data-align="end">
+          <p class="font-semibold text-ink-950">Sign in with Google instead</p>
+          <p class="mt-1">There are no reset emails. Sign in with Google, then set a new password in Settings → Account.</p>
+        </div>
+
+        <button type="submit" class="btn btn-primary btn-lg mt-1 w-full">Log in<Icon name="arrow-right" /></button>
+      </form>
+    </details>
   </div>
 
   <p class="mt-8 text-center text-sm text-ink-500">New to Shurly? Sign in with your work Google account: that sets it up. Not at Griddo? <a class="link" href="/waitlist/">Join the waitlist</a>.</p>
@@ -43,8 +56,9 @@ import PasswordField from '@/components/ui/PasswordField.astro';
 <script>
   import { ApiError, apiPost, errorMessage } from '@/utils/api';
   import { safeNext, setToken, takeNext } from '@/utils/auth';
-  import { applyApiError, clearErrors, isEmail, setFieldError, showAlert } from '@/utils/forms';
+  import { applyApiError, clearErrors, isEmail, revealFirstError, setFieldError, showAlert } from '@/utils/forms';
   import { exchangeGoogleCode, googleErrorMessage, startGoogleSignIn } from '@/utils/google-signin';
+  import { asksForPassword, passwordChosen, rememberPasswordChoice } from '@/utils/login-method';
   import { setLoading } from '@/utils/ui';
   import type { LoginResponse } from '@/utils/types';
 
@@ -58,8 +72,63 @@ import PasswordField from '@/components/ui/PasswordField.astro';
   const reason = params.get('reason');
   if (reason === 'expired') showAlert(root, 'Your session expired. Log in again to pick up where you left off.', 'info');
   if (reason === 'signed-out') showAlert(root, 'You’re logged out. See you soon.', 'success');
+  const emailInput = form.elements.namedItem('email') as HTMLInputElement;
+  const passwordInput = form.elements.namedItem('password') as HTMLInputElement;
   const prefill = params.get('email');
-  if (prefill) (form.elements.namedItem('email') as HTMLInputElement).value = prefill;
+  if (prefill) emailInput.value = prefill;
+
+  // ---------------------------------------------------------------- The password block (3.13.7)
+  // Closed at first: accounts come from Google. It opens when asked, and stays as it was left for the session.
+  const block = root.querySelector<HTMLDetailsElement>('[data-password-login]')!;
+  const session = () => sessionStorage;
+  let focusOnOpen = false;
+
+  const firstEmpty = () => (emailInput.value ? passwordInput : emailInput);
+  /** Open it. `focus`: land in the first empty field, as a person opening it does. */
+  function openPassword(focus: boolean) {
+    if (block.open) {
+      if (focus) firstEmpty().focus();
+      return;
+    }
+    focusOnOpen = focus;
+    block.open = true;
+  }
+  // A person opening it (a click, or Enter or Space on the summary) lands in the email. Find in page and the
+  // like open it too, without moving focus. The choice is kept at once, before the toggle event: a reload right
+  // after still finds it as it was left.
+  block.querySelector('summary')!.addEventListener('click', () => {
+    focusOnOpen = !block.open;
+    rememberPasswordChoice(session, !block.open);
+  });
+  block.addEventListener('toggle', () => {
+    rememberPasswordChoice(session, block.open);
+    if (block.open && focusOnOpen) firstEmpty().focus();
+    focusOnOpen = false;
+  });
+
+  /** Whether the browser or a password manager filled the fields in (`:autofill`, where it's known). */
+  function filledIn() {
+    if (emailInput.value || passwordInput.value) return true;
+    for (const selector of [':autofill', ':-webkit-autofill']) {
+      try {
+        return Boolean(form.querySelector(selector));
+      } catch {
+        // A selector this browser doesn't know: try the next.
+      }
+    }
+    return false;
+  }
+
+  if (asksForPassword(location.search, location.hash)) openPassword(true);
+  else if (passwordChosen(session) || filledIn() || form.querySelector('[aria-invalid="true"]')) openPassword(false);
+  // A password manager filling the closed form, or a page restored with its fields filled: show what's in them.
+  for (const type of ['input', 'change']) form.addEventListener(type, () => openPassword(false));
+  window.addEventListener('pageshow', () => {
+    if (filledIn()) openPassword(false);
+  });
+  window.addEventListener('hashchange', () => {
+    if (location.hash === '#password') openPassword(true);
+  });
 
   // ---------------------------------------------------------------- Google
   google.addEventListener('click', () => {
@@ -108,9 +177,10 @@ import PasswordField from '@/components/ui/PasswordField.astro';
 
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
-    clearErrors(root);
-    const email = (form.elements.namedItem('email') as HTMLInputElement).value.trim();
-    const password = (form.elements.namedItem('password') as HTMLInputElement).value;
+    clearErrors(form);
+    showAlert(root, null);
+    const email = emailInput.value.trim();
+    const password = passwordInput.value;
 
     let ok = true;
     if (!isEmail(email)) {
@@ -122,7 +192,7 @@ import PasswordField from '@/components/ui/PasswordField.astro';
       ok = false;
     }
     if (!ok) {
-      form.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus();
+      revealFirstError(form);
       return;
     }
 
@@ -133,7 +203,8 @@ import PasswordField from '@/components/ui/PasswordField.astro';
       window.location.replace(next);
     } catch (err) {
       setLoading(submit, false);
-      applyApiError(root, err);
+      // In the form's own alert, next to the fields, in the open block.
+      applyApiError(form, err);
     }
   });
 </script>

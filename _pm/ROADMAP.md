@@ -866,6 +866,14 @@ Until then `POST /auth/register` stays reachable through the public API and its 
 - [x] A person completes the web sign-in in production, with a Griddo account → 2026-09-29: the user signed in
       with Google on `https://shurly.griddo.io` and saved their profile
 
+### 3.13.7 The login page leads with Google
+- [x] The password form behind a closed "Log in with email and password" disclosure under "Sign in with Google",
+      since accounts come from Google and people without one got stuck on the password. Native `<details>`;
+      opening it focuses the email. It opens by itself for `?method=password`, `#password` or `?email=`, a
+      password manager's fill, and when it was left open earlier in the session; a password login's error shows in
+      the form → `frontend/src/pages/login.astro`, `src/utils/login-method.ts`; `e2e/login.spec.ts`, and axe on
+      both states in `e2e/a11y.spec.ts`
+
 ---
 
 ## Phase 3.14: Organization and roles — links belong to the organization by default 🔎 R7
