@@ -266,6 +266,9 @@ code can name links on several domains, and without it the default domain's link
   and `did_you_mean`: the caller's links it's one edit from. It's the
   analytics page's grouping (`server/utils/orphans.py`), over every kind
   of orphan visit, with the newest 3 hits of each path as samples.
+  `typos_only=true` asks for what the page shows (3.10.8): no scanners'
+  probes, no bots, no "/", with `hidden_visits` and `hidden_paths` for
+  what it left out.
 
 Like the API, they act with the caller's role (Phase 3.14.3): the
 organization's links and the caller's personal ones are visible, and changing

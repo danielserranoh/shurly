@@ -35,6 +35,7 @@ from typing import Any
 
 from sqlalchemy import func
 from sqlalchemy.orm import Session
+from sqlalchemy.sql.elements import ColumnElement
 
 from server.app.analytics import _distinct_visitors, _exclude_bots
 from server.core.models import (
@@ -53,7 +54,7 @@ from server.utils.campaign import (
 )
 from server.utils.domain import get_or_create_default_domain
 from server.utils.local_days import LocalDays, last_days
-from server.utils.orphans import did_you_mean, orphan_groups
+from server.utils.orphans import did_you_mean, orphan_groups, typo_hits
 from server.utils.url import is_valid_url, link_hostname
 
 # ---------------------------------------------------------------------------
@@ -312,15 +313,18 @@ def list_orphan_visits_grouped(
     *,
     since_days: int = 30,
     limit_groups: int = 20,
+    typos_only: bool = False,
 ) -> dict[str, Any]:
     """
     Group orphan visits by `attempted_path` so the LLM can spot typo patterns, with the links a
     typo was probably meant for.
 
     The grouping is the analytics page's (`server/utils/orphans.py`), in SQL, over every kind of
-    orphan visit and the last `since_days`. Orphan visits are tenant-wide (Phase 3.10.4): `user`
-    decides only which links are suggested. The samples, the newest 3 hits of each path, are
-    this tool's own.
+    orphan visit and the last `since_days`; with `typos_only` (3.10.8), only the hits a person
+    could have mistyped, as the page asks for them: no scanners' probes, no bots, no "/".
+    `hidden_visits` and `hidden_paths` count what it left out. Orphan visits are tenant-wide
+    (Phase 3.10.4): `user` decides only which links are suggested. The samples, the newest 3
+    hits of each path among those counted, are this tool's own.
     """
     if since_days < 1 or since_days > 365:
         raise ValueError("since_days must be between 1 and 365")
@@ -328,15 +332,18 @@ def list_orphan_visits_grouped(
         raise ValueError("limit_groups must be between 1 and 200")
 
     since = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=since_days)
-    groups, total_visits, total_paths = orphan_groups(db, since=since, limit=limit_groups)
+    found = orphan_groups(db, since=since, typos_only=typos_only, limit=limit_groups)
+    groups = found.groups
     paths = [group.attempted_path for group in groups]
     suggested = did_you_mean(db, viewer(db, user), paths)
-    samples = _newest_hits(db, paths, since)
+    samples = _newest_hits(db, paths, since, typo_hits(db) if typos_only else None)
 
     return {
         "since_days": since_days,
-        "total_visits": total_visits,
-        "distinct_paths": total_paths,
+        "total_visits": found.total_visits,
+        "distinct_paths": found.total_paths,
+        "hidden_visits": found.hidden_visits,
+        "hidden_paths": found.hidden_paths,
         "groups": [
             {
                 "attempted_path": group.attempted_path,
@@ -351,11 +358,17 @@ def list_orphan_visits_grouped(
     }
 
 
-def _newest_hits(db: Session, paths: list[str], since: datetime) -> dict[str, list[dict[str, Any]]]:
-    """Each path's newest 3 hits since `since`, in one query. Their IPs are a decision pending
-    (docs/PERSONAL_DATA.md): shown, as they always were."""
+def _newest_hits(
+    db: Session, paths: list[str], since: datetime, counted: ColumnElement | None = None
+) -> dict[str, list[dict[str, Any]]]:
+    """Each path's newest 3 hits since `since`, of those `counted` (every hit without), in one
+    query. Their IPs are a decision pending (docs/PERSONAL_DATA.md): shown, as they always
+    were."""
     if not paths:
         return {}
+    which = [OrphanVisit.created_at >= since, OrphanVisit.attempted_path.in_(paths)]
+    if counted is not None:
+        which.append(counted)
     newest = (
         func.row_number()
         .over(
@@ -364,11 +377,7 @@ def _newest_hits(db: Session, paths: list[str], since: datetime) -> dict[str, li
         )
         .label("newest")
     )
-    ranked = (
-        db.query(OrphanVisit.id, newest)
-        .filter(OrphanVisit.created_at >= since, OrphanVisit.attempted_path.in_(paths))
-        .subquery()
-    )
+    ranked = db.query(OrphanVisit.id, newest).filter(*which).subquery()
     rows = (
         db.query(OrphanVisit)
         .join(ranked, ranked.c.id == OrphanVisit.id)
