@@ -465,6 +465,9 @@ export interface OrphanGroupsResponse {
   timezone: string;
   total_visits: number;
   total_paths: number;
+  /** What `typos_only` left out: scanners' and bots' hits, and the paths with none shown (3.10.8). */
+  hidden_visits: number;
+  hidden_paths: number;
   page: number;
   page_size: number;
   pages: number;

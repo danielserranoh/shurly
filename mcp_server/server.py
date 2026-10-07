@@ -394,12 +394,23 @@ def _register_curated_tools(server: FastMCP) -> None:
         name="list_orphan_visits_grouped",
         description=(
             "List orphan visits grouped by attempted_path so typo patterns "
-            "are visible without paginating through a flat event log."
+            "are visible without paginating through a flat event log. To find what people "
+            "mistyped, set typos_only=true: it leaves out vulnerability scanners' probes "
+            "(/.env, /wp-admin…), bots and '/', as the analytics page's 'Typos & broken links' "
+            "does, and hidden_visits / hidden_paths say how much it left out. Without it, every "
+            "orphan visit, which is what to look at for scanning."
         ),
     )
     def list_orphan_visits_grouped(
         since_days: Annotated[int, Field(ge=1, le=365)] = 30,  # what curated.py checks
         limit_groups: Annotated[int, Field(ge=1, le=200)] = 20,
+        typos_only: Annotated[
+            bool,
+            Field(
+                description="Only what a person could have mistyped: paths shaped like a code, "
+                "not a scanner's, not from a bot. Off by default: every orphan visit"
+            ),
+        ] = False,
     ) -> dict:
         from server.core import SessionLocal
 
@@ -409,6 +420,7 @@ def _register_curated_tools(server: FastMCP) -> None:
                 resolve_current_user(db),
                 since_days=since_days,
                 limit_groups=limit_groups,
+                typos_only=typos_only,
             )
 
 

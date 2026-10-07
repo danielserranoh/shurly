@@ -337,6 +337,12 @@ class OrphanGroupsResponse(BaseModel):
     timezone: str = Field(description="The IANA time zone the days are counted in")
     total_visits: int = Field(description="Hits on unknown codes in the period")
     total_paths: int = Field(description="The paths they tried, on every page")
+    hidden_visits: int = Field(
+        description="The hits typos_only left out, scanners' and bots': 0 without it"
+    )
+    hidden_paths: int = Field(
+        description="The paths typos_only left out, none of their hits shown: 0 without it"
+    )
     page: int
     page_size: int
     pages: int

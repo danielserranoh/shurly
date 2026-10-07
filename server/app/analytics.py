@@ -1654,6 +1654,12 @@ def get_orphan_visit_groups(
     period: Period = Depends(_period),
     page: int = Query(1, ge=1, le=MAX_PAGE, description="From 1; a page past the last is empty"),
     page_size: int = Query(20, ge=1, le=100),
+    typos_only: bool = Query(
+        False,
+        description="Only what a person could have mistyped: paths shaped like a code, not a "
+        "scanner's (/wp-admin, /admin…), and not from a bot's user agent. The totals and pages "
+        "count only those; hidden_visits and hidden_paths say what was left out",
+    ),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -1661,6 +1667,11 @@ def get_orphan_visit_groups(
     ROADMAP 3.10.4 — "Typos & broken links": the paths tried on unknown codes in the period, a
     page at a time. The most tried first, then the latest hit, then the path.
 
+    - **typos_only** (3.10.8, off by default): leaves out vulnerability scanners and bots. A hit
+      stays when its path is shaped like a code (one segment of code characters, as long as a
+      code at most: not `/.env`, `/favicon.ico` or `/.git/config`), isn't a scanner's word
+      (`/wp-admin`, `/admin`, `/phpmyadmin`…, unless it's a link's code) and its user agent isn't
+      a bot's, as for a link's visits. `hidden_visits` and `hidden_paths` count what it left out.
     - **did_you_mean**: up to 3 links the viewer sees that the path is one edit away from (a
       character deleted, inserted, replaced, or swapped with its neighbour), or the same code but
       for case where codes are lowercase. None for a path no code could be: longer than a code,
@@ -1670,25 +1681,29 @@ def get_orphan_visit_groups(
       `/orphan-visits`; the links suggested are the viewer's to see.
     """
     since, until = period.bounds()
-    groups, total_visits, total_paths = orphan_groups(
+    found = orphan_groups(
         db,
         since=since,
         until=until,
         types=[OrphanVisitType.INVALID_SHORT_URL],
+        typos_only=typos_only,
         skip=(page - 1) * page_size,
         limit=page_size,
     )
+    groups = found.groups
     suggested = did_you_mean(db, viewer(db, current_user), [g.attempted_path for g in groups])
     return OrphanGroupsResponse.model_validate(
         {
             "from": period.first,
             "to": period.last,
             "timezone": period.days.name,
-            "total_visits": total_visits,
-            "total_paths": total_paths,
+            "total_visits": found.total_visits,
+            "total_paths": found.total_paths,
+            "hidden_visits": found.hidden_visits,
+            "hidden_paths": found.hidden_paths,
             "page": page,
             "page_size": page_size,
-            "pages": -(-total_paths // page_size),
+            "pages": -(-found.total_paths // page_size),
             "groups": [
                 {
                     "attempted_path": group.attempted_path,

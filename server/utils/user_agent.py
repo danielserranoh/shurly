@@ -2,6 +2,30 @@
 
 import re
 
+from sqlalchemy import func, or_
+from sqlalchemy.sql.elements import ColumnElement
+
+# What makes a user agent a bot's: any of these in it, whatever the case. A visit's `is_bot`
+# (`is_bot` below) and an orphan visit's, in SQL (`bot_agent`), from the one list.
+BOT_PATTERNS = (
+    "bot",
+    "crawler",
+    "spider",
+    "scraper",
+    "curl",
+    "wget",
+    "python-requests",
+    "java",
+    "go-http-client",
+)
+
+
+def bot_agent(user_agent: ColumnElement) -> ColumnElement:
+    """`is_bot` as SQL, for a column of user agents: true when one of BOT_PATTERNS is in it.
+    False for none, as `is_bot(None)` is."""
+    ua = func.lower(func.coalesce(user_agent, ""))
+    return or_(*(ua.contains(pattern, autoescape=True) for pattern in BOT_PATTERNS))
+
 
 def parse_user_agent(user_agent_string: str | None) -> dict:
     """
@@ -24,18 +48,7 @@ def parse_user_agent(user_agent_string: str | None) -> dict:
     ua = user_agent_string.lower()
 
     # Detect bots
-    bot_patterns = [
-        "bot",
-        "crawler",
-        "spider",
-        "scraper",
-        "curl",
-        "wget",
-        "python-requests",
-        "java",
-        "go-http-client",
-    ]
-    if any(pattern in ua for pattern in bot_patterns):
+    if any(pattern in ua for pattern in BOT_PATTERNS):
         return {
             "browser": "Bot",
             "browser_version": "",
