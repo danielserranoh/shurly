@@ -5,6 +5,7 @@
 import AxeBuilder from '@axe-core/playwright';
 import { devices, type APIRequestContext, type Page } from '@playwright/test';
 
+import { API_URL, BROWSER_UA } from './env';
 import { expect, test } from './fixtures';
 import { clickLink, openEmail } from './helpers';
 
@@ -116,6 +117,22 @@ for (const { device, options } of DEVICES) {
         await page.getByRole('tab', { name: 'By location' }).click();
         await expect(page.getByRole('region', { name: 'Cities' })).toContainText('Unknown');
         await expectNoIssues(page, 'campaign, by location');
+      });
+
+      test('Analytics', async ({ page, ownerApi, request }) => {
+        await aLinkWithVisits(ownerApi, request);
+        // "Typos & broken links" with a typo in it, and a scanner's probe it leaves out (3.10.8), so its line shows.
+        const headers = { 'User-Agent': BROWSER_UA };
+        await request.get(`${API_URL}/e2e-a11y-typo-${Date.now()}`, { headers, maxRedirects: 0 });
+        await request.get(`${API_URL}/wp-admin`, { headers, maxRedirects: 0 });
+        await page.goto('/dashboard/analytics/');
+        await expect(page.locator('[data-orphans] li').first()).toBeVisible();
+        await expect(page.locator('[data-orphans-hidden]')).toBeVisible();
+        await expectNoIssues(page, 'analytics');
+        // And with them shown.
+        await page.getByRole('button', { name: 'Show them' }).click();
+        await expect(page.getByRole('button', { name: 'Hide them' })).toBeVisible();
+        await expectNoIssues(page, 'analytics, scanners shown');
       });
 
       test('Settings', async ({ page }) => {

@@ -61,6 +61,8 @@ import Pager from '@/components/ui/Pager.astro';
         </div>
         <p class="text-sm text-ink-500">Short links people tried that don’t exist, often a typo on something printed. The range above doesn’t change this list.</p>
         <ul class="mt-5 grid gap-2" data-orphans></ul>
+        <!-- 3.10.8: scanners' probes and bots aren't typos; how many were left out, and a way to see them -->
+        <p class="mt-3 text-xs text-ink-500" data-orphans-hidden hidden><span data-text></span>{' '}<button type="button" class="link" data-toggle></button></p>
         <Pager />
       </section>
     </div>
@@ -86,6 +88,7 @@ import Pager from '@/components/ui/Pager.astro';
   import { html, setHTML } from '@/utils/html';
   import { icon } from '@/utils/icons';
   import { linkHref } from '@/utils/links';
+  import { hiddenHitsNote } from '@/utils/orphans';
   import { renderPager } from '@/utils/paging';
   import { hydrateTimes, toast } from '@/utils/ui';
   import { showDaysZoneHint } from '@/utils/viewer';
@@ -150,23 +153,37 @@ import Pager from '@/components/ui/Pager.astro';
   }
 
   // "Typos & broken links": the paths tried on unknown codes in the last 30 days, most tried first, a page at
-  // a time. "Did you mean" is the API's, against every link you can see (ROADMAP 3.10.4).
+  // a time. "Did you mean" is the API's, against every link you can see (ROADMAP 3.10.4). Only what a person
+  // could have mistyped (`typos_only`, 3.10.8): the line under the list says how many hits from scanners and
+  // bots that leaves out, and shows them on request.
   const ORPHAN_DAYS = 30;
   const ORPHAN_PAGE_SIZE = 10;
   const orphanPager = $('#pagination');
+  const hiddenLine = $('[data-orphans-hidden]');
+  const hiddenToggle = hiddenLine.querySelector<HTMLButtonElement>('[data-toggle]')!;
   let orphanPage = 1;
+  let showingHidden = false;
+
+  function renderHiddenLine(hiddenVisits: number) {
+    const note = hiddenHitsNote(hiddenVisits, showingHidden);
+    hiddenLine.hidden = !note;
+    if (!note) return;
+    hiddenLine.querySelector('[data-text]')!.textContent = note.text;
+    hiddenToggle.textContent = note.action;
+  }
 
   async function loadOrphans() {
     const list = $('[data-orphans]');
     try {
       const res = await apiGet<OrphanGroupsResponse>(
-        `/api/v1/analytics/orphan-visits/grouped${qs({ period: ORPHAN_DAYS, page: orphanPage, page_size: ORPHAN_PAGE_SIZE })}`,
+        `/api/v1/analytics/orphan-visits/grouped${qs({ period: ORPHAN_DAYS, page: orphanPage, page_size: ORPHAN_PAGE_SIZE, typos_only: !showingHidden })}`,
       );
       if (!res.groups.length && orphanPage > 1) {
         orphanPage = 1;
         return loadOrphans();
       }
       renderPager(orphanPager, orphanPage, ORPHAN_PAGE_SIZE, res.total_paths, res.groups.length);
+      renderHiddenLine(res.hidden_visits);
       if (!res.groups.length) {
         setHTML(list, html`<li class="flex items-center gap-3 rounded-xl bg-brand-50 p-4 text-sm text-brand-900">${icon('circle-check', 'size-4 text-brand-700')}No broken links. Everyone’s landing where they should.</li>`);
         return;
@@ -188,9 +205,16 @@ import Pager from '@/components/ui/Pager.astro';
       hydrateTimes(list);
     } catch {
       orphanPager.hidden = true;
+      hiddenLine.hidden = true;
       setHTML(list, html`<li class="rounded-xl bg-ink-50 p-4 text-sm text-ink-500">Couldn’t load broken-link attempts.</li>`);
     }
   }
+  hiddenToggle.addEventListener('click', async () => {
+    showingHidden = !showingHidden;
+    orphanPage = 1; // another list: from its first page
+    await loadOrphans();
+    hiddenToggle.focus(); // its label changed; keep the place
+  });
   orphanPager.querySelector('[data-prev]')!.addEventListener('click', () => {
     orphanPage = Math.max(1, orphanPage - 1);
     loadOrphans();

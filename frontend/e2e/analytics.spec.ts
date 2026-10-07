@@ -9,18 +9,19 @@ import { API_URL, BROWSER_UA } from './env';
 
 interface Groups {
   groups: Array<{ attempted_path: string; visits: number }>;
+  hidden_visits: number;
 }
 
-/** A page of the paths tried in the last 30 days, as the section asks for it. */
-async function grouped(ownerApi: APIRequestContext, page: number, size = 10): Promise<Groups> {
-  const response = await ownerApi.get(`/api/v1/analytics/orphan-visits/grouped?period=30&page=${page}&page_size=${size}`);
+/** A page of the paths tried in the last 30 days, as the section asks for it: typos only (3.10.8), or everything. */
+async function grouped(ownerApi: APIRequestContext, page: number, size = 10, typosOnly = true): Promise<Groups> {
+  const response = await ownerApi.get(`/api/v1/analytics/orphan-visits/grouped?period=30&page=${page}&page_size=${size}&typos_only=${typosOnly}`);
   expect(response.ok()).toBeTruthy();
   return (await response.json()) as Groups;
 }
 
 /** Someone asks for a code that's no link: a 404, and an orphan visit. */
-async function tryPath(request: APIRequestContext, path: string): Promise<void> {
-  const tried = await request.get(`${API_URL}/${path}`, { headers: { 'User-Agent': BROWSER_UA }, maxRedirects: 0 });
+async function tryPath(request: APIRequestContext, path: string, userAgent = BROWSER_UA): Promise<void> {
+  const tried = await request.get(`${API_URL}/${path}`, { headers: { 'User-Agent': userAgent }, maxRedirects: 0 });
   expect(tried.status(), `/${path} is no link`).toBe(404);
 }
 
@@ -58,6 +59,32 @@ test('ten paths at a time, with Next and Previous', async ({ page, ownerApi, req
 
   await page.getByRole('button', { name: 'Previous', exact: true }).click();
   await expect(paths.first()).toHaveText(first);
+});
+
+test('scanners and bots aren’t typos: the list leaves them out, says how many, and shows them on request', async ({ page, ownerApi, request }) => {
+  // A scanner's probe, the most tried of everything, so it's first once shown; and a bot on a path shaped like a code.
+  const probe = `.env-e2e-${Date.now()}`;
+  const hits = ((await grouped(ownerApi, 1, 1, false)).groups[0]?.visits ?? 0) + 1;
+  for (let hit = 0; hit < hits; hit++) await tryPath(request, probe);
+  await tryPath(request, `e2e-bot-${Date.now()}`, 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)');
+  const hidden = (await grouped(ownerApi, 1)).hidden_visits;
+  expect(hidden).toBeGreaterThanOrEqual(hits + 1);
+
+  await page.goto('/dashboard/analytics/');
+  const typos = page.getByRole('region', { name: 'Typos & broken links' });
+  const paths = typos.locator('[data-orphans] li p.shortlink');
+  const line = typos.locator('[data-orphans-hidden]');
+  await expect(line).toHaveText(`${hidden.toLocaleString('en-US')} hits from scanners and bots aren’t shown. Show them`);
+  await expect(paths.filter({ hasText: probe })).toHaveCount(0);
+
+  await typos.getByRole('button', { name: 'Show them' }).click();
+  await expect(paths.first()).toHaveText(`/${probe}`);
+  await expect(line).toHaveText('Hits from scanners and bots are shown too. Hide them');
+  await expect(typos.getByRole('button', { name: 'Hide them' })).toBeFocused();
+
+  await typos.getByRole('button', { name: 'Hide them' }).click();
+  await expect(line).toContainText('aren’t shown.');
+  await expect(paths.filter({ hasText: probe })).toHaveCount(0);
 });
 
 test("each section says its window, and the Pro card promises only what isn't built", async ({ page }) => {

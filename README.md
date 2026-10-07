@@ -457,7 +457,8 @@ Per-link analytics as on Shlink's link page (Phase 3.16, contract in ROADMAP 3.1
 - `GET /api/v1/analytics/orphan-visits` — typo'd / unknown codes (Phase 3.10.4)
 - `GET /api/v1/analytics/orphan-visits/grouped` — the same by the path tried, over a period and paged: how often,
   the first and last hit, and "did you mean": the links you see that it's one edit from. Never an IP, a user
-  agent or a referrer. Not an MCP tool: `list_orphan_visits_grouped` is its MCP side
+  agent or a referrer. `typos_only=true` leaves out scanners' probes and bots (3.10.8), and `hidden_visits` /
+  `hidden_paths` count what it left out. Not an MCP tool: `list_orphan_visits_grouped` is its MCP side
 
 ### Waitlist (Phase 9.1)
 - `POST /api/v1/waitlist` — public, no account: join the waitlist (limited per IP; the same answer whatever happened)

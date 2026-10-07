@@ -26,6 +26,23 @@ implementation lifecycle and is independent of the URL version segment.
 
 ## [Unreleased]
 
+### Changed — "Typos & broken links" without scanners and bots (3.10.8)
+- **The analytics page's "Typos & broken links" lists only what a person could have mistyped.** Since
+  go.griddo.io moved to Shurly it was mostly vulnerability scanners (`/.env`, `/wp-login.php`, `/.git/config`…)
+  and bots. A hit stays when it's on an unknown code (not "/"), its path is shaped like a code (one segment of
+  letters, digits, `-` and `_`, 64 characters at most), it isn't one of a short list of scanners' words
+  (`/wp-admin`, `/admin`, `/phpmyadmin`, `/xmlrpc`, `/HNAP1`…, whatever the case, unless it's a link's code on
+  any domain), and its user agent isn't a bot's, by the same test as a link's visits. A muted line under the
+  list says how many hits that left out ("42 hits from scanners and bots aren’t shown."), and **Show them**
+  brings them back, from the first page.
+- **`GET /api/v1/analytics/orphan-visits/grouped?typos_only=true`** does it, in SQL: the page, `total_visits`
+  and `total_paths` count only the hits shown. New `hidden_visits` and `hidden_paths` say what it left out (0
+  without it). Off by default, so API clients get what they got before.
+- **The MCP's `list_orphan_visits_grouped`** takes `typos_only` too, off by default, and returns the same two
+  counts; its samples are then of the hits shown.
+- Every orphan visit is still recorded: the raw `/orphan-visits` list and its exports keep the scanners' hits.
+  No migration: the bot test runs on the stored user agent, from the patterns a visit's `is_bot` uses.
+
 ### Added — the waitlist (9.1)
 - **`/waitlist/`, for people outside Griddo**, who can't sign in (accounts come from Google Workspace): a short pitch
   and a form, with its success on the same page. Email, name, and an individual or a company (then the company's

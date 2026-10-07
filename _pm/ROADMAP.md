@@ -605,6 +605,23 @@ System creates:
 - [x] Redirect path performance: rules eval is O(n) per URL with n typically <10
 - [x] Frontend remains compatible (no UI changes required for 3.10.1–3.10.4)
 
+### 3.10.8 Typos without scanners ✅
+Since go.griddo.io moved to Shurly, "Typos & broken links" (3.10.4) was flooded by vulnerability scanners and bots
+(`/.env`, `/favicon.ico`, `/wp-login.php`, `/.git/config`…). Now it shows what people could have mistyped.
+- [x] The rule, `typo_hits` in `server/utils/orphans.py`, in SQL: an unknown code (`invalid_short_url`, not "/");
+      a path shaped like a code (one segment of code characters, 64 at most); not one of `SCANNER_WORDS`
+      (`wp-admin`, `admin`, `phpmyadmin`, `xmlrpc`, `HNAP1`…, any case) unless it's a link's code on any domain;
+      and a user agent that isn't a bot's, from the patterns a visit's `is_bot` uses (`BOT_PATTERNS`, `bot_agent`)
+- [x] No migration: the bot test runs on the stored user agent, so the rule applies to every hit already recorded
+      and changes with the patterns. Orphan visits are recorded as before
+- [x] `GET /api/v1/analytics/orphan-visits/grouped?typos_only=true` (off by default): the page and its totals count
+      only the hits shown; `hidden_visits` and `hidden_paths` count what was left out. The MCP's
+      `list_orphan_visits_grouped` takes `typos_only` too
+- [x] The page asks for typos only, says "N hits from scanners and bots aren’t shown." under the list, and
+      **Show them** / **Hide them** reloads from the first page (`frontend/src/utils/orphans.ts`)
+- [x] Tests: `tests/test_orphan_groups.py` (SQLite and PostgreSQL), `frontend/tests/orphans.test.mjs`,
+      `e2e/analytics.spec.ts`, and axe on the Analytics page (`e2e/a11y.spec.ts`)
+
 ---
 
 ## Phase 3.11: Brand & Frontend Redesign ✅

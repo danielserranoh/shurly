@@ -333,3 +333,196 @@ def test_the_grouped_route_isnt_an_mcp_tool():
     names = {tool.name for tool in asyncio.run(_build_mcp_server().list_tools())}
 
     assert [name for name in names if "grouped" in name] == ["list_orphan_visits_grouped"]
+
+
+# ---------------------------------------------------------------------------
+# Typos only (3.10.8): what a person could have mistyped, without scanners and bots
+# ---------------------------------------------------------------------------
+
+BROWSER = (
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_5) AppleWebKit/605.1.15 Version/17.5 Safari/605.1.15"
+)
+CRAWLER = "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)"
+SCANNED = [
+    "/.env",
+    "/favicon.ico",
+    "/info.php",
+    "/wp-login.php",
+    "/.git/config",
+    "/wp-admin",
+    "/admin",
+    "/Administrator",  # the scanners' words, whatever their case
+    "/HNAP1",
+    "/phpmyadmin",
+]
+
+
+def _hit(db, path: str, *, agent: str | None = BROWSER, kind=OrphanVisitType.INVALID_SHORT_URL):
+    db.add(
+        OrphanVisit(
+            type=kind, attempted_path=path, user_agent=agent, created_at=NOW - timedelta(hours=1)
+        )
+    )
+    db.commit()
+
+
+@pytest.mark.parametrize("path", SCANNED)
+def test_a_scanners_probe_isnt_a_typo(client, auth_headers, db_session, path):
+    _hit(db_session, path)
+
+    body = _groups(client, auth_headers, "?typos_only=true")
+
+    assert body["groups"] == []
+    assert (body["total_visits"], body["total_paths"], body["pages"]) == (0, 0, 0)
+    assert (body["hidden_visits"], body["hidden_paths"]) == (1, 1)
+
+
+@pytest.mark.parametrize("path", ["/co-utadeo-lisa-garca", "/Wn7zf", "/abc12"])
+def test_a_real_typo_is_one(client, auth_headers, db_session, path):
+    _hit(db_session, path)
+    _hit(db_session, path, agent=None)  # no user agent isn't a bot's, as for a link's visits
+
+    body = _groups(client, auth_headers, "?typos_only=true")
+
+    assert [(g["attempted_path"], g["visits"]) for g in body["groups"]] == [(path, 2)]
+    assert (body["hidden_visits"], body["hidden_paths"]) == (0, 0)
+
+
+def test_a_typo_still_gets_its_did_you_mean(client, auth_headers, db_session, test_user):
+    _link(db_session, test_user, "co-utadeo-lisa-garcia")
+    _link(db_session, test_user, "wn7zfa")
+    _hit(db_session, "/co-utadeo-lisa-garca")
+    _hit(db_session, "/Wn7zf")
+
+    groups = _groups(client, auth_headers, "?typos_only=true")["groups"]
+
+    assert {g["attempted_path"]: [s["short_code"] for s in g["did_you_mean"]] for g in groups} == {
+        "/co-utadeo-lisa-garca": ["co-utadeo-lisa-garcia"],
+        "/Wn7zf": ["wn7zfa"],
+    }
+
+
+@pytest.mark.parametrize(
+    "agent",
+    [CRAWLER, "curl/8.4.0", "python-requests/2.31", "Go-http-client/1.1", "Wget/1.21", "a Spider"],
+)
+def test_a_bot_on_a_code_shaped_path_isnt_a_typo(client, auth_headers, db_session, agent):
+    _hit(db_session, "/abc12", agent=agent)
+
+    body = _groups(client, auth_headers, "?typos_only=true")
+
+    assert body["groups"] == []
+    assert (body["hidden_visits"], body["hidden_paths"]) == (1, 1)
+
+
+def test_a_path_people_and_bots_tried_counts_the_people(client, auth_headers, db_session):
+    _hit(db_session, "/abc12")
+    _hit(db_session, "/abc12", agent=CRAWLER)
+    _hit(db_session, "/abc12", agent="curl/8.4.0")
+
+    body = _groups(client, auth_headers, "?typos_only=true")
+
+    assert [(g["attempted_path"], g["visits"]) for g in body["groups"]] == [("/abc12", 1)]
+    assert (body["total_visits"], body["total_paths"]) == (1, 1)
+    # Two hits hidden, but no path: /abc12 is shown.
+    assert (body["hidden_visits"], body["hidden_paths"]) == (2, 0)
+
+
+def test_the_bare_domain_isnt_a_typo(client, auth_headers, db_session):
+    _hit(db_session, "/", kind=OrphanVisitType.BASE_URL)
+    _hit(db_session, "/abc12", kind=OrphanVisitType.REGULAR_404)  # nothing records these yet
+
+    body = _groups(client, auth_headers, "?typos_only=true")
+
+    assert body["groups"] == []
+    # Neither is in the section without the filter either: only unknown codes are.
+    assert (body["hidden_visits"], body["hidden_paths"]) == (0, 0)
+
+
+def test_a_scanners_word_that_is_a_links_code_isnt_hidden(
+    client, auth_headers, db_session, test_user
+):
+    """A link with that code, on any domain: its hits elsewhere could be typos of the domain."""
+    go = Domain(hostname="go.example.com", is_default=False)
+    db_session.add(go)
+    db_session.commit()
+    _link(db_session, test_user, "console", domain=go)
+    _hit(db_session, "/console")
+    _hit(db_session, "/Console")
+    _hit(db_session, "/admin")
+
+    body = _groups(client, auth_headers, "?typos_only=true")
+
+    assert sorted(g["attempted_path"] for g in body["groups"]) == ["/Console", "/console"]
+    assert (body["hidden_visits"], body["hidden_paths"]) == (1, 1)
+
+
+def test_typos_only_pages_and_counts_only_whats_shown(client, auth_headers, db_session):
+    for i in range(12):
+        for _ in range(12 - i):
+            _hit(db_session, f"/t{i:02d}")
+        _hit(db_session, f"/t{i:02d}", agent=CRAWLER)  # one bot hit on each
+    for path in SCANNED:
+        for _ in range(20):  # the most tried of all, but not typos
+            _hit(db_session, path)
+
+    first = _groups(client, auth_headers, "?typos_only=true&page_size=5")
+    last = _groups(client, auth_headers, "?typos_only=true&page_size=5&page=3")
+
+    assert (first["groups"][0]["attempted_path"], first["groups"][0]["visits"]) == ("/t00", 12)
+    assert (first["total_paths"], first["pages"], len(first["groups"])) == (12, 3, 5)
+    assert first["total_visits"] == sum(range(1, 13))
+    assert [g["attempted_path"] for g in last["groups"]] == ["/t10", "/t11"]
+    assert first["hidden_visits"] == 12 + 20 * len(SCANNED)
+    assert first["hidden_paths"] == len(SCANNED)
+
+
+def test_without_typos_only_everything_as_before(client, auth_headers, db_session):
+    _hit(db_session, "/abc12")
+    _hit(db_session, "/abc12", agent=CRAWLER)
+    for path in SCANNED:
+        _hit(db_session, path)
+    _hit(db_session, "/", kind=OrphanVisitType.BASE_URL)
+
+    default = _groups(client, auth_headers)
+    off = _groups(client, auth_headers, "?typos_only=false")
+
+    assert default == off
+    assert (default["groups"][0]["attempted_path"], default["groups"][0]["visits"]) == ("/abc12", 2)
+    assert (default["total_visits"], default["total_paths"]) == (2 + len(SCANNED), 1 + len(SCANNED))
+    assert (default["hidden_visits"], default["hidden_paths"]) == (0, 0)
+
+
+def test_the_mcp_tool_can_leave_out_scanners_and_bots_too(db_session, test_user):
+    from mcp_server import curated
+
+    _hit(db_session, "/abc12")
+    _hit(db_session, "/abc12", agent=CRAWLER)
+    _hit(db_session, "/.env")
+    _hit(db_session, "/", kind=OrphanVisitType.BASE_URL)
+
+    everything = curated.list_orphan_visits_grouped(db_session, test_user)
+    typos = curated.list_orphan_visits_grouped(db_session, test_user, typos_only=True)
+
+    assert (everything["total_visits"], everything["distinct_paths"]) == (4, 3)
+    assert (everything["hidden_visits"], everything["hidden_paths"]) == (0, 0)
+    assert [(g["attempted_path"], g["count"]) for g in typos["groups"]] == [("/abc12", 1)]
+    assert (typos["total_visits"], typos["distinct_paths"]) == (1, 1)
+    assert (typos["hidden_visits"], typos["hidden_paths"]) == (3, 2)
+    # Its samples are the hits shown: not the crawler's.
+    assert [s["user_agent"] for s in typos["groups"][0]["samples"]] == [BROWSER]
+
+
+@pytest.mark.parametrize(
+    "agent",
+    [None, "", BROWSER, CRAWLER, "CURL/7", "Java/17.0.2", "Mozilla/5.0 (compatible; bingbot/2.0)"],
+)
+def test_a_bot_in_sql_is_a_bot_for_a_visit(db_session, agent):
+    """The query's test is a visit's `is_bot`, from the same patterns."""
+    from server.utils.user_agent import bot_agent, is_bot
+
+    _hit(db_session, "/abc12", agent=agent)
+
+    flagged = db_session.query(bot_agent(OrphanVisit.user_agent)).scalar()
+
+    assert bool(flagged) is is_bot(agent)
