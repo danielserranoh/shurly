@@ -8,6 +8,9 @@ An organization's campaign has one recipient, whose CSV row carries a marker, an
 - A plain member of the organization gets it, the marker included where the row says the
   route returns recipients' rows.
 - A campaign that is its creator's own stays hidden from that member.
+- Phase 10.1 — a route for the organization's owners and admins (a service account's links):
+  the owner gets it, a plain member a 403. The shared campaign's link was made by the
+  organization's service account, which these routes address as `{account_id}`.
 
 The routes are read from the table, so a new one is checked as soon as its row says what it
 returns.
@@ -97,19 +100,29 @@ def world(db_session) -> dict:
     owner = User(email="owner@griddo.io", password_hash="x", is_active=True)
     member = User(email="member@griddo.io", password_hash="x", is_active=True)
     outsider = User(email="someone@other.example", password_hash="x", is_active=True)
-    db_session.add_all([griddo, other, owner, member, outsider])
+    service = User(
+        email="audit@service.invalid", kind="service", display_name="Audit", is_active=True
+    )
+    db_session.add_all([griddo, other, owner, member, outsider, service])
     db_session.flush()
     for organization, user, role in (
         (griddo, owner, OrgRole.OWNER),
         (griddo, member, OrgRole.MEMBER),
         (other, outsider, OrgRole.OWNER),
+        (griddo, service, OrgRole.MEMBER),
     ):
         db_session.add(
             OrganizationMember(organization_id=organization.id, user_id=user.id, role=role)
         )
     shared = _campaign(db_session, owner, griddo.id, "aud-shared")
     personal = _campaign(db_session, owner, None, "aud-personal")
+    db_session.flush()
+    # Phase 10.1 — the shared campaign's link was made by the organization's service account.
+    db_session.query(URL).filter(URL.short_code == "aud-shared").update(
+        {URL.via_service_account_id: service.id}
+    )
     db_session.commit()
+    _SERVICE["id"] = service.id
     return {
         "owner": owner,
         "member": member,
@@ -119,12 +132,21 @@ def world(db_session) -> dict:
     }
 
 
+_SERVICE: dict = {}
+
+
 def _path(route: str, campaign: Campaign, code: str) -> str:
     return (
         route.split(" ", 1)[1]
         .replace("{campaign_id}", str(campaign.id))
         .replace("{short_code}", code)
+        .replace("{account_id}", str(_SERVICE.get("id")))
     )
+
+
+def _for_owners_and_admins(route: str) -> bool:
+    """Phase 10.1 — a route only the organization's owners and admins read."""
+    return _rows()[route]["who"].strip().startswith("an owner or admin")
 
 
 def _returns_rows(route: str) -> bool:
@@ -153,15 +175,23 @@ def test_an_outsider_never_gets_it(client, world, route):
 
 @pytest.mark.parametrize("route", ROUTES)
 def test_a_member_gets_it(client, world, route):
+    """Or, for a route of the owners and admins, the owner does and a member gets a 403."""
     campaign, code = world["shared"]
-    response = client.get(_path(route, campaign, code), headers=_as(world["member"]))
+    reader = world["owner"] if _for_owners_and_admins(route) else world["member"]
+    response = client.get(_path(route, campaign, code), headers=_as(reader))
 
     assert response.status_code == 200, response.text
     if _returns_rows(route):
         assert MARKER in response.text
+    if _for_owners_and_admins(route):
+        refused = client.get(_path(route, campaign, code), headers=_as(world["member"]))
+        assert refused.status_code == 403, refused.text
 
 
-@pytest.mark.parametrize("route", [route for route in ROUTES if "{" in route])
+# A service account's links are never personal (10.1): its routes have no personal campaign.
+@pytest.mark.parametrize(
+    "route", [route for route in ROUTES if "{" in route and "{account_id}" not in route]
+)
 def test_a_personal_campaign_stays_its_creators(client, world, route):
     campaign, code = world["personal"]
 

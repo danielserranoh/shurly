@@ -17,7 +17,9 @@ Accounts are recognised by Google's `sub`, which survives an email rename:
 4. First sign-in, and the address's account is linked to another `sub`: refused,
    never linked. Google may have given a freed address to someone else.
 
-A closed account (removed from the organization) is refused either way.
+A closed account (removed from the organization) is refused either way, and so is a service
+account (Phase 10.1: `users.kind = 'service'` never signs in; its email is a `.invalid`
+placeholder no Google account can have, so this is the backstop).
 
 Phase 3.12 — the names in the ID token start the profile of an account that has none.
 Once there's one, it's the person's: nothing from Google changes it, not even names they
@@ -92,6 +94,8 @@ def sign_in_with_google(db: Session, account: GoogleAccount) -> User:
     )
     if identity is not None:
         user = identity.user
+        if user.is_service:
+            raise GoogleSignInError("service_account", user_id=str(user.id))
         if not user.is_active:
             raise GoogleSignInError("inactive", user_id=str(user.id))
         if identity.email != account.email:
@@ -105,6 +109,8 @@ def sign_in_with_google(db: Session, account: GoogleAccount) -> User:
         user = User(email=account.email, password_hash=None, is_active=True)
         db.add(user)
         db.flush()
+    elif user.is_service:
+        raise GoogleSignInError("service_account", user_id=str(user.id))
     elif not user.is_active:
         raise GoogleSignInError("inactive", user_id=str(user.id))
     elif user.has_google:
@@ -180,6 +186,6 @@ def redeem_login_code(db: Session, code: str) -> User | None:
     if row is None or row.expires_at <= _now():
         return None
     user = db.get(User, row.user_id)
-    if user is None or not user.is_active:
+    if user is None or not user.is_active or user.is_service:
         return None
     return user

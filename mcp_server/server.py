@@ -97,6 +97,10 @@ EXCLUDED_ROUTE_MAPS: list[RouteMap] = [
     # strangers typed on a public page: in an assistant's context, with its write tools, it's
     # the open internet's prompt.
     RouteMap(pattern=r"^/api/v1/waitlist(/.*)?$", mcp_type=MCPType.EXCLUDE),
+    # Phase 10.1 — service accounts, all of it: making, renewing and revoking a token is the
+    # owner's, signed in (the routes refuse anything else); an assistant talked into "renew
+    # the token" would get a secret in its context. Reading them is for the owners and admins.
+    RouteMap(pattern=r"^/api/v1/service-accounts(/.*)?$", mcp_type=MCPType.EXCLUDE),
     RouteMap(
         methods=["PUT", "DELETE"],
         pattern=r"^/api/v1/auth/password$",

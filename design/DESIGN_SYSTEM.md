@@ -89,6 +89,9 @@ toasts, confirm dialogs and copy feedback (`ui.ts`), who's looking and locked co
   click. The API still decides: a 403 that gets through shows its message and the page checks the role again.
 - **Copy.** The button turns blue and reads "Copied!" for 2 s. A toast is added only when the button
   isn't where you're looking (auto-copy after quick create, bulk copy).
+- **Secrets** (an API key, a service account's token) show once, right after they're made: in a box with **Copy**,
+  under a notice that says to copy it now ("you won't see it again"). The page keeps it in memory only, copies it
+  from there, and forgets it when the box closes; afterwards only how it starts shows (`shurly_AbC12…`, `shsa_1a2b3c4d…`).
 - **Toasts** appear top-right under the header: 4 s, or 6 s for errors.
 - **Dialogs** fade and scale in and become bottom sheets under 640 px. **Menus** use the Popover API.
 - **Photos.** An avatar is the first name's initial (the email's without one) until there's a photo. A

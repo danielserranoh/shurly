@@ -26,6 +26,39 @@ implementation lifecycle and is independent of the URL version segment.
 
 ## [Unreleased]
 
+### Added — service accounts (10.1)
+- **A service account** is another system that makes links for the organization, such as Propuestas Griddo, with a
+  name, a description, a person responsible and a role (`member` or `admin`). It's a user with `kind = 'service'`
+  (every existing account is a `person`): it never signs in, by Google, password or the MCP, and the members list,
+  the owner counts, the removed people and the bootstrap owner leave it out. It can't generate an API key, set a
+  password, manage service accounts or change the organization (403, `code: service_account_not_allowed`).
+- **One token per account**, `shsa_<prefix>_<secret>` (32 random bytes), shown once and kept as a SHA-256.
+  `Authorization: Bearer shsa_…` makes the service account the current user. Renewing keeps the old token for 24
+  hours; revoking ends it at once; an expiry is optional; its last use is kept to the minute, with no IP. Unknown,
+  revoked, expired and past-its-overlap tokens get the same 401.
+- **`X-Shurly-On-Behalf-Of: <email>`** on `POST /api/v1/urls`, `/urls/custom` and `/campaigns`, with a service
+  token: that person is the creator, the link belongs to the organization, and it keeps which service account and
+  token made it (`urls.via_service_account_id`, `urls.via_token_id`). An email that isn't someone in its
+  organization is a 422 (`on_behalf_of_unknown`), and no link is made; without the header, the service is the
+  creator. From a person's API key or session, the header is a 403 (`on_behalf_of_not_allowed`). It grants
+  nothing: the service acts with its own role. A service's links are never personal.
+- **The service account that made a link can change and delete it**, so a `member` service sets the expiry or
+  revokes what it made; an `admin` service changes the organization's links, as admins do.
+- **`URLResponse.via_service_account`**: `{id, display_name}` or null, never the token. **`GET /api/v1/urls?via_service_account=<id>`**.
+- **Errors** keep `{"detail": "…"}` and add a stable `code` for the new cases.
+- **Management, for the organization's owner, signed in** (admins read): `/api/v1/service-accounts` (list, create,
+  `PATCH`, `DELETE`), `…/{id}/token` (`POST` to create or renew, `DELETE` to revoke, `?old_only=true`), and
+  `…/{id}/links?token_id=`. None is an MCP tool; the MCP refuses a service token and never sends the header.
+- **Settings → Organization → Service accounts**: the owner makes, edits and removes them, and creates, renews and
+  revokes their token, shown once with Copy and "you won't see it again"; each token's prefix, expiry, last use,
+  and the links it made. Admins see it without the buttons; members don't. A link made for someone says "Created
+  by Ana García via Propuestas Griddo"; the links list filters by service account ("Made via").
+- **Events** in the event log: `service_account.*`, `service_token.*`, and `url.created` / `.updated` /
+  `.deleted` (and `campaign.created`) with the account, the token and on whose behalf (a user id) when a service
+  did it. Never a token, a hash or an email.
+- Migration `0017`, add-only. The manual has "Connect another service", for owners; DEPLOYMENT.md has a note for
+  operators.
+
 ### Changed — "Typos & broken links" without scanners and bots (3.10.8)
 - **The analytics page's "Typos & broken links" lists only what a person could have mistyped.** Since
   go.griddo.io moved to Shurly it was mostly vulnerability scanners (`/.env`, `/wp-login.php`, `/.git/config`…)

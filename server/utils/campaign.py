@@ -93,6 +93,8 @@ def generate_campaign_urls(
     domain_id: UUID,
     db_session,
     organization_id: UUID | None = None,
+    via_service_account_id: UUID | None = None,
+    via_token_id: UUID | None = None,
 ) -> list[URL]:
     """
     Generate URL objects for each CSV row.
@@ -105,6 +107,8 @@ def generate_campaign_urls(
         domain_id: UUID of the domain the short codes are unique within
         db_session: SQLAlchemy session for checking short code uniqueness
         organization_id: The campaign's organization (None for a personal campaign)
+        via_service_account_id, via_token_id: The service account and token that made them
+            (Phase 10.1), None when a person did
 
     Returns:
         List of URL objects (not yet committed to DB)
@@ -146,6 +150,8 @@ def generate_campaign_urls(
             user_data=dict(row),  # Store entire row as JSON
             created_by=created_by,
             organization_id=organization_id,
+            via_service_account_id=via_service_account_id,
+            via_token_id=via_token_id,
         )
         urls.append(url)
 

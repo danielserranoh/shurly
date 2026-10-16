@@ -28,6 +28,8 @@ export interface LinkQuery {
   types?: URLType[];
   tags?: string[];
   match?: 'any' | 'all';
+  /** Phase 10.1: only the links this service account made. */
+  via?: string;
   skip?: number;
   limit?: number;
 }
@@ -39,6 +41,7 @@ export function listLinks(query: LinkQuery = {}): Promise<LinkListResponse> {
       url_type: query.types,
       tags: query.tags?.length ? query.tags.join(',') : undefined,
       tag_filter: query.tags && query.tags.length > 1 ? query.match ?? 'any' : undefined,
+      via_service_account: query.via || undefined,
       skip: query.skip ?? 0,
       limit: query.limit ?? 20,
     })}`,
