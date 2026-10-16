@@ -5,11 +5,14 @@
  * still checks, and its 403/409 `detail` is shown as it comes.
  *
  * Phase 3.14.4 — the logo: owners and admins upload, preview and remove it; members see it.
+ *
+ * Phase 10.1 — service accounts (ServiceAccountsSection): owners manage them, admins see them.
  */
 import Icon from '@/components/ui/Icon.astro';
 import EmptyState from '@/components/ui/EmptyState.astro';
 import OrgMark from '@/components/ui/OrgMark.astro';
 import SettingsSection from './SettingsSection.astro';
+import ServiceAccountsSection from './ServiceAccountsSection.astro';
 ---
 
 <div class="grid gap-10" data-org-content>
@@ -49,6 +52,9 @@ import SettingsSection from './SettingsSection.astro';
       <div data-members></div>
     </div>
   </SettingsSection>
+
+  <!-- Owners and admins (10.1): the services that make links for the organization -->
+  <ServiceAccountsSection />
 
   <!-- Owners only, and only when someone was removed (3.14.3) -->
   <div data-removed-section hidden>

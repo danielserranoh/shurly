@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 import pytest
 from sqlalchemy import event
 
-from server.core.models import URL, User, Visitor
+from server.core.models import URL, Visitor
 from server.utils.domain import get_or_create_default_domain
 from tests.test_phase84_shlink_import import (  # noqa: F401 — `owner` is the importer's fixture
     owner,
@@ -112,8 +112,16 @@ def test_migration_0010_repairs_what_is_stored(pg_engine):
         config.attributes["connection"] = conn
         command.upgrade(config, "0009")
         db = Session(bind=conn)
-        user = User(email="owner@griddo.io", password_hash="x", is_active=True)
-        db.add(user)
+        # Only the columns 0009 has: the model maps later ones (0017's `kind`, with a default),
+        # which an ORM or a table INSERT would name.
+        owner_id = uuid.uuid4()
+        db.execute(
+            text(
+                "INSERT INTO users (id, email, password_hash, api_key_scope, is_active, created_at)"
+                " VALUES (:id, 'owner@griddo.io', 'x', 'FULL_ACCESS', true, now())"
+            ),
+            {"id": owner_id},
+        )
         db.flush()
         domain = get_or_create_default_domain(db)
         stale = datetime(2026, 9, 28, 12, 0, tzinfo=timezone.utc)
@@ -129,7 +137,7 @@ def test_migration_0010_repairs_what_is_stored(pg_engine):
                     url_type="STANDARD",
                     forward_parameters=True,
                     crawlable=False,
-                    created_by=user.id,
+                    created_by=owner_id,
                     created_at=datetime(2026, 9, 1),
                     updated_at=datetime(2026, 9, 1),
                     domain_id=domain.id,

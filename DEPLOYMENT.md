@@ -836,6 +836,32 @@ An API key is kept as its SHA-256 hash and its first 12 characters (`users.api_k
   column back empty.
 - A downgrade past `0007` can't give the keys back: everyone generates a new one.
 
+## Service accounts (Phase 10.1)
+
+An integration (Propuestas Griddo) gets a service account instead of a person's API key: its own token, which
+survives people leaving, and links attributed to the person they're for. Spec: `_pm/spec_service_accounts.md`;
+for owners, the manual's "Connect another service" (`/manual/connect-a-service/`).
+
+- **Making one.** An owner, signed in: Settings → Organization → Service accounts → **New service account** (a
+  name, what it's for, a person responsible, `member` unless it must change everyone's links), then **Create
+  token**. The token, `shsa_<prefix>_<secret>`, shows once: put it in the integration's secret store (its own
+  AWS Secrets Manager or environment), never in a repository. Shurly keeps a SHA-256 of it.
+- **Rotating without downtime.** **Renew token**: the new one works at once and the old one for 24 more hours.
+  Deploy the integration with the new token, check its **Last used** moves (the old one's stops), then **End it
+  now** on the previous token, or let the 24 hours run out. A token that may have leaked: **Links made with it**
+  shows what it touched, then renew, or **Revoke** to cut it off at once.
+- **Revoking and removing** take effect on the next request: a 401. Removing the account also takes it out of the
+  organization; its links keep working.
+- **Nothing to configure.** No setting, no new secret: migration `0017` adds `users.kind` (every existing
+  account is a `person`), the service fields, `service_tokens`, and `urls.via_service_account_id` /
+  `urls.via_token_id`, all add-only, so the previous release keeps working during the rollout.
+- **What the event log records** (CloudWatch, 60 days): `service_account.created` / `.updated` / `.removed`,
+  `service_token.created` / `.renewed` / `.revoked`, and `url.created` / `.updated` / `.deleted` (and
+  `campaign.created`) with `service_account_id`, `token_id` and `on_behalf_of` (a user id) when a service did
+  it. Ids only: never a token, its hash or an email.
+- A service account never signs in (Google, password, the MCP), never appears among the members, and can't
+  generate an API key, set a password, manage service accounts or change the organization.
+
 ## Sign in with Google (Phase 3.13)
 
 Accounts come from signing in with a Google Workspace account of `ORGANIZATION_DOMAIN` (`griddo.io`).

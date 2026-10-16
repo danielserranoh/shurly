@@ -209,6 +209,15 @@ class URLUpdate(BaseModel):
     model_config = {"extra": "forbid"}  # Prevent updating immutable fields
 
 
+class ServiceAccountRef(BaseModel):
+    """Phase 10.1 — the service account that created a link: never its token."""
+
+    id: UUID
+    display_name: str | None = None
+
+    model_config = {"from_attributes": True}
+
+
 class URLResponse(BaseModel):
     """Schema for URL response."""
 
@@ -285,6 +294,11 @@ class URLResponse(BaseModel):
     # Phase 3.12 — the creator's name, from their profile; null without one.
     created_by_first_name: str | None = None
     created_by_last_name: str | None = None
+    # Phase 10.1 — the service account that created it, for its creator or for itself; null
+    # when a person did, with their own credentials. Never the token.
+    via_service_account: ServiceAccountRef | None = Field(
+        None, description="The service account that created the link, {id, display_name}; null"
+    )
 
     model_config = {"from_attributes": True}
 

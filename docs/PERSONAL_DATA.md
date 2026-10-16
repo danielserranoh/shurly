@@ -27,7 +27,7 @@ This is about what goes *out*: what a route returns, not what Shurly records. Wh
 | **recipients' activity** | What one recipient did: their clicks and opens, and when |
 | **visits** | Visits, counted or one by one: time, kind, country, browser, OS, device, referrer host. Their city only counted, never one by one (§ Cities). Never an IP. On a campaign link, a link's visits are one recipient's |
 | **addresses** | Anonymized IPs, with user agents and referrers |
-| **accounts** | Other people's accounts: emails, names, roles |
+| **accounts** | Other people's accounts: emails, names, roles. A service account's name, description and person responsible (10.1) |
 | **own account** | The caller's own: email, profile, photo, tokens, API key |
 | **prospects** | The waitlist's entries (9.1): people outside Griddo, with their email, name, whether they came as an individual or for a company, the company's name and size, their role, what they'd use Shurly for and how they heard of it |
 
@@ -39,8 +39,8 @@ of the same module that the route calls.
 | Guard | Who gets an answer |
 |---|---|
 | public | Anyone, signed in or not |
-| `get_current_user` | Any signed-in account: a session token (JWT) or an API key |
-| `get_signed_in_session` | A session token only: an API key gets a 403 |
+| `get_current_user` | Any signed-in account: a session token (JWT), an API key or a service token (10.1) |
+| `get_signed_in_session` | A session token only: an API key gets a 403, a service token a 403 with `code: service_account_not_allowed` |
 | `sees` | A list, filtered to what the caller can see: their organization's, and their own personal ones (`Viewer.sees`, `server/utils/access.py`) |
 | `visible_url_or_404`, `visible_campaign_or_404` | One link or campaign the caller can see, else 404. When a route changes it, one they can change, else 403: its creator, or an organization admin or owner (`server/utils/access.py`) |
 | `find_urls`, `find_url`, `can_change` | The same rules, where the MCP's curated tools and bulk tagging apply them |
@@ -49,6 +49,8 @@ of the same module that the route calls.
 | `change_role`, `remove_member`, `transfer_ownership`, `removed_members`, `adopt_personal_links` | The organization's roles (`server/utils/organization.py`) |
 | `editable_organization` | An owner or admin of the caller's organization, for its logo: a member gets a 403, someone outside it a 404 (`server/utils/organization.py`) |
 | `ensure_owner_or_admin` | An owner or admin of the caller's organization: a member, or an account outside any organization, gets a 403 (`server/utils/organization.py`) |
+| `ensure_reader` | An owner or admin of the caller's organization, a person, for its service accounts: anyone else gets a 403 (`server/utils/service_accounts.py`) |
+| `create_account`, `update_account`, `remove_account`, `issue_token`, `revoke_tokens` | The organization's owner, a person: anyone else gets a 403, a service account that isn't the organization's a 404 (`server/utils/service_accounts.py`) |
 | `RequireAuthMiddleware` | The MCP: an account's token or API key |
 
 ## Routes
@@ -90,7 +92,7 @@ of the same module that the route calls.
 | `PUT /api/v1/auth/password` | none | the caller, signed in (not with an API key) | `get_signed_in_session` | excluded |
 | `POST /api/v1/auth/register` | **own account**: the new account. Off unless `ALLOW_PASSWORD_SIGNUP` | anyone, when it's on | public | excluded |
 | `GET /api/v1/campaigns` | **accounts**: each campaign's creator's email and names | the campaigns the caller can see: their organization's, and their own | `sees` | `list_campaigns` |
-| `POST /api/v1/campaigns` | **own account**: the new campaign, the caller as its creator | any signed-in account | `get_current_user` | `create_campaign` |
+| `POST /api/v1/campaigns` | **own account**: the new campaign, the caller as its creator. With a service token and `X-Shurly-On-Behalf-Of` (10.1), **accounts**: the person named, as on `POST /api/v1/urls` | any signed-in account. The header only from a service token | `get_current_user`, `acting_for` | `create_campaign` |
 | `DELETE /api/v1/campaigns/{campaign_id}` | none | who can change the campaign | `visible_campaign_or_404` | `delete_campaign` |
 | `GET /api/v1/campaigns/{campaign_id}` | **recipients' rows**: every recipient's `user_data`. **accounts**: the creator's email and names | who can see the campaign | `visible_campaign_or_404` | `get_campaign` |
 | `GET /api/v1/campaigns/{campaign_id}/export` | **recipients' rows**: every recipient's `user_data`, as a CSV | who can see the campaign | `visible_campaign_or_404` | `export_campaign` |
@@ -108,14 +110,21 @@ of the same module that the route calls.
 | `PATCH /api/v1/organization/members/{user_id}` | **accounts**: that member's email, names and role | an admin or owner, as `change_role` allows | `change_role` | excluded |
 | `GET /api/v1/organization/removed-members` | **accounts**: removed people's emails and names, and how many links and campaigns each still owns | an owner | `removed_members` | excluded |
 | `POST /api/v1/organization/transfer-ownership` | **accounts**: the new owner's email, names and role | the owner | `transfer_ownership` | excluded |
+| `GET /api/v1/service-accounts` | **accounts**: the organization's service accounts, each one's name, description, role and person responsible (email and names), and its tokens' prefix, creation, expiry and last use. Never a token or its hash, never an IP | an owner or admin, signed in | `get_signed_in_session`, `ensure_reader` | excluded |
+| `POST /api/v1/service-accounts` | **accounts**: the new service account, with its person responsible | the owner, signed in | `get_signed_in_session`, `create_account` | excluded |
+| `DELETE /api/v1/service-accounts/{account_id}` | none: it revokes the account's tokens and removes it | the owner, signed in | `get_signed_in_session`, `remove_account` | excluded |
+| `PATCH /api/v1/service-accounts/{account_id}` | **accounts**: the service account, with its person responsible | the owner, signed in | `get_signed_in_session`, `update_account` | excluded |
+| `GET /api/v1/service-accounts/{account_id}/links` | **recipients' rows** and **recipients' activity**: a campaign link's, as `GET /api/v1/urls`. **accounts**: each link's creator's email and names. The links the account made, `?token_id=` those one token made | an owner or admin, signed in | `get_signed_in_session`, `ensure_reader`, `sees` | excluded |
+| `DELETE /api/v1/service-accounts/{account_id}/token` | none | the owner, signed in | `get_signed_in_session`, `revoke_tokens` | excluded |
+| `POST /api/v1/service-accounts/{account_id}/token` | **accounts**: the service account, with its person responsible, and its new token, shown this once | the owner, signed in | `get_signed_in_session`, `issue_token` | excluded |
 | `GET /api/v1/tags` | none: tags are names shared by everyone | any signed-in account | `get_current_user` | `list_tags` |
 | `POST /api/v1/tags` | none | any signed-in account | `get_current_user` | `create_tag` |
 | `DELETE /api/v1/tags/{tag_id}` | none | any signed-in account | `get_current_user` | `delete_tag` |
 | `PATCH /api/v1/tags/{tag_id}` | none | any signed-in account | `get_current_user` | `update_tag` |
-| `GET /api/v1/urls` | **recipients' rows** and **recipients' activity**: a campaign link's `user_data`, clicks and last click. **accounts**: each link's creator's email and names | the links the caller can see: their organization's, and their own | `sees` | `list_urls` |
-| `POST /api/v1/urls` | **own account**: the new link, the caller as its creator | any signed-in account | `get_current_user` | `create_short_url` |
+| `GET /api/v1/urls` | **recipients' rows** and **recipients' activity**: a campaign link's `user_data`, clicks and last click. **accounts**: each link's creator's email and names, and the service account that made it, `{id, display_name}` (10.1; never its token). `?via_service_account=` filters by it | the links the caller can see: their organization's, and their own | `sees` | `list_urls` |
+| `POST /api/v1/urls` | **own account**: the new link, the caller as its creator. With a service token and `X-Shurly-On-Behalf-Of` (10.1), **accounts**: the person named becomes its creator, with their email and names; an email nobody in the organization has is a 422 that says no more | any signed-in account. The header only from a service token | `get_current_user`, `acting_for` | `create_short_url` |
 | `POST /api/v1/urls/bulk/tags` | none: counts | the links the caller can change | `find_urls`, `can_change` | `bulk_tag_urls` |
-| `POST /api/v1/urls/custom` | **own account**: the new link, the caller as its creator | any signed-in account | `get_current_user` | `create_custom_url` |
+| `POST /api/v1/urls/custom` | **own account**: the new link, the caller as its creator. With a service token and `X-Shurly-On-Behalf-Of` (10.1), **accounts**: the person named becomes its creator, with their email and names | any signed-in account. The header only from a service token | `get_current_user`, `acting_for` | `create_custom_url` |
 | `POST /api/v1/urls/fetch-metadata` | none: a page's Open Graph tags | any signed-in account | `get_current_user` | `fetch_url_metadata` |
 | `DELETE /api/v1/urls/{short_code}` | none | who can change the link | `visible_url_or_404` | `delete_url` |
 | `GET /api/v1/urls/{short_code}` | **recipients' rows** and **recipients' activity**, for a campaign link. **accounts**: the creator's email and names | who can see the link | `visible_url_or_404` | `get_url` |
@@ -168,6 +177,26 @@ Each also runs behind `POST /mcp/`, the MCP's sign-in.
 | MCP `list_orphan_visits_grouped` | **addresses**: the anonymized IPs, user agents and referrers of each path's newest 3 hits on unknown codes, with the paths' counts, first and last hit, and the links each may have meant. With `typos_only` (3.10.8), only the hits a person could have mistyped, samples included, and how many hits and paths that left out | any account: they belong to no organization. The links suggested are the caller's to see. **Kept (2026-09-29):** the IPs are shown, to revisit after the dogfood | `RequireAuthMiddleware`, `viewer` | curated |
 | MCP `create_campaign_from_rows` | **own account**: the new campaign | any account | `viewer` | curated |
 | MCP `add_redirect_rule` | none | who can change the link | `find_url`, `can_change` | curated |
+
+## Service accounts (10.1, decided 2026-10-16)
+
+Another system, such as Propuestas Griddo, makes links for the organization with its own token
+(`_pm/spec_service_accounts.md`). What Shurly keeps:
+- **The account:** a `users` row with `kind = 'service'`, its display name, description and person responsible
+  (`responsible_user_id`), and a placeholder email at `service.invalid`, which is nobody's. Lists of people (the members,
+  the removed people) leave it out.
+- **Its tokens** (`service_tokens`): the prefix shown to tell them apart and a SHA-256 of the token, never the token;
+  who made and who revoked each one, when, its expiry, and its last use to the minute. **No IP**, ever.
+- **On a link:** `urls.via_service_account_id`, the service account that made it, shown with its name ("via
+  Propuestas Griddo"), and `urls.via_token_id`, the token it used. The token's reference is internal: it's never in
+  a link's response or page, only in what the owners and admins read in Settings → Organization (`…/links?token_id=`),
+  to answer "which links did this token create?" when a token leaks.
+- **Whom a link is for:** `X-Shurly-On-Behalf-Of` names a person by email; they become the link's creator, as if
+  they'd made it. The email itself isn't kept or logged: the event log has their user id (`on_behalf_of`).
+
+Who sees it: the accounts and their tokens' prefixes, the organization's owners and admins; a link's service account,
+whoever sees the link. None of the management routes is an MCP tool, and the MCP never takes a service token or the
+header.
 
 ## The waitlist (9.1, proposed 2026-10-05)
 

@@ -59,6 +59,7 @@ _REFUSED = {
     "domain": "Only accounts of the organization's Google Workspace can use Shurly.",
     "unverified": "Google hasn't verified this account's address.",
     "inactive": "This Shurly account is closed.",
+    "service_account": "This is a service account: it never signs in.",
     "account_conflict": "This address's Shurly account belongs to another Google account.",
     "google_unavailable": "Google couldn't be reached. Try again.",
     "try_again": "Try again.",
@@ -195,7 +196,8 @@ class ShurlyGoogleProvider(GoogleProvider):
                 .filter(UserIdentity.provider == PROVIDER, UserIdentity.subject == subject)
                 .first()
             )
-            if identity is None or not identity.user.is_active:
+            # Phase 10.1 — a service account never signs in, here either.
+            if identity is None or not identity.user.is_active or identity.user.is_service:
                 return None
             return _Account(id=identity.user.id, email=identity.user.email)
 

@@ -28,6 +28,7 @@ Error reasons in the fragment:
 - unverified: Google hasn't verified the address
 - account_conflict: the address's Shurly account is linked to another Google account
 - inactive: the account was closed
+- service_account: the address is a service account's, which never signs in (10.1)
 - invalid_token: Google's answer didn't check out
 - google_unavailable: Google can't be reached, or sign in with Google isn't
   configured on this server

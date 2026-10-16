@@ -467,6 +467,28 @@ Per-link analytics as on Shlink's link page (Phase 3.16, contract in ROADMAP 3.1
 - `DELETE /api/v1/waitlist/{entry_id}` — remove someone, when they ask
 None of them is an MCP tool.
 
+### Service accounts (Phase 10.1)
+Another system (Propuestas Griddo) makes links for the organization with a token of its own,
+`Authorization: Bearer shsa_<prefix>_<secret>`. With `X-Shurly-On-Behalf-Of: <email>` on `POST /api/v1/urls`,
+`/urls/custom` or `/campaigns`, that person becomes the link's creator, the link is the organization's, and
+`via_service_account` names the service. An email that isn't someone in its organization is a 422 (`code`:
+`on_behalf_of_unknown`); the header from a person's API key or session is a 403 (`on_behalf_of_not_allowed`). It
+grants nothing: the service acts with its own role, and changes the links it made. Spec:
+[_pm/spec_service_accounts.md](_pm/spec_service_accounts.md).
+
+The organization's owner manages them, signed in (a session: an API key or a service token gets a 403); admins read them:
+- `GET /api/v1/service-accounts` — the accounts, each with its active token's prefix, creation, expiry and last use
+- `POST /api/v1/service-accounts` — make one: `display_name`, `description`, `responsible_user_id`, `role` (`member` or `admin`)
+- `PATCH /api/v1/service-accounts/{id}` — change those
+- `DELETE /api/v1/service-accounts/{id}` — revoke its tokens and remove it; its links stay, with its name
+- `POST /api/v1/service-accounts/{id}/token` — make its token, or renew it (the old one works 24 more hours);
+  optional `expires_at`. The token is in the answer, this once
+- `DELETE /api/v1/service-accounts/{id}/token` — revoke its tokens at once; `?old_only=true` ends only the one in its overlap
+- `GET /api/v1/service-accounts/{id}/links?token_id=` — the links it made; with `token_id`, those one token made
+
+`GET /api/v1/urls?via_service_account=<id>` lists the links a service made. None of these is an MCP tool, and the
+MCP neither takes a service token nor sends the header.
+
 ### Public / unversioned
 - `GET /{short_code}` — Redirect (302 by default; honors validity window, max-visits, redirect rules)
 - `GET /{short_code}/track` — Email tracking pixel (43-byte transparent GIF, `Cache-Control: no-store`)

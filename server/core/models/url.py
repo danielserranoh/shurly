@@ -96,8 +96,20 @@ class URL(Base):
         UUID(as_uuid=True), ForeignKey("organizations.id"), nullable=True, index=True
     )
 
+    # Phase 10.1 — the service account that created the link, and the token it used; both NULL
+    # when a person made it with their own credentials (whatever the tool). The account is
+    # shown ("via Propuestas Griddo"); the token is internal: it answers "which links did this
+    # token create?" when one leaks, and is never in the link's API response.
+    via_service_account_id = Column(
+        UUID(as_uuid=True), ForeignKey("users.id"), nullable=True, index=True
+    )
+    via_token_id = Column(
+        UUID(as_uuid=True), ForeignKey("service_tokens.id"), nullable=True, index=True
+    )
+
     # Relationships
-    creator = relationship("User", back_populates="urls")
+    creator = relationship("User", back_populates="urls", foreign_keys=[created_by])
+    via_service_account = relationship("User", foreign_keys=[via_service_account_id])
     campaign = relationship("Campaign", back_populates="urls")
     visits = relationship("Visitor", back_populates="url", cascade="all, delete-orphan")
     tags = relationship("Tag", secondary="url_tags", back_populates="urls")

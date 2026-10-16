@@ -47,12 +47,14 @@ from server.utils.access import LinkDomain, find_urls, viewer, visible_url_or_40
 from server.utils.bounds import MAX_SKIP
 from server.utils.columns import fit, stored_referer, stored_user_agent
 from server.utils.domain import get_or_create_default_domain, resolve_domain_for_host
+from server.utils.event_log import log_event
 from server.utils.geo import place_of
 from server.utils.negotiation import prefers_html
 from server.utils.network import UNKNOWN_IP, visit_ip
 from server.utils.opengraph import fetch_opengraph_metadata, is_social_media_crawler
 from server.utils.previews import clear_page_preview, effective_preview, store_page_preview
 from server.utils.redirect_rules import pick_target
+from server.utils.service_accounts import Acting, acting_for, acting_on_change
 from server.utils.url import (
     MAX_SHORT_CODE_LENGTH,
     build_short_url,  # Phase 3.11 — moved to utils; still importable from here
@@ -177,6 +179,33 @@ def _to_url_response(url: URL, click_count: int) -> URLResponse:
     return response
 
 
+# Phase 10.1 — `X-Shurly-On-Behalf-Of`, documented on the routes that read it. Not a declared
+# Header parameter: it would be in the OpenAPI schema, and so an argument of the MCP's tools,
+# which must never send it (only a service token may, server/utils/service_accounts.py).
+ON_BEHALF_DOC = """
+    **Service accounts (Phase 10.1):** with a service token (`Authorization: Bearer shsa_…`),
+    `X-Shurly-On-Behalf-Of: <email>` names the person the link is for: they become its creator,
+    the link belongs to the organization and `via_service_account` names the service. An email
+    that isn't someone in the organization is a 422 (`code`: `on_behalf_of_unknown`); without
+    the header, the service account is the creator. From a person's API key or session, the
+    header is a 403 (`code`: `on_behalf_of_not_allowed`). It grants no permission.
+"""
+
+
+def _log_service_change(event: str, url_id: UUID, acting: Acting) -> None:
+    """Phase 10.1 — `url.created` / `.updated` / `.deleted`, when a service account did it."""
+    if acting.service is not None:
+        log_event(event, url_id=str(url_id), **acting.event_fields())
+
+
+def _with_doc(extra: str):
+    def decorate(fn):
+        fn.__doc__ = (fn.__doc__ or "") + extra
+        return fn
+
+    return decorate
+
+
 @urls_router.post(
     "",
     response_model=URLResponse,
@@ -186,8 +215,10 @@ def _to_url_response(url: URL, click_count: int) -> URLResponse:
         **get_responses(401, 422, 500),
     },
 )
+@_with_doc(ON_BEHALF_DOC)
 async def create_short_url(
     url_data: URLCreate,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -214,6 +245,9 @@ async def create_short_url(
     - **422**: Validation error (invalid URL format)
     - **500**: Failed to generate unique short code (very rare)
     """
+    # Phase 10.1 — whom the link is for: a 403 or 422 before anything is made.
+    acting = acting_for(db, request, current_user)
+
     # Phase 3.10.1 — bind every URL to a domain. New URLs default to the default
     # domain; multi-tenant API support comes when we expose domain selection.
     domain = get_or_create_default_domain(db)
@@ -257,14 +291,17 @@ async def create_short_url(
         valid_until=url_data.valid_until,
         max_visits=url_data.max_visits,
         crawlable=url_data.crawlable,
-        created_by=current_user.id,
+        created_by=acting.creator.id,
         organization_id=viewer(db, current_user).organization_for(url_data.visibility),
+        via_service_account_id=acting.service.id if acting.service else None,
+        via_token_id=acting.token_id,
     )
 
     store_page_preview(url, metadata)
     db.add(url)
     db.commit()
     db.refresh(url)
+    _log_service_change("url.created", url.id, acting)
 
     # Build response (a brand-new URL cannot have visits yet)
     return _to_url_response(url, click_count=0)
@@ -279,8 +316,10 @@ async def create_short_url(
         **get_responses(400, 401, 422),
     },
 )
+@_with_doc(ON_BEHALF_DOC)
 async def create_custom_url(
     url_data: URLCustomCreate,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -312,6 +351,9 @@ async def create_custom_url(
     **Note:** If the custom code is already taken, or reserved because Shurly serves that
     path itself (`mcp`, `docs`, `redoc`), random characters will be appended and a warning returned.
     """
+    # Phase 10.1 — whom the link is for: a 403 or 422 before anything is made.
+    acting = acting_for(db, request, current_user)
+
     # Validate custom code
     if not is_valid_custom_code(url_data.custom_code):
         raise HTTPException(
@@ -381,14 +423,17 @@ async def create_custom_url(
         valid_until=url_data.valid_until,
         max_visits=url_data.max_visits,
         crawlable=url_data.crawlable,
-        created_by=current_user.id,
+        created_by=acting.creator.id,
         organization_id=viewer(db, current_user).organization_for(url_data.visibility),
+        via_service_account_id=acting.service.id if acting.service else None,
+        via_token_id=acting.token_id,
     )
 
     store_page_preview(url, metadata)
     db.add(url)
     db.commit()
     db.refresh(url)
+    _log_service_change("url.created", url.id, acting)
 
     # Build response (a brand-new URL cannot have visits yet)
     response = _to_url_response(url, click_count=0)
@@ -462,6 +507,9 @@ def list_urls(
         description="Only return URLs of these types (standard, custom, campaign). Repeat the "
         "parameter to match any of several, e.g. ?url_type=standard&url_type=custom",
     ),
+    via_service_account: UUID | None = Query(
+        None, description="Only the links this service account created (its id)"
+    ),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
     skip: int = Query(0, ge=0, le=MAX_SKIP, description="Number of URLs to skip, for pagination"),
@@ -485,6 +533,7 @@ def list_urls(
     - **tag_filter**: 'all' (AND) or 'any' (OR) for multiple tags (default: 'any')
     - **q**: Case-insensitive substring search over title, destination URL and short code (`%` and `_` match literally; surrounding whitespace is ignored)
     - **url_type**: Only return `standard`, `custom` or `campaign` URLs; repeat it to match several types
+    - **via_service_account**: Only the links a service account created (Phase 10.1), by its id
 
     Each item includes `click_count`: all-time clicks excluding bots and email tracking-pixel opens.
 
@@ -532,6 +581,10 @@ def list_urls(
     if url_type:
         query = query.filter(URL.url_type.in_(url_type))
 
+    # Phase 10.1 — the links a service account created, for whomever
+    if via_service_account is not None:
+        query = query.filter(URL.via_service_account_id == via_service_account)
+
     # Tags, creators and their profiles (Phase 3.12: names), and campaigns (their names) for
     # the whole page, one query each: no lazy load per URL, creator or campaign.
     urls = (
@@ -539,6 +592,7 @@ def list_urls(
             selectinload(URL.tags),
             selectinload(URL.creator).selectinload(User.profile),
             selectinload(URL.campaign),
+            selectinload(URL.via_service_account),
         )
         .order_by(URL.created_at.desc())
         .offset(skip)
@@ -602,6 +656,7 @@ def get_url(
 )
 def delete_url(
     short_code: str,
+    request: Request,
     domain: LinkDomain = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -635,8 +690,11 @@ def delete_url(
         )
 
     # Delete the URL (visitors will be cascade deleted if configured)
+    acting = acting_on_change(db, request, current_user)
+    url_id = url.id  # gone with the row once committed
     db.delete(url)
     db.commit()
+    _log_service_change("url.deleted", url_id, acting)
 
     return None
 
@@ -652,6 +710,7 @@ def delete_url(
 async def update_url(
     short_code: str,
     url_update: URLUpdate,
+    request: Request,
     domain: LinkDomain = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -686,6 +745,7 @@ async def update_url(
     **Note:** The short_code itself cannot be changed. Campaign URLs must be managed through the campaign.
     """
     url = visible_url_or_404(db, current_user, short_code, domain, to_change=True)
+    acting = acting_on_change(db, request, current_user)
 
     # Prevent updating campaign URLs
     if url.url_type == URLType.CAMPAIGN:
@@ -708,6 +768,7 @@ async def update_url(
 
     db.commit()
     db.refresh(url)
+    _log_service_change("url.updated", url.id, acting)
 
     # Build response
     return _to_url_response(url, _click_count(db, url))
@@ -723,6 +784,7 @@ async def update_url(
 def update_url_tags(
     short_code: str,
     tag_data: dict,
+    request: Request,
     domain: LinkDomain = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -750,6 +812,7 @@ def update_url_tags(
     from server.core.models import Tag
 
     url = visible_url_or_404(db, current_user, short_code, domain, to_change=True)
+    acting = acting_on_change(db, request, current_user)
 
     tag_ids_str = tag_data.get("tag_ids", [])
 
@@ -770,6 +833,7 @@ def update_url_tags(
     url.tags = tags
     db.commit()
     db.refresh(url)
+    _log_service_change("url.updated", url.id, acting)
 
     # Build response
     from server.schemas.tag import TagResponse

@@ -8,6 +8,7 @@ from server.app.client_errors import client_errors_router
 from server.app.google_auth import google_router
 from server.app.health import health_router
 from server.app.organization import organization_router
+from server.app.service_accounts import service_accounts_router
 from server.app.tags import tags_router
 from server.app.urls import urls_router
 from server.app.waitlist import waitlist_router
@@ -20,6 +21,9 @@ api_router.include_router(auth_router, prefix="/auth", tags=["authentication"])
 api_router.include_router(avatar_router, prefix="/auth", tags=["authentication"])
 api_router.include_router(google_router, prefix="/auth/google", tags=["authentication"])
 api_router.include_router(organization_router, prefix="/organization", tags=["organization"])
+api_router.include_router(
+    service_accounts_router, prefix="/service-accounts", tags=["service accounts"]
+)
 api_router.include_router(urls_router, prefix="/urls", tags=["urls"])
 api_router.include_router(campaigns_router, prefix="/campaigns", tags=["campaigns"])
 api_router.include_router(analytics_router, prefix="/analytics", tags=["analytics"])
