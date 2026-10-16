@@ -70,6 +70,8 @@ Backend (FastAPI)               Frontend (Astro 7 + Tailwind 4)
 - `RedirectRule` (priority + JSON conditions)
 - `OrphanVisit` (typo'd / unknown short codes)
 - `Organization` + `OrganizationMember` (role: owner / admin / member; rules in `server/utils/organization.py`)
+- `ServiceToken` — a service account's token, kept as a hash. A service account is a `User` with `kind = 'service'`
+  that never signs in and isn't listed among people (`server/utils/service_accounts.py`, ROADMAP 10.1)
 
 **Key features**:
 - URL shortening (standard 6-char, custom slugs, campaign bulk)

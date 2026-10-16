@@ -7,15 +7,17 @@ from datetime import datetime, timedelta
 from functools import cache
 
 import bcrypt
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
 from sqlalchemy.orm import Session
 
 from server.core import get_db
 from server.core.config import settings
-from server.core.models import User
+from server.core.models import ServiceToken, User
+from server.core.models.service_token import LAST_USED_RESOLUTION, SERVICE_TOKEN_START
 from server.core.models.user import hash_api_key
+from server.utils.errors import service_account_not_allowed
 
 # HTTP Bearer token scheme
 security = HTTPBearer()
@@ -110,7 +112,8 @@ def get_user_by_api_key(db: Session, api_key: str) -> User | None:
     if not api_key:
         return None
     user = db.query(User).filter(User.api_key_hash == hash_api_key(api_key)).first()
-    if user is None or not user.is_active:
+    # Phase 10.1 — a person's key only: a service account authenticates with its token.
+    if user is None or not user.is_active or user.is_service:
         return None
     return user
 
@@ -119,6 +122,54 @@ def _looks_like_jwt(token: str) -> bool:
     """JWTs are dot-separated 3-part base64. API keys are the `shurly_` prefix and
     `secrets.token_urlsafe(32)`, neither of which has a dot, so this is unambiguous."""
     return token.count(".") == 2
+
+
+def _looks_like_service_token(token: str) -> bool:
+    """Phase 10.1 — `shsa_<prefix>_<secret>`: no dot either, and its own start."""
+    return token.startswith(SERVICE_TOKEN_START)
+
+
+def get_service_token(db: Session, token: str) -> ServiceToken | None:
+    """
+    Phase 10.1 — the service token `token` is, if it authenticates now: not revoked, not
+    expired, not past its 24-hour overlap after a renewal, and its service account still
+    active. None otherwise, whichever the reason, so every refusal is the same 401.
+
+    By the token's hash, through its unique index, as API keys are. Updates `last_used_at` at
+    most once a minute (never an IP), and commits it: the request may only read.
+    """
+    if not token:
+        return None
+    row = db.query(ServiceToken).filter(ServiceToken.token_hash == hash_api_key(token)).first()
+    now = datetime.utcnow()
+    if row is None or not row.is_valid(now):
+        return None
+    account = row.service_account
+    if account is None or not account.is_active or not account.is_service:
+        return None
+    if row.last_used_at is None or now - row.last_used_at >= LAST_USED_RESOLUTION:
+        row.last_used_at = now
+        db.commit()
+    return row
+
+
+def _user_from_bearer(db: Session, token: str, request: Request | None = None) -> User | None:
+    """
+    The account a bearer token stands for, or None. A JWT (two dots) is a session; `shsa_` a
+    service token, which also tells `request.state.service_token` which one it was (for the
+    link it creates, `urls.via_token_id`); anything else a person's API key. A `shsa_` token
+    that isn't a service token is still tried as an API key, so a key made before 6.3's prefix
+    that happened to start that way keeps working.
+    """
+    if _looks_like_jwt(token):
+        return get_user_by_jwt(db, token)
+    if _looks_like_service_token(token):
+        row = get_service_token(db, token)
+        if row is not None:
+            if request is not None:
+                request.state.service_token = row
+            return row.service_account
+    return get_user_by_api_key(db, token)
 
 
 # Phase 3.13.3 — how recent a sign-in must be to set a password without the current one.
@@ -157,7 +208,8 @@ def _session_from_jwt(db: Session, token: str) -> SignedInSession | None:
     if not email:
         return None
     user = db.query(User).filter(User.email == email).first()
-    if user is None:
+    # Phase 10.1 — a service account never signs in, so no session is ever its.
+    if user is None or user.is_service:
         return None
     issued_at = payload.get("iat")
     if user.sessions_valid_from is not None:
@@ -189,6 +241,7 @@ def _inactive_error() -> HTTPException:
 
 
 def get_current_user(
+    request: Request,
     credentials: HTTPAuthorizationCredentials = Depends(security),
     db: Session = Depends(get_db),
 ) -> User:
@@ -200,17 +253,17 @@ def get_current_user(
     dots, API keys never do. JWT validation runs first; if the token isn't a
     JWT we fall back to the API-key lookup.
 
+    Phase 10.1 — and service tokens (`shsa_…`): the current user is then the service
+    account, and `request.state.service_token` the token. An unknown, revoked, expired or
+    past-its-overlap token is the same 401 as any other.
+
     Usage in routes:
         @app.get("/protected")
         def protected_route(current_user: User = Depends(get_current_user)):
             ...
     """
     token = credentials.credentials
-
-    if _looks_like_jwt(token):
-        user = get_user_by_jwt(db, token)
-    else:
-        user = get_user_by_api_key(db, token)
+    user = _user_from_bearer(db, token, request)
 
     if user is None:
         raise _credentials_error()
@@ -229,8 +282,7 @@ def get_optional_user(
     out. Never an error, for routes anyone may call (a browser's error report)."""
     if credentials is None:
         return None
-    token = credentials.credentials
-    user = get_user_by_jwt(db, token) if _looks_like_jwt(token) else get_user_by_api_key(db, token)
+    user = _user_from_bearer(db, credentials.credentials)
     return user if user is not None and user.is_active else None
 
 
@@ -242,11 +294,19 @@ def get_signed_in_session(
     Phase 3.13.3 — like `get_current_user`, for what only a signed-in person may
     do (managing the password). An API key gets a 403: a leaked key must not
     become a password.
+
+    Phase 10.1 — so does a service token, with `code: service_account_not_allowed`: generating
+    an API key, setting a password, managing service accounts.
     """
     token = credentials.credentials
     if not _looks_like_jwt(token):
-        if get_user_by_api_key(db, token) is None:
+        user = _user_from_bearer(db, token)
+        if user is None:
             raise _credentials_error()
+        if user.is_service:
+            raise service_account_not_allowed(
+                "A service account can't do this: sign in as a person."
+            )
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Sign in to do this: an API key can't manage passwords.",
@@ -275,8 +335,9 @@ def authenticate_user(db: Session, email: str, password: str) -> User | None:
 
     # No account, or one made through Google with no password (3.13.3): nothing to
     # check, but spend the time a check takes. Answering faster would tell anyone
-    # which addresses have an account.
-    if user is None or user.password_hash is None:
+    # which addresses have an account. Phase 10.1 — nor a service account, which never
+    # signs in (it has no password either; this holds if one were ever set by hand).
+    if user is None or user.password_hash is None or user.is_service:
         dummy_verify()
         return None
 

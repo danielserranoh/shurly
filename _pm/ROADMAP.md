@@ -2219,24 +2219,24 @@ An integration can only use a person's API key today. Every link it makes is att
 breaks when they regenerate their key or leave. Propuestas Griddo (`propuestas.griddo.io`) is the first consumer:
 its MCP hosts a proposal and asks Shurly for the short link to it. The spec, decided with the user on 2026-10-16:
 [_pm/spec_service_accounts.md](spec_service_accounts.md).
-- [ ] A service account is a user marked `kind = 'service'`, with the organization's membership and a role
+- [x] A service account is a user marked `kind = 'service'`, with the organization's membership and a role
       (`member` or `admin`), a display name, a description and a person responsible. It never signs in: Google,
       password and the MCP's Google sign-in all refuse it, and the members list leaves it out
-- [ ] One token per account (`shsa_<prefix>_<secret>`, kept as a hash), shown once. Renewing keeps the old one valid
+- [x] One token per account (`shsa_<prefix>_<secret>`, kept as a hash), shown once. Renewing keeps the old one valid
       for 24 hours; revoking ends it at once. Expiry is optional; last use is shown. Table `service_tokens`
-- [ ] `X-Shurly-On-Behalf-Of: <email>` on create: that person is the link's creator, and the link belongs to the
+- [x] `X-Shurly-On-Behalf-Of: <email>` on create: that person is the link's creator, and the link belongs to the
       organization. An email that isn't a user of the organization → 422 `on_behalf_of_unknown`. The header from a
       person's key or session → 403 `on_behalf_of_not_allowed`. It grants no permission: the service acts with
       its own role
-- [ ] `urls.via_service_account_id` (shown: "Created by Ana García via Propuestas Griddo") and `urls.via_token_id`
+- [x] `urls.via_service_account_id` (shown: "Created by Ana García via Propuestas Griddo") and `urls.via_token_id`
       (internal: which links a token made). No "channel"; never the token itself
-- [ ] The service account that created a link can change and delete it, so a `member` service can set the expiry
+- [x] The service account that created a link can change and delete it, so a `member` service can set the expiry
       or revoke what it made
-- [ ] Management for the organization's owner (admins read it), signed in: `/api/v1/service-accounts` (list,
+- [x] Management for the organization's owner (admins read it), signed in: `/api/v1/service-accounts` (list,
       create, edit, remove), `…/{id}/token` (create or renew, revoke), `…/{id}/links?token_id=`. Not MCP tools
-- [ ] Settings → Organization → Service accounts: the accounts, their token's prefix, expiry and last use; for the
+- [x] Settings → Organization → Service accounts: the accounts, their token's prefix, expiry and last use; for the
       owner, create, renew (the secret shown once), revoke and remove. A filter by service account in the links list
-- [ ] Events in the existing event log (`service_account.*`, `service_token.*`, and `url.*` with the account, the
+- [x] Events in the existing event log (`service_account.*`, `service_token.*`, and `url.*` with the account, the
       token and on whose behalf). docs/PERSONAL_DATA.md for the routes and the new columns
 - [ ] v2, after v1 is in use: an audit table with its API (2 years), fine-grained scopes, a rate limit per token with
       `RateLimit-*` headers, warnings before expiry and after 90 days unused, allowed IP ranges, and handing over

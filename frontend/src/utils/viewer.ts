@@ -6,7 +6,7 @@
 import { ApiError, apiGet } from './api';
 import { html, setHTML, type RawHTML } from './html';
 import { icon } from './icons';
-import { personName } from './people';
+import { createdBy, isServiceEmail, personName, type ServiceAccountRef } from './people';
 import { toast } from './ui';
 import type { Organization, OrgRole, User, Visibility } from './types';
 
@@ -112,6 +112,8 @@ interface Owned {
   /** Phase 3.12: the creator's name, where the response carries it (campaigns; links later). */
   created_by_first_name?: string | null;
   created_by_last_name?: string | null;
+  /** Phase 10.1: the service account that made it (links only); null when a person did. */
+  via_service_account?: ServiceAccountRef | null;
 }
 
 export function isCreator(item: Owned, viewer: Viewer | null): boolean {
@@ -127,17 +129,23 @@ export function canChange(item: Owned, viewer: Viewer | null): boolean {
   return item.visibility === 'organization' && (viewer.role === 'admin' || viewer.role === 'owner');
 }
 
-/** "you", the creator's name, or their email without one; null when the API didn't say. */
+/**
+ * "you", the creator's name, or their email without one; null when the API didn't say. Phase 10.1:
+ * "… via Propuestas Griddo" when a service account made it for them, or the service's name alone.
+ */
 export function creatorName(item: Owned, viewer: Viewer | null): string | null {
   if (!item.created_by_email) return null;
-  if (isCreator(item, viewer)) return 'you';
-  return personName({ email: item.created_by_email, first_name: item.created_by_first_name, last_name: item.created_by_last_name });
+  const who = isCreator(item, viewer)
+    ? 'you'
+    : personName({ email: item.created_by_email, first_name: item.created_by_first_name, last_name: item.created_by_last_name });
+  return createdBy(who, item.created_by_email, item.via_service_account);
 }
 
-/** The creator's email when `creatorName` shows their name instead: for a tooltip. */
+/** The creator's email when `creatorName` shows their name instead: for a tooltip. Never a service's placeholder. */
 export function creatorEmailBehindName(item: Owned, viewer: Viewer | null): string | null {
-  const shown = creatorName(item, viewer);
-  return shown && shown !== 'you' && shown !== item.created_by_email ? item.created_by_email : null;
+  if (!item.created_by_email || isServiceEmail(item.created_by_email) || isCreator(item, viewer)) return null;
+  const name = personName({ email: item.created_by_email, first_name: item.created_by_first_name, last_name: item.created_by_last_name });
+  return name !== item.created_by_email ? item.created_by_email : null;
 }
 
 /** What the create form's "Personal" switch (components/app/VisibilityToggle.astro) asks for. */

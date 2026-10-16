@@ -25,6 +25,7 @@ const MESSAGES = new Map<string, string>([
   ['invalid_token', 'We couldn’t verify Google’s answer. Try again.'],
   ['account_conflict', 'That email’s Shurly account is linked to a different Google account. Ask an owner of your organization for help.'],
   ['inactive', 'That account has been closed. Ask an owner of your organization if you need it back.'],
+  ['service_account', 'That’s a service account. Services connect with their token and never sign in.'],
   ['google_unavailable', 'Google sign-in isn’t available right now. Try again later, or log in with your password if you have one.'],
   ['try_again', 'Another sign-in to that account was finishing at the same moment. Try again.'],
   ['rate_limited', 'Too many sign-in attempts from your network. Wait a minute and try again.'],

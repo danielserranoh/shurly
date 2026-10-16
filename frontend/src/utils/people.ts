@@ -24,3 +24,34 @@ export function personName(person: Person): string {
 export function accountLine(person: Person): string {
   return hasName(person) ? `Their account is ${person.email}. ` : '';
 }
+
+// ---------------------------------------------------------------------------
+// Phase 10.1 — service accounts: another system that makes links for the organization
+// ---------------------------------------------------------------------------
+
+/** A link's service account, as the API gives it: never its token. */
+export interface ServiceAccountRef {
+  id: string;
+  display_name: string | null;
+}
+
+/** A service account's email is a placeholder (server/core/models/user.py), never shown. */
+const SERVICE_EMAIL_DOMAIN = '@service.invalid';
+
+export function isServiceEmail(email: string | null | undefined): boolean {
+  return Boolean(email && email.toLowerCase().endsWith(SERVICE_EMAIL_DOMAIN));
+}
+
+export function serviceName(service: ServiceAccountRef): string {
+  return service.display_name?.trim() || 'a service account';
+}
+
+/**
+ * Who made a link, as "Created by …" ends: "Ana García via Propuestas Griddo" when a service made it
+ * for Ana, the service's name when it acted for nobody (it's the creator), or just `creator`.
+ */
+export function createdBy(creator: string, creatorEmail: string | null | undefined, via: ServiceAccountRef | null | undefined): string {
+  if (!via) return creator;
+  if (isServiceEmail(creatorEmail)) return serviceName(via);
+  return `${creator} via ${serviceName(via)}`;
+}

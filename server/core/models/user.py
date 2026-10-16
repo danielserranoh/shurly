@@ -3,7 +3,7 @@ import hashlib
 import uuid
 from datetime import datetime
 
-from sqlalchemy import JSON, Boolean, Column, DateTime, Enum, String
+from sqlalchemy import JSON, Boolean, Column, DateTime, Enum, ForeignKey, String, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 
@@ -22,6 +22,17 @@ class ApiKeyScope(str, enum.Enum):
     READ_ONLY = "read_only"
     CREATE_ONLY = "create_only"
     DOMAIN_SPECIFIC = "domain_specific"
+
+
+# Phase 10.1 — what an account is: a person, or a service account (another system, acting
+# for the organization). Plain strings, so a new kind needs no enum migration.
+PERSON = "person"
+SERVICE = "service"
+USER_KINDS = (PERSON, SERVICE)
+
+# A service account's email: a placeholder that can never be a Google account (RFC 2606 keeps
+# `.invalid` from resolving), unique per account. Lists of people show its display name.
+SERVICE_EMAIL_DOMAIN = "service.invalid"
 
 
 # Phase 6.3 — how much of an API key is kept to tell it apart ("shurly_AbC12").
@@ -55,8 +66,23 @@ class User(Base):
     # Phase 3.13.3 — JWTs issued in an earlier second are refused (server/core/auth.py).
     sessions_valid_from = Column(DateTime, nullable=True)
 
+    # Phase 10.1 — `person` (every account before it) or `service`. A service account never
+    # signs in (server/core/auth.py, server/utils/google_sign_in.py); it authenticates with its
+    # token (`ServiceToken`), and lists of people leave it out (server/utils/organization.py).
+    kind = Column(String(16), nullable=False, default=PERSON, server_default=PERSON)
+    # A service account's name ("Propuestas Griddo"), what it's for, and the person responsible
+    # for it. NULL for a person.
+    display_name = Column(String(255), nullable=True)
+    description = Column(Text, nullable=True)
+    responsible_user_id = Column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+
     # Relationships
-    urls = relationship("URL", back_populates="creator", cascade="all, delete-orphan")
+    urls = relationship(
+        "URL", back_populates="creator", cascade="all, delete-orphan", foreign_keys="URL.created_by"
+    )
+    responsible = relationship("User", remote_side=[id], foreign_keys=[responsible_user_id])
     campaigns = relationship("Campaign", back_populates="creator", cascade="all, delete-orphan")
     identities = relationship("UserIdentity", back_populates="user")
     # Phase 3.12 — loaded when read, never with the user: auth loads users on every request.
@@ -67,6 +93,10 @@ class User(Base):
         cascade="all, delete-orphan",
         passive_deletes=True,
     )
+
+    @property
+    def is_service(self) -> bool:
+        return self.kind == SERVICE
 
     @property
     def has_password(self) -> bool:

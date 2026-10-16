@@ -184,6 +184,10 @@ def test_migration_0007_moves_every_key_to_its_hash(pg_engine):
     with pg_engine.connect() as conn:
         row = conn.execute(text("SELECT api_key, api_key_hash, api_key_prefix FROM users")).one()
     assert row == (None, hashlib.sha256(legacy.encode()).hexdigest(), legacy[:12])
+    # The model maps later columns (0017's `kind`): the key still works once they're in.
+    with pg_engine.begin() as conn:
+        config.attributes["connection"] = conn
+        command.upgrade(config, "head")
     with sessionmaker(bind=pg_engine)() as db:
         assert get_user_by_api_key(db, legacy).email == "smoke@griddo.io"
 

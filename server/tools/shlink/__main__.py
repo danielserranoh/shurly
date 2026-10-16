@@ -142,7 +142,9 @@ def _import(args: argparse.Namespace) -> int:
         return 2
     with importer.session_factory() as db:
         email = args.owner.strip().lower()
-        owner = db.query(User).filter(func.lower(User.email) == email).first()
+        owner = (
+            db.query(User).filter(func.lower(User.email) == email, User.kind == "person").first()
+        )
         if owner is None:
             print(f"No account {args.owner}.", file=sys.stderr)
             return 2

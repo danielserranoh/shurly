@@ -2,7 +2,7 @@
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy import func
 from sqlalchemy.orm import Session, selectinload
 
@@ -22,6 +22,8 @@ from server.utils.bounds import MAX_SKIP
 from server.utils.campaign import generate_campaign_urls, parse_csv, validate_csv
 from server.utils.csv_export import stream_csv
 from server.utils.domain import get_or_create_default_domain
+from server.utils.event_log import log_event
+from server.utils.service_accounts import acting_for
 
 # Phase 3.11 — campaign short URLs (detail + CSV export) use the shared resolver
 # (BASE_URL → https://DEFAULT_DOMAIN → localhost) instead of a hard-coded host.
@@ -41,6 +43,7 @@ campaigns_router = APIRouter()
 )
 def create_campaign(
     campaign_data: CampaignCreate,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -76,7 +79,14 @@ def create_campaign(
     - **401**: Authentication required or invalid token
     - **422**: Validation error (invalid URL format, missing fields, etc.)
     - **500**: Failed to generate unique short codes for all URLs
+
+    **Service accounts (Phase 10.1):** `X-Shurly-On-Behalf-Of: <email>`, with a service token,
+    makes that person the campaign's and its links' creator, as on `POST /api/v1/urls`; the
+    links keep which service account and token made them. The same 403 and 422 apply.
     """
+    # Phase 10.1 — whom the campaign is for: a 403 or 422 before anything is made.
+    acting = acting_for(db, request, current_user)
+
     # Parse CSV
     try:
         rows = parse_csv(campaign_data.csv_data)
@@ -104,7 +114,7 @@ def create_campaign(
         name=campaign_data.name,
         original_url=campaign_data.original_url,
         csv_columns=column_names,
-        created_by=current_user.id,
+        created_by=acting.creator.id,
         organization_id=viewer(db, current_user).organization_for(campaign_data.visibility),
     )
 
@@ -117,10 +127,12 @@ def create_campaign(
             campaign_id=campaign.id,
             rows=rows,
             original_url=campaign_data.original_url,
-            created_by=current_user.id,
+            created_by=acting.creator.id,
             domain_id=domain.id,
             db_session=db,
             organization_id=campaign.organization_id,
+            via_service_account_id=acting.service.id if acting.service else None,
+            via_token_id=acting.token_id,
         )
     except RuntimeError as e:
         db.rollback()
@@ -133,6 +145,13 @@ def create_campaign(
     db.add_all(urls)
     db.commit()
     db.refresh(campaign)
+    if acting.service is not None:
+        log_event(
+            "campaign.created",
+            campaign_id=str(campaign.id),
+            links=len(urls),
+            **acting.event_fields(),
+        )
 
     # Build response
     response = CampaignResponse(
@@ -143,7 +162,7 @@ def create_campaign(
         url_count=len(urls),
         created_at=campaign.created_at,
         visibility=campaign.visibility,
-        created_by_email=current_user.email,
+        created_by_email=acting.creator.email,
         created_by_first_name=campaign.created_by_first_name,
         created_by_last_name=campaign.created_by_last_name,
     )

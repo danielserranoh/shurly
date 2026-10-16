@@ -22,6 +22,7 @@ from sqlalchemy.orm import Session, contains_eager
 from server.core import get_db
 from server.core.auth import get_current_user
 from server.core.models import Organization, OrganizationMember, User
+from server.core.models.user import PERSON
 from server.schemas.organization import (
     AdoptedLinks,
     LinksAdoption,
@@ -33,6 +34,7 @@ from server.schemas.organization import (
 )
 from server.schemas.responses import get_responses
 from server.utils import organization as org_service
+from server.utils.errors import CodedHTTPException
 from server.utils.event_log import log_event
 from server.utils.logo import CONTENT_TYPE, MAX_UPLOAD_BYTES, TOO_BIG, ImageRefused, normalize
 from server.utils.people import names
@@ -52,7 +54,11 @@ _STATUS = {
 
 
 def _http_error(exc: org_service.OrganizationError) -> HTTPException:
-    return HTTPException(status_code=_STATUS[type(exc)], detail=str(exc))
+    status_code = next(_STATUS[cls] for cls in type(exc).__mro__ if cls in _STATUS)
+    code = getattr(exc, "code", None)
+    if code:  # Phase 10.1 — a service account, where only people act
+        return CodedHTTPException(status_code, code, str(exc))
+    return HTTPException(status_code=status_code, detail=str(exc))
 
 
 def _names(user: User) -> dict:
@@ -214,14 +220,18 @@ def delete_organization_logo(
 def list_organization_members(
     db: Session = Depends(get_db), current_user: User = Depends(get_current_user)
 ):
-    """Everyone in the caller's organization, with their role."""
+    """Everyone in the caller's organization, with their role. People only: service accounts
+    are listed in Settings → Organization → Service accounts (`/api/v1/service-accounts`)."""
     membership = _my_membership(db, current_user)
     members = (
         db.query(OrganizationMember)
         .join(User, User.id == OrganizationMember.user_id)
         # The users from the join, their profiles in one more query: none per member.
         .options(contains_eager(OrganizationMember.user).selectinload(User.profile))
-        .filter(OrganizationMember.organization_id == membership.organization_id)
+        .filter(
+            OrganizationMember.organization_id == membership.organization_id,
+            User.kind == PERSON,
+        )
         .order_by(User.email)
         .all()
     )

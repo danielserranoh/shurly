@@ -143,10 +143,14 @@ them. None of them is an MCP tool.
 
 - `service_account.created`, `.updated`, `.removed`;
 - `service_token.created`, `.renewed`, `.revoked`;
-- `url.created` / `url.updated` / `url.deleted`, which gain `service_account_id`, `token_id` and `on_behalf_of`
-  when a service did it.
+- `url.created` / `url.updated` / `url.deleted`, with `service_account_id`, `token_id` and `on_behalf_of` when a
+  service did it.
 
 Never a secret or a hash.
+
+*Corrected when built:* there were no `url.*` events before, so v1 writes them only when a service did it (and
+`campaign.created` for a campaign made with the header). `on_behalf_of` is the person's user id, never the email:
+the event log never carries an address (server/utils/event_log.py).
 
 ## Errors
 
