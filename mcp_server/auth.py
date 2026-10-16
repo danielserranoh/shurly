@@ -41,6 +41,7 @@ from server.core.auth import (
     get_user_by_jwt,
 )
 from server.core.models import User
+from server.utils.service_accounts import ON_BEHALF_HEADER
 
 if TYPE_CHECKING:
     import httpx2
@@ -81,7 +82,13 @@ class ShurlyTokenVerifier(TokenVerifier):
 
 
 def _resolve_user_from_token(db, token: str) -> User | None:
-    """Token-shape dispatch matches `server.core.auth.get_current_user`."""
+    """
+    Token-shape dispatch matches `server.core.auth.get_current_user`, for people only.
+
+    Phase 10.1 — a service token (`shsa_…`) is no API key, so it gets a 401 here: the MCP is
+    for people and their assistants. A service calls the REST API, where it can name the
+    person it acts for (`X-Shurly-On-Behalf-Of`), which the MCP never accepts or forwards.
+    """
     if not token:
         return None
     if _looks_like_jwt(token):
@@ -120,6 +127,8 @@ def resolve_current_user(db) -> User:
     user = db.query(User).filter(User.id == user_id).first()
     if user is None or not user.is_active:
         raise PermissionError("User no longer exists or is inactive.")
+    if user.is_service:  # Phase 10.1 — never a service account (see `_resolve_user_from_token`)
+        raise PermissionError("A service account can't use the MCP.")
     return user
 
 
@@ -136,6 +145,11 @@ def forward_bearer_auth(request: httpx2.Request) -> httpx2.Request:
     its client on `httpx2`, which rejects `httpx.Auth` instances, while both
     libraries accept a callable and wrap it in their own `FunctionAuth`.
     """
+    # Phase 10.1 — never forward who a link is for: only a service token may say it, and
+    # never through the MCP. The tools don't take it either (the header isn't in the API's
+    # OpenAPI schema), so this only guards against a client library adding it.
+    if ON_BEHALF_HEADER in request.headers:
+        del request.headers[ON_BEHALF_HEADER]
     access = get_access_token()
     if access is not None and access.token:
         token = access.token

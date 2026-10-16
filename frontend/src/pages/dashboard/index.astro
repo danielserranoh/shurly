@@ -99,6 +99,13 @@ import VisibilityToggle from '@/components/app/VisibilityToggle.astro';
       </div>
       <button type="button" class="btn btn-ghost btn-sm shrink-0" data-clear-tags hidden>Clear</button>
     </div>
+    <!-- Phase 10.1: the links a service account made. Owners and admins pick from the list; anyone can follow a link here -->
+    <div class="mt-3 flex items-center gap-2" id="via-filter" hidden>
+      <label for="via" class="flex shrink-0 items-center gap-1.5 text-xs font-medium text-ink-500"><Icon name="plug" class="size-3.5" />Made via</label>
+      <select id="via" class="select h-8 w-auto max-w-full py-0 text-sm" data-via>
+        <option value="">Anyone</option>
+      </select>
+    </div>
   </section>
 
   <ul id="link-list" class="mt-4 grid gap-3 transition-opacity duration-200" aria-live="polite" aria-busy="true"></ul>
@@ -144,7 +151,7 @@ import VisibilityToggle from '@/components/app/VisibilityToggle.astro';
   import { errorMessage } from '@/utils/api';
   import { clearErrors, setFieldError } from '@/utils/forms';
   import { formatNumber, isValidHttpUrl, normalizeUrlInput, pluralize } from '@/utils/format';
-  import { html, safeUrl, setHTML } from '@/utils/html';
+  import { html, raw, safeUrl, setHTML } from '@/utils/html';
   import { sparkline } from '@/utils/charts';
   import { openLinkEditor } from '@/utils/link-editor';
   import { bulkTagLinks, createLink, deleteLink, listLinks, openQr, renderLinkCard, renderLinkSkeleton } from '@/utils/links';
@@ -153,9 +160,10 @@ import VisibilityToggle from '@/components/app/VisibilityToggle.astro';
   import { closeDialog, confirmDialog, copyWithFeedback, hydrateTimes, openDialog, setLoading, toast, writeClipboard } from '@/utils/ui';
   import { apiGet } from '@/utils/api';
   import { pageFromQuery, renderPager } from '@/utils/paging';
-  import { getMe, getViewer, installLockedControls, onForbidden, visibilityOf, type Viewer } from '@/utils/viewer';
+  import { getMe, getMyOrganization, getViewer, installLockedControls, onForbidden, visibilityOf, type Viewer } from '@/utils/viewer';
+  import { serviceName } from '@/utils/people';
   import { sharingLine, shouldWelcome, welcomeDismissedKey } from '@/utils/welcome';
-  import type { OverviewStats, ShortLink, Tag, URLType } from '@/utils/types';
+  import type { OverviewStats, ServiceAccount, ShortLink, Tag, URLType } from '@/utils/types';
 
   const PAGE_SIZE = 20;
   const TYPES: Record<string, URLType[] | undefined> = { links: ['standard', 'custom'], campaign: ['campaign'], all: undefined };
@@ -168,6 +176,8 @@ import VisibilityToggle from '@/components/app/VisibilityToggle.astro';
     type: (params.get('type') as keyof typeof TYPES) ?? 'links',
     tags: (params.get('tags') ?? '').split(',').filter(Boolean),
     match: (params.get('match') === 'all' ? 'all' : 'any') as 'any' | 'all',
+    /** Phase 10.1: a service account's id, to list the links it made. */
+    via: params.get('via_service_account') ?? '',
     page: pageFromQuery(params.get('page'), PAGE_SIZE),
   };
   if (!(state.type in TYPES)) state.type = 'links';
@@ -195,12 +205,13 @@ import VisibilityToggle from '@/components/app/VisibilityToggle.astro';
     if (state.type !== 'links') p.set('type', state.type);
     if (state.tags.length) p.set('tags', state.tags.join(','));
     if (state.tags.length > 1 && state.match === 'all') p.set('match', 'all');
+    if (state.via) p.set('via_service_account', state.via);
     if (state.page > 1) p.set('page', String(state.page));
     const s = p.toString();
     history.replaceState(null, '', s ? `?${s}` : location.pathname);
   }
 
-  const hasFilters = () => Boolean(state.q || state.tags.length || state.type !== 'links');
+  const hasFilters = () => Boolean(state.q || state.tags.length || state.type !== 'links' || state.via);
 
   // ---------------------------------------------------------------- List
   async function load() {
@@ -217,6 +228,7 @@ import VisibilityToggle from '@/components/app/VisibilityToggle.astro';
           types: TYPES[state.type],
           tags: state.tags,
           match: state.match,
+          via: state.via,
           skip: (state.page - 1) * PAGE_SIZE,
           limit: PAGE_SIZE,
         }),
@@ -252,6 +264,7 @@ import VisibilityToggle from '@/components/app/VisibilityToggle.astro';
     list.classList.toggle('selecting', selected.size > 0);
     hydrateTimes(list);
     renderTagChips();
+    renderViaFilter();
     $('[data-count]').textContent = total ? `· ${formatNumber(total)}` : '';
 
     const empty = items.length === 0;
@@ -344,6 +357,42 @@ import VisibilityToggle from '@/components/app/VisibilityToggle.astro';
     });
   });
 
+  // ---------------------------------------------------------------- Service accounts (Phase 10.1)
+  // Owners and admins read the organization's service accounts, so they get the whole list. Anyone else
+  // gets the filter when the address names one (a link from Settings): its name comes from the links shown.
+  const viaSelect = $<HTMLSelectElement>('[data-via]');
+  const services = new Map<string, string>();
+
+  async function loadServices() {
+    try {
+      const org = await getMyOrganization();
+      if (org?.role !== 'owner' && org?.role !== 'admin') return;
+      for (const account of await apiGet<ServiceAccount[]>('/api/v1/service-accounts')) services.set(account.id, account.display_name);
+    } catch {
+      return; // the filter is a convenience: without the list, links still name their service
+    }
+    renderViaFilter();
+  }
+
+  function renderViaFilter() {
+    links.forEach((l) => {
+      if (l.via_service_account && !services.has(l.via_service_account.id)) services.set(l.via_service_account.id, serviceName(l.via_service_account));
+    });
+    if (state.via && !services.has(state.via)) services.set(state.via, 'A service account');
+    $('#via-filter').hidden = services.size === 0;
+    setHTML(
+      viaSelect,
+      html`<option value="">Anyone</option>${[...services].map(([id, name]) => html`<option value="${id}" ${id === state.via ? raw('selected') : ''}>${name}</option>`)}`,
+    );
+  }
+
+  viaSelect.addEventListener('change', () => {
+    state.via = viaSelect.value;
+    state.page = 1;
+    syncUrl();
+    load();
+  });
+
   // ---------------------------------------------------------------- Search & type
   const search = $<HTMLInputElement>('#search');
   search.value = state.q;
@@ -377,6 +426,7 @@ import VisibilityToggle from '@/components/app/VisibilityToggle.astro';
     search.value = '';
     state.tags = [];
     state.type = 'links';
+    state.via = '';
     state.page = 1;
     document.querySelectorAll<HTMLInputElement>('input[name="type"]').forEach((r) => (r.checked = r.value === 'links'));
     renderTagChips();
@@ -579,4 +629,5 @@ import VisibilityToggle from '@/components/app/VisibilityToggle.astro';
   load();
   loadStats();
   loadTagChips();
+  loadServices();
 </script>

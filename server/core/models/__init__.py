@@ -8,6 +8,7 @@ from server.core.models.organization import Organization, OrganizationMember, Or
 from server.core.models.orphan_visit import OrphanVisit, OrphanVisitType
 from server.core.models.rate_limit import RateLimit
 from server.core.models.redirect_rule import RedirectRule
+from server.core.models.service_token import ServiceToken
 from server.core.models.tag import Tag, campaign_tags, url_tags
 from server.core.models.url import URL, URLType
 from server.core.models.user import ApiKeyScope, User
@@ -34,6 +35,7 @@ __all__ = [
     "OrphanVisit",
     "OrphanVisitType",
     "RedirectRule",
+    "ServiceToken",
     "Visitor",
     "WaitlistEntry",
     "Tag",

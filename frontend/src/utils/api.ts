@@ -32,12 +32,16 @@ function cleanMessage(msg: string): string {
 
 async function toApiError(response: Response): Promise<ApiError> {
   let detail: unknown;
+  let topCode: unknown;
   try {
-    detail = (await response.json())?.detail;
+    const body = await response.json();
+    detail = body?.detail;
+    topCode = body?.code;
   } catch {
     detail = undefined;
   }
-  if (typeof detail === 'string') return new ApiError(detail, response.status);
+  // Phase 10.1: some errors add a stable code beside the message, {"detail": "…", "code": "…"}.
+  if (typeof detail === 'string') return new ApiError(detail, response.status, {}, typeof topCode === 'string' ? topCode : undefined);
   // A few errors carry a code the page acts on: {"detail": {"code": "reauth_required", "message": "…"}}.
   if (detail && typeof detail === 'object' && !Array.isArray(detail)) {
     const { code, message } = detail as { code?: unknown; message?: unknown };

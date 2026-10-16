@@ -10,6 +10,11 @@ to its creator (personal, `organization_id` NULL):
 Someone else's personal link stays hidden (404), so nobody learns it exists. An
 organization link you can see but not change is a 403.
 
+Phase 10.1 — a service account is a viewer like a person, with its own role (member or
+admin). It also changes the links it created on someone's behalf (`via_service_account_id`):
+their creator is the person, and the service still has to set their expiry or revoke them.
+Its links always belong to the organization, never to it alone.
+
 Every route that reads one link or campaign decides with `visible_url_or_404` or
 `visible_campaign_or_404`, so a route can't answer for more people than another
 (docs/PERSONAL_DATA.md, checked by tests/test_personal_data_inventory.py).
@@ -46,6 +51,10 @@ class Viewer:
     def can_change(self, item) -> bool:
         if item.created_by == self.user.id:
             return True
+        # Phase 10.1 — the service account that created a link (campaigns have no such column).
+        via = getattr(item, "via_service_account_id", None)
+        if via is not None and via == self.user.id:
+            return True
         return (
             item.organization_id is not None
             and item.organization_id == self.organization_id
@@ -60,7 +69,10 @@ class Viewer:
             )
 
     def organization_for(self, visibility: Visibility) -> UUID | None:
-        """The `organization_id` for something this person creates."""
+        """The `organization_id` for something this person creates. A service account's are
+        always the organization's (10.1): a personal one only its creator would see."""
+        if self.user.is_service:
+            return self.organization_id
         return None if visibility == "personal" else self.organization_id
 
 

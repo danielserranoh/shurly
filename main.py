@@ -13,6 +13,7 @@ from server.app.urls import redirect_router
 from server.core import get_db
 from server.core.config import settings
 from server.utils.app_paths import serve_on_the_app_host_only
+from server.utils.errors import CodedHTTPException, coded_http_exception_handler
 from server.utils.event_log import log_event
 from server.utils.network import ForwardedProtoMiddleware, client_ip_and_source, request_host
 from server.utils.nul import NulMiddleware, nul_value_error
@@ -194,6 +195,8 @@ def create_app(mcp_auth=None) -> FastAPI:
     # rate limits, inside CORS and the request id, like them.
     app.add_middleware(NulMiddleware)
     app.add_exception_handler(ValueError, nul_value_error)
+    # Phase 10.1 — `{"detail", "code"}` for the errors an integration acts on (server/utils/errors.py).
+    app.add_exception_handler(CodedHTTPException, coded_http_exception_handler)
 
     app.add_middleware(
         CORSMiddleware,

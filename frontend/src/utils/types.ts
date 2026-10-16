@@ -95,6 +95,8 @@ export interface ShortLink {
   /** Phase 3.12: the creator's name, from their profile; null without one, absent from older APIs. */
   created_by_first_name?: string | null;
   created_by_last_name?: string | null;
+  /** Phase 10.1: the service account that made it, for its creator or itself; null when a person did. */
+  via_service_account?: { id: string; display_name: string | null } | null;
 }
 
 export interface LinkListResponse {
@@ -530,6 +532,37 @@ export interface OrgMember {
   last_name?: string | null;
   role: OrgRole;
   joined_at: string;
+}
+
+/** Phase 10.1 — a service account's token, as Shurly shows it again: how it starts, never the token. */
+export interface ServiceTokenInfo {
+  id: string;
+  /** `shsa_<prefix>` */
+  prefix: string;
+  created_at: string;
+  expires_at: string | null;
+  last_used_at: string | null;
+  /** A renewed token's end of overlap; null for the active one. */
+  valid_until: string | null;
+}
+
+/** Phase 10.1 — GET /api/v1/service-accounts: another system that makes links for the organization. */
+export interface ServiceAccount {
+  id: string;
+  display_name: string;
+  description: string | null;
+  role: 'member' | 'admin';
+  responsible: { user_id: string; email: string; first_name?: string | null; last_name?: string | null } | null;
+  created_at: string;
+  token: ServiceTokenInfo | null;
+  previous_token: ServiceTokenInfo | null;
+}
+
+/** Phase 10.1 — POST /api/v1/service-accounts/{id}/token: the token itself, this once. */
+export interface ServiceTokenIssued extends ServiceTokenInfo {
+  token: string;
+  renewed: boolean;
+  service_account: ServiceAccount;
 }
 
 /** POST /api/v1/organization/adopt-personal-links: links (a campaign's included) and campaigns moved. */

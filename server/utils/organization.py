@@ -16,6 +16,12 @@ Roles rank member < admin < owner:
 - Once someone has been removed, an owner can move their personal links and
   campaigns to the organization, so the team keeps them, then or later: the
   removed people are listed with what they still own.
+- Phase 10.1 — service accounts (`users.kind = 'service'`) have a membership and a role
+  (member or admin), but they aren't people: the members list, the owners counted for the
+  "last owner" rule, the removed people and the bootstrap owner all leave them out, and
+  `server/utils/service_accounts.py` manages them, not these functions. Nor does a service
+  account change the organization: roles, removals, handovers, the logo and the waitlist are
+  for people (`ServiceAccountNotAllowed`).
 
 These functions flush but don't commit: the caller owns the transaction.
 """
@@ -27,6 +33,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from server.core.config import settings
 from server.core.models import URL, Campaign, Organization, OrganizationMember, OrgRole, User
+from server.core.models.user import PERSON
 from server.utils.event_log import log_event
 
 _RANK = {OrgRole.MEMBER: 0, OrgRole.ADMIN: 1, OrgRole.OWNER: 2}
@@ -56,6 +63,17 @@ class StillActive(OrganizationError):
     """The person's account is still open."""
 
 
+class ServiceAccountNotAllowed(NotAllowed):
+    """Phase 10.1 — a service account tried what only a person does."""
+
+    code = "service_account_not_allowed"
+
+
+def _ensure_person(actor: User) -> None:
+    if actor.is_service:
+        raise ServiceAccountNotAllowed("A service account can't change the organization.")
+
+
 def get_or_create_default_organization(db: Session) -> Organization:
     """The organization every account belongs to (one at launch)."""
     organization = db.query(Organization).order_by(Organization.created_at).first()
@@ -78,6 +96,7 @@ def editable_organization(db: Session, actor: User) -> Organization:
     The actor's organization, for changing how it looks (its logo, 3.14.4): owners and
     admins. Someone outside any organization is NotAMember, a member NotAllowed.
     """
+    _ensure_person(actor)
     mine = get_membership(db, actor)
     if mine is None:
         raise NotAMember("You don't belong to an organization.")
@@ -91,6 +110,7 @@ def ensure_owner_or_admin(db: Session, actor: User) -> OrganizationMember:
     The actor's membership, if they're an owner or admin of their organization (Phase 9.1: the
     waitlist). A member, or someone outside any organization, is NotAllowed.
     """
+    _ensure_person(actor)
     mine = get_membership(db, actor)
     if mine is None or _RANK[mine.role] < _RANK[OrgRole.ADMIN]:
         raise NotAllowed("Only the organization’s owners and admins see the waitlist.")
@@ -99,7 +119,7 @@ def ensure_owner_or_admin(db: Session, actor: User) -> OrganizationMember:
 
 def _is_bootstrap_owner(user: User) -> bool:
     configured = settings.bootstrap_owner_email.strip().lower()
-    return bool(configured) and user.email.lower() == configured
+    return bool(configured) and not user.is_service and user.email.lower() == configured
 
 
 def _active_owners(db: Session, organization_id: UUID, lock: bool = False):
@@ -110,6 +130,7 @@ def _active_owners(db: Session, organization_id: UUID, lock: bool = False):
             OrganizationMember.organization_id == organization_id,
             OrganizationMember.role == OrgRole.OWNER,
             User.is_active.is_(True),
+            User.kind == PERSON,
         )
     )
     if lock:
@@ -140,7 +161,8 @@ def join_default_organization(db: Session, user: User) -> OrganizationMember | N
     (None): it keeps working, with only its own personal links.
     """
     existing = get_membership(db, user)
-    if existing is not None:
+    if existing is not None or user.is_service:
+        # A service account joins when it's made, with the role the owner gave it.
         return existing
     if not on_organization_domain(user.email):
         # user_id only: the address itself is personal data.
@@ -164,7 +186,10 @@ def ensure_memberships(db: Session) -> None:
     """
     organization = get_or_create_default_organization(db)
     members = db.query(OrganizationMember.user_id)
-    for user in db.query(User).filter(User.is_active.is_(True), ~User.id.in_(members)).all():
+    people = db.query(User).filter(
+        User.is_active.is_(True), User.kind == PERSON, ~User.id.in_(members)
+    )
+    for user in people.all():
         join_default_organization(db, user)
 
     if not settings.bootstrap_owner_email or _active_owners(db, organization.id):
@@ -174,6 +199,7 @@ def ensure_memberships(db: Session) -> None:
         .filter(
             func.lower(User.email) == settings.bootstrap_owner_email.strip().lower(),
             User.is_active.is_(True),
+            User.kind == PERSON,
         )
         .first()
     )
@@ -197,15 +223,19 @@ def _log_role_change(actor: User | None, membership: OrganizationMember, before:
 
 
 def _memberships(db: Session, actor: User, target_user_id: UUID):
-    """The actor's membership and the target's, in the same organization."""
+    """The actor's membership and the target's, in the same organization. Both people: a
+    service account is changed from Settings → Organization → Service accounts (10.1)."""
+    _ensure_person(actor)
     mine = get_membership(db, actor)
     if mine is None:
         raise NotAllowed("You don't belong to an organization.")
     theirs = (
         db.query(OrganizationMember)
+        .join(User, User.id == OrganizationMember.user_id)
         .filter(
             OrganizationMember.user_id == target_user_id,
             OrganizationMember.organization_id == mine.organization_id,
+            User.kind == PERSON,
         )
         .first()
     )
@@ -289,12 +319,17 @@ def removed_members(db: Session, actor: User) -> list[tuple[User, int, int]]:
     closed accounts on the organization's email domain. One off the domain was never in
     it, whatever closed it, and its address isn't the owners' to see.
     """
+    _ensure_person(actor)
     mine = get_membership(db, actor)
     if mine is None or mine.role != OrgRole.OWNER:
         raise NotAllowed("Only owners see who was removed.")
-    # Their profiles (Phase 3.12: names) in one more query, not one per person.
+    # Their profiles (Phase 3.12: names) in one more query, not one per person. People only:
+    # a removed service account isn't anyone's to adopt links from (10.1).
     closed = (
-        db.query(User).options(selectinload(User.profile)).filter(User.is_active.is_(False)).all()
+        db.query(User)
+        .options(selectinload(User.profile))
+        .filter(User.is_active.is_(False), User.kind == PERSON)
+        .all()
     )
     people = [user for user in closed if on_organization_domain(user.email)]
     if not people:
@@ -321,11 +356,12 @@ def adopt_personal_links(db: Session, actor: User, target_user_id: UUID) -> tupl
     Returns how many links (a campaign's included) and campaigns moved. One
     organization at launch, so any closed account is someone who left it.
     """
+    _ensure_person(actor)
     mine = get_membership(db, actor)
     if mine is None or mine.role != OrgRole.OWNER:
         raise NotAllowed("Only owners move someone's personal links to the organization.")
     target = db.get(User, target_user_id)
-    if target is None:
+    if target is None or target.is_service:
         raise NotAMember("That person isn't in your organization.")
     if target.is_active:
         raise StillActive("Remove them from the organization first.")
