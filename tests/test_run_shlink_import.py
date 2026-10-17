@@ -6,7 +6,9 @@ answers as AWS would and records every call, so what it would do in AWS is check
 - A dry run unless --for-real, which needs the owner's email typed back.
 - The task definition is the live one's app container, plus an AWS CLI container that copies the
   files from the bucket with the import's own task role; both log to the service's group.
-- The service's secrets, in the live environment, never reach the terminal.
+- The service's secrets never reach the terminal: neither a value still in the live environment
+  nor the Parameter Store ARN of one injected through the container's `secrets`, which the
+  task definition keeps as the live container has it.
 - The task definition and the local files are deleted at the end, whatever happened.
 """
 
@@ -21,7 +23,9 @@ from pathlib import Path
 import pytest
 
 SCRIPT = Path(__file__).resolve().parent.parent / "scripts" / "run_shlink_import.sh"
-SECRETS = ("s3cr3t-db-password", "s3cr3t-jwt-key")
+SECRETS = ("s3cr3t-google-client-secret", "s3cr3t-mcp-signing-key")
+PARAMETERS = "arn:aws:ssm:eu-south-2:686255983646:parameter/shurly/production"
+SECRET_ARNS = (f"{PARAMETERS}/DB_PASSWORD", f"{PARAMETERS}/JWT_SECRET_KEY")
 SERVICE_TD = "arn:aws:ecs:eu-south-2:123456789012:task-definition/shurly-api-5fdb:7"
 NEW_TD = "arn:aws:ecs:eu-south-2:123456789012:task-definition/shurly-shlink-import:1"
 TASK = "arn:aws:ecs:eu-south-2:123456789012:task/default/abc123"
@@ -39,10 +43,18 @@ LIVE = {
         {
             "name": "Main",
             "image": "123456789012.dkr.ecr.eu-south-2.amazonaws.com/shurly-api:abc",
+            # Production keeps its non-secret settings in `environment` and injects the secrets
+            # from Parameter Store through `secrets`. Two secret values stay in `environment` too,
+            # as before the move: whichever way the live container holds them, none is printed.
             "environment": [
                 {"name": "DB_HOST", "value": "shurly.db.internal"},
-                {"name": "DB_PASSWORD", "value": SECRETS[0]},
-                {"name": "JWT_SECRET_KEY", "value": SECRETS[1]},
+                {"name": "DEFAULT_DOMAIN", "value": "go.griddo.io"},
+                {"name": "GOOGLE_CLIENT_SECRET", "value": SECRETS[0]},
+                {"name": "MCP_OAUTH_SIGNING_KEY", "value": SECRETS[1]},
+            ],
+            "secrets": [
+                {"name": "DB_PASSWORD", "valueFrom": SECRET_ARNS[0]},
+                {"name": "JWT_SECRET_KEY", "valueFrom": SECRET_ARNS[1]},
             ],
             "logConfiguration": {
                 "logDriver": "awslogs",
@@ -229,6 +241,8 @@ def test_the_task_is_the_live_services_plus_one_that_fetches_the_files(aws):
         "--only-show-errors",
     ]
     assert (imports["image"], imports["environment"]) == (live["image"], live["environment"])
+    assert imports["secrets"] == live["secrets"]
+    assert "secrets" not in fetch  # the AWS CLI container needs none of them
     assert imports["dependsOn"] == [{"containerName": "fetch", "condition": "SUCCESS"}]
     assert imports["mountPoints"] == [
         {"sourceVolume": "import", "containerPath": "/import", "readOnly": True}
@@ -285,6 +299,7 @@ def test_the_services_secrets_never_reach_the_terminal(aws):
     result = _run(aws, *ARGS)
 
     assert not [secret for secret in SECRETS if secret in result.stdout + result.stderr]
+    assert not [arn for arn in SECRET_ARNS if arn in result.stdout + result.stderr]
 
 
 def test_the_task_definition_and_the_local_files_are_deleted(aws):

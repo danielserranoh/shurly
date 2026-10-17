@@ -10,7 +10,14 @@
 #   AWS_PROFILE=griddo-main ./scripts/deploy_ecs.sh
 #
 # Required env (or .env file in cwd):
-#   DB_HOST, DB_PASSWORD, JWT_SECRET_KEY
+#   DB_HOST
+#
+# Secrets are never read from the env or .env. Five SecureString parameters in
+# SSM Parameter Store, /shurly/production/<NAME> (SSM_PREFIX), reach the container
+# through its `secrets` field (ECS reads them at task start with the execution
+# role): DB_PASSWORD, JWT_SECRET_KEY, GOOGLE_CLIENT_SECRET, MCP_OAUTH_SIGNING_KEY,
+# CLOUDFRONT_ORIGIN_SECRETS. The script checks they exist (names only, never their
+# values) before building anything. DEPLOYMENT.md § Secrets.
 #
 # Optional env (sensible defaults below):
 #   IMAGE_TAG (default: short git sha)
@@ -19,6 +26,7 @@
 #   REGION (default: eu-south-2)
 #   CORS_ORIGINS (default: '[]', no cross-origin caller: the frontend is served from
 #     the API's own host, 4.10; DEPLOYMENT.md § CORS)
+#   SSM_PREFIX (default: /shurly/production, where the five secrets live)
 
 set -euo pipefail
 
@@ -32,6 +40,11 @@ ECR_REPO="${ECR_REPO:-shurly-api}"
 SHA_SHORT=$(git rev-parse --short HEAD 2>/dev/null || echo "manual")
 IMAGE_TAG="${IMAGE_TAG:-${SHA_SHORT}-$(date +%s)}"
 CLUSTER="${CLUSTER:-default}"
+SSM_PREFIX="${SSM_PREFIX:-/shurly/production}"
+SSM_PREFIX="/${SSM_PREFIX#/}"
+SSM_PREFIX="${SSM_PREFIX%/}"
+# Injected through the container's `secrets`, never its `environment`.
+SECRET_NAMES=(DB_PASSWORD JWT_SECRET_KEY GOOGLE_CLIENT_SECRET MCP_OAUTH_SIGNING_KEY CLOUDFRONT_ORIGIN_SECRETS)
 
 # Load .env file if present so the user doesn't need to export everything by
 # hand. Variables already set in the shell win — that's the standard precedence.
@@ -46,7 +59,7 @@ NC='\033[0m'
 
 # ─── Pre-flight ─────────────────────────────────────────────────────────────
 echo -e "${YELLOW}Pre-flight checks${NC}"
-for var in DB_HOST DB_PASSWORD JWT_SECRET_KEY; do
+for var in DB_HOST; do
     if [ -z "${!var:-}" ]; then
         echo -e "${RED}Missing required env var: $var${NC}"
         echo "Set it in your shell or in a .env file in the project root."
@@ -75,6 +88,28 @@ if [ -n "$SERVICE_ARN" ] && [ "$SERVICE_ARN" != "None" ]; then
     exit 1
 fi
 echo -e "${GREEN}✓ Service:     $SERVICE_NAME doesn't exist yet, creating it${NC}"
+
+# The secrets must exist before the service does: a task whose `secrets` name a
+# missing parameter never starts. Names only: no --with-decryption, so no value is
+# fetched, let alone printed. A failed call stops the script too (set -e).
+SECRET_PARAMETERS=()
+for name in "${SECRET_NAMES[@]}"; do
+    SECRET_PARAMETERS+=("${SSM_PREFIX}/${name}")
+done
+MISSING_PARAMETERS=$(aws ssm get-parameters --region "$REGION" \
+    --names "${SECRET_PARAMETERS[@]}" \
+    --query "InvalidParameters" \
+    --output text)
+if [ -n "${MISSING_PARAMETERS//[[:space:]]/}" ] && [ "$MISSING_PARAMETERS" != "None" ]; then
+    echo -e "${RED}Missing SSM parameters (SecureString, region $REGION):${NC}"
+    for parameter in $MISSING_PARAMETERS; do
+        echo "  • $parameter"
+    done
+    echo "Create each one before the service (DEPLOYMENT.md § Secrets), e.g.:"
+    echo "  aws ssm put-parameter --region $REGION --type SecureString --name <name> --value file://<0600 file>"
+    exit 1
+fi
+echo -e "${GREEN}✓ Secrets:     ${#SECRET_NAMES[@]} parameters under ${SSM_PREFIX}/${NC}"
 
 # ─── 1. ECR repository ──────────────────────────────────────────────────────
 echo ""
@@ -143,10 +178,8 @@ CONTAINER_JSON=$(jq -n \
     --arg db_host        "$DB_HOST" \
     --arg db_port        "${DB_PORT:-5432}" \
     --arg db_user        "${DB_USER:-shurly}" \
-    --arg db_password    "$DB_PASSWORD" \
     --arg db_name        "${DB_NAME:-shurly}" \
     --arg db_ssl_mode    "${DB_SSL_MODE:-require}" \
-    --arg jwt_secret     "$JWT_SECRET_KEY" \
     --arg jwt_algorithm  "${JWT_ALGORITHM:-HS256}" \
     --arg jwt_expire     "${JWT_ACCESS_TOKEN_EXPIRE_MINUTES:-10080}" \
     --arg api_title      "Shurly API" \
@@ -160,6 +193,8 @@ CONTAINER_JSON=$(jq -n \
     --arg redirect_status "${REDIRECT_STATUS_CODE:-302}" \
     --arg redirect_cache "${REDIRECT_CACHE_LIFETIME:-0}" \
     --arg bootstrap_owner "${BOOTSTRAP_OWNER_EMAIL:-}" \
+    --arg ssm_arn_prefix "arn:aws:ssm:${REGION}:${AWS_ACCOUNT_ID}:parameter${SSM_PREFIX}/" \
+    --arg secret_names   "${SECRET_NAMES[*]}" \
     '{
         image: $image,
         containerPort: $port,
@@ -167,10 +202,8 @@ CONTAINER_JSON=$(jq -n \
             {name: "DB_HOST",                            value: $db_host},
             {name: "DB_PORT",                            value: $db_port},
             {name: "DB_USER",                            value: $db_user},
-            {name: "DB_PASSWORD",                        value: $db_password},
             {name: "DB_NAME",                            value: $db_name},
             {name: "DB_SSL_MODE",                        value: $db_ssl_mode},
-            {name: "JWT_SECRET_KEY",                     value: $jwt_secret},
             {name: "JWT_ALGORITHM",                      value: $jwt_algorithm},
             {name: "JWT_ACCESS_TOKEN_EXPIRE_MINUTES",    value: $jwt_expire},
             {name: "API_TITLE",                          value: $api_title},
@@ -184,7 +217,8 @@ CONTAINER_JSON=$(jq -n \
             {name: "REDIRECT_STATUS_CODE",               value: $redirect_status},
             {name: "REDIRECT_CACHE_LIFETIME",            value: $redirect_cache},
             {name: "BOOTSTRAP_OWNER_EMAIL",              value: $bootstrap_owner}
-        ]
+        ],
+        secrets: ($secret_names | split(" ") | map({name: ., valueFrom: ($ssm_arn_prefix + .)}))
     }')
 
 # Optional debug: uncomment to inspect the generated JSON before sending.
