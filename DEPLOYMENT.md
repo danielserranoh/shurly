@@ -11,10 +11,14 @@ shared ALB, ALB rule-sync Lambda, default VPC) the canonical reference is:
 
 ## Architecture
 
+The diagrams: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) has every AWS piece and the request paths (a short link,
+the web app, the API, the MCP), and [docs/DATABASE_SCHEMA.md](docs/DATABASE_SCHEMA.md) the database's tables, an ER
+diagram generated from the models. The sketch below is the ALB's part.
+
 ```
 Internet
    ↓
-shared ALB (eu-south-2) — created by ECS Express for Shlink, reused for Shurly
+ALB (eu-south-2) — created by ECS Express for Shlink; Shurly's alone since Shlink was removed (2026-10-17)
    ↓
    ├─ priority 11 → redirect        → links.griddo.io → https://shurly.griddo.io/dashboard/ (Shlink's web client retired)
    └─ priority 12 → shurly-api      → shurly.griddo.io (the app, API, MCP), go.griddo.io (short links)
@@ -179,10 +183,17 @@ The script:
   image; settings change on the live service (§ Change a setting on the live service), secrets in Parameter
   Store (§ Secrets).
 
-Smoke the auto-generated host:
+Smoke the auto-generated host. It's opaque, `sh-<32 hex>.ecs.eu-south-2.on.aws`, not named after the service
+([docs/AWS_ECS_DEPLOYMENT.md](docs/AWS_ECS_DEPLOYMENT.md), lesson 1), so read it from the service. On a service that
+already has its custom domains, `https://shurly.griddo.io/api/v1/health` does the same.
 
 ```bash
-curl https://shurly-api.ecs.eu-south-2.on.aws/api/v1/health
+SERVICE_ARN=$(aws ecs list-services --region eu-south-2 --profile griddo-main --cluster default \
+    --query "serviceArns[?contains(@, 'shurly-api')] | [0]" --output text)
+HOST=$(aws ecs describe-express-gateway-service --region eu-south-2 --profile griddo-main \
+    --service-arn "$SERVICE_ARN" --output json \
+  | grep -o 'sh-[0-9a-f]*\.ecs\.eu-south-2\.on\.aws' | sort -u | head -1)
+curl "https://$HOST/api/v1/health"
 # {"status":"ok"}
 ```
 
@@ -194,7 +205,7 @@ AWS_PROFILE=griddo-main ./scripts/setup_custom_domain.sh
 
 This wires the three things ECS Express does NOT handle for custom domains:
 
-1. Adds the validated ACM cert to the shared ALB's HTTPS listener.
+1. Adds the validated ACM cert to the ALB's HTTPS listener.
 2. Creates a routing rule at priority **12** (next free after Shlink's 10 / 11) that matches `host-header=go.griddo.io` and forwards to Shurly's currently-active target group. Rule 12 hosts
    `shurly.griddo.io` too: the script, run on an existing rule, replaces its hosts with `DOMAIN` alone, so a host
    added later joins rule 12 by hand, or takes another priority (`RULE_PRIORITY=13`).
@@ -597,8 +608,9 @@ is the parameter's.
 
 The static build (`frontend/dist/`) lives in a private S3 bucket behind **one CloudFront distribution for
 `shurly.griddo.io`**, which also carries the API and the MCP to the ALB. The app and the API then share one
-origin, so the browser makes no cross-origin calls. Prepared in the repo: the deploy workflow, the CloudFront
-Function and this section. The AWS resources below are still to be created (ROADMAP 4.10).
+origin, so the browser makes no cross-origin calls. The deploy workflow and the CloudFront Function live in the
+repo; the AWS resources below exist since 2026-09-29, and these sections say how each is set up, should one need
+rebuilding.
 
 ### The distribution
 
@@ -808,21 +820,29 @@ What the workflow does, on merges to `main` that touch `frontend/**` and by hand
 
 ### Cutover and rollback
 
-Today `shurly.griddo.io` is a Route 53 alias to the ALB, in the `griddo-production` zone. Going live changes that
-alias to the distribution, once the distribution is deployed with the certificate. Before switching, test through
-CloudFront with the real host name:
+Since 2026-09-29 `shurly.griddo.io` is a Route 53 alias to the distribution (`d1e7o4qkz3x60l.cloudfront.net`), in
+the `griddo-production` zone; until then it was an alias to the ALB. The cutover switched that alias once the
+distribution was deployed with the certificate. To test a distribution through CloudFront with the real host name
+before the alias points at it (a rebuilt one, or after a rollback):
 
 ```bash
-EDGE=$(dig +short d111111abcdef8.cloudfront.net | head -1)   # the distribution's domain name
+EDGE=$(dig +short d1e7o4qkz3x60l.cloudfront.net | head -1)   # the distribution's domain name
 curl -s --resolve shurly.griddo.io:443:$EDGE https://shurly.griddo.io/api/v1/health
 curl -sI --resolve shurly.griddo.io:443:$EDGE https://shurly.griddo.io/dashboard/
 ```
 
-After the switch, set `FRONTEND_URL=https://shurly.griddo.io` in the task, and set `CORS_ORIGINS='[]'`, since the
-app and the API are now the same origin (§ CORS).
+With the switch, the task got `FRONTEND_URL=https://shurly.griddo.io` and `CORS_ORIGINS='[]'`, since the app and
+the API are the same origin (§ CORS).
 
-**Rollback:** point the alias back to the ALB. Its host rule and its certificate stay in place, so the API
-answers as before. The pages come back with the next attempt.
+**Rollback:** point the alias back to the ALB (an alias A record to the ALB's DNS name, like `go.griddo.io`'s). The
+ALB's host rule (priority 12) and its eu-south-2 certificate for `shurly.griddo.io` stay in place, so the API and the
+MCP answer as before. The pages don't: they're in S3 only, and come back when the alias points at the distribution
+again. Two things to know while it's on the ALB:
+
+- Requests carry no `X-Origin-Verify`, so the client IP comes from `X-Forwarded-For`, as on `go.griddo.io`
+  (§ Client IPs behind CloudFront). That's right for a direct request.
+- If the ALB rule that answers `403` to `shurly.griddo.io` without the secret is in place (§ Client IPs behind
+  CloudFront, "Defence in depth"), remove it first, or the API answers `403` to everybody.
 
 ### Client IPs behind CloudFront (Phase 6.3)
 
@@ -832,7 +852,7 @@ Two paths reach the ALB: **directly**, for `go.griddo.io`, the short links, and 
 
 So the app takes the client IP from `CloudFront-Viewer-Address`, but only on a request that proves it came through
 the distribution by carrying a secret that the distribution adds as a custom origin header (`client_ip`,
-`server/utils/network.py`). The ALB is shared and reachable directly: anyone can send `CloudFront-Viewer-Address`, but
+`server/utils/network.py`). The ALB is reachable directly (`go.griddo.io` goes straight to it): anyone can send `CloudFront-Viewer-Address`, but
 not the secret. Without the secret, and when the header is missing or doesn't parse, the client IP comes from
 `X-Forwarded-For` as before (§ Trusted-Proxy Configuration). The rate limits and the visit log both use it.
 
@@ -911,7 +931,7 @@ requests as direct ones, and count the edges' addresses instead of people's. Aft
 `cloudfront` (the query above).
 
 **Defence in depth, at the ALB (optional):** the ALB can refuse requests for `shurly.griddo.io` that skip
-CloudFront, so they never reach the app. The app doesn't depend on it. It has to be per host: the ALB is shared,
+CloudFront, so they never reach the app. The app doesn't depend on it. It has to be per host:
 priority 12 also serves `go.griddo.io`, which is reached directly. So neither a
 condition on priority 12 nor a security group limited to CloudFront's origin-facing prefix list
 (`com.amazonaws.global.cloudfront.origin-facing`) will do. Instead:
@@ -940,25 +960,103 @@ condition on priority 12 nor a security group limited to CloudFront's origin-fac
 
 ## Cost estimation (eu-south-2, monthly)
 
-| Component | Cost |
-|---|---|
-| RDS PostgreSQL t4g.micro (20 GB gp3, encrypted) | ~$8 |
-| ECS Fargate task (0.25 vCPU, 0.5 GB) | ~$9 |
-| ALB (shared with Shlink) | $0 marginal |
-| ECR (one image, ~200 MB) | <$0.10 |
-| CloudWatch Logs (60-day retention) | ~$0.50 |
-| Route 53 query traffic | ~$0.20 |
-| ACM certificate | $0 |
-| Lambda + EventBridge for ALB rule sync | $0 (free tier) |
-| Alarms, dashboard and alert emails (§ Error alerting) | ~$0–1 |
-| **Total** | **~$17 / month** |
+**Estimates**, from eu-south-2's list prices as best known on 2026-10-18, rounded. Check the AWS pricing pages before
+relying on one line; what Shurly really costs is the tag's figure (§ Shurly's real cost, below).
 
-Standalone (no shared ALB): add ~$16 for a dedicated ALB. Sharing with Shlink amortizes that across services.
+| Component | What's billed | Estimate |
+|---|---|---|
+| RDS `shurly-db` | db.t4g.micro, every hour of the month | ~13 $ |
+| RDS storage | 20 GB gp3 | ~2.5 $ |
+| RDS backups | Automated snapshots and transaction logs, 7 days (§ Backup and recovery) | 0 $ up to 20 GB, the database's size; beyond it, about 0.1 $ per GB |
+| ECS Fargate | One task, 0.25 vCPU / 0.5 GB, x86_64, 24/7. A second one while it scales out (max 2), and during each rollout's canary | ~9–10 $ |
+| ALB | Shurly's alone since Shlink was removed (2026-10-17): its hours (~18 $) plus LCUs (~1–2 $ at this traffic) | ~19–21 $ |
+| The ALB's public IPv4 addresses | 3, one per availability zone, at the public IPv4 price (0.005 $ an hour each). A task with a public IP (`assignPublicIp` in the service's network configuration) adds one more, ~3.65 $ | ~11 $ |
+| CloudFront and the S3 frontend | Low traffic, inside CloudFront's free tier; a few MB in the bucket | ~0–1 $ |
+| ECR | 0.10 $ per GB a month. Every deploy pushes an image (immutable tags); the lifecycle rule expires those pushed more than 30 days ago (§ Geolocation data), so it stays at about a month of images | <1 $ |
+| CloudWatch Logs | Ingestion, and 60 days of storage | ~0.5–2 $ |
+| Alarms, metrics, dashboard and alert emails | § Error alerting, "What it costs" | ~0–1 $ |
+| SSM Parameter Store | 5 standard-tier parameters (§ Secrets) | 0 $ |
+| KMS | The AWS-managed keys (`aws/ssm`, `aws/rds`) | 0 $ |
+| ACM certificates | | 0 $ |
+| Route 53 | The `griddo.io` zone lives in `griddo-production`, shared with everything else there; Shurly's queries are cents | ~0.2 $, billed in `griddo-production` |
+| Lambda and EventBridge, ALB rule sync | Free tier | 0 $ |
+| Data transfer out | Redirects and API answers are small | ~0–1 $ |
+| **Total** | | **~55–65 $ a month** |
+
+The previous estimate, ~17 $, counted the ALB as shared with Shlink (0 $ marginal) and left out its public IPv4
+addresses. Since Shlink was removed, the load balancer and its three addresses (~30 $ together) are Shurly's alone:
+the biggest part of the bill.
+
+### Shurly's real cost
+
+`griddo-main` is the organization's management account, and hosts much more than Shurly, so the account's bill says
+nothing about Shurly's share. The tag does:
+
+- **Every Shurly resource is tagged `Project=Shurly`**: the RDS instance, the ECS service, the ALB and its target
+  groups, the CloudFront distribution, the S3 frontend bucket, the ECR repository, the log group, the SNS topic, the
+  SSM parameters and the alarms.
+- **`Project` is an active cost-allocation tag** (Billing → Cost allocation tags). Cost data carries it from the day
+  it was activated on, not before, and takes up to 24 hours to show.
+- A new resource gets the tag when it's made (`--tags Key=Project,Value=Shurly` on most `create-*` commands), or its
+  cost lands outside the figure.
+
+**Reading it:** Cost Explorer → filter **Tag: Project = Shurly**, group by **Service**, monthly. The same from the
+CLI (Cost Explorer's API lives in us-east-1, and each call costs 0.01 $):
+
+```bash
+aws ce get-cost-and-usage --region us-east-1 --profile griddo-main \
+    --time-period Start=2026-11-01,End=2026-12-01 --granularity MONTHLY \
+    --metrics UnblendedCost --group-by Type=DIMENSION,Key=SERVICE \
+    --filter '{"Tags":{"Key":"Project","Values":["Shurly"]}}' \
+    --query 'ResultsByTime[0].Groups[].{service:Keys[0],usd:Metrics.UnblendedCost.Amount}' --output table
+```
+
+**The budget:** AWS Budgets **`shurly-monthly`**, a cost budget of **80 $ a month** filtered on `Project=Shurly`. It
+emails daniel.serrano@griddo.io:
+
+- when the month's **actual** spend passes **80 %** of it (64 $);
+- when the month's **forecast** passes **100 %** (80 $).
+
+To change it: Billing → Budgets → `shurly-monthly` → Edit, for the amount, the thresholds or the recipients. From the
+CLI (Budgets' API is global; the first two budgets in an account are free):
+
+```bash
+# The amount: the whole budget goes back, with only the limit changed
+dir=$(mktemp -d)
+aws budgets describe-budget --profile griddo-main --account-id 686255983646 --budget-name shurly-monthly \
+    --query Budget --output json | jq 'del(.CalculatedSpent, .LastUpdatedTime) | .BudgetLimit.Amount = "100"' \
+    > "$dir/budget.json"
+aws budgets update-budget --profile griddo-main --account-id 686255983646 --new-budget "file://$dir/budget.json"
+rm -rf "$dir"
+
+# Another recipient, on the 80 % actual alert (the same with NotificationType=FORECASTED,Threshold=100)
+aws budgets create-subscriber --profile griddo-main --account-id 686255983646 --budget-name shurly-monthly \
+    --notification NotificationType=ACTUAL,ComparisonOperator=GREATER_THAN,Threshold=80,ThresholdType=PERCENTAGE \
+    --subscriber SubscriptionType=EMAIL,Address=someone@griddo.io
+```
+
+**What the tag can't see.** Some of Shurly's cost is billed without a resource that carries the tag:
+
+- **Data transfer**, part of it: inter-AZ traffic between the task and the database, and some data out, land under
+  EC2 or "Data Transfer" lines with no tag.
+- **The public IPv4 addresses** may be billed under Amazon VPC (usage type `…PublicIPv4:InUseAddress`), on the ALB's
+  network interfaces, which don't carry the ALB's tag. That's ~11 $, a fifth of the estimate.
+- **RDS backup storage** beyond the free 20 GB is billed for the region, not the instance.
+- **Route 53** is billed in `griddo-production`, outside this account's resources.
+
+So the tag's figure runs low. After the first full month with the tag active, compare it with the table above: if
+the ALB's IPv4 line is missing, read it from Cost Explorer (service Amazon Virtual Private Cloud, group by usage type)
+and adjust the budget's amount, or this table, to match.
 
 Mitigations if cost ever pinches:
-- Switch the Fargate task to Spot (~70% off, with eviction risk).
-- Add an autoscaling schedule that drops to 0 tasks during off-hours.
+- **The ALB and its addresses are half the bill.** Sharing the load balancer with another service again would split
+  them. `docs/AWS_ECS_DEPLOYMENT.md` § Why ECS Express and not Lightsail set "we stop sharing the ALB" as the threshold
+  for reconsidering Lightsail Containers: it has been crossed.
+- Switch the Fargate task to Spot (~70% off, with eviction risk: a link answers nothing while its task is replaced).
+- An autoscaling schedule that drops to 0 tasks during off-hours, only if nobody follows a link then: short links in
+  sent emails stop answering while it's at 0.
 - Move read-heavy endpoints behind CloudFront with a non-zero `REDIRECT_CACHE_LIFETIME` (trades analytics fidelity for compute reduction).
+- A stricter ECR lifecycle rule, keeping only the last few images instead of 30 days' (§ Geolocation data): cents.
 
 ---
 
@@ -985,7 +1083,7 @@ If your privacy policy permits storing full IPs, set `ANONYMIZE_REMOTE_ADDR=fals
 
 `X-Forwarded-For` is **never** trusted by default — anyone can spoof it. Once the ALB sits in front of the API (which it does), set `TRUSTED_PROXIES` to the CIDRs that may legitimately set the header.
 
-For the shared ALB inside the default VPC, the right value is the VPC's CIDR:
+For the ALB inside the default VPC, the right value is the VPC's CIDR:
 
 ```bash
 TRUSTED_PROXIES='["172.31.0.0/16"]'
@@ -1014,7 +1112,7 @@ What anyone can call is limited per client IP, counted in the database (`rate_li
 - **Per account, only failed attempts count**, so the right password isn't counted with a guesser's. That also means anyone can lock an address's password login for 15 minutes by failing on purpose; signing in with Google stays open, so that's accepted. The address needn't have an account, so a 429 tells nothing about who has one.
 - Over a limit: `429` with `Retry-After`; Google's sign-in, a browser navigation, goes back to `{FRONTEND_URL}/login/#error=rate_limited` instead. The event log records `http.rate_limited {path, limit}`, never the IP or the address.
 - If the database can't count, requests go through and `rate_limit.store_failed` is logged: the limits protect, they mustn't become an outage.
-- AWS WAF on the shared ALB would add limiting before the app; that's an AWS decision, not in this code.
+- AWS WAF on the ALB would add limiting before the app; that's an AWS decision, not in this code.
 
 ## CORS (Phase 6.3)
 
@@ -1022,12 +1120,11 @@ The frontend calls the API with a bearer token, never cookies, so CORS allows no
 methods (`GET`, `POST`, `PUT`, `PATCH`, `DELETE`) and request headers (`Authorization`, `Content-Type`,
 `X-Request-Id`) the API uses, and exposes `Retry-After` and `X-Request-Id` to the frontend.
 
-- **Production needs no cross-origin entry** once the frontend is hosted (4.10): it and the API share one
-  host (the Hostnames table under Architecture), so the browser makes no cross-origin calls. Set
-  `CORS_ORIGINS='[]'` then, unless the frontend is served from another origin.
-- **Production's value since release #81 (2026-09-28) is `["http://localhost:4232"]`.** It listed
-  `https://shurl.griddo.io`, a host that doesn't exist, until then. Localhost stays for running the frontend
-  locally against production until 4.10.
+- **Production's value is `[]`, since 2026-09-29** (§ Frontend hosting). Through CloudFront the web app and the
+  API share one origin, `https://shurly.griddo.io` (the Hostnames table under Architecture), so the browser makes
+  no cross-origin calls. Keep it empty unless the frontend is served from another origin.
+- Before that it was `["http://localhost:4232"]` from release #81 (2026-09-28), for running the frontend locally
+  against production, and `https://shurl.griddo.io`, a host that doesn't exist, until then.
 - Locally the defaults cover the dev server (`http://localhost:4232`) on another port, so the middleware
   stays.
 
@@ -1299,7 +1396,7 @@ what it means and points here.
 | `shurly-api-5xx` | ≥ 5 `http.request` lines with `status` ≥ 500 in 5 min | The app answers with errors: an exception, the database, a bad deploy | Steps 1–3 below: which paths fail, whether a deploy just happened, whether the database is there |
 | `shurly-rate-limit-store` | ≥ 1 `rate_limit.store_failed` in 5 min | The rate limits can't reach their store, and fail open: they're letting everything through | The database (step 3): the limits keep their counts there |
 | `shurly-client-errors` | ≥ 10 `client.error` in 15 min | The web app is breaking in people's browsers | The `client.error` query (§ Browser errors), then whether a frontend deploy just went out |
-| `shurly-alb-5xx` | ALB `HTTPCode_ELB_5XX_Count` ≥ 5 in 5 min | The ALB answered itself because no target did: none running, none healthy, or the custom rule on the wrong target group. The ALB is shared, so this counts Shlink's too | Whether Shurly answers (`/api/v1/health` on both hosts), then `docs/AWS_ECS_DEPLOYMENT.md` § ALB returns 503 |
+| `shurly-alb-5xx` | ALB `HTTPCode_ELB_5XX_Count` ≥ 5 in 5 min | The ALB answered itself because no target did: none running, none healthy, or the custom rule on the wrong target group. Shurly is the only service behind the ALB, so they're all Shurly's (below) | Whether Shurly answers (`/api/v1/health` on both hosts), then `docs/AWS_ECS_DEPLOYMENT.md` § ALB returns 503 |
 | `shurly-no-healthy-target` | The sum of `HealthyHostCount` over the service's two target groups < 1 for 3 min | No task is passing health checks: the redirects, the API and the MCP are all down | The service's events and its last stopped task (`docs/AWS_ECS_DEPLOYMENT.md` § Container won't start) |
 | `shurly-db-storage-low` | RDS `FreeStorageSpace` < 2 GB | The database disk is filling up: when it's full, every write fails | Grow the instance's storage (`aws rds modify-db-instance --allocated-storage`), then look at what grew (visits, orphan visits) |
 
@@ -1525,7 +1622,8 @@ address (§ GDPR posture). An empty `GEOIP_DATABASE` turns lookups off. GeoLite2
   DB-IP's is this month's file, or last month's until this month's is out. Both are asked with the script's own
   User-Agent, because DB-IP answers Python's default with a 403.
 - **MaxMind's credentials** are the GitHub secrets `MAXMIND_ACCOUNT_ID` and `MAXMIND_LICENSE_KEY`. They can be the
-  repository's, or the `dev` environment's, which is where the deploy job runs for a push and for the weekly run.
+  repository's, or the `production` environment's, which is where the deploy job runs for a push, the weekly run
+  and a run by hand (`deploy-backend.yml`).
   - The job hands them to the build as BuildKit secrets, mounted for the fetch alone. They're in no image layer,
     build argument or log line, and the running task never has them.
   - The key goes to MaxMind only, over HTTPS. It isn't forwarded to the storage MaxMind redirects the download to.
@@ -1983,6 +2081,265 @@ rm -rf "$dir"   # shred -u its files first where there is one
 connections they have open, but any new one (the pool growing under load, a connection recycled after an hour, one
 that dropped) is refused, and the request that needed it fails. Do it at a quiet hour, and go from step 1 to step 3
 without a pause.
+
+## Backup and recovery
+
+The database is RDS `shurly-db`: db.t4g.micro, PostgreSQL 17.9, 20 GB gp3, encrypted, not public, in `griddo-main`
+(686255983646), eu-south-2. DB subnet group `shlink-db-subnets`, security group `sg-068d9cf0e6f2e440f`, parameter
+group `default.postgres17`. The app reaches it through `DB_HOST`, a plain variable on the service's container, with
+the password from `/shurly/production/DB_PASSWORD` (§ Secrets).
+
+> **`shlink-db-subnets` is `shurly-db`'s.** The DB subnet group kept the name it had under Shlink, and `shurly-db`
+> uses it, as does every restore below. It isn't a Shlink leftover: don't delete it with them.
+
+### What's backed up
+
+- **Automated backups**: a daily snapshot, in the window 06:43–07:13 UTC, plus the transaction logs, kept **7 days**
+  (decided 2026-10-18).
+- **Point-in-time restore** to any second in those 7 days, up to `LatestRestorableTime`, usually a few minutes ago.
+- **Deletion protection is on**: deleting `shurly-db` (and its automated backups with it) needs it turned off first.
+- **Copy tags to snapshots is on**: the snapshots carry `Project=Shurly`.
+
+To check all of it:
+
+```bash
+aws rds describe-db-instances --region eu-south-2 --profile griddo-main --db-instance-identifier shurly-db \
+    --query 'DBInstances[0].{protection:DeletionProtection,copyTags:CopyTagsToSnapshot,days:BackupRetentionPeriod,
+window:PreferredBackupWindow,latest:LatestRestorableTime}'
+```
+
+Expect `true`, `true`, `7`, `06:43-07:13` and a time a few minutes old.
+
+### Restore, step by step
+
+A restore always makes a **new instance**, with a new name and a new endpoint. `shurly-db` is left as it is, and the
+service keeps using it until you choose a way back (below). The new instance costs a db.t4g.micro's hours while it
+exists.
+
+**1. Pick the time**, in UTC: the last moment before the damage. The logs say when it started (§ Error alerting,
+"When it fires"), or whatever did it does. When the database is simply broken now, take the latest restorable time.
+The window:
+
+```bash
+aws rds describe-db-instance-automated-backups --region eu-south-2 --profile griddo-main \
+    --db-instance-identifier shurly-db --query 'DBInstanceAutomatedBackups[0].RestoreWindow'
+aws rds describe-db-instances --region eu-south-2 --profile griddo-main --db-instance-identifier shurly-db \
+    --query 'DBInstances[0].LatestRestorableTime' --output text
+```
+
+**2. Restore** into the same subnet group and security group, so the service's network reaches it. A name for the new
+one (`shurly-db-restore-test` for a rehearsal, `shurly-db-restored-<date>` for real), and either a time or the latest:
+
+```bash
+NEW=shurly-db-restored-20261018
+
+aws rds restore-db-instance-to-point-in-time --region eu-south-2 --profile griddo-main \
+    --source-db-instance-identifier shurly-db \
+    --target-db-instance-identifier "$NEW" \
+    --restore-time 2026-10-18T09:30:00Z \
+    --db-subnet-group-name shlink-db-subnets \
+    --vpc-security-group-ids sg-068d9cf0e6f2e440f \
+    --db-parameter-group-name default.postgres17 \
+    --db-instance-class db.t4g.micro \
+    --storage-type gp3 \
+    --no-publicly-accessible \
+    --copy-tags-to-snapshot \
+    --deletion-protection \
+    --tags Key=Project,Value=Shurly > /dev/null
+```
+
+- For the latest restorable time, replace `--restore-time …` with `--use-latest-restorable-time`.
+- The tag isn't copied from `shurly-db`: `--tags` gives it, so its cost counts as Shurly's (§ Shurly's real cost).
+- The encryption, engine version, master user and storage size come from `shurly-db`. So does the master password,
+  **as it was at the restore time**: after a rotation since then, the restored instance has the old one.
+- If `shurly-db` itself is gone and its automated backups were kept, `--source-dbi-resource-id` (from
+  `aws rds describe-db-instance-automated-backups`) replaces `--source-db-instance-identifier`.
+
+**3. Wait** until it's available, then read its endpoint:
+
+```bash
+aws rds wait db-instance-available --region eu-south-2 --profile griddo-main --db-instance-identifier "$NEW"
+NEW_HOST=$(aws rds describe-db-instances --region eu-south-2 --profile griddo-main \
+    --db-instance-identifier "$NEW" --query 'DBInstances[0].Endpoint.Address' --output text)
+echo "$NEW_HOST"
+```
+
+The waiter gives up after 30 minutes; if it does, run it again (§ Measured times has how long it took).
+
+### Check the restored data
+
+Before pointing anything at it, compare it with production: the row counts of the main tables, `urls`, `visits`,
+`users` and `campaigns`, and the last visit's time, on both. The database is private, so the check runs as a one-off
+Fargate task in the service's network, the way the `scripts/run_*.sh` tasks do (`scripts/one_off_task.sh`): the live
+service's task definition gives the network, the execution role, the log configuration and the database settings,
+and the task gets **one container, `postgres:17-alpine`** (from ECR Public's copy of Docker's official images, which
+avoids Docker Hub's anonymous pull limits), with the password as `PGPASSWORD` through `secrets`, from the same
+parameter. No value is printed or written anywhere but AWS.
+
+```bash
+dir=$(mktemp -d)   # 0700
+SERVICE_ARN=$(aws ecs list-services --region eu-south-2 --profile griddo-main --cluster default \
+    --query "serviceArns[?contains(@, 'shurly-api')] | [0]" --output text)
+
+# 1. The live service: its PRIMARY deployment's task definition and its network (not during a rollout)
+aws ecs describe-services --region eu-south-2 --profile griddo-main --cluster default \
+    --services "$SERVICE_ARN" --query 'services[0]' --output json > "$dir/service.json"
+LIVE_TD=$(jq -r '.deployments[] | select(.status == "PRIMARY") | .taskDefinition' "$dir/service.json")
+NETWORK=$(jq -c '.networkConfiguration // (.deployments[] | select(.status == "PRIMARY") | .networkConfiguration)' \
+    "$dir/service.json")
+aws ecs describe-task-definition --region eu-south-2 --profile griddo-main --task-definition "$LIVE_TD" \
+    --query taskDefinition --output json > "$dir/live.json"
+
+# 2. The check's task definition: psql against the restored instance, then production
+SQL="select 'urls', count(*)::text from urls
+     union all select 'visits', count(*)::text from visits
+     union all select 'users', count(*)::text from users
+     union all select 'campaigns', count(*)::text from campaigns
+     union all select 'last visit (UTC)', max(visited_at)::text from visits"
+jq --arg new "$NEW_HOST" --arg sql "$SQL" '
+    .containerDefinitions[0] as $app
+    | ([$app.environment[]? | {(.name): .value}] | add) as $env
+    | {
+        family: "shurly-restore-check",
+        executionRoleArn: .executionRoleArn,
+        networkMode: "awsvpc",
+        requiresCompatibilities: ["FARGATE"],
+        cpu: "256",
+        memory: "512",
+        containerDefinitions: [{
+            name: "check",
+            image: "public.ecr.aws/docker/library/postgres:17-alpine",
+            essential: true,
+            environment: [
+                {name: "NEW_HOST", value: $new},
+                {name: "PROD_HOST", value: $env.DB_HOST},
+                {name: "PGUSER", value: ($env.DB_USER // "shurly")},
+                {name: "PGDATABASE", value: ($env.DB_NAME // "shurly")},
+                {name: "PGSSLMODE", value: "require"},
+                {name: "SQL", value: $sql}
+            ],
+            secrets: [$app.secrets[] | select(.name == "DB_PASSWORD") | {name: "PGPASSWORD", valueFrom}],
+            logConfiguration: ($app.logConfiguration | .options["awslogs-stream-prefix"] = "restore-check"),
+            command: ["sh", "-c", "set -e; echo == restored; psql -h \"$NEW_HOST\" -At -F \" \" -c \"$SQL\"; echo == production; psql -h \"$PROD_HOST\" -At -F \" \" -c \"$SQL\""]
+        }]
+    }' "$dir/live.json" > "$dir/check.json"
+
+# 3. Run it once, wait, and read its output
+CHECK_TD=$(aws ecs register-task-definition --region eu-south-2 --profile griddo-main \
+    --cli-input-json "file://$dir/check.json" --query taskDefinition.taskDefinitionArn --output text)
+TASK=$(aws ecs run-task --region eu-south-2 --profile griddo-main --cluster default --launch-type FARGATE \
+    --task-definition "$CHECK_TD" --network-configuration "$NETWORK" --query 'tasks[0].taskArn' --output text)
+aws ecs wait tasks-stopped --region eu-south-2 --profile griddo-main --cluster default --tasks "$TASK"
+aws logs tail "$(jq -r '.containerDefinitions[0].logConfiguration.options["awslogs-group"]' "$dir/live.json")" \
+    --region eu-south-2 --profile griddo-main --log-stream-names "restore-check/check/${TASK##*/}" --since 1h
+aws ecs describe-tasks --region eu-south-2 --profile griddo-main --cluster default --tasks "$TASK" \
+    --query 'tasks[0].containers[0].{exitCode:exitCode,reason:reason}'
+
+# 4. Clean up: the task definition and the files
+aws ecs deregister-task-definition --region eu-south-2 --profile griddo-main --task-definition "$CHECK_TD" > /dev/null
+aws ecs delete-task-definitions --region eu-south-2 --profile griddo-main --task-definitions "$CHECK_TD" > /dev/null
+rm -rf "$dir"
+```
+
+- **Reading it:** production's counts are the restored ones plus what happened since the restore time: mostly
+  `visits`, a few `urls`. Its last visit is recent; the restored one's is just before the restore time. A restored
+  count far below production's for `urls` or `users` means the restore time is earlier than you meant, or the
+  damage was already there.
+- **A password failure on `restored`** means the password was rotated after the restore time. Set the restored
+  instance's to the current one with `aws rds modify-db-instance --db-instance-identifier "$NEW"
+  --master-user-password …`, as § Rotate the database password's step 1, with the value piped from the parameter into
+  its file, never to the terminal. Then run the check again.
+- **Whoever runs it** needs what § The import as a one-off ECS task lists for its runs, without the task role:
+  register, run, describe and delete the task definition, `iam:PassRole` on `ecsTaskExecutionRole`, and reading the
+  log group. The task pulls its image from `public.ecr.aws`, as the import's `fetch` container does.
+- **A possible follow-up:** this as `scripts/run_restore_check.sh`, on `scripts/one_off_task.sh`, with a test against
+  the import's fake `aws`, like the other one-off tasks.
+
+### Two ways back
+
+**(a) Point the service at the restored instance (recommended: the fastest, and nothing is renamed).**
+
+1. `DB_HOST` becomes the restored endpoint, with § Change a setting on the live service: its `jq` with `--arg name
+   DB_HOST --arg value "$NEW_HOST"`. The update deploys by itself; wait for the rollout (§ Force a redeploy). During
+   the canary, old tasks still write to `shurly-db` and new ones to the restored instance.
+2. Give the restored instance production's backups, in case they weren't carried over:
+   ```bash
+   aws rds modify-db-instance --region eu-south-2 --profile griddo-main --db-instance-identifier "$NEW" \
+       --backup-retention-period 7 --preferred-backup-window 06:43-07:13 --apply-immediately > /dev/null
+   ```
+   Then § What's backed up's check, with `"$NEW"` for `shurly-db`.
+3. Point the monitoring at it: `DB="$NEW" AWS_PROFILE=griddo-main scripts/setup_monitoring.sh --for-real`, so
+   `shurly-db-storage-low` and the dashboard's RDS widgets watch the instance in use (§ Error alerting, "Applying it").
+4. `shurly-db` stays as it was, for the investigation, and keeps costing its hours. Delete it once done (below).
+
+The catch: everything that names `shurly-db` (this document's commands, `scripts/setup_monitoring.sh`'s default,
+§ Rotate the database password) now names the old instance. Use the new identifier, or take the name back later with
+(b), at a quiet hour.
+
+**(b) Rename, so the endpoint's name comes back.**
+
+```bash
+# 1. The broken one aside (deletion protection blocks a delete, not a rename)
+aws rds modify-db-instance --region eu-south-2 --profile griddo-main --db-instance-identifier shurly-db \
+    --new-db-instance-identifier shurly-db-broken --apply-immediately > /dev/null
+aws rds wait db-instance-available --region eu-south-2 --profile griddo-main --db-instance-identifier shurly-db-broken
+
+# 2. The restored one takes the name, and with it the endpoint `DB_HOST` already names
+aws rds modify-db-instance --region eu-south-2 --profile griddo-main --db-instance-identifier "$NEW" \
+    --new-db-instance-identifier shurly-db --apply-immediately > /dev/null
+aws rds wait db-instance-available --region eu-south-2 --profile griddo-main --db-instance-identifier shurly-db
+```
+
+- A rename takes a minute or two to show: if a wait says the instance isn't found, run it again.
+- **Downtime:** from the first rename until the second has finished, `shurly-db`'s endpoint leads nowhere, and every
+  request that needs a new database connection fails. Connections the tasks already hold stay on the broken
+  instance, so force a redeploy right after (§ Force a redeploy).
+- `DB_HOST`, the monitoring and every command here keep working unchanged. Give the instance production's backups as
+  in (a) step 2.
+- Instead of renaming the broken one aside, it can be deleted: turn its deletion protection off first (below). Renaming
+  keeps it for the investigation.
+
+### Deleting a test or old instance
+
+Deletion protection must be off first. Then delete it:
+
+```bash
+OLD=shurly-db-restore-test   # or shurly-db-broken, or the old shurly-db after (a)
+
+aws rds modify-db-instance --region eu-south-2 --profile griddo-main --db-instance-identifier "$OLD" \
+    --no-deletion-protection --apply-immediately > /dev/null
+aws rds wait db-instance-available --region eu-south-2 --profile griddo-main --db-instance-identifier "$OLD"
+
+# A throwaway rehearsal: no final snapshot, its automated backups go with it
+aws rds delete-db-instance --region eu-south-2 --profile griddo-main --db-instance-identifier "$OLD" \
+    --skip-final-snapshot --delete-automated-backups > /dev/null
+aws rds wait db-instance-deleted --region eu-south-2 --profile griddo-main --db-instance-identifier "$OLD"
+```
+
+- **`--skip-final-snapshot` only for a throwaway rehearsal.** For an instance that held real data (the broken one, or
+  the old `shurly-db` after (a)), keep a final snapshot instead, `--final-db-snapshot-identifier <name>-final`, and
+  leave out `--delete-automated-backups` (`--no-delete-automated-backups`) to keep its point-in-time window for its
+  last 7 days. Both are billed as backup storage while they exist.
+- Never delete the instance the service uses. Check `DB_HOST` first (`$SERVICE_ARN` as in § Force a redeploy):
+  ```bash
+  aws ecs describe-express-gateway-service --region eu-south-2 --profile griddo-main \
+      --service-arn "$SERVICE_ARN" --output json \
+    | jq -r '.service.activeConfigurations | max_by(.createdAt) | .primaryContainer.environment[]
+             | select(.name == "DB_HOST") | .value'
+  ```
+
+### Measured times
+
+From the rehearsal, a point-in-time restore of production to `shurly-db-restore-test`:
+
+| Step | Time |
+|---|---|
+| Restore: from the command to `available` | (measured in the rehearsal) |
+| Data check: the one-off task, from `run-task` to its output | (measured in the rehearsal) |
+| Total: from picking the time to checked data | (measured in the rehearsal) |
+
+The way back adds a rollout for (a) (§ Force a redeploy: about 10 to 12 minutes), or the two renames and a rollout
+for (b).
 
 ---
 
