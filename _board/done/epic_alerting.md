@@ -2,9 +2,10 @@
 id: epic_alerting
 title: Alerting and monitoring
 type: epic
-status: backlog
+status: done
 priority: high
 created: 2026-10-17
+completed: 2026-10-17
 ---
 
 # Epic: Alerting and monitoring
@@ -26,4 +27,5 @@ web app reports its errors as `client.error` lines, and `DEPLOYMENT.md` § Error
 From ROADMAP 6.4 (Error alerting, Key metrics dashboard), 5.6 (save the queries) and 5.7 (MCP SLO). AWS changes need the user's go-ahead, as every production change.
 
 ## Log
+- 2026-10-17T20:07:01Z Daniel Serrano moved backlog -> done
 - 2026-10-17T17:20:13Z Daniel Serrano created

@@ -1,0 +1,54 @@
+[
+  {
+    "name": "shurly/mcp/calls-per-tool",
+    "queryString": "filter event = \"mcp.tool_call\"\n| stats count(*) as calls by tool\n| sort calls desc"
+  },
+  {
+    "name": "shurly/mcp/errors-per-tool",
+    "queryString": "filter event = \"mcp.tool_call\" and outcome = \"error\"\n| stats count(*) as errors by tool, error_type, http_status\n| sort errors desc"
+  },
+  {
+    "name": "shurly/mcp/latency-per-tool",
+    "queryString": "filter event = \"mcp.tool_call\"\n| stats count(*) as calls, pct(duration_ms, 50) as p50_ms, pct(duration_ms, 95) as p95_ms by tool\n| sort p95_ms desc"
+  },
+  {
+    "name": "shurly/mcp/active-users-per-day",
+    "queryString": "filter event = \"mcp.tool_call\"\n| stats count_distinct(user_id) as users, count(*) as calls by bin(1d)"
+  },
+  {
+    "name": "shurly/requests/one-request",
+    "queryString": "filter request_id = \"<id>\"\n| fields @timestamp, event, method, path, status, tool, outcome, duration_ms\n| sort @timestamp asc"
+  },
+  {
+    "name": "shurly/web-app/calls-per-area",
+    "queryString": "filter event = \"http.request\" and status < 400 and path like /^\\/api\\/v1\\//\n| parse path /^\\/api\\/v1\\/(?<area>[a-z-]+)/\n| stats count(*) as calls by method, area\n| sort calls desc"
+  },
+  {
+    "name": "shurly/web-app/links-and-campaigns-made-by-week",
+    "queryString": "filter event = \"http.request\" and method = \"POST\" and status = 201 and (path = \"/api/v1/urls\" or path = \"/api/v1/campaigns\")\n| stats count(*) as made by path, bin(7d)"
+  },
+  {
+    "name": "shurly/web-app/analytics-tabs-and-csvs",
+    "queryString": "filter event = \"http.request\" and status < 400 and path like /^\\/api\\/v1\\/analytics\\/(urls|campaigns)\\//\n| parse path /\\/(?<what>totals|timeseries|breakdown|visits|visits\\.csv|recipients|recipients\\.csv)$/\n| stats count(*) as calls by what\n| sort calls desc"
+  },
+  {
+    "name": "shurly/errors/client-errors",
+    "queryString": "filter event = \"client.error\"\n| stats count(*) as reports, count_distinct(user_id) as people by kind, message, page\n| sort reports desc"
+  },
+  {
+    "name": "shurly/errors/5xx-by-path",
+    "queryString": "filter event = \"http.request\" and status >= 500\n| stats count(*) as errors by path, status\n| sort errors desc"
+  },
+  {
+    "name": "shurly/requests/client-ip-source-per-host",
+    "queryString": "filter event = \"http.request\" and path != \"/api/v1/health\"\n| stats count(*) as requests by host, client_ip_source\n| sort requests desc"
+  },
+  {
+    "name": "shurly/geo/database-events",
+    "queryString": "filter event like /^geo\\.database/\n| fields @timestamp, event, path, database_type, built, age_days, primary_error\n| sort @timestamp desc"
+  },
+  {
+    "name": "shurly/auth/logins-by-method",
+    "queryString": "filter event = \"auth.login\" | stats count() by method"
+  }
+]

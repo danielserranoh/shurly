@@ -440,11 +440,15 @@ itself.
 
 ```json
 {"ts": "2026-09-27T18:04:12.330+00:00", "event": "http.request", "request_id": "5c1e…",
- "method": "POST", "path": "/mcp/", "status": 200, "duration_ms": 25.1}
+ "method": "POST", "host": "shurly.griddo.io", "path": "/mcp/", "client_ip_source": "cloudfront",
+ "status": 200, "duration_ms": 1.1}
 ```
 
-The path goes without its query string, which can carry tokens. `duration_ms` runs
-until the response headers are ready.
+The path goes without its query string, which can carry tokens. `client_ip_source`
+says how the client IP was found, never the IP itself (DEPLOYMENT.md § Client IPs
+behind CloudFront). `duration_ms` runs until the response headers are ready. For a
+`POST /mcp/` that's when the event stream opens, before the tool runs, so a tool's
+time is the `mcp.tool_call` line's `duration_ms`, not this one.
 
 A generated tool calls the API over an in-process HTTP client, and that call
 carries the MCP request's id. So one `request_id` links the `POST /mcp/`, the
@@ -470,6 +474,11 @@ Never run production with `FASTMCP_LOG_LEVEL=DEBUG`: at that level fastmcp logs
 every call's arguments in full.
 
 ### Queries (CloudWatch Logs Insights)
+
+`scripts/setup_monitoring.sh` saves these under **Saved queries**: the first four
+in folder `shurly/mcp/`, the last as `shurly/requests/one-request` (DEPLOYMENT.md
+§ Error alerting). They're listed here as the reference;
+`infra/monitoring/queries.json` is what gets saved, so change both.
 
 Calls per tool:
 
@@ -519,15 +528,11 @@ AWS_PROFILE=griddo-main aws logs put-retention-policy --region eu-south-2 \
     --log-group-name /aws/ecs/default/shurly-api-5fdb --retention-in-days 60
 ```
 
-Save a query so it shows up under **Saved queries** in the console (the `/` in the
-name makes a folder). Repeat for each query above:
-
-```bash
-AWS_PROFILE=griddo-main aws logs put-query-definition --region eu-south-2 \
-    --name "shurly/mcp-calls-per-tool" \
-    --log-group-names /aws/ecs/default/shurly-api-5fdb \
-    --query-string 'filter event = "mcp.tool_call" | stats count(*) as calls by tool | sort calls desc'
-```
+The queries above aren't saved by hand: `scripts/setup_monitoring.sh` saves them
+(and updates them in place when they change), along with the alarms and the
+dashboard. DEPLOYMENT.md § Error alerting has how to run it and the permissions it
+needs. The dashboard `shurly` also charts MCP tool errors and the MCP's latency
+next to the API's.
 
 ## Roadmap reference
 

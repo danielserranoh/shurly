@@ -266,6 +266,13 @@ Added `Base.metadata.create_all(bind=engine)` to the FastAPI startup event. Idem
 
 Symptom-driven. When something breaks, search this section by error message or symptom.
 
+**An alert email arrived** (from the SNS topic `shurly-alerts`, an alarm named `shurly-…`)? Start at
+[DEPLOYMENT.md § Error alerting](../DEPLOYMENT.md#error-alerting-phase-64): its table says what each alarm means and
+what to do first, and its runbook walks the rest. `shurly-alb-5xx` and `shurly-no-healthy-target` usually land in
+[ALB returns 503](#alb-returns-503-service-temporarily-unavailable) or
+[Container won't start](#container-wont-start-crashloopbackoff-equivalent) below. Once it's fixed, add what you
+found here.
+
 ### ALB returns 503 Service Temporarily Unavailable
 
 Three causes, usually one of:
