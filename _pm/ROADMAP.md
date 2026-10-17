@@ -2206,10 +2206,18 @@ the import can be re-run.
       re-import them from the raw export
 
 ### 8.6 Decommission
-- [ ] Shlink stopped but restorable during the rollback window; final RDS snapshot
-- [ ] Delete shlink-api and shlink-web, Express rules 1/3 with them, and Shlink's RDS. Rule 10 is already gone;
-      rule 11 stays, as `links.griddo.io`'s redirect, with its certificate and Route 53 record. `RULE_SYNC_MAP`
+- [x] Shlink stopped but restorable during the rollback window; final RDS snapshot → 2026-10-17: snapshot
+      `shlink-db-final-20261017` (kept, with `shlink-db-before-null-location-fix-202610011710`); both services'
+      configuration saved in `_exchange/` (gitignored). Checked first: no orphan visit since the cutover looks like an
+      outreach code (scanners only), so no code was left out of the import
+- [x] Delete shlink-api and shlink-web, Express rules 1/3 with them → 2026-10-17, `delete-express-gateway-service`.
+      The shared ALB stays (ECS keeps a load balancer another service uses), with rules 4, 11 and 12 and the
+      `go`, `links` and `shurly` certificates; only Shlink's own `sh-…on.aws` certificates went. Rule 10 was already
+      gone; rule 11 stays, as `links.griddo.io`'s redirect, with its certificate and Route 53 record. `RULE_SYNC_MAP`
       already lost Shlink's entries
+- [ ] Delete Shlink's RDS (`shlink-db`, with a final snapshot), then its security group `shlink-db-sg`, its log
+      groups (`/aws/ecs/default/shlink-api-f519`, `shlink-web-7ce5`, `shlink-web-ac0d`, never expiring) and the
+      inactive task definitions `default-shlink-api` / `default-shlink-web`. Its API key dies with the database
 - [x] Point `links.griddo.io` at the Shurly frontend, if 4.10 chooses it → decided 2026-10-03: rule 11 redirects
       (302) to `https://shurly.griddo.io/dashboard/`, which sends a signed-out visitor to the login and back. The
       rule-sync Lambda first lost Shlink's mappings and skips a rule that doesn't forward: with `"3": "11"` still
