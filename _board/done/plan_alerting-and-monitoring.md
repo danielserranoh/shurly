@@ -2,16 +2,16 @@
 id: plan_alerting-and-monitoring
 title: Alerting and monitoring
 type: plan
-status: wip
+status: done
 priority: high
 created: 2026-10-17
 started: 2026-10-17
-completed: null
-progress: 53
+completed: 2026-10-17
+progress: 100
 epic: epic_alerting
-owner: Daniel Serrano
-claimed_at: 2026-10-17T20:07:01Z
-lease_until: 2026-10-18T04:07:01Z
+owner: null
+claimed_at: null
+lease_until: null
 blocked_by: []
 parallel_safe: true
 worktree: null
@@ -119,21 +119,24 @@ verify: none
 files: _pm/ROADMAP.md
 depends_on: T1, T2, T3
 verify: none
-- [ ] dry run, then `--for-real`
-- [ ] the user confirms the SNS subscription email
-- [ ] `--test-alarm shurly-api-5xx`: the email arrives, then the OK one
-- [ ] the dashboard shows data; the saved queries run
-- [ ] ROADMAP 6.4, 5.6 and 5.7 record it
+- [x] dry run, then `--for-real`
+- [x] the user confirms the SNS subscription email
+- [x] `--test-alarm shurly-api-5xx`: the email arrives, then the OK one
+- [x] the dashboard shows data; the saved queries run
+- [x] ROADMAP 6.4, 5.6 and 5.7 record it
 
 ## Verificación global
-- [ ] `uv run pytest` and `uv run ruff check . && uv run ruff format --check .` green
-- [ ] production: a test alarm sends its email, and its OK email; the dashboard shows data
+- [x] `uv run pytest` and `uv run ruff check . && uv run ruff format --check .` green
+- [x] production: a test alarm sends its email, and its OK email; the dashboard shows data
 
 ## Notas
 - T3 has `verify: none` (docs), and T4 too (AWS work checked by hand, with a real test email).
 - Cost ~0–1 $/month: 6 alarms and 4 custom metrics within the free tier, SNS email free under 1,000/month, 1 dashboard free.
 
 ## Log
+- 2026-10-17T20:44:32Z Daniel Serrano moved wip -> done
+- 2026-10-17T20:44:32Z Daniel Serrano released
+- 2026-10-17T20:44:31Z Daniel Serrano T4 in production 2026-10-17: applied --for-real; subscription confirmed by the user; test alarm OK→ALARM→OK, three SNS actions sent; a second dry run creates nothing; MCP vs API measured (ROADMAP 5.7). 2259 passed (PR #243)
 - 2026-10-17T20:24:58Z Daniel Serrano waves 1-2 done (T1, T3, T2): 2259 passed, ruff clean. Fixed by the coordinator: the MCP latency widget (http.request /mcp/ lines are written when the stream opens; now mcp.tool_call), and the query-prefix bug a real dry run found (AWS refuses a prefix ending in /). Real dry run green. T4 waits for the user's go-ahead
 - 2026-10-17T20:07:01Z Daniel Serrano moved todo -> wip
 - 2026-10-17T20:07:01Z Daniel Serrano claimed (lease 480m)

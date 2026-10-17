@@ -1719,7 +1719,7 @@ records which tools get used, how often, or how they fail.
 - [x] Logs Insights queries (calls, errors and latency per tool, daily users, one request end to end) documented
       in `mcp_server/README.md` § Usage log
 - [x] Retention on the log group: **60 days** (decided and set 2026-09-28)
-- ⇢ [`epic_alerting`](../_board/backlog/epic_alerting.md) Save those queries in CloudWatch: commands in the same section, to run once with SSO
+- [x] Save those queries in CloudWatch: commands in the same section, to run once with SSO → 2026-10-17: saved by `scripts/setup_monitoring.sh` (13 queries under `shurly/`, from `infra/monitoring/queries.json`)
 - [x] Tests: `tests/test_phase560_usage_log.py` (14)
 
 #### 5.6.1 Rollout and signal capture
@@ -1738,7 +1738,7 @@ records which tools get used, how often, or how they fail.
 
 ### 5.7 Verification
 - ⇢ [`epic_cleanup-sweep`](../_board/backlog/epic_cleanup-sweep.md) All auto-generated + curated tools have at least one happy-path test. → curated tools: yes (`tests/test_phase53_curated_tools.py`); auto-generated: see the open item in 5.2
-- ⇢ [`epic_alerting`](../_board/backlog/epic_alerting.md) MCP endpoint responds within the same SLO as the regular API. → same task and ALB rule, but never measured
+- [x] MCP endpoint responds within the same SLO as the regular API. → same task and ALB rule, but never measured → measured 2026-10-17 over 14 days (the dashboard's "MCP tool calls vs API requests" widget): API requests p50 23 ms, p95 301 ms (791); MCP tool calls p50 26 ms, p95 708 ms (38). Same median; the tail is the tools that wrap a slow API call (creating a link fetches the page's preview). Few calls yet: re-read it after the dogfood
 - [x] No regression in existing tests (backend behavior unchanged). → 465 passing (2026-09-26)
 - ⇢ [`epic_cleanup-sweep`](../_board/backlog/epic_cleanup-sweep.md) `mcp_server/README.md` exists and covers: architecture, framework choice, auth, deployment, how to add a new tool. → everything but "how to add a new tool"
 - ⇢ [`epic_cleanup-sweep`](../_board/backlog/epic_cleanup-sweep.md) CHANGELOG.md entry under "Added" describing the MCP surface. → missing: the CHANGELOG only mentions MCP in passing (fixes and the Phase 3.11 tools)
@@ -1953,19 +1953,19 @@ live in `mcp_server/README.md`, written for developers. There is no user manual 
 
 ### 6.4 Monitoring & Logging
 - [x] CloudWatch Logs setup → `/aws/ecs/default/shurly-api-5fdb`; `X-Request-Id` correlates requests
-- ⇢ [`epic_alerting`](../_board/backlog/epic_alerting.md) Error alerting (SNS/email) — required before the Shlink cutover (8.5)
+- [x] Error alerting (SNS/email) — required before the Shlink cutover (8.5) → 2026-10-17: 6 alarms to SNS `shurly-alerts` (email to daniel.serrano@griddo.io, confirmed), on ALARM and OK; a test alarm went OK → ALARM → OK with all three emails sent (DEPLOYMENT.md § Error alerting)
   - [x] What to count, and a runbook stub: `DEPLOYMENT.md` § Error alerting. No code: `http.request` lines already
         carry the status, so a metric filter on 5xx does it
-  - ⇢ [`epic_alerting`](../_board/backlog/epic_alerting.md) AWS: the metric filters, the alarms and an SNS topic with an email subscription
+  - [x] AWS: the metric filters, the alarms and an SNS topic with an email subscription → `infra/monitoring/`, applied by `scripts/setup_monitoring.sh`
   - [x] Browser errors reach the logs: the web app reports an uncaught error, a rejected promise, or a CSP or Trusted
         Types block (which a `<meta>` policy can't report) to `POST /api/v1/client-errors`, logged as `client.error`
         lines (never an IP; the page's path, never its query; the account's id when signed in). Five a page, limited
         per IP. Its metric filter and a query are in `DEPLOYMENT.md` § Error alerting
-- ⇢ [`epic_alerting`](../_board/backlog/epic_alerting.md) Key metrics dashboard
-  - ⇢ [`epic_alerting`](../_board/backlog/epic_alerting.md) ECS task count / CPU / memory
-  - ⇢ [`epic_alerting`](../_board/backlog/epic_alerting.md) ALB 5xx and target health
-  - ⇢ [`epic_alerting`](../_board/backlog/epic_alerting.md) RDS connections
-  - ⇢ [`epic_alerting`](../_board/backlog/epic_alerting.md) Redirect latency
+- [x] Key metrics dashboard → 2026-10-17: the `shurly` dashboard
+  - [x] ECS task count / CPU / memory
+  - [x] ALB 5xx and target health
+  - [x] RDS connections
+  - [x] Redirect latency
 
 ---
 
