@@ -141,6 +141,13 @@ for (const { device, options } of DEVICES) {
         await expectNoIssues(page, 'settings');
       });
 
+      test('the Organization page', async ({ page }) => {
+        await page.goto('/dashboard/organization/');
+        await expect(page.locator('[data-members] [data-member]').first()).toBeVisible();
+        await expect(page.locator('[data-services-section]')).toBeVisible();
+        await expectNoIssues(page, 'organization');
+      });
+
       if (device === 'desktop') {
         test('the account menu', async ({ page }) => {
           await page.goto('/dashboard/');

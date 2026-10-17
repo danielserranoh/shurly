@@ -1,7 +1,7 @@
-// Phase 3.12.10 — the photo in Settings → Account is a button, with a camera badge, and opens the "Profile photo"
-// dialog: the saved photo shown read-only, or the initial; Change photo positions a new one (keys, + and −), and
-// Save uploads it; Remove photo shows the initial, and Save deletes it; Cancel and Esc keep what there was. A file
-// dropped on the photo opens the dialog with it. axe finds no moderate, serious or critical issue in any state, on
+// Phase 3.12.10 — the photo in Settings → Account is a button, with a camera badge on a touch screen (3.12.11), and
+// opens the "Profile photo" dialog: the saved photo shown read-only, or the initial; Change photo positions a new one
+// (keys, + and −), and Save uploads it; Remove photo shows the initial, and Save deletes it; Cancel and Esc keep what
+// there was. A file dropped on the photo opens the dialog with it. axe finds no moderate, serious or critical issue in any state, on
 // a desktop and on a phone (390 px).
 
 import type { APIRequestContext, Page } from '@playwright/test';
@@ -38,9 +38,19 @@ for (const { device, options } of DEVICES) {
       const me = (await (await ownerApi.get('/api/v1/auth/me')).json()) as { email: string };
       const { block, button, dialog, frame } = await openAccount(page);
 
-      // The photo is the button: the initial, a camera badge always there, and the email next to it.
+      // The photo is the button: the initial, and the email next to it. A camera badge on the phone, which can't
+      // hover; none on the desktop, where hover shows the overlay (3.12.11).
       await expect(block.locator('[data-avatar-initial]')).toBeVisible();
-      await expect(button.locator('[data-photo-badge]')).toBeVisible();
+      if (device === 'phone') {
+        await expect(button.locator('[data-photo-badge]')).toBeVisible();
+      } else {
+        await expect(button.locator('[data-photo-badge]')).toBeHidden();
+        await button.hover();
+        await expect(button.locator('[data-photo-overlay]')).toHaveCSS('opacity', '1');
+        await expect(button.locator('[data-photo-badge]')).toBeHidden();
+        await page.mouse.move(0, 0);
+        await expect(button.locator('[data-photo-overlay]')).toHaveCSS('opacity', '0');
+      }
       await expect(block).toContainText(me.email);
       await expect(block.getByRole('button', { name: 'Upload photo' })).toHaveCount(0);
       await expect(block.getByRole('button', { name: 'Remove' })).toHaveCount(0);

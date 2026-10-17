@@ -96,10 +96,12 @@ toasts, confirm dialogs and copy feedback (`ui.ts`), who's looking and locked co
 - **Toasts** appear top-right under the header: 4 s, or 6 s for errors.
 - **Dialogs** fade and scale in and become bottom sheets under 640 px. **Menus** use the Popover API.
 - **Photos.** An avatar is the first name's initial (the email's without one) until there's a photo. The photo is
-  its own button (`ui/PhotoTrigger`, named for what it does: "Change your photo"). A camera badge sits at its
-  bottom-right corner, always, on every device: a 28 px ink circle with a white camera and a white ring that keeps it
-  off the photo (17:1). Hover, keyboard focus or a file dragged over it lays a dark overlay (`ink-950` at 60%) with
-  a camera on the photo, and the focus ring stays. The camera is 4.6:1 even over a white photo. Next to it are the name and, under it, the email in muted text. There
+  its own button (`ui/PhotoTrigger`, named for what it does: "Change your photo"). Hover, keyboard focus or a file
+  dragged over it lays a dark overlay (`ink-950` at 60%) with a camera on the photo, on every device, and the focus
+  ring stays. The camera is 4.6:1 even over a white photo. Where the primary input can't hover
+  (`@media (hover: none)`: phones and tablets), a camera badge also sits at its bottom-right corner, since nothing else says it's a
+  button there: a 28 px ink circle with a white camera and a white ring that keeps it off the photo (17:1). Where
+  there's hover it would only repeat the overlay, so it isn't shown. Next to it are the name and, under it, the email in muted text. There
   are no separate upload or remove buttons.
 - **The photo dialog** (`ui/PhotoPicker`, `pickPhoto`): "Profile photo" or "Organization logo". It has a large
   circle, **Change** (upload icon) and **Remove** (trash icon) under it, then **Cancel** and **Save**. It opens on
@@ -117,12 +119,17 @@ toasts, confirm dialogs and copy feedback (`ui.ts`), who's looking and locked co
   then the logo filling the circle (`object-cover`) on white with a hairline `line` ring. White keeps a logo's
   colours true and gives a transparent logo a neutral light ground. Navy (`ink-900`) on white is 14.4:1 and brand
   blue 5.1:1. The ring marks the circle on white cards and menus; a logo is exempt from contrast rules, and the
-  button is marked by its badge. For owners and admins the logo in Settings is a
-  `PhotoTrigger` that opens the photo dialog. Members see a plain `OrgMark`, with no badge, no overlay and no
+  button is marked by its overlay, and its badge on a touch screen. For owners and admins the logo on the
+  Organization page is a `PhotoTrigger` that opens the photo dialog. Members see a plain `OrgMark`, with no badge, no overlay and no
   button. A logo saved before 3.14.6 that isn't square shows cropped to the circle until it's uploaded again.
 - **Paging.** The links and the campaigns come 20 at a time, with the pager under the list: "Showing 21–40 of 57",
   Previous and Next, and `?page=` in the address so a reload or a shared link keeps the place. It hides while
   the list fits on one page.
+- **Header.** The logo and the main nav on the left; on the right **New link** (an icon button under `sm`), the
+  avatar, which opens the account menu, and the menu button under `md`. New link sits 20 px from the avatar (the
+  row's 8 px gap plus `mr-3`), so the primary action and the account aren't pressed for each other; it holds on one
+  line down to 320 px. The account menu's organization row (its mark, "Organization" and its name) is a menu item,
+  a link to the Organization page, shown only to accounts in one.
 - **Keyboard.** `N` opens a new link and `/` focuses search. Every control has a visible focus ring
   (ink ring + blue halo).
 - **Responsive.** Desktop-first, checked at 1440 and 390 px. Under `md` the nav moves into a menu dialog.
@@ -189,8 +196,10 @@ reading `#code=` / `#error=` back from the API; the password form behind a close
 `/styleguide/` · `/dashboard/` links ·
 `/dashboard/create/` · `/dashboard/link/?code=…` · `/dashboard/campaigns/` ·
 `/dashboard/campaigns/create/` (4-step wizard) · `/dashboard/campaign/?id=…` ·
-`/dashboard/analytics/` · `/dashboard/waitlist/` (owners and admins; its nav link shows for them only) · `/dashboard/settings/` (`#account`, `#organization`, `#api`, `#tags`, `#notifications`,
-`#plan`).
+`/dashboard/analytics/` · `/dashboard/waitlist/` (owners and admins; its nav link shows for them only) ·
+`/dashboard/organization/` (from the account menu; a Settings tab until 3.14.7) · `/dashboard/settings/` (`#account`,
+`#api`, `#tags`, `#notifications`, `#plan`; the old `#organization` goes to `/dashboard/organization/`, its query kept).
 
-Settings → Organization lists the members, each with only the actions the viewer's role allows. Owners
-also see the people removed, with the personal links they left, and move them to the organization.
+The Organization page has its logo, the members, the service accounts (owners and admins) and what each role can do.
+Each member comes with only the actions the viewer's role allows. Owners also see the people removed, with the
+personal links they left, and move them to the organization.

@@ -842,7 +842,7 @@ An integration (Propuestas Griddo) gets a service account instead of a person's 
 survives people leaving, and links attributed to the person they're for. Spec: `_pm/spec_service_accounts.md`;
 for owners, the manual's "Connect another service" (`/manual/connect-a-service/`).
 
-- **Making one.** An owner, signed in: Settings → Organization → Service accounts → **New service account** (a
+- **Making one.** An owner, signed in: the Organization page (`/dashboard/organization/`) → Service accounts → **New service account** (a
   name, what it's for, a person responsible, `member` unless it must change everyone's links), then **Create
   token**. The token, `shsa_<prefix>_<secret>`, shows once: put it in the integration's secret store (its own
   AWS Secrets Manager or environment), never in a repository. Shurly keeps a SHA-256 of it.
@@ -995,7 +995,7 @@ fastmcp keeps the flow: the CSRF token, the cookies and the redirect checks.
 ## People: joining, roles and leaving (Phase 3.14)
 
 For the rollout to the team (ROADMAP 5.6.1). People join by themselves, and an owner manages roles and removals in the
-app, in Settings → Organization. Only bringing back someone who was removed needs the database.
+app, on the Organization page. Only bringing back someone who was removed needs the database.
 
 ### Before anyone joins
 
@@ -1030,7 +1030,7 @@ app's `/login/` page, and they choose Sign in with Google with their work accoun
 | admin | Also change and delete anyone's organization links and campaigns, and remove members |
 | owner | Also change roles, hand the role over, see who was removed and move their personal links to the organization |
 
-- **Owners change roles**, in Settings → Organization: anyone's but another owner's, to member, admin or owner. Nobody
+- **Owners change roles**, on the Organization page: anyone's but another owner's, to member, admin or owner. Nobody
   raises their own role; anyone can lower it. Owners step down themselves.
 - **Hand over ownership** makes someone owner and the person handing it over an admin, in one change.
 - **There's always an owner:** the last one can't step down, and owners can't be removed. Make a second owner early
@@ -1039,7 +1039,7 @@ app's `/login/` page, and they choose Sign in with Google with their work accoun
 
 ### Leaving
 
-- **An admin or an owner removes someone below their role**: Settings → Organization, then Remove from organization.
+- **An admin or an owner removes someone below their role**: the Organization page, then Remove from organization.
   Nobody removes themselves.
 - **Removing closes the account.** They can't sign in again, their API key is gone, and their sessions and the MCP's
   sign-ins stop working at their next request. Their links keep working for whoever has them.
@@ -1050,9 +1050,9 @@ app's `/login/` page, and they choose Sign in with Google with their work accoun
 
 ### The rollout, step by step
 
-1. The first owner (`BOOTSTRAP_OWNER_EMAIL`) signs in, and Settings → Organization shows them as owner.
+1. The first owner (`BOOTSTRAP_OWNER_EMAIL`) signs in, and the Organization page shows them as owner.
 2. Send each person the app's address, the manual (`/manual/`) and, for Claude, `/manual/install-mcp/`.
-3. As they sign in, they appear in Settings → Organization as members. Make a second owner.
+3. As they sign in, they appear on the Organization page as members. Make a second owner.
 4. Watch the signal: § What the web app is used for, `client.error` in § Error alerting, and the MCP's `mcp.tool_call`
    queries (`mcp_server/README.md` § Usage log). What people say arrives at support@griddo.io: Send feedback, in the
    account menu, writes there from their own mail app, with the page they were on.

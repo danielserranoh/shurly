@@ -6,11 +6,11 @@ order: 4
 
 Some systems make links for you: Propuestas Griddo, for example, shortens the link of every proposal it hosts. Give each one a **service account**: a token of its own, so its links say which person they’re for and which service made them, and nothing breaks when someone regenerates their API key or leaves.
 
-Only owners make and change service accounts. Admins see them in [Settings → Organization](/dashboard/settings/#organization); members don’t.
+Only owners make and change service accounts. Admins see them on the [Organization page](/dashboard/organization/); members don’t.
 
 ## Make one
 
-1. In [Settings → Organization](/dashboard/settings/#organization), under **Service accounts**, choose **New service account**.
+1. On the [Organization page](/dashboard/organization/) (in the account menu, choose your organization’s name), under **Service accounts**, choose **New service account**.
 2. Give it the system’s name (“Propuestas Griddo”), say what it’s for, and pick the **person responsible**: who to ask about it.
 3. Pick its **role**. A **member** changes only the links it made, which is what most services need. An **admin** changes all the organization’s links: give it only to a service that has to.
 4. Choose **Create service account**, then **Create token**. An expiry is optional; nothing warns before it comes, so leave it empty unless you’ll remember.

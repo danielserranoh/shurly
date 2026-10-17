@@ -5,7 +5,6 @@ import PageHeader from '@/components/ui/PageHeader.astro';
 import Icon from '@/components/ui/Icon.astro';
 import EmptyState from '@/components/ui/EmptyState.astro';
 import AccountPanel from '@/components/settings/AccountPanel.astro';
-import OrganizationPanel from '@/components/settings/OrganizationPanel.astro';
 import ApiPanel from '@/components/settings/ApiPanel.astro';
 import TagsPanel from '@/components/settings/TagsPanel.astro';
 import NotificationsPanel from '@/components/settings/NotificationsPanel.astro';
@@ -13,10 +12,10 @@ import PlanPanel from '@/components/settings/PlanPanel.astro';
 import type { IconName } from '@/utils/icons';
 import type { HTMLAttributes } from 'astro/types';
 
-// The key doubles as the URL hash: /dashboard/settings/#tags opens the Tags tab.
+// The key doubles as the URL hash: /dashboard/settings/#tags opens the Tags tab. The organization has its own page,
+// /dashboard/organization/ (3.14.7); #organization goes there (src/inline-scripts.mjs).
 const tabs: { key: string; label: string; icon: IconName }[] = [
   { key: 'account', label: 'Account', icon: 'user' },
-  { key: 'organization', label: 'Organization', icon: 'users' },
   { key: 'api', label: 'API & MCP', icon: 'key' },
   { key: 'tags', label: 'Tags', icon: 'tags' },
   { key: 'notifications', label: 'Notifications', icon: 'bell' },
@@ -33,7 +32,7 @@ const panelProps = (key: string, index: number): HTMLAttributes<'div'> => ({
 ---
 
 <AppLayout title="Settings" section="settings">
-  <PageHeader title="Settings" description="Your account, your organization, API access and tags." />
+  <PageHeader title="Settings" description="Your account, API access, tags and notifications." />
 
   <div data-settings>
     <div class="-mx-4 sm:mx-0">
@@ -65,11 +64,10 @@ const panelProps = (key: string, index: number): HTMLAttributes<'div'> => ({
 
     <div class="mt-8">
       <div {...panelProps('account', 0)}><AccountPanel /></div>
-      <div {...panelProps('organization', 1)}><OrganizationPanel /></div>
-      <div {...panelProps('api', 2)}><ApiPanel /></div>
-      <div {...panelProps('tags', 3)}><TagsPanel /></div>
-      <div {...panelProps('notifications', 4)}><NotificationsPanel /></div>
-      <div {...panelProps('plan', 5)}><PlanPanel /></div>
+      <div {...panelProps('api', 1)}><ApiPanel /></div>
+      <div {...panelProps('tags', 2)}><TagsPanel /></div>
+      <div {...panelProps('notifications', 3)}><NotificationsPanel /></div>
+      <div {...panelProps('plan', 4)}><PlanPanel /></div>
     </div>
   </div>
 
@@ -92,6 +90,12 @@ const panelProps = (key: string, index: number): HTMLAttributes<'div'> => ({
   const tablist = root.querySelector<HTMLElement>('[data-tablist]')!;
 
   // ---------------------------------------------------------------- Tabs
+  // The organization's old tab: a link to #organization from this page goes to its own page (3.14.7). On arrival
+  // the inline script above does it.
+  window.addEventListener('hashchange', () => {
+    if (location.hash.toLowerCase() === '#organization') location.replace(`/dashboard/organization/${location.search}`);
+  });
+
   // A click or the arrows pick a tab, Home and End jump to the ends, and the hash names it: the account
   // menu links to #tags and #api, and back/forward follow (src/utils/tabs.ts).
   initTabs(tablist, { hash: true });

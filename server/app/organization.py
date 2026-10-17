@@ -221,7 +221,7 @@ def list_organization_members(
     db: Session = Depends(get_db), current_user: User = Depends(get_current_user)
 ):
     """Everyone in the caller's organization, with their role. People only: service accounts
-    are listed in Settings → Organization → Service accounts (`/api/v1/service-accounts`)."""
+    are listed on the Organization page → Service accounts (`/api/v1/service-accounts`)."""
     membership = _my_membership(db, current_user)
     members = (
         db.query(OrganizationMember)
