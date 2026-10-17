@@ -2,16 +2,16 @@
 id: plan_secrets-in-parameter-store
 title: Secrets in Parameter Store
 type: plan
-status: wip
+status: done
 priority: high
 created: 2026-10-17
 started: 2026-10-17
-completed: null
-progress: 90
+completed: 2026-10-17
+progress: 100
 epic: epic_secrets-manager
-owner: Daniel Serrano
-claimed_at: 2026-10-17T17:51:53Z
-lease_until: 2026-10-18T01:51:53Z
+owner: null
+claimed_at: null
+lease_until: null
 blocked_by: []
 parallel_safe: true
 worktree: null
@@ -83,10 +83,10 @@ verify: none
 - [x] `describe-express-gateway-service` shows `secrets` (ARNs) and the five aren't in `environment`
 - [x] smoke: health, `go.griddo.io` links, `/mcp` 308/401, `client_ip_source` cloudfront in `http.request` lines (the user signing in again and reconnecting the MCP is theirs, after this)
 - [x] deregister and delete every `default-shurly-api` revision but the active one
-- [ ] the next release's deploy keeps `secrets`; ROADMAP 6.3 records it all
+- [x] the next release's deploy keeps `secrets`; ROADMAP 6.3 records it all
 
 ## Verificación global
-- [ ] `uv run pytest` and `uv run ruff check . && uv run ruff format --check .` green
+- [x] `uv run pytest` and `uv run ruff check . && uv run ruff format --check .` green (2171 passed, PR #239)
 - [x] production: `describe-express-gateway-service` has the five in `secrets` and none in `environment`; the app answers; old revisions gone
 
 ## Notas
@@ -95,6 +95,9 @@ verify: none
 - Not Secrets Manager: no automatic rotation would be used (the app reads secrets only at startup), so Parameter Store does the same for free.
 
 ## Log
+- 2026-10-17T19:38:28Z Daniel Serrano moved wip -> done
+- 2026-10-17T19:38:28Z Daniel Serrano released
+- 2026-10-17T19:38:28Z Daniel Serrano release #241 deployed td 48 (image d4ac5b06): the five stayed in secrets, none in environment; smoke green
 - 2026-10-17T18:38:29Z Daniel Serrano T5 in production 2026-10-17: 5 SecureString parameters, shurly-read-parameters on ecsTaskExecutionRole, switch to secrets (td 47), smoke green (0 5xx, client_ip_source cloudfront), revisions 1-46 deleted. Left: the next release keeps secrets; the user signs in again and reconnects the MCP
 - 2026-10-17T18:14:31Z Daniel Serrano wave 1 (T1-T4) done: 2171 passed, ruff clean; T5 (production) waits for the user's go-ahead after the PR merges
 - 2026-10-17T17:51:53Z Daniel Serrano moved todo -> wip
