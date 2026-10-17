@@ -22,10 +22,16 @@ Read [README.md](README.md) to understand:
 - API endpoints (versioned under `/api/v1/`)
 - How to run locally
 
-### 2. **Development Roadmap** (10 min)
-Review [_pm/ROADMAP.md](_pm/ROADMAP.md) — the single source of truth for project
-status: use cases, phase breakdowns, what's done and what's next. Status is
-tracked *there*, not here; this guide stays about how to work in the codebase.
+### 2. **The board and the roadmap** (10 min)
+Open work lives on the kanban board in [_board/](_board/) (the `kanban` plugin): epics in
+`backlog/`, plans in `todo/`, work in progress at its root, the archive in `done/`. Run
+`/kanban:get-status` to see it. A PR that works on a card moves that card in the same PR
+(`board.sh move`, `progress --write`), so the board stays true.
+
+[_pm/ROADMAP.md](_pm/ROADMAP.md) is the history: use cases, phase breakdowns, what was built,
+decided and learned. Its items marked ⇢ moved to an epic. Record decisions and what shipped
+there; new work starts as an epic, not as a ROADMAP checkbox. Status lives in those two,
+not here; this guide stays about how to work in the codebase.
 
 ### 3. **Testing Guide** (as needed)
 Check [docs/TESTING.md](docs/TESTING.md) when you need to:

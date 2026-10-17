@@ -465,31 +465,18 @@ aws ecs update-express-gateway-service --region eu-south-2 --profile griddo-main
     --service-arn "$SERVICE_ARN" --force-new-deployment
 ```
 
-Useful for re-applying env vars after `update-express-gateway-service --primary-container ...`, recycling stale connections, or testing the rule-sync Lambda.
+Useful for re-applying env vars after `update-express-gateway-service --primary-container ...`, picking up a changed
+secret (tasks read Parameter Store when they start), recycling stale connections, or testing the rule-sync Lambda.
+[`DEPLOYMENT.md`](../DEPLOYMENT.md) § Force a redeploy has the loop that waits for the rollout.
 
-### Rotate the JWT secret
+### Rotate a secret
 
-1. `JWT_SECRET_KEY=$(openssl rand -hex 32)` — new value.
-2. Set it in the live service's environment ([`DEPLOYMENT.md`](../DEPLOYMENT.md) § Settings). Changing the
-   environment starts a deployment. `scripts/deploy_ecs.sh` won't do it: it only creates the service.
-3. **All existing JWTs become invalid.** Clients must log in again.
-
-For zero-downtime rotation, you'd need to support two keys briefly — not implemented today.
-
-### Rotate the DB password
-
-```bash
-NEW_PASS=$(openssl rand -base64 24 | tr -d '/+=' | head -c 32)
-
-aws rds modify-db-instance --region eu-south-2 --profile griddo-main \
-    --db-instance-identifier shurly-db \
-    --master-user-password "$NEW_PASS" --apply-immediately
-
-aws rds wait db-instance-available --region eu-south-2 --profile griddo-main \
-    --db-instance-identifier shurly-db
-```
-
-Then set `DB_PASSWORD` in the live service's environment ([`DEPLOYMENT.md`](../DEPLOYMENT.md) § Settings), which starts a deployment. Existing tasks die when their connections are reset; new tasks pick up the new password.
+The five secrets (`DB_PASSWORD`, `JWT_SECRET_KEY`, `GOOGLE_CLIENT_SECRET`, `MCP_OAUTH_SIGNING_KEY`,
+`CLOUDFRONT_ORIGIN_SECRETS`) live in SSM Parameter Store under `/shurly/production/`, injected through the container's
+`secrets`, not its environment. [`DEPLOYMENT.md`](../DEPLOYMENT.md) § Secrets links each one's runbook: a new value
+goes in with `put-parameter --overwrite`, never on the command line, and then a forced redeploy. Read them before
+rotating: the JWT and MCP keys take one value only and sign everyone out, the database password needs RDS first, and
+CloudFront's takes three steps.
 
 ### Scale up/down
 
@@ -501,22 +488,34 @@ aws ecs update-express-gateway-service --region eu-south-2 --profile griddo-main
 
 Express Mode currently doesn't expose target-tracking autoscaling (CPU/memory thresholds). For Shurly's volume, manual scaling is fine.
 
-### View the current task definition env
+### View the current config: `environment` and `secrets`
+
+The service's newest configuration, as the deploy workflow reads it. `environment` is listed by name, and `secrets`
+show their parameter ARNs, never a value:
 
 ```bash
-TD=$(aws ecs describe-services --region eu-south-2 --profile griddo-main \
-    --cluster default --services shurly-api \
-    --query "services[0].taskDefinition" --output text)
-# (note: this returns "None" for Express Mode services — workaround:)
+aws ecs describe-express-gateway-service --region eu-south-2 --profile griddo-main \
+    --service-arn "$SERVICE_ARN" --output json \
+  | jq '.service.activeConfigurations | max_by(.createdAt) | .primaryContainer
+        | {environment: [.environment[]?.name], secrets}'
+```
 
+The task definition says the same (`describe-services` returns "None" as its `taskDefinition` for Express Mode
+services, so take the latest revision):
+
+```bash
 LATEST_TD=$(aws ecs list-task-definitions --region eu-south-2 --profile griddo-main \
     --family-prefix default-shurly-api --status ACTIVE --sort DESC --max-items 1 \
     --query "taskDefinitionArns[0]" --output text)
 
 aws ecs describe-task-definition --region eu-south-2 --profile griddo-main \
     --task-definition "$LATEST_TD" \
-    --query "taskDefinition.containerDefinitions[0].environment" --output json
+    --query "taskDefinition.containerDefinitions[0].{environment: environment[].name, secrets: secrets}" \
+    --output json
 ```
+
+To change a setting, start from the current container: [`DEPLOYMENT.md`](../DEPLOYMENT.md) § Change a setting on the
+live service. A secret changes in Parameter Store instead (§ Secrets there).
 
 ---
 

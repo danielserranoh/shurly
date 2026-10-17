@@ -112,12 +112,13 @@ Gestionar el acceso de aplicaciones de terceros**.
 
 ## 7. Pasarle los valores a Shurly
 
-Shurly lee esta configuración de variables de entorno (servicio `shurly-api`, ECS, `eu-south-2`):
+Shurly lee esta configuración de variables de entorno (servicio `shurly-api`, ECS, `eu-south-2`). El client
+secret no va en el entorno: va a SSM Parameter Store, y ECS lo inyecta al arrancar cada tarea:
 
 | Variable | Valor |
 |---|---|
 | `GOOGLE_CLIENT_ID` | el client ID (`…apps.googleusercontent.com`) |
-| `GOOGLE_CLIENT_SECRET` | el client secret |
+| `GOOGLE_CLIENT_SECRET` | el client secret, en Parameter Store como `/shurly/production/GOOGLE_CLIENT_SECRET` |
 | `GOOGLE_REDIRECT_URI` | `https://shurly.griddo.io/api/v1/auth/google/callback` |
 | `FRONTEND_URL` | `https://shurly.griddo.io` |
 | `ORGANIZATION_DOMAIN` | `griddo.io` (ya es el valor por defecto) |
@@ -129,13 +130,14 @@ disponible". Nada se rompe.
 **Cómo entregar el secret** sin exponerlo:
 
 - **Opción A (recomendada):** déjalo en `_exchange/google_oauth.json`, que git ignora, y avisa.
-  Lo paso a la configuración de ECS sin que se muestre en pantalla, igual que hicimos con la
-  contraseña de la base de datos.
-- **Opción B:** añádelo tú en la consola de ECS. Cambiar la configuración lanza un despliegue de
-  unos 12 minutos.
+  Lo paso a Parameter Store sin que se muestre en pantalla, como el resto de secretos.
+- **Opción B:** guárdalo tú en Parameter Store (cuenta `griddo-main`, `eu-south-2`), como
+  `SecureString`, sin pegarlo en la línea de comandos: `DEPLOYMENT.md` § Secrets tiene el comando
+  (`put_secret`). Después hace falta un redespliegue forzado (`DEPLOYMENT.md` § Force a redeploy),
+  de unos 12 minutos: las tareas solo leen el secret al arrancar.
 
-El workflow de deploy ya oculta en sus logs cualquier variable con `SECRET` en el nombre. A medio
-plazo el secret irá a Secrets Manager (6.3) en vez de a una variable de entorno.
+Así el secret no aparece en la definición de la tarea ni en los logs del deploy: solo su ARN. Para
+cambiarlo más adelante, `DEPLOYMENT.md` § Sign in with Google explica la rotación sin cortes.
 
 ## 8. Comprobar que funciona
 
@@ -163,7 +165,7 @@ En Shurly hacen falta, además de las del paso 7:
 | Variable | Valor |
 |---|---|
 | `MCP_PUBLIC_URL` | `https://shurly.griddo.io/mcp` (sin barra final) |
-| `MCP_OAUTH_SIGNING_KEY` | una clave aleatoria larga, **propia**: no es el client secret de Google. La genero yo y va a ECS sin mostrarse, como el resto |
+| `MCP_OAUTH_SIGNING_KEY` | una clave aleatoria larga, **propia**: no es el client secret de Google. La genero yo y va a Parameter Store (`/shurly/production/MCP_OAUTH_SIGNING_KEY`) sin mostrarse, como el resto |
 
 No hay que tocar nada más en Google: ni permisos nuevos ni otra pantalla de consentimiento.
 Detalles en `DEPLOYMENT.md` (sección del MCP) y en `mcp_server/README.md`.

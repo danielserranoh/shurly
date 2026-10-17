@@ -1,0 +1,4 @@
+# Kanban board configuration
+wip_limit: 3          # max plans in WIP at once (0 = unlimited)
+lease_minutes: 120    # how long a claim stays valid before it can be stolen
+git_guard: on         # block `git add -A` / `git commit -a` on a shared tree

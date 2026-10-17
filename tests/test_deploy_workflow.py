@@ -12,6 +12,7 @@ copy the image carries replaced within 30 days of an update (DEPLOYMENT.md § Ge
   rebuild of the same commit from the image it replaces.
 """
 
+import json
 import os
 import re
 import shutil
@@ -212,3 +213,130 @@ def test_smoke_fails_while_another_image_serves(tmp_path, health):
 
     assert result.returncode == 1
     assert "::error::" in result.stdout
+
+
+# ---------------------------------------------------------------------------
+# The rollout: the live container goes back with only its image changed
+# ---------------------------------------------------------------------------
+
+ROLL_OUT = "Roll out new image to ECS Express"
+SERVICE_ARN = "arn:aws:ecs:eu-south-2:686255983646:service/default/shurly-api"
+NEW_IMAGE = f"686255983646.dkr.ecr.eu-south-2.amazonaws.com/shurly:{SHA}"
+PARAMETER = "arn:aws:ssm:eu-south-2:686255983646:parameter/shurly/production/"
+LIVE_CONTAINER = {
+    "image": "686255983646.dkr.ecr.eu-south-2.amazonaws.com/shurly:previous",
+    "containerPort": 8000,
+    "environment": [
+        {"name": "DB_HOST", "value": "shurly.cluster.eu-south-2.rds.amazonaws.com"},
+        {"name": "DEFAULT_DOMAIN", "value": "go.griddo.io"},
+    ],
+    "secrets": [
+        {"name": name, "valueFrom": PARAMETER + name}
+        for name in (
+            "DB_PASSWORD",
+            "JWT_SECRET_KEY",
+            "GOOGLE_CLIENT_SECRET",
+            "MCP_OAUTH_SIGNING_KEY",
+            "CLOUDFRONT_ORIGIN_SECRETS",
+        )
+    ],
+}
+
+# aws ecs <subcommand> …: answers list-services with the service's ARN and describe with
+# FAKE_DESCRIBE's file; records each subcommand in AWS_CALLS and the container an update sends
+# in AWS_SENT. The update echoes the container back, as the real one does.
+FAKE_AWS = """#!/bin/sh
+printf '%s\\n' "$2" >> "$AWS_CALLS"
+case "$2" in
+  list-services) printf '%s\\n' "$FAKE_SERVICE_ARN" ;;
+  describe-express-gateway-service) cat "$FAKE_DESCRIBE" ;;
+  update-express-gateway-service)
+    while [ $# -gt 0 ]; do
+      if [ "$1" = "--primary-container" ]; then printf '%s' "$2" > "$AWS_SENT"; fi
+      shift
+    done
+    printf '{"service": {"primaryContainer": %s}}\\n' "$(cat "$AWS_SENT")" ;;
+  *) echo "fake aws: unexpected $*" >&2; exit 2 ;;
+esac
+"""
+
+
+def _roll_out(tmp_path: Path, container: dict) -> tuple[subprocess.CompletedProcess, list[str]]:
+    """The rollout step against a fake aws whose newest active configuration is `container`."""
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir(exist_ok=True)
+    aws = bin_dir / "aws"
+    aws.write_text(FAKE_AWS)
+    aws.chmod(aws.stat().st_mode | stat.S_IEXEC)
+    describe = tmp_path / "describe.json"
+    older = {**container, "image": "686255983646.dkr.ecr.eu-south-2.amazonaws.com/shurly:older"}
+    describe.write_text(
+        json.dumps(
+            {
+                "service": {
+                    "serviceArn": SERVICE_ARN,
+                    "primaryContainer": None,
+                    # Mid-rollout there are two, in no promised order: the step takes the newest.
+                    "activeConfigurations": [
+                        {"createdAt": "2026-10-17T18:00:00+00:00", "primaryContainer": container},
+                        {"createdAt": "2026-10-10T09:00:00+00:00", "primaryContainer": older},
+                    ],
+                }
+            }
+        )
+    )
+    calls = tmp_path / "aws_calls"
+    calls.touch()
+    github_env = tmp_path / "github_env"
+    github_env.touch()
+
+    result = _run(
+        ROLL_OUT,
+        tmp_path,
+        ECS_SERVICE_NAME=WORKFLOW["env"]["ECS_SERVICE_NAME"],
+        IMAGE_URI=NEW_IMAGE,
+        GITHUB_ENV=str(github_env),
+        FAKE_SERVICE_ARN=SERVICE_ARN,
+        FAKE_DESCRIBE=str(describe),
+        AWS_CALLS=str(calls),
+        AWS_SENT=str(tmp_path / "aws_sent"),
+    )
+    return result, calls.read_text().split()
+
+
+@needs_jq
+def test_a_deploy_keeps_the_containers_secrets(tmp_path):
+    """The secrets come from Parameter Store through the container's `secrets`: the deploy sends
+    the live container back with the new image and every other field as it was."""
+    result, calls = _roll_out(tmp_path, LIVE_CONTAINER)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert calls == [
+        "list-services",
+        "describe-express-gateway-service",
+        "update-express-gateway-service",
+    ]
+    sent = json.loads((tmp_path / "aws_sent").read_text())
+    assert sent["image"] == NEW_IMAGE
+    assert sent["secrets"] == LIVE_CONTAINER["secrets"]
+    assert sent["environment"] == LIVE_CONTAINER["environment"]
+    assert sent == {**LIVE_CONTAINER, "image": NEW_IMAGE}
+    # The update's response, which echoes the container, never reaches the log.
+    assert PARAMETER not in result.stdout + result.stderr
+    assert f"SERVICE_ARN={SERVICE_ARN}" in (tmp_path / "github_env").read_text()
+
+
+@needs_jq
+@pytest.mark.parametrize("environment", [[], None], ids=["empty", "missing"])
+def test_the_rollout_refuses_a_container_without_environment(tmp_path, environment):
+    """`secrets` alone doesn't count as the container's settings: no environment, no update."""
+    container = {k: v for k, v in LIVE_CONTAINER.items() if k != "environment"}
+    if environment is not None:
+        container["environment"] = environment
+
+    result, calls = _roll_out(tmp_path, container)
+
+    assert result.returncode == 1
+    assert "::error::No container config (image and environment) found" in result.stdout
+    assert "update-express-gateway-service" not in calls
+    assert not (tmp_path / "aws_sent").exists()
