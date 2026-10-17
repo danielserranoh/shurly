@@ -1,5 +1,10 @@
 # Shurly - Project Roadmap
 
+> **Open work lives on the board since 2026-10-17:** [`_board/`](../_board/), a kanban of epics (the `kanban` plugin:
+> `/kanban:get-status`). This file is the history: what was built, decided and learned, phase by phase. An item
+> marked ⇢ moved to the epic it links to; ✕ was dropped, with why; an open box left here is the user's own to-do or
+> decision, not engineering work.
+
 ## Project Overview
 Modern URL shortener for B2B campaigns with analytics, running on AWS.
 
@@ -11,35 +16,12 @@ S3 + CloudFront for the frontend (4.10, pending).
 
 ---
 
-## Next up (updated 2026-09-28)
+## Next up
 
-Order agreed in the 2026-09-27 review; confirm each item before starting it.
-
-1. **MCP usage log** (5.6.0): without it the dogfood produces no numbers. Code done, and the log group keeps
-   60 days (set 2026-09-28). Left: saving the Logs Insights queries in CloudWatch, an AWS step.
-2. ✅ **Organization and roles** (3.14): links belong to the organization by default; owner, admin and member.
-   Done: API, MCP and frontend (Settings → Organization, the personal toggle, who created each link, removed
-   people). Left: two owners from day one, once people have signed up.
-3. ✅ **Frontend hosting** (4.10): S3 + CloudFront, live on `https://shurly.griddo.io` since 2026-09-29. The deploy
-   workflow publishes the frontend on merges to `main` that touch it.
-4. **Identity**: sign in with Google Workspace, for the web (3.13) and the MCP (5.8). One Google project covers
-   both. The code of both is done (3.13's backend and frontend, 5.8), and in production since release #81
-   (2026-09-28) on `shurly.griddo.io`, which the deploy's smoke test checks. The MCP's Google sign-in is live.
-   The frontend is hosted since 2026-09-29, and a person completed the web sign-in there that day (3.13.6).
-   The MCP works end to end from claude.ai (2026-09-30). Left: Claude Code's own sign-in to the MCP (5.8).
-5. ✅ **MCP install guide**, in the app and in the user manual (5.9): `/manual/install-mcp/` and Settings → API &
-   MCP. Its address comes from the build: `https://shurly.griddo.io/mcp/` in production's.
-6. **Internal dogfood** with the frontend and the MCP (5.6).
-7. **Replace Shlink on `go.griddo.io`** (Phase 8): after the dogfood and error alerting (6.4). Done on `dev`: a
-   link is its code and its domain (8.3); exporting, reviewing and importing Shlink's links and visits, and a
-   visit's country and city (8.4), and the default domain's switch (8.3: a one-off task, run in 8.5's window).
-   Left: running the import in production (8.4: the one-off task is ready; its bucket and IAM are made by hand),
-   error alerting (6.4), and the cutover (8.5).
-
-Also landed on 2026-09-28, outside this list: the account profile (3.12: name, country, time zone and a photo;
-people by name in Settings → Organization and "Created by"), analytics days in the viewer's time zone (3.12.8),
-and a Content-Security-Policy and Trusted Types on every page (6.3). Release #81 took #65–#80; everything merged
-since (#82 on) is on `dev`, for the next release.
+What's next is on the board ([`_board/`](../_board/), `/kanban:get-status`), not here. The list that stood here until
+2026-10-17 is done: the MCP usage log, organizations and roles, the hosted frontend, Google sign-in, the MCP install
+guide, and Shlink's replacement on `go.griddo.io` (cut over 2026-10-02, Shlink removed 2026-10-17). Still the user's:
+the internal dogfood (5.6) and a second owner (3.14.2).
 
 Tasks marked 🔎 were not in the original plan. Each one points to an entry in the
 [retro log](#retro-log--work-we-did-not-see-coming) at the end of this file.
@@ -204,7 +186,7 @@ System creates:
 - [x] Referer tracking (already in Visitor model)
 - [x] IP geolocation service integration (deferred - optional feature) → wanted before the Shlink cutover: see 8.4
       → done there: DB-IP's country database, in process
-- [ ] Background task for async logging (deferred - visitor logging is synchronous)
+- ✕ Background task for async logging (deferred - visitor logging is synchronous) — dropped 2026-10-17: synchronous logging is fine at this volume
 
 ---
 
@@ -247,7 +229,7 @@ System creates:
   - [x] Timeline charts (daily activity bar chart)
   - [x] Geographic distribution (country list with horizontal bars)
   - [x] Top performing URLs section
-- [ ] Date range selector (deferred - optional feature)
+- [x] Date range selector (deferred - optional feature) — done: Analytics has 7/30/90 days and a custom range (3.12.8)
 - [x] Export analytics data (CSV)
 
 ### 3.5 User Settings ✅
@@ -379,8 +361,8 @@ System creates:
   - [x] Visual preview card (how it appears on social media)
   - [x] "Refresh from destination" button
   - [x] Edit modal for custom og_* values
-- [ ] Add preview indicators to URL list
-  - [ ] Icon/badge if custom preview is set
+- ⇢ [`epic_cleanup-sweep`](../_board/backlog/epic_cleanup-sweep.md) Add preview indicators to URL list
+  - ⇢ [`epic_cleanup-sweep`](../_board/backlog/epic_cleanup-sweep.md) Icon/badge if custom preview is set
   - [x] Preview thumbnail on every card
 
 ---
@@ -477,7 +459,7 @@ System creates:
   from the page as served (`tests/test_unavailable_link.py`)
 - [x] The short-link host's other answers (2026-09-29): `/favicon.ico` is a 204 cached a week, never an orphan
   visit; a crawler's preview page has the same strict CSP (`tests/test_short_link_host_pages.py`)
-- [ ] Future CLI / scheduled Lambda for `delete-expired` (deferred to Phase 6 — bundled with the post-launch optimization sweep)
+- ⇢ [`epic_cleanup-sweep`](../_board/backlog/epic_cleanup-sweep.md) Future CLI / scheduled Lambda for `delete-expired` (deferred to Phase 6 — bundled with the post-launch optimization sweep)
 
 ### 3.9.3 Bot Detection in Analytics ✅
 - [x] Add `is_bot` (BOOLEAN, default false) to Visitor model
@@ -553,7 +535,7 @@ System creates:
 - [x] Replace UNIQUE constraint on `short_code` with UNIQUE `(domain_id, short_code)`
 - [x] Seed default domain row at startup (`shurl.griddo.io` from `default_domain` setting)
 - [x] Update redirect resolver to match by `(host header → domain_id, code)`
-- [ ] Frontend / domain management UI deferred (single-domain at launch — model-only)
+- ⇢ [`epic_domains-ui`](../_board/backlog/epic_domains-ui.md) Frontend / domain management UI deferred (single-domain at launch — model-only)
 - [x] Tests verifying same code can exist on different domains (`tests/test_phase310_multidomain.py`)
 
 ### 3.10.2 Dynamic Redirect Rules ✅
@@ -639,7 +621,7 @@ Since go.griddo.io moved to Shurly, "Typos & broken links" (3.10.4) was flooded 
       `short_url` + `title` in overview `top_urls`, tags on campaign detail
 - [x] Verified: 336 tests, `astro check` clean, e2e smoke of 14 core flows, 1440 px + 390 px layouts
 - [x] Astro 7.3.4 upgrade (Vite 8): rendered text + screenshots match the Astro 6 build
-- [ ] Custom-preview badge on link cards; campaign edit screen; Pro billing (pricing TBD)
+- ⇢ [`epic_cleanup-sweep`](../_board/backlog/epic_cleanup-sweep.md) Custom-preview badge on link cards; campaign edit screen; Pro billing (pricing TBD)
 
 ---
 
@@ -762,7 +744,7 @@ Australia have several. So store `country` *and* `timezone`:
       with the metadata strip (a photo with GPS), EXIF orientation, 4096 px and decompression bombs
 - [x] Crop-logic unit tests for the cover constraint: min zoom, pan clamping at every zoom, re-clamp on
       zoom-out, portrait / landscape / square / very small images → `frontend/tests/avatar-crop.test.mjs`
-- [ ] Manual check on desktop (drop + picker) and mobile (picker + touch pan/pinch), 1440 px and 390 px
+- [ ] Manual check on desktop (drop + picker) and mobile (picker + touch pan/pinch), 1440 px and 390 px — yours: a touch pan and pinch on a real phone, now in the photo dialog of 3.12.10
       → done at 1440 (picker, drop, drag, wheel, keys, a refused upload, cancel, remove) and the layout at
       390; left: touch pan and pinch on a real phone
 
@@ -782,7 +764,7 @@ for the day before. Now a day is local to the viewer (`server/utils/local_days.p
       (it was a rolling 168 hours)
 - [x] The charts' "Today" is today in that zone; without a zone in the profile, a hint links to
       Settings → Account
-- [ ] An index on `visits` for these queries: there are single-column ones (`url_id`, `short_code`,
+- ⇢ [`epic_redirect-performance`](../_board/backlog/epic_redirect-performance.md) An index on `visits` for these queries: there are single-column ones (`url_id`, `short_code`,
       `visited_at`), no composite `(url_id, visited_at)` or `(short_code, visited_at)`. Measure on real
       volumes before adding one
       - Measured 2026-09-29 (3.16) on PostgreSQL 14, with a link of 10k visits among 100k on 201 links: with
@@ -799,7 +781,7 @@ for the day before. Now a day is local to the viewer (`server/utils/local_days.p
       → `created_by_first_name` and `created_by_last_name` next to the email, on campaigns and links; the
       cards and the campaign and link pages by name, the email as tooltip. Each list loads its creators'
       profiles in one query, pinned by `tests/test_phase312_creator_names.py`
-- [ ] Photos in the members list: needs an endpoint that serves another member's avatar
+- ⇢ [`epic_member-photos`](../_board/backlog/epic_member-photos.md) Photos in the members list: needs an endpoint that serves another member's avatar
 
 ### 3.12.10 Click the photo to change it ✅
 Decided with the user (2026-10-17): the avatar itself is the trigger, and one dialog does change, remove and save.
@@ -892,11 +874,11 @@ Until then `POST /auth/register` stays reachable through the public API and its 
       page's "Forgot password?" says so
 
 ### 3.13.4 Changing methods without disruption
-- [ ] Setting to turn password login off for the organization's domain (SSO enforced), keeping one break-glass
+- ⇢ [`epic_sso-offboarding`](../_board/backlog/epic_sso-offboarding.md) Setting to turn password login off for the organization's domain (SSO enforced), keeping one break-glass
       account in case Google fails or is misconfigured. Before turning it off, the `auth.login` lines show who
       still uses a password
-- [ ] Leaving Google some day: everyone sets a password while Google still works, then Google sign-in goes off
-- [ ] Offboarding checklist: suspending someone in Google blocks their Google sign-in, but a Shurly password and
+- ⇢ [`epic_sso-offboarding`](../_board/backlog/epic_sso-offboarding.md) Leaving Google some day: everyone sets a password while Google still works, then Google sign-in goes off
+- ⇢ [`epic_sso-offboarding`](../_board/backlog/epic_sso-offboarding.md) Offboarding checklist: suspending someone in Google blocks their Google sign-in, but a Shurly password and
       their API key keep working until the account is deactivated in Shurly. MCP sign-ins with Google (5.8):
       deactivating refuses them at once (requests and refreshes); a Google suspension bites within 60 s (the
       cached check); their Google tokens stay in `mcp_oauth_store`, encrypted and unusable, until they expire
@@ -973,7 +955,7 @@ own links. Tags are already global.
       another owner exists. Checked in one transaction, so two owners demoting each other at once can't leave none
 - [x] "Hand the role over" = make someone owner and step down, in one action
 - [x] The first owner comes from configuration (`BOOTSTRAP_OWNER_EMAIL`), not from whoever signs in first
-- [ ] Two owners from day one (yours to do after the first sign-ups; the break-glass is in place): if the only owner leaves Griddo and their Google account is suspended,
+- [ ] Two owners from day one (yours to do after the first sign-ups; the break-glass is in place): if the only owner leaves Griddo and their Google account is suspended, — yours
       nobody can manage roles. Break-glass: changing `BOOTSTRAP_OWNER_EMAIL` restores an owner
 - [x] Every role change writes an `org.role_changed` line to the event log (who, whom, from, to)
 - [x] Only accounts on `ORGANIZATION_DOMAIN` (default `griddo.io`) join: exact, case-insensitive match, so
@@ -1089,17 +1071,17 @@ them.
 **Needs email sending**: an invitation that reaches the person's mailbox is what proves the address is theirs, and
 without Workspace behind them a forgotten password can only be recovered by email.
 
-- [ ] Invitation: an owner or admin invites an email → email with a single-use link (≥32 random bytes, stored as
+- ⇢ [`epic_invitations-email`](../_board/backlog/epic_invitations-email.md) Invitation: an owner or admin invites an email → email with a single-use link (≥32 random bytes, stored as
       a SHA-256 hash, with an expiry) → the page asks for a password and creates the account. Opening the link
       changes nothing, so mail security scanners that open links by themselves can't activate anything
-- [ ] Password reset by email, on the same token machinery
-- [ ] Amazon SES (`griddo-main`, eu-south-2): verify the sender domain (DKIM CNAMEs in the `griddo.io` zone in
+- ⇢ [`epic_invitations-email`](../_board/backlog/epic_invitations-email.md) Password reset by email, on the same token machinery
+- ⇢ [`epic_invitations-email`](../_board/backlog/epic_invitations-email.md) Amazon SES (`griddo-main`, eu-south-2): verify the sender domain (DKIM CNAMEs in the `griddo.io` zone in
       `griddo-production`), agree the sender with whoever runs Griddo's mail so SPF/DMARC stay valid, and
       **request production access**: the sandbox only delivers to verified domains (AWS usually answers within a
       day). ECS task role with `ses:SendEmail`, so no SMTP password to store
-- [ ] `server/utils/email.py` with a `console` backend for dev and tests; templates with Jinja2
-- [ ] Rate limits on invitations, resends and resets, since each one sends an email
-- [ ] The role an external gets, and whether they see every organization link (maybe a guest role that only
+- ⇢ [`epic_invitations-email`](../_board/backlog/epic_invitations-email.md) `server/utils/email.py` with a `console` backend for dev and tests; templates with Jinja2
+- ⇢ [`epic_invitations-email`](../_board/backlog/epic_invitations-email.md) Rate limits on invitations, resends and resets, since each one sends an email
+- ⇢ [`epic_invitations-email`](../_board/backlog/epic_invitations-email.md) The role an external gets, and whether they see every organization link (maybe a guest role that only
       sees what's shared with them)
 - Without SES, if externals stay few: (a) a copyable invitation link sent by the inviter's own means; it works
   for whoever holds it, and resets are manual; (b) externals with their own Google account sign in with it: the
@@ -1268,7 +1250,7 @@ and every link on it would pay for the header's numbers.
 - [x] How long it takes on PostgreSQL (2026-09-29), a link with 10k visits in 90 days among 90k on 200 others:
       a 90-day `/breakdown` in 9 ms (40 ms if nearly every visit has its own user agent), `/timeseries` 12 ms,
       `/totals` 6 ms. So nothing is stored
-- [ ] Only if a link's volume makes parsing at query time slow: store the parsed fields on `visits` (browser,
+- ⇢ [`epic_redirect-performance`](../_board/backlog/epic_redirect-performance.md) Only if a link's volume makes parsing at query time slow: store the parsed fields on `visits` (browser,
       OS, device, referrer host), with a migration and a backfill. The contract stays the same
 
 ### 3.16.3 Page (Agent 2)
@@ -1562,7 +1544,7 @@ End-to-end run with the user driving SSO locally:
 - [x] `./scripts/deploy_ecs.sh` (build + push + service create)
 - [x] `./scripts/setup_custom_domain.sh` (cert, rule, DNS)
 - [x] Update Lambda `RULE_SYNC_MAP`
-- [ ] Smoke checklist — only `/api/v1/health` (checked by CI on every deploy) and the forced redeploy are on record; re-run the rest against production and tick them here:
+- ✕ Smoke checklist — only `/api/v1/health` (checked by CI on every deploy) and the forced redeploy are on record; re-run the rest against production and tick them here: — dropped 2026-10-17: superseded: each deploy smoke-tests the public host, and every release since was checked in production
   - `login` → returns JWT (register is gone since 3.13.2: sign in with Google, or with a password set
     afterwards)
   - `POST /api/v1/urls` creates a short URL bound to `s.griddo.io`
@@ -1671,7 +1653,7 @@ for this.
 - [x] Audit the generated tool list: for each `/api/v1/...` endpoint, verify the tool name, description, schema, and return shape are LLM-friendly. → `MCP_TOOL_NAMES` strips the `_api_v1_<path>_<method>` suffix from operationIds; `tests/test_phase52_mcp_tools.py` pins the surface (40 tools today)
 - [x] Filter out endpoints that should NOT be MCP tools: legacy `statistics.py`, internal-only routes, anything that handles file uploads (campaign CSV — see 5.3). → `EXCLUDED_ROUTE_MAPS` drops `/api/v1/stats/*` and the health probes (the legacy stats routes were removed on 2026-09-29, and their exclusion with them). No route takes a file upload: `create_campaign` takes the CSV as a string and stays a tool, with `create_campaign_from_rows` (5.3) as the LLM-friendly variant
 - [x] Verify the OG-preview, robots.txt, redirect path, and tracking pixel routes are excluded (they're public unversioned routes, not management API). → `/`, `/robots.txt`, `/{short_code}` and `/{short_code}/track` are excluded. The OG-preview routes (`/api/v1/urls/{code}/preview`, `…/refresh-preview`, `fetch-metadata`) are authenticated management API, so they **stay** as tools
-- [ ] Tests: each auto-generated tool round-trips through the MCP server and produces the same output as the underlying endpoint. → open: only `get_current_user_info` is called through the MCP layer (`tests/test_phase54_mcp_auth.py`); the other generated tools are covered by their REST tests, not through MCP
+- ⇢ [`epic_cleanup-sweep`](../_board/backlog/epic_cleanup-sweep.md) Tests: each auto-generated tool round-trips through the MCP server and produces the same output as the underlying endpoint. → open: only `get_current_user_info` is called through the MCP layer (`tests/test_phase54_mcp_auth.py`); the other generated tools are covered by their REST tests, not through MCP
 
 ### 5.3 Hand-curated tools (where auto-gen is awkward) ✅
 - [x] **`create_campaign_from_rows`** — accepts `rows: list[dict]`, serialises to CSV in-memory, reuses the existing campaign generator.
@@ -1737,7 +1719,7 @@ records which tools get used, how often, or how they fail.
 - [x] Logs Insights queries (calls, errors and latency per tool, daily users, one request end to end) documented
       in `mcp_server/README.md` § Usage log
 - [x] Retention on the log group: **60 days** (decided and set 2026-09-28)
-- [ ] Save those queries in CloudWatch: commands in the same section, to run once with SSO
+- ⇢ [`epic_alerting`](../_board/backlog/epic_alerting.md) Save those queries in CloudWatch: commands in the same section, to run once with SSO
 - [x] Tests: `tests/test_phase560_usage_log.py` (14)
 
 #### 5.6.1 Rollout and signal capture
@@ -1745,21 +1727,21 @@ records which tools get used, how often, or how they fail.
       (shorten a link, a campaign from a CSV, connecting Claude). Links are the organization's (3.14), so a new
       member's list shows the team's links and the empty state never greets them; the old card needed a `?welcome=`
       that nothing set since the register page went (3.13)
-- [ ] Roll out to the Griddo team: 3–5 internal users, with the frontend and the MCP.
-- [ ] Capture for 2–4 weeks: tool invocation counts (which tools get used vs ignored), tool error rates, average call duration.
+- [ ] Roll out to the Griddo team: 3–5 internal users, with the frontend and the MCP. — yours, the dogfood
+- [ ] Capture for 2–4 weeks: tool invocation counts (which tools get used vs ignored), tool error rates, average call duration. — yours, the dogfood
   - [x] The web app's side: its errors as `client.error` lines (6.4), and what it's used for from the API's
         `http.request` lines: queries in `DEPLOYMENT.md` § What the web app is used for
-- [ ] Capture qualitatively: which workflows feel smooth in chat, which feel awkward (e.g. CSV import, charts).
+- [ ] Capture qualitatively: which workflows feel smooth in chat, which feel awkward (e.g. CSV import, charts). — yours, the dogfood
   - [x] Send feedback, in the account menu and the phone's menu: an email to support@griddo.io from the person's own
         mail app, with the page's path (never its query)
-- [ ] Output: a "frontend feature priority" list backed by real signal, fed into the frontend backlog.
+- [ ] Output: a "frontend feature priority" list backed by real signal, fed into the frontend backlog. — yours, the dogfood
 
 ### 5.7 Verification
-- [ ] All auto-generated + curated tools have at least one happy-path test. → curated tools: yes (`tests/test_phase53_curated_tools.py`); auto-generated: see the open item in 5.2
-- [ ] MCP endpoint responds within the same SLO as the regular API. → same task and ALB rule, but never measured
+- ⇢ [`epic_cleanup-sweep`](../_board/backlog/epic_cleanup-sweep.md) All auto-generated + curated tools have at least one happy-path test. → curated tools: yes (`tests/test_phase53_curated_tools.py`); auto-generated: see the open item in 5.2
+- ⇢ [`epic_alerting`](../_board/backlog/epic_alerting.md) MCP endpoint responds within the same SLO as the regular API. → same task and ALB rule, but never measured
 - [x] No regression in existing tests (backend behavior unchanged). → 465 passing (2026-09-26)
-- [ ] `mcp_server/README.md` exists and covers: architecture, framework choice, auth, deployment, how to add a new tool. → everything but "how to add a new tool"
-- [ ] CHANGELOG.md entry under "Added" describing the MCP surface. → missing: the CHANGELOG only mentions MCP in passing (fixes and the Phase 3.11 tools)
+- ⇢ [`epic_cleanup-sweep`](../_board/backlog/epic_cleanup-sweep.md) `mcp_server/README.md` exists and covers: architecture, framework choice, auth, deployment, how to add a new tool. → everything but "how to add a new tool"
+- ⇢ [`epic_cleanup-sweep`](../_board/backlog/epic_cleanup-sweep.md) CHANGELOG.md entry under "Added" describing the MCP surface. → missing: the CHANGELOG only mentions MCP in passing (fixes and the Phase 3.11 tools)
 
 ### 5.8 OAuth 2.1 sign-in for the MCP, alongside API keys 🔎 R8
 **Decided (2026-09-27):** MCP clients can sign in with OAuth 2.1; API keys keep working. claude.ai's custom
@@ -1869,11 +1851,11 @@ live in `mcp_server/README.md`, written for developers. There is no user manual 
       its landmarks. On a phone it found nothing; what it left undecided there measures 4.8:1 or more
 
 ### 6.2 Performance Optimization
-- [ ] Database indexes review
-- [ ] Query optimization for analytics
+- ⇢ [`epic_redirect-performance`](../_board/backlog/epic_redirect-performance.md) Database indexes review
+- ⇢ [`epic_redirect-performance`](../_board/backlog/epic_redirect-performance.md) Query optimization for analytics
   - [x] Multi-URL endpoints run a constant number of SQL statements (N+1 removed) and list pagination is capped at 100 (PR #26)
-- [ ] Caching strategy for the redirect path (CloudFront in front of the ALB, or none)
-- [ ] ~~Lambda cold start optimization~~ — not applicable on ECS; containers have no cold start
+- ⇢ [`epic_redirect-performance`](../_board/backlog/epic_redirect-performance.md) Caching strategy for the redirect path (CloudFront in front of the ALB, or none)
+- ✕ ~~Lambda cold start optimization~~ — not applicable on ECS; containers have no cold start — dropped 2026-10-17: not applicable on ECS
 
 ### 6.3 Security Hardening
 - [x] Rate limiting — no API Gateway on this stack, so it needs app-level limiting or AWS WAF on the shared ALB (first slice: invitations and resets in 3.15, since each one sends an email) → app-level, in the database so both tasks share the counts (`server/utils/rate_limit.py`, migration `0006`): the password login per IP and failed logins per address, the Google and MCP sign-in per IP. Invitations and resets (3.15) take a limit of their own when they arrive; WAF stays an AWS option
@@ -1928,8 +1910,8 @@ live in `mcp_server/README.md`, written for developers. There is no user manual 
         Now it never does; people's redirect is unchanged (2026-09-29)
   - The user's two decisions, a campaign link's visits one by one and orphan visits' IPs: both kept (2026-09-29),
     to revisit after the dogfood
-- [ ] Environment secrets audit (DB password and JWT secret are plain task env vars; Secrets Manager is the planned move)
-  - [ ] The Google OAuth client's secret (3.13.2, `GOOGLE_CLIENT_SECRET`) in Secrets Manager
+- ⇢ [`epic_secrets-manager`](../_board/backlog/epic_secrets-manager.md) Environment secrets audit (DB password and JWT secret are plain task env vars; Secrets Manager is the planned move)
+  - ⇢ [`epic_secrets-manager`](../_board/backlog/epic_secrets-manager.md) The Google OAuth client's secret (3.13.2, `GOOGLE_CLIENT_SECRET`) in Secrets Manager
 - [x] SSRF guard on the Open Graph fetcher (PR #21, see CHANGELOG § Security)
 - [x] Campaign-link takeover via custom codes (see CHANGELOG § Security)
 - [x] API keys stored as a hash → SHA-256 and the first 12 characters (migration `0007`), shown once when
@@ -1966,19 +1948,19 @@ live in `mcp_server/README.md`, written for developers. There is no user manual 
 
 ### 6.4 Monitoring & Logging
 - [x] CloudWatch Logs setup → `/aws/ecs/default/shurly-api-5fdb`; `X-Request-Id` correlates requests
-- [ ] Error alerting (SNS/email) — required before the Shlink cutover (8.5)
+- ⇢ [`epic_alerting`](../_board/backlog/epic_alerting.md) Error alerting (SNS/email) — required before the Shlink cutover (8.5)
   - [x] What to count, and a runbook stub: `DEPLOYMENT.md` § Error alerting. No code: `http.request` lines already
         carry the status, so a metric filter on 5xx does it
-  - [ ] AWS: the metric filters, the alarms and an SNS topic with an email subscription
+  - ⇢ [`epic_alerting`](../_board/backlog/epic_alerting.md) AWS: the metric filters, the alarms and an SNS topic with an email subscription
   - [x] Browser errors reach the logs: the web app reports an uncaught error, a rejected promise, or a CSP or Trusted
         Types block (which a `<meta>` policy can't report) to `POST /api/v1/client-errors`, logged as `client.error`
         lines (never an IP; the page's path, never its query; the account's id when signed in). Five a page, limited
         per IP. Its metric filter and a query are in `DEPLOYMENT.md` § Error alerting
-- [ ] Key metrics dashboard
-  - [ ] ECS task count / CPU / memory
-  - [ ] ALB 5xx and target health
-  - [ ] RDS connections
-  - [ ] Redirect latency
+- ⇢ [`epic_alerting`](../_board/backlog/epic_alerting.md) Key metrics dashboard
+  - ⇢ [`epic_alerting`](../_board/backlog/epic_alerting.md) ECS task count / CPU / memory
+  - ⇢ [`epic_alerting`](../_board/backlog/epic_alerting.md) ALB 5xx and target health
+  - ⇢ [`epic_alerting`](../_board/backlog/epic_alerting.md) RDS connections
+  - ⇢ [`epic_alerting`](../_board/backlog/epic_alerting.md) Redirect latency
 
 ---
 
@@ -1991,8 +1973,8 @@ live in `mcp_server/README.md`, written for developers. There is no user manual 
   - [x] "Make a campaign from a CSV" and "Read your analytics" (a link's page and a campaign's), reached from Help in
         the account menu, "How to read this" in both pages' Analytics, and "How campaigns work" in the wizard's CSV
         step. `tests/manual-links.test.mjs` fails on a link inside the manual that goes nowhere, heading included
-- [ ] Architecture diagram
-- [ ] Database schema diagram
+- ⇢ [`epic_runbook`](../_board/backlog/epic_runbook.md) Architecture diagram
+- ⇢ [`epic_runbook`](../_board/backlog/epic_runbook.md) Database schema diagram
 - [x] Environment variables reference → [docs/ENVIRONMENT.md](../docs/ENVIRONMENT.md) (2026-09-29): every variable
       Shurly reads, with its default and meaning, never a production value. `tests/test_environment_reference.py`
       fails on a setting without a row or with another default, a variable read anywhere without a row, and a stale row
@@ -2003,8 +1985,8 @@ live in `mcp_server/README.md`, written for developers. There is no user manual 
       (3.14), and the rollout's steps
 - [x] How to investigate issues → troubleshooting catalog in `docs/AWS_ECS_DEPLOYMENT.md`
 - [x] How to scale if needed → "Scale up/down" in the same runbook
-- [ ] Backup and recovery procedures
-- [ ] Cost monitoring guide
+- ⇢ [`epic_runbook`](../_board/backlog/epic_runbook.md) Backup and recovery procedures
+- ⇢ [`epic_runbook`](../_board/backlog/epic_runbook.md) Cost monitoring guide
 
 ---
 
@@ -2049,7 +2031,7 @@ case-insensitively.
       behaves like Shlink's strict mode. Pin it with a test so lookups never get lowercased by accident → the
       import keeps codes verbatim; `test_answers_on_its_domain_with_its_exact_code` pins the redirect
 - [x] `loose` → case-insensitive lookup on that domain before the cutover → not needed: it runs `strict`
-- [ ] If wanted after that decision, for Shurly's own `loose` mode: an exact match first, then a case-insensitive
+- [ ] If wanted after that decision, for Shurly's own `loose` mode: an exact match first, then a case-insensitive — a decision for the user; not on the board until made
       fallback only when exactly one link matches. Not plain lowercasing: imported codes stay exact, so `AbC12` and
       `abc12` can both exist (the pin above). Today `/ABC123` is an orphan visit even when `abc123` exists, and
       "Typos & broken links" suggests `abc123` for it (3.10.4). Not coded until the user decides
@@ -2202,7 +2184,7 @@ the import can be re-run.
       repeated keys included (`tests/test_phase85_nostat_forwarding.py`)
 - [x] The import printed a SAWarning (`Tag.urls`, a URL not in the session yet): harmless, every association was
       stored → a link is added to the session before its tags (`tests/test_phase84_shlink_import.py`)
-- [ ] Watch orphan visits on `go.griddo.io` for 2–4 weeks: hits on dropped codes show what was still in use →
+- [ ] Watch orphan visits on `go.griddo.io` for 2–4 weeks: hits on dropped codes show what was still in use → — until 2026-10-30, four weeks after the cutover; checked 2026-10-17: scanners only
       re-import them from the raw export
 
 ### 8.6 Decommission
@@ -2257,11 +2239,11 @@ image and the URL as their title.
 - [x] Run the backfill in production after the release: a dry run, then `--for-real` — 2026-10-04, after #214:
       346 links, 342 destinations, 314 with a preview, 318 with an icon; 7 old copies cleared, 0 overrides kept;
       2 pages didn't answer (left as they were). 13 griddo destinations answer 404 (reported to the user)
-- [ ] Re-fetch stale `page_*` now and then (a page changes its image; nothing re-reads it but refresh-preview, a
+- ⇢ [`epic_cleanup-sweep`](../_board/backlog/epic_cleanup-sweep.md) Re-fetch stale `page_*` now and then (a page changes its image; nothing re-reads it but refresh-preview, a
       change of destination or the backfill). Not in scope of 8.7
-- [ ] Campaign links get the page's preview only from the backfill: fetch a campaign's destination once when it's
+- ⇢ [`epic_cleanup-sweep`](../_board/backlog/epic_cleanup-sweep.md) Campaign links get the page's preview only from the backfill: fetch a campaign's destination once when it's
       made. Not in scope of 8.7
-- [ ] Drop `urls.og_fetched_at` in a later migration, once the release before 8.7 is gone: unused since 0015, kept
+- ⇢ [`epic_cleanup-sweep`](../_board/backlog/epic_cleanup-sweep.md) Drop `urls.og_fetched_at` in a later migration, once the release before 8.7 is gone: unused since 0015, kept
       because the previous release writes it and the backfill reads it
 
 ---
@@ -2284,9 +2266,9 @@ tell how many would, or whether they'd come as individuals or for companies.
       it is an MCP tool
 - [x] docs/PERSONAL_DATA.md: the table, its routes, who sees it, retention: until asked, or 12 months after the
       latest sign-up (confirmed by the user 2026-10-05)
-- [ ] Retention confirmed (12 months, 2026-10-05); delete entries past it by themselves (a startup or scheduled job);
+- ⇢ [`epic_cleanup-sweep`](../_board/backlog/epic_cleanup-sweep.md) Retention confirmed (12 months, 2026-10-05); delete entries past it by themselves (a startup or scheduled job);
       until then an owner removes them by hand
-- [ ] Tell the people on it when there's a place: an email, or an invitation once external users exist (3.15)
+- ⇢ [`epic_invitations-email`](../_board/backlog/epic_invitations-email.md) Tell the people on it when there's a place: an email, or an invitation once external users exist (3.15)
 
 ## Phase 10: Integrations
 
@@ -2314,7 +2296,7 @@ its MCP hosts a proposal and asks Shurly for the short link to it. The spec, dec
       owner, create, renew (the secret shown once), revoke and remove. A filter by service account in the links list
 - [x] Events in the existing event log (`service_account.*`, `service_token.*`, and `url.*` with the account, the
       token and on whose behalf). docs/PERSONAL_DATA.md for the routes and the new columns
-- [ ] v2, after v1 is in use: an audit table with its API (2 years), fine-grained scopes, a rate limit per token with
+- ⇢ [`epic_service-accounts-v2`](../_board/backlog/epic_service-accounts-v2.md) v2, after v1 is in use: an audit table with its API (2 years), fine-grained scopes, a rate limit per token with
       `RateLimit-*` headers, warnings before expiry and after 90 days unused, allowed IP ranges, and handing over
       links Propuestas made with a person's key
 
