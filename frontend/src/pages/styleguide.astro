@@ -1363,7 +1363,7 @@ const colorCount = allColors.length;
 
         <Specimen
           title="Photo and logo"
-          description="The photo is the button: a camera badge at its bottom-right corner, always there, and on hover or keyboard focus a dark overlay with a camera. It opens the photo dialog; a file dropped on it opens the dialog with the file. The organization’s logo is the same circle and the same button for owners and admins. A member sees it, with no badge and no button. Try the samples."
+          description="The photo is the button: on hover or keyboard focus a dark overlay with a camera, on every device. On a touch screen, which can’t hover, a camera badge also sits at its bottom-right corner; the last sample shows it wherever you are. It opens the photo dialog; a file dropped on it opens the dialog with the file. The organization’s logo is the same circle and the same button for owners and admins. A member sees it, with no badge and no button. Try the samples."
           code={['<PhotoTrigger label="Change your photo">', '<OrgMark />']}
           stage="white"
         >
@@ -1395,6 +1395,16 @@ const colorCount = allColors.length;
             <li class="grid w-24 justify-items-center gap-2 text-center">
               <OrgMark class="size-20 text-3xl" alt="A sample logo" />
               <span class="text-xs text-ink-500">Logo, a member: read-only</span>
+            </li>
+            <!-- The badge forced on, as a touch screen shows it, so it can be seen with a mouse too -->
+            <li class="grid w-24 justify-items-center gap-2 text-center [&_[data-photo-badge]]:grid">
+              <PhotoTrigger label="Change the touch-screen sample photo" data-sg-photo="current" data-sg-touch>
+                <span class="grid size-full place-items-center overflow-hidden rounded-full bg-ink-950 text-3xl font-semibold text-brand-300 data-has-photo:bg-white" data-sg-photo-circle data-has-photo>
+                  <span aria-hidden="true" hidden data-sg-photo-initial>A</span>
+                  <img class="size-full object-cover" alt="" data-sg-sample data-sg-photo-image />
+                </span>
+              </PhotoTrigger>
+              <span class="text-xs text-ink-500">On a touch screen: the badge</span>
             </li>
           </ul>
         </Specimen>
@@ -2694,8 +2704,7 @@ const colorCount = allColors.length;
       paint.fill();
     });
     $$<HTMLImageElement>('[data-sg-sample]').forEach((img) => (img.src = samplePhoto));
-    const withPhoto = $('[data-sg-photo="current"]');
-    if (withPhoto) photoNow.set(withPhoto, samplePhoto);
+    $$('[data-sg-photo="current"]').forEach((withPhoto) => photoNow.set(withPhoto, samplePhoto));
     logoNow = sampleLogo;
     $$('[data-org-mark]').forEach((mark) => paintSampleMark(mark, sampleLogo));
   })();
