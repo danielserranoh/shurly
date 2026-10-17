@@ -1910,8 +1910,13 @@ live in `mcp_server/README.md`, written for developers. There is no user manual 
         Now it never does; people's redirect is unchanged (2026-09-29)
   - The user's two decisions, a campaign link's visits one by one and orphan visits' IPs: both kept (2026-09-29),
     to revisit after the dogfood
-- ⇢ [`epic_secrets-manager`](../_board/backlog/epic_secrets-manager.md) Environment secrets audit (DB password and JWT secret are plain task env vars; Secrets Manager is the planned move)
-  - ⇢ [`epic_secrets-manager`](../_board/backlog/epic_secrets-manager.md) The Google OAuth client's secret (3.13.2, `GOOGLE_CLIENT_SECRET`) in Secrets Manager
+- [x] Environment secrets audit → 2026-10-17 (plan `plan_secrets-in-parameter-store`): the five secrets (`DB_PASSWORD`,
+      `JWT_SECRET_KEY`, `GOOGLE_CLIENT_SECRET`, `MCP_OAUTH_SIGNING_KEY`, `CLOUDFRONT_ORIGIN_SECRETS`) moved from the
+      service's plain `environment` to SSM Parameter Store (SecureString, `/shurly/production/<NAME>`), injected through
+      the container's `secrets` (task definition 47). Parameter Store, not Secrets Manager: free, and Shurly reads
+      secrets only at startup (the user's call). The JWT and MCP keys were rotated on the way, so their values were
+      never plain text; every old task-definition revision (1–46) is deleted. The execution role has an inline
+      `shurly-read-parameters` policy. DEPLOYMENT.md § Secrets has the runbooks
 - [x] SSRF guard on the Open Graph fetcher (PR #21, see CHANGELOG § Security)
 - [x] Campaign-link takeover via custom codes (see CHANGELOG § Security)
 - [x] API keys stored as a hash → SHA-256 and the first 12 characters (migration `0007`), shown once when
