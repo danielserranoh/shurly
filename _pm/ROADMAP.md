@@ -2215,9 +2215,12 @@ the import can be re-run.
       `go`, `links` and `shurly` certificates; only Shlink's own `sh-…on.aws` certificates went. Rule 10 was already
       gone; rule 11 stays, as `links.griddo.io`'s redirect, with its certificate and Route 53 record. `RULE_SYNC_MAP`
       already lost Shlink's entries
-- [ ] Delete Shlink's RDS (`shlink-db`, with a final snapshot), then its security group `shlink-db-sg`, its log
-      groups (`/aws/ecs/default/shlink-api-f519`, `shlink-web-7ce5`, `shlink-web-ac0d`, never expiring) and the
-      inactive task definitions `default-shlink-api` / `default-shlink-web`. Its API key dies with the database
+- [x] Delete everything else Shlink had, so nothing keeps costing (the user's call, 2026-10-17): `shlink-db` with its
+      automated backups and no final snapshot, then both its snapshots (the data lives on in Shurly and in the raw
+      export in `_exchange/`); `shlink-db-sg`; its three log groups; its task definitions; the IAM roles
+      `ecsShlinkTaskRole` and `shurly-shlink-import`, and the empty bucket `shurly-imports-686255983646`
+      (DEPLOYMENT.md § The import: recreate both before another import). Its API key died with the database. The
+      shared ALB's three Elastic IPs stay: they're the load balancer's, which Shurly uses
 - [x] Point `links.griddo.io` at the Shurly frontend, if 4.10 chooses it → decided 2026-10-03: rule 11 redirects
       (302) to `https://shurly.griddo.io/dashboard/`, which sends a signed-out visitor to the login and back. The
       rule-sync Lambda first lost Shlink's mappings and skips a rule that doesn't forward: with `"3": "11"` still
