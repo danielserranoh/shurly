@@ -1,4 +1,4 @@
-// Phase 3.12, 3.14.4 — the checks a picked or dropped image gets before it's sent: the avatar's
+// Phase 3.12, 3.14.4, 3.14.6 — the checks a picked or dropped image gets before it's sent: the avatar's
 // and the organization logo's. The API checks again (server/utils/images.py): these only save a
 // round trip, and say it in the page's words. No imports, so the unit tests run it as is.
 
@@ -7,8 +7,8 @@ export const ACCEPTED_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 
 /** The avatar is cropped in the browser first, which makes any photo small: 10 MB in. */
 export const AVATAR_MAX_BYTES = 10 * 1024 * 1024;
-/** The logo is sent as it is (never cropped), so the API's own limit: 2 MB. */
-export const LOGO_MAX_BYTES = 2 * 1024 * 1024;
+/** Since 3.14.6 the logo is cropped too (a PNG of 512 px at most is sent, under the API's 2 MB): 10 MB in. */
+export const LOGO_MAX_BYTES = AVATAR_MAX_BYTES;
 
 const megabytes = (bytes: number) => `${Math.round(bytes / (1024 * 1024))} MB`;
 

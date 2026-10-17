@@ -59,14 +59,15 @@ CSS classes (in `global.css`): `btn` (+ `btn-primary | accent | secondary | ghos
 
 Astro components (`frontend/src/components/`): `brand/Logo`, `ui/Icon` (Lucide), `ui/PageHeader`,
 `ui/StatCard`, `ui/EmptyState`, `ui/Modal`, `ui/ProBadge`, `ui/PasswordField`, `ui/GoogleLogo`,
-`ui/AvatarCropper` (the photo's crop dialog), `ui/OrgMark` (the organization's logo, or its initial), `ui/Pager` (Previous and Next under a paged list),
+`ui/PhotoTrigger` (a photo that's its own button), `ui/PhotoPicker` (the photo dialog, for the avatar and the logo),
+`ui/OrgMark` (the organization's logo, or its initial), `ui/Pager` (Previous and Next under a paged list),
 `illustrations/Illustration` (11 line illustrations), `app/EditLinkModal`, `app/QrModal`,
 `app/VisibilityToggle` (the "Personal" switch of the create flows).
 
 Rendered in TypeScript (`frontend/src/utils/`): link card (`links.ts`), campaign card
 (`campaigns.ts`), tag pill and tag picker (`tags.ts`, `tag-input.ts`), charts (`charts.ts`),
 toasts, confirm dialogs and copy feedback (`ui.ts`), who's looking and locked controls
-(`viewer.ts`), the avatar and its crop (`avatar.ts`, `avatar-cropper.ts`, `avatar-crop.ts`), the organization's logo (`org-logo.ts`), both kept by the API (`stored-image.ts`, `image-file.ts`), a campaign's recipients
+(`viewer.ts`), the avatar (`avatar.ts`), the photo dialog (`photo-picker.ts`, its rules in `photo-picker-state.ts`, the crop in `avatar-crop.ts`), the organization's logo (`org-logo.ts`), both kept by the API (`stored-image.ts`, `image-file.ts`), a campaign's recipients
 (`recipients.ts`, logic in `recipients-view.ts`). Every interpolation goes through the escaping `html` template tag (`html.ts`).
 
 ## Patterns
@@ -94,16 +95,31 @@ toasts, confirm dialogs and copy feedback (`ui.ts`), who's looking and locked co
   from there, and forgets it when the box closes; afterwards only how it starts shows (`shurly_AbC12…`, `shsa_1a2b3c4d…`).
 - **Toasts** appear top-right under the header: 4 s, or 6 s for errors.
 - **Dialogs** fade and scale in and become bottom sheets under 640 px. **Menus** use the Popover API.
-- **Photos.** An avatar is the first name's initial (the email's without one) until there's a photo. A
-  photo is picked or dropped, then placed in the crop dialog: drag or arrow keys to move it; wheel, pinch,
-  slider or + and − to zoom. The circle is always covered: zooming out stops when the photo's short side
-  fills it, and it can't be dragged off. It's saved as a 512 px square from the dialog, which stays open
-  to show an error.
-- **Organization marks.** The organization shows as a rounded square next to its name (`ui/OrgMark`, painted by
-  `paintOrgMark` in `org-logo.ts`): the name's initial in brand cyan on navy, like an avatar, until its logo has
-  loaded, then the logo on white with a hairline ring, whole (`object-contain`), since a logo keeps its shape and
-  its transparency. No crop dialog: owners and admins pick or drop the file and it's saved as it is. Members
-  see the logo without the buttons.
+- **Photos.** An avatar is the first name's initial (the email's without one) until there's a photo. The photo is
+  its own button (`ui/PhotoTrigger`, named for what it does: "Change your photo"). A camera badge sits at its
+  bottom-right corner, always, on every device: a 28 px ink circle with a white camera and a white ring that keeps it
+  off the photo (17:1). Hover, keyboard focus or a file dragged over it lays a dark overlay (`ink-950` at 60%) with
+  a camera on the photo, and the focus ring stays. The camera is 4.6:1 even over a white photo. Next to it are the name and, under it, the email in muted text. There
+  are no separate upload or remove buttons.
+- **The photo dialog** (`ui/PhotoPicker`, `pickPhoto`): "Profile photo" or "Organization logo". It has a large
+  circle, **Change** (upload icon) and **Remove** (trash icon) under it, then **Cancel** and **Save**. It opens on
+  the saved photo, read-only (only its square is kept, so there's nothing to move), or on the initial, with
+  "Choose a photo to position it in the frame". Change picks a photo (or one is dropped on the dialog or the
+  button), which is positioned in the circle: drag or arrow keys to move it; wheel, pinch, + and −, or the slider
+  (shown only then) to zoom. The circle is always covered: zooming out stops when the photo's short side fills it,
+  and it can't be dragged off. Remove shows the initial and hides itself. Nothing changes until Save, which stays
+  disabled until something would. Cancel, Esc or the close button keeps what there was; the backdrop doesn't close
+  it, so a drag that ends outside can't lose the work. The file note and the errors, from the file or from saving,
+  show in the dialog, which stays open. The avatar is saved as a 512 px WebP; a logo as a PNG of 512 px at most,
+  never enlarged, its transparency kept.
+- **Organization marks.** The organization shows as a circle next to its name, like an avatar (`ui/OrgMark`,
+  painted by `paintOrgMark` in `org-logo.ts`): the name's initial in brand blue on navy until its logo has loaded,
+  then the logo filling the circle (`object-cover`) on white with a hairline `line` ring. White keeps a logo's
+  colours true and gives a transparent logo a neutral light ground. Navy (`ink-900`) on white is 14.4:1 and brand
+  blue 5.1:1. The ring marks the circle on white cards and menus; a logo is exempt from contrast rules, and the
+  button is marked by its badge. For owners and admins the logo in Settings is a
+  `PhotoTrigger` that opens the photo dialog. Members see a plain `OrgMark`, with no badge, no overlay and no
+  button. A logo saved before 3.14.6 that isn't square shows cropped to the circle until it's uploaded again.
 - **Paging.** The links and the campaigns come 20 at a time, with the pager under the list: "Showing 21–40 of 57",
   Previous and Next, and `?page=` in the address so a reload or a shared link keeps the place. It hides while
   the list fits on one page.

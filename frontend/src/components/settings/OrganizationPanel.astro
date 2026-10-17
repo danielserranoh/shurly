@@ -5,12 +5,15 @@
  * still checks, and its 403/409 `detail` is shown as it comes.
  *
  * Phase 3.14.4 — the logo: owners and admins upload, preview and remove it; members see it.
+ * Phase 3.14.6 — for owners and admins the logo is a button that opens the photo dialog (cropped, as the avatar).
  *
  * Phase 10.1 — service accounts (ServiceAccountsSection): owners manage them, admins see them.
  */
 import Icon from '@/components/ui/Icon.astro';
 import EmptyState from '@/components/ui/EmptyState.astro';
 import OrgMark from '@/components/ui/OrgMark.astro';
+import PhotoPicker from '@/components/ui/PhotoPicker.astro';
+import PhotoTrigger from '@/components/ui/PhotoTrigger.astro';
 import SettingsSection from './SettingsSection.astro';
 import ServiceAccountsSection from './ServiceAccountsSection.astro';
 ---
@@ -18,18 +21,18 @@ import ServiceAccountsSection from './ServiceAccountsSection.astro';
 <div class="grid gap-10" data-org-content>
   <SettingsSection id="org-logo-title" title="Logo" description="Everyone in the organization sees it next to its name.">
     <div class="card p-5 sm:p-6">
-      <!-- Saved on its own, as picked: the API keeps its shape and transparency, within 512 px -->
-      <div class="-m-2 flex items-center gap-4 rounded-xl border-2 border-dashed border-transparent p-2 transition-colors data-dragging:border-brand-400 data-dragging:bg-brand-50" data-logo-block>
-        <OrgMark class="h-16 w-28 rounded-xl text-2xl" alt="The organization’s logo" />
-        <div class="grid min-w-0 gap-1.5">
-          <div class="flex flex-wrap items-center gap-2" data-logo-actions hidden>
-            <button type="button" class="btn btn-secondary btn-sm" data-logo-pick><Icon name="upload" />Upload logo</button>
-            <button type="button" class="btn btn-ghost btn-sm" data-logo-remove hidden>Remove</button>
-          </div>
-          <p class="hint" data-logo-hint><span class="skeleton inline-block h-4 w-48 align-middle"></span></p>
-          <p class="field-error" role="alert" data-logo-error hidden></p>
+      <!-- Phase 3.14.6: for owners and admins the logo is the button, and opens the photo dialog; members see it -->
+      <div class="flex items-center gap-4" data-logo-block>
+        <PhotoTrigger label="Change the organization’s logo" hidden data-logo-button>
+          <OrgMark class="size-full text-3xl" />
+        </PhotoTrigger>
+        <span class="shrink-0" data-logo-static>
+          <OrgMark class="size-20 text-3xl" alt="The organization’s logo" />
+        </span>
+        <div class="min-w-0">
+          <p class="truncate font-semibold text-ink-950" data-logo-org-name><span class="skeleton inline-block h-4 w-32 align-middle"></span></p>
+          <p class="text-sm text-ink-500" data-logo-hint></p>
         </div>
-        <input type="file" accept="image/jpeg,image/png,image/webp" hidden data-logo-file />
       </div>
     </div>
   </SettingsSection>
@@ -43,7 +46,7 @@ import ServiceAccountsSection from './ServiceAccountsSection.astro';
 
     <div class="card overflow-hidden">
       <div class="flex items-center gap-3 border-b border-line px-4 py-3.5 sm:px-5">
-        <OrgMark class="size-9 rounded-xl text-sm" />
+        <OrgMark class="size-9 text-sm" />
         <div class="min-w-0">
           <p class="truncate font-semibold text-ink-950" data-org-name><span class="skeleton inline-block h-4 w-24 align-middle"></span></p>
           <p class="text-[13px] text-ink-500" data-org-summary></p>
@@ -86,6 +89,8 @@ import ServiceAccountsSection from './ServiceAccountsSection.astro';
   </SettingsSection>
 </div>
 
+<PhotoPicker id="logo-picker" title="Organization logo" noun="logo" currentAlt="The organization’s current logo" note="A transparent logo keeps its transparency." />
+
 <EmptyState
   id="org-none"
   hidden
@@ -104,9 +109,10 @@ import ServiceAccountsSection from './ServiceAccountsSection.astro';
   import { html, setHTML, type RawHTML } from '@/utils/html';
   import { accountLine, hasName, personName, type Person } from '@/utils/people';
   import { icon, type IconName } from '@/utils/icons';
-  import { confirmDialog, setLoading, toast, type ConfirmOptions } from '@/utils/ui';
-  import { canChangeLogo, logoFileProblem, paintOrgMark, removeLogo, uploadLogo } from '@/utils/org-logo';
-  import { forgetOrganization, getMe, getMyOrganization, installLockedControls, organizationChanged } from '@/utils/viewer';
+  import { confirmDialog, toast, type ConfirmOptions } from '@/utils/ui';
+  import { canChangeLogo, logoFileProblem, logoUrl, paintOrgMark, removeLogo, uploadLogo } from '@/utils/org-logo';
+  import { pickPhoto } from '@/utils/photo-picker';
+  import { forgetOrganization, getMe, getMyOrganization, initialOf, installLockedControls, organizationChanged } from '@/utils/viewer';
   import type { AdoptedLinks, OrgMember, OrgRole, Organization, RemovedMember, User } from '@/utils/types';
 
   const ROLES: Record<OrgRole, { label: string; icon: IconName; badge: string; rank: number }> = {
@@ -472,32 +478,29 @@ import ServiceAccountsSection from './ServiceAccountsSection.astro';
     else if (btn.dataset.memberAction === 'remove') void remove(m);
   });
 
-  // ---------------------------------------------------------------- Logo (Phase 3.14.4)
-  // Picked or dropped, checked, and saved as it is: no crop, since a logo keeps its shape. The
-  // image comes from the API as a blob (it needs the bearer header), shown from an object URL.
-  const logoBlock = $('[data-logo-block]');
-  const logoActions = $('[data-logo-actions]');
-  const logoPick = $<HTMLButtonElement>('[data-logo-pick]');
-  const logoRemove = $<HTMLButtonElement>('[data-logo-remove]');
-  const logoFile = $<HTMLInputElement>('[data-logo-file]');
+  // ---------------------------------------------------------------- Logo (Phase 3.14.4, 3.14.6)
+  // For owners and admins the logo is the button: it opens the photo dialog, where a new one is picked
+  // or dropped, positioned and saved (a PNG square, its transparency kept), or the logo is removed. A
+  // file dropped on the logo opens the dialog with it. Members see the logo, with no button. The image
+  // comes from the API as a blob (it needs the bearer header), shown from an object URL.
+  const logoButton = $<HTMLButtonElement>('[data-logo-button]');
+  const logoStatic = $('[data-logo-static]');
+  const logoOrgName = $('[data-logo-org-name]');
   const logoHint = $('[data-logo-hint]');
-  const logoError = $('[data-logo-error]');
+  const logoPicker = $<HTMLDialogElement>('#logo-picker');
   const editsLogo = () => Boolean(org) && canChangeLogo(org.role);
 
   function renderLogo() {
     content.querySelectorAll<HTMLElement>('[data-org-mark]').forEach((mark) => void paintOrgMark(mark, org));
-    logoActions.hidden = !editsLogo();
-    logoRemove.hidden = !org.logo_version;
+    logoButton.hidden = !editsLogo();
+    logoStatic.hidden = editsLogo();
+    logoOrgName.textContent = org.name;
     logoHint.textContent = editsLogo()
-      ? 'JPEG, PNG or WebP, up to 2 MB. It keeps its shape and transparency. Or drop it here.'
+      ? (org.google_domain ?? '')
       : org.logo_version
         ? 'Owners and admins can change it.'
         : 'No logo yet. Owners and admins can add one.';
-  }
-
-  function showLogoError(message: string | null) {
-    logoError.textContent = message ?? '';
-    logoError.hidden = !message;
+    logoHint.hidden = !logoHint.textContent;
   }
 
   /** The API answered the organization, with the logo's new version (or none). */
@@ -507,64 +510,44 @@ import ServiceAccountsSection from './ServiceAccountsSection.astro';
     organizationChanged(next); // the header shows it too
   }
 
-  async function takeLogo(file: File | undefined) {
-    showLogoError(null);
-    if (!file || !editsLogo()) return;
-    const problem = logoFileProblem(file);
-    if (problem) {
-      showLogoError(problem);
-      return;
-    }
-    setLoading(logoPick, true, 'Uploading…');
-    try {
-      logoSaved(await uploadLogo(file));
-    } catch (err) {
-      setLoading(logoPick, false);
-      showLogoError(errorMessage(err));
-      return;
-    }
-    setLoading(logoPick, false);
-    toast('Logo saved', 'success');
+  async function changeLogo(file?: File) {
+    if (!editsLogo()) return;
+    const result = await pickPhoto({
+      dialog: logoPicker,
+      kind: 'logo',
+      hasCurrent: Boolean(org.logo_version),
+      currentUrl: await logoUrl(org.logo_version),
+      initial: initialOf(org.name),
+      fileProblem: logoFileProblem,
+      file,
+      upload: async (square) => logoSaved(await uploadLogo(square)),
+      remove: async () => {
+        await removeLogo();
+        logoSaved({ ...org, logo_version: null });
+      },
+    });
+    if (result) toast(result === 'uploaded' ? 'Logo saved' : 'Logo removed', 'success');
   }
 
-  logoPick.addEventListener('click', () => logoFile.click());
-  logoFile.addEventListener('change', () => {
-    const file = logoFile.files?.[0];
-    logoFile.value = ''; // the same file can be picked again
-    void takeLogo(file);
-  });
+  logoButton.addEventListener('click', () => void changeLogo());
 
-  // Drop a file on the logo block.
-  const dragging = (on: boolean) => logoBlock.toggleAttribute('data-dragging', on);
-  logoBlock.addEventListener('dragover', (e) => {
+  // Drop a file on the logo: the dialog opens with it, to position it. Not for members.
+  const dragging = (on: boolean) => logoButton.toggleAttribute('data-dragging', on);
+  logoButton.addEventListener('dragover', (e) => {
     if (!editsLogo() || !e.dataTransfer?.types.includes('Files')) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = 'copy';
     dragging(true);
   });
-  logoBlock.addEventListener('dragleave', (e) => {
-    if (!logoBlock.contains(e.relatedTarget as Node | null)) dragging(false);
+  logoButton.addEventListener('dragleave', (e) => {
+    if (!logoButton.contains(e.relatedTarget as Node | null)) dragging(false);
   });
-  logoBlock.addEventListener('drop', (e) => {
+  logoButton.addEventListener('drop', (e) => {
     if (!editsLogo()) return;
     e.preventDefault();
     dragging(false);
-    void takeLogo(e.dataTransfer?.files[0]);
-  });
-
-  logoRemove.addEventListener('click', async () => {
-    showLogoError(null);
-    setLoading(logoRemove, true, 'Removing…');
-    try {
-      await removeLogo();
-    } catch (err) {
-      setLoading(logoRemove, false);
-      showLogoError(errorMessage(err));
-      return;
-    }
-    setLoading(logoRemove, false);
-    logoSaved({ ...org, logo_version: null });
-    toast('Logo removed', 'success');
+    const file = e.dataTransfer?.files[0];
+    if (file) void changeLogo(file);
   });
 
   renderSkeleton();

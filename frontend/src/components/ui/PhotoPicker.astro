@@ -1,0 +1,76 @@
+---
+/**
+ * Phase 3.12.10, 3.14.6 — the photo dialog, for the avatar ("Profile photo") and the organization's
+ * logo ("Organization logo"): a large circle, Change and Remove under it, Cancel and Save. Markup
+ * only; `pickPhoto(…)` (src/utils/photo-picker.ts) opens and drives it, by the rules in
+ * src/utils/photo-picker-state.ts, and a new photo is positioned by src/utils/avatar-crop.ts (the
+ * circle is always covered).
+ *
+ * On open the circle shows the saved photo, read-only (only the cropped square is kept, so there's
+ * nothing to move), or the initial. A photo picked or dropped is positioned in it: drag, wheel, pinch,
+ * arrow keys, + and −, and the zoom slider, which shows only then. Nothing is saved before Save.
+ */
+import Icon from './Icon.astro';
+import Modal from './Modal.astro';
+
+interface Props {
+  id: string;
+  title: string;
+  /** What it holds, in the buttons and the help: "photo" or "logo". */
+  noun: 'photo' | 'logo';
+  /** The saved image's alt text, read while it's shown. */
+  currentAlt: string;
+  /** Said under the file note, e.g. that a logo keeps its transparency. */
+  note?: string;
+}
+
+const { id, title, noun, currentAlt, note } = Astro.props;
+const Noun = noun === 'photo' ? 'Photo' : 'Logo';
+---
+
+<Modal id={id} title={title} width="26rem" staticBackdrop>
+  <div class="grid gap-4 px-6 pt-6 pb-5">
+    <div
+      class="relative mx-auto grid size-56 touch-none place-items-center overflow-hidden rounded-full bg-ink-950 text-7xl font-semibold text-brand-300 ring-1 ring-line transition-shadow select-none data-dragging:ring-4 data-dragging:ring-brand-400 data-positioning:cursor-grab data-positioning:active:cursor-grabbing data-[shows=current]:bg-white data-[shows=new]:bg-white sm:size-64"
+      role="group"
+      aria-label={`${Noun} preview`}
+      aria-describedby={`${id}-help`}
+      data-label-idle={`${Noun} preview`}
+      data-label-positioning={`${Noun} position`}
+      data-shows="initials"
+      data-picker-frame
+    >
+      <span data-picker-initial aria-hidden="true"></span>
+      <img class="absolute inset-0 size-full object-cover" alt={currentAlt} draggable="false" data-picker-current hidden />
+      <img class="pointer-events-none absolute top-0 left-0 max-w-none origin-top-left" alt="" draggable="false" data-picker-crop hidden />
+    </div>
+    <p
+      id={`${id}-help`}
+      class="hint text-center"
+      data-idle={`Choose a ${noun} to position it in the frame`}
+      data-positioning="Drag to move it; scroll or pinch to zoom. Or use the arrow keys, and + and −."
+      data-picker-help
+    >
+      Choose a {noun} to position it in the frame
+    </p>
+    <div class="flex items-center gap-3 text-ink-500" data-picker-zoom-row hidden>
+      <Icon name="image" class="size-3.5 shrink-0" />
+      <input type="range" min="0" max="1000" value="0" class="w-full cursor-pointer accent-ink-950" aria-label="Zoom" data-picker-zoom />
+      <Icon name="image" class="size-5 shrink-0" />
+    </div>
+    <div class="flex flex-wrap justify-center gap-2">
+      <button type="button" class="btn btn-secondary btn-sm" data-picker-change><Icon name="upload" />Change {noun}</button>
+      <button type="button" class="btn btn-ghost btn-sm" data-picker-remove hidden><Icon name="trash" />Remove {noun}</button>
+    </div>
+    <div class="grid gap-1 text-center">
+      <p class="hint">JPEG, PNG or WebP, up to 10 MB. Or drop it on the circle.</p>
+      {note && <p class="hint">{note}</p>}
+      <p class="field-error" role="alert" data-picker-error hidden></p>
+    </div>
+    <input type="file" accept="image/jpeg,image/png,image/webp" hidden data-picker-file />
+  </div>
+  <div class="flex justify-end gap-2 border-t border-line bg-ink-50/60 px-6 py-3">
+    <button type="button" class="btn btn-secondary" data-dialog-close>Cancel</button>
+    <button type="button" class="btn btn-primary" data-picker-save disabled>Save {noun}</button>
+  </div>
+</Modal>
