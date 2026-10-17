@@ -1,6 +1,6 @@
 // Phase 3.12, 3.14.4 — what a picked or dropped image is checked for before it's sent
-// (src/utils/image-file.ts): the avatar takes up to 10 MB (it's cropped in the browser first), the
-// organization's logo the API's own 2 MB (it's sent as it is). Never an SVG. And who may change the
+// (src/utils/image-file.ts): the avatar and the organization's logo take up to 10 MB, since both are
+// cropped in the browser first (the logo since 3.14.6). Never an SVG. And who may change the
 // logo: owners and admins.
 // Run: `npm test` (node --test; Node 22.18+ runs the TypeScript module as is).
 
@@ -44,10 +44,10 @@ describe('the avatar and the logo', () => {
     assert.match(avatarFileProblem(file('image/jpeg', 11 * MB)), /over 10 MB/);
   });
 
-  test('a logo can be 2 MB, the API’s limit, since it’s sent as it is', () => {
-    assert.equal(LOGO_MAX_BYTES, 2 * MB);
-    assert.equal(logoFileProblem(file('image/png', 2 * MB)), null);
-    assert.match(logoFileProblem(file('image/png', 3 * MB)), /over 2 MB/);
+  test('a logo can be 10 MB too, since it’s cropped the same way (3.14.6): a PNG of 512 px at most is sent', () => {
+    assert.equal(LOGO_MAX_BYTES, 10 * MB);
+    assert.equal(logoFileProblem(file('image/png', 3 * MB)), null);
+    assert.match(logoFileProblem(file('image/png', 11 * MB)), /over 10 MB/);
     assert.equal(logoFileProblem(file('image/svg+xml')), 'Use a JPEG, PNG or WebP image.');
   });
 });

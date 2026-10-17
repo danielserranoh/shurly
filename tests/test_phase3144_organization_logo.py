@@ -139,6 +139,22 @@ class TestWhatIsKept:
         assert image.getpixel((5, 5))[3] == 0
         assert image.getpixel((100, 50))[3] == 255 and _is(image.getpixel((100, 50)), "red")
 
+    @pytest.mark.parametrize(("kind", "side"), [("PNG", 512), ("PNG", 200), ("WEBP", 512)])
+    def test_the_browsers_square_crop_stays_a_transparent_square(self, client, owner, kind, side):
+        """3.14.6: the page crops the logo to a square (a PNG of 512 px at most, a WebP where a
+        browser makes one): it's kept square, the same size, its transparent corners transparent."""
+        crop = Image.new("RGBA", (side, side), (0, 0, 0, 0))
+        crop.paste((2, 41, 88, 255), (side // 4, side // 4, side * 3 // 4, side * 3 // 4))
+        buffer = io.BytesIO()
+        crop.save(buffer, kind, **({"lossless": True} if kind == "WEBP" else {}))
+        _put(client, owner, buffer.getvalue(), f"image/{kind.lower()}")
+
+        image = _decoded(_get(client, owner).content)
+        assert image.size == (side, side)
+        assert image.mode == "RGBA"
+        assert image.getpixel((1, 1))[3] == 0
+        assert image.getpixel((side // 2, side // 2))[3] == 255
+
     def test_no_metadata_reaches_the_database(self, client, owner, db_session):
         _put(client, owner, _jpeg_with_gps(), "image/jpeg")
 

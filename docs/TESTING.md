@@ -179,7 +179,8 @@ reads it (`tests/test_e2e_guard.py`).
 Accessibility: `e2e/a11y.spec.ts` runs axe on the landing, login, dashboard, link, campaign, Analytics and Settings pages and
 the manual (and `e2e/waitlist.spec.ts` on both waitlist pages; `e2e/service-accounts.spec.ts` on Settings' service
 accounts, its token dialog with the token shown once, the links list filtered by a service, and the manual's page for
-owners), once their content is in, on a desktop and on a phone (390 px, where the menu is a dialog, checked
+owners; `e2e/profile-photo.spec.ts` and `e2e/organization-logo.spec.ts` on the photo dialog in each of its states: with
+a photo, without one, positioning a new one, removed but not saved, a file refused; and on a member's logo), once their content is in, on a desktop and on a phone (390 px, where the menu is a dialog, checked
 open). A moderate, serious or critical issue fails the test (`IMPACTS`); a minor one doesn't. Fix what it finds, or
 add it to the spec's `ALLOWED` list with a reason and the issue that will fix it; never turn a rule off. axe leaves
 some contrast undecided (text over a gradient, a translucent panel or a scroll fade, SVG text, anything under a
