@@ -1,5 +1,5 @@
 """
-Names in Settings → Organization (after Phase 3.12's profile).
+Names on the Organization page (after Phase 3.12's profile).
 
 The members, and the people removed from the organization, come with their first and last
 names: null without a profile, the email as ever. The profiles are loaded with the list,

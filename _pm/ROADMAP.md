@@ -822,6 +822,15 @@ Decided with the user (2026-10-17): the avatar itself is the trigger, and one di
       the saved photo read-only, change → position → save, remove → save, remove → cancel and change → Esc keep it,
       drop on the avatar, a refused file; axe in each state on a desktop and a phone)
 
+### 3.12.11 The camera badge on touch screens only ✅
+Decided with the user (2026-10-17): where there's hover, the badge only repeats the overlay.
+- [x] `ui/PhotoTrigger`: the badge shows only under `@media (hover: none)` (phones, tablets); hover and keyboard focus
+      keep the overlay with its camera on every device
+- [x] `/styleguide/`: the specimen says so, with a sample that forces the badge on to see it from a desktop;
+      design/DESIGN_SYSTEM.md (Photos, Organization marks)
+- [x] Tests: `e2e/profile-photo.spec.ts` and `e2e/organization-logo.spec.ts` (the badge visible on the phone, which is
+      a touch device; hidden on the desktop, where hover and focus show the overlay), `e2e/styleguide.spec.ts`
+
 ---
 
 ## Phase 3.13: Sign in with Google (Workspace), with an optional password 🔎 R1 · 🔎 R11
@@ -1051,6 +1060,24 @@ copied (`server/utils/images.py`, `server/utils/stored_image.py`; `frontend/src/
 - [x] Tests: `frontend/e2e/organization-logo.spec.ts` (the owner positions and saves a transparent logo, kept square
       with alpha; read-only, remove; an older wide logo cut to the circle; a member sees it without a button; axe in
       each state on a desktop and a phone), `frontend/tests/image-file.test.mjs`
+
+### 3.14.7 The organization's own page ✅
+Asked by the user (2026-10-17): the organization isn't a setting of the account, so it leaves Settings.
+- [x] `/dashboard/organization/` (`pages/dashboard/organization.astro`): a PageHeader ("Organization") over what the
+      Settings tab had (`OrganizationPanel`: logo, members and roles, service accounts, removed people, roles), its
+      role rules unchanged; the `shurly:organization` event and the header's sessionStorage copy work from there
+- [x] Settings: no Organization tab; Account, API & MCP, Tags, Notifications and Plan keep their hashes and keys.
+      `#organization` goes to the new page before paint, its query kept (`SETTINGS_TAB_FROM_HASH`, and on a hash
+      change while there)
+- [x] The account menu's organization row is a link to the page (a `menu-item`, in the keyboard order,
+      `aria-current` there); still only for accounts in an organization. The mobile menu lists no Settings sections
+- [x] The header: 20 px between New link and the avatar (`mr-3` on both forms of New link; the row's gap stays 8),
+      checked at 1440, 390, 360 and 320 px
+- [x] Every mention of Settings → Organization and `settings/#organization` points to the page: the manual,
+      DEPLOYMENT.md, README, docs, design/DESIGN_SYSTEM.md (screens), `_pm/spec_service_accounts.md`
+- [x] Tests: `e2e/organization.spec.ts` (the page, the menu link from the keyboard, the header at four widths),
+      `e2e/settings.spec.ts` (the tabs, each hash, the old address), `e2e/a11y.spec.ts` (the page, desktop and
+      phone), the organization specs on the new address, `tests/csp.test.mjs` (the redirect)
 
 ---
 

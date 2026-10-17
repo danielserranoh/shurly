@@ -338,6 +338,7 @@ shurly/
 │               ├── campaign.astro         # Campaign details (?id=)
 │               ├── campaigns/index.astro · campaigns/create.astro (4-step wizard)
 │               ├── analytics.astro
+│               ├── organization.astro     # Logo · members and roles · service accounts · removed people
 │               └── settings.astro         # Account · API & MCP · Tags · Notifications · Plan
 ├── tests/                         # 449 passing
 │   ├── conftest.py                # In-memory SQLite fixtures

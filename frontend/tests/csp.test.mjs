@@ -6,7 +6,7 @@ import { describe, test } from 'node:test';
 import vm from 'node:vm';
 
 import { checkPage, checkPolicyChunks, parsePolicy, sha256 } from '../scripts/csp-rules.mjs';
-import { GUEST_GUARD, PROTECTED_GUARD } from '../src/inline-scripts.mjs';
+import { GUEST_GUARD, PROTECTED_GUARD, SETTINGS_TAB_FROM_HASH } from '../src/inline-scripts.mjs';
 
 const TRUSTED_TYPES = "require-trusted-types-for 'script'; trusted-types shurly-html";
 const BASE = `default-src 'self'; connect-src 'self' https://shurly.griddo.io; img-src 'self' https: data: blob:; object-src 'none'; base-uri 'self'; form-action 'self'; ${TRUSTED_TYPES}`;
@@ -123,5 +123,20 @@ describe('the guards', () => {
     assert.deepEqual(run(GUEST_GUARD, { token: 'jwt', pathname: '/login/', hash: '#code=x' }), []);
     assert.deepEqual(run(GUEST_GUARD, { token: 'jwt', pathname: '/login/', hash: '#error=denied' }), []);
     assert.deepEqual(run(GUEST_GUARD, { pathname: '/login/' }), []);
+  });
+
+  test('Settings with #organization goes to the Organization page, its query kept (3.14.7); other tabs stay', () => {
+    const settings = (hash, search = '') => {
+      const sent = [];
+      vm.runInNewContext(SETTINGS_TAB_FROM_HASH, {
+        location: { pathname: '/dashboard/settings/', search, hash, replace: (to) => sent.push(to) },
+        document: { getElementById: () => null, querySelectorAll: () => [] },
+      });
+      return sent;
+    };
+    assert.deepEqual(settings('#organization'), ['/dashboard/organization/']);
+    assert.deepEqual(settings('#Organization', '?from=email'), ['/dashboard/organization/?from=email']);
+    assert.deepEqual(settings('#api'), []);
+    assert.deepEqual(settings(''), []);
   });
 });

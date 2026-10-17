@@ -224,7 +224,7 @@ def _log_role_change(actor: User | None, membership: OrganizationMember, before:
 
 def _memberships(db: Session, actor: User, target_user_id: UUID):
     """The actor's membership and the target's, in the same organization. Both people: a
-    service account is changed from Settings → Organization → Service accounts (10.1)."""
+    service account is changed from the Organization page → Service accounts (10.1)."""
     _ensure_person(actor)
     mine = get_membership(db, actor)
     if mine is None:

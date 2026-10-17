@@ -169,8 +169,8 @@ test("the owner's campaign is locked for them, on its page and in the list", asy
 });
 
 test('the members card has no role menus for them, and the welcome greets them', async ({ page }) => {
-  await page.goto('/dashboard/settings/#organization');
-  const panel = page.getByRole('tabpanel', { name: 'Organization' });
+  await page.goto('/dashboard/organization/');
+  const panel = page.getByRole('main');
   const members = panel.locator('[data-members]');
   await expect(members).toContainText(MEMBER);
   await expect(members).toContainText(OWNER);
@@ -215,9 +215,9 @@ for (const { device, options } of DEVICES) {
       await expect(page.locator(`[data-campaign="${id}"]`)).toBeVisible();
       await expectNoIssues(page, 'campaigns, as a member');
 
-      await page.goto('/dashboard/settings/#organization');
-      await expect(page.getByRole('tabpanel', { name: 'Organization' }).locator('[data-members]')).toContainText(MEMBER);
-      await expectNoIssues(page, 'settings, organization, as a member');
+      await page.goto('/dashboard/organization/');
+      await expect(page.getByRole('main').locator('[data-members]')).toContainText(MEMBER);
+      await expectNoIssues(page, 'the organization page, as a member');
     });
   });
 }

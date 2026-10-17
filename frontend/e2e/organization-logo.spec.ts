@@ -1,7 +1,8 @@
-// Phase 3.14.4, 3.14.6 — the organization's logo. For the owner, the logo in Settings → Organization is a button,
-// with a camera badge, that opens the "Organization logo" dialog: a logo picked there is positioned and saved as a
-// square PNG with its transparency, shown as a circle there and in the account menu, next to the organization's
-// name, and still after a reload; removing it brings the initial back. A member sees the logo with no button, no
+// Phase 3.14.4, 3.14.6 — the organization's logo. For the owner, the logo on the Organization page is a button,
+// with a camera badge on a touch screen and an overlay on hover or focus (3.12.11), that opens the "Organization
+// logo" dialog: a logo picked there is positioned and saved as a square PNG with its transparency, shown as a circle
+// there and in the account menu, next to the organization's name, and still after a reload; removing it brings the
+// initial back. A member sees the logo with no button, no
 // badge, and nothing they drop goes anywhere. axe finds no moderate, serious or critical issue in any state, on a
 // desktop and on a phone (390 px).
 
@@ -17,8 +18,8 @@ const LOGO = '/api/v1/organization/logo';
 const WIDE_LOGO = png(240, 80, (x, y) => (x >= 20 && x < 80 && y >= 10 && y < 70 ? [80, 87, 255, 255] : x >= 100 && x < 220 && y >= 30 && y < 50 ? [255, 209, 102, 255] : [0, 0, 0, 0]));
 
 async function openOrganization(page: Page) {
-  await page.goto('/dashboard/settings/#organization');
-  const panel = page.getByRole('tabpanel', { name: 'Organization' });
+  await page.goto('/dashboard/organization/');
+  const panel = page.getByRole('main');
   const block = panel.locator('[data-logo-block]');
   const dialog = page.getByRole('dialog', { name: 'Organization logo' });
   return { panel, block, dialog, frame: dialog.locator('[data-picker-frame]') };
@@ -36,7 +37,23 @@ for (const { device, options } of DEVICES) {
       const button = block.getByRole('button', { name: 'Change the organization’s logo' });
 
       await expect(button).toBeVisible();
-      await expect(button.locator('[data-photo-badge]')).toBeVisible();
+      // The badge on the phone, which can't hover; on the desktop, hover and focus show the overlay instead (3.12.11).
+      const badge = button.locator('[data-photo-badge]');
+      const overlay = button.locator('[data-photo-overlay]');
+      if (device === 'phone') {
+        await expect(badge).toBeVisible();
+      } else {
+        await expect(badge).toBeHidden();
+        await expect(overlay).toHaveCSS('opacity', '0');
+        await button.hover();
+        await expect(overlay).toHaveCSS('opacity', '1');
+        await expect(badge).toBeHidden();
+        await page.mouse.move(0, 0);
+        await expect(overlay).toHaveCSS('opacity', '0');
+        await button.focus();
+        await expect(overlay).toHaveCSS('opacity', '1');
+        await expect(badge).toBeHidden();
+      }
       await expect(block.locator('[data-logo-org-name]')).toHaveText(name);
       await expect(button.locator('[data-org-initial]')).toHaveText(name[0].toUpperCase());
       await expect(block.getByRole('button', { name: 'Upload logo' })).toHaveCount(0);
@@ -75,7 +92,7 @@ for (const { device, options } of DEVICES) {
       // On white in the circle, with a hairline ring.
       await expect(button.locator('[data-org-mark]')).toHaveAttribute('data-has-logo');
       await expect(button.locator('[data-org-mark]')).toHaveCSS('background-color', 'rgb(255, 255, 255)');
-      await expectNoIssues(page, 'settings, organization with a logo');
+      await expectNoIssues(page, 'the organization page with a logo');
 
       // The account menu shows it next to the name, then and after a reload.
       const menu = page.locator('#user-menu');
@@ -164,7 +181,7 @@ for (const { device, options } of DEVICES) {
         await page.waitForLoadState('networkidle');
         await expect(page.getByRole('dialog', { name: 'Organization logo' })).toBeHidden();
         expect(changes).toEqual([]);
-        await expectNoIssues(page, 'settings, organization, as a member');
+        await expectNoIssues(page, 'the organization page, as a member');
 
         // The account menu shows it too, next to the organization's name.
         await page.getByRole('button', { name: 'Account menu' }).click();

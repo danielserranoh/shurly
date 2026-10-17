@@ -1,4 +1,4 @@
-// Phase 10.1 — service accounts (_pm/spec_service_accounts.md), in Settings → Organization:
+// Phase 10.1 — service accounts (_pm/spec_service_accounts.md), on the Organization page (/dashboard/organization/):
 // - the owner makes one and its token; the token shows once, with Copy and "you won't see it again", and after
 //   Done only its prefix is left;
 // - the service, with that token, makes a link for the member (X-Shurly-On-Behalf-Of): its page and its card
@@ -51,8 +51,8 @@ for (const { device, options } of DEVICES) {
       await removeEarlier(ownerApi);
       const name = `Propuestas E2E ${device}`;
 
-      await page.goto('/dashboard/settings/#organization');
-      const panel = page.getByRole('tabpanel', { name: 'Organization' });
+      await page.goto('/dashboard/organization/');
+      const panel = page.getByRole('main');
       const section = panel.getByRole('region', { name: /Service accounts/ });
       await expect(section).toBeVisible();
       await section.getByRole('button', { name: 'New service account' }).click();
@@ -118,7 +118,7 @@ for (const { device, options } of DEVICES) {
       await expectNoIssues(page, `links filtered by a service, ${device}`);
 
       // Its last use shows, and revoking it locks it out at once.
-      await page.goto('/dashboard/settings/#organization');
+      await page.goto('/dashboard/organization/');
       await expect(row).toContainText('Last used');
       // What the token made, for when it may have leaked.
       await row.getByRole('button', { name: /^Links made with it/ }).click();
@@ -139,8 +139,8 @@ for (const { device, options } of DEVICES) {
     });
 
     test('“How to connect one” opens the manual’s page for owners', async ({ page }) => {
-      await page.goto('/dashboard/settings/#organization');
-      await page.getByRole('tabpanel', { name: 'Organization' }).getByRole('link', { name: 'How to connect one' }).click();
+      await page.goto('/dashboard/organization/');
+      await page.getByRole('main').getByRole('link', { name: 'How to connect one' }).click();
       await expect(page).toHaveURL('/manual/connect-a-service/');
       await expect(page.getByRole('heading', { level: 1 })).toHaveText('Connect another service');
       await expectNoIssues(page, `the manual's service accounts page, ${device}`);
@@ -150,8 +150,8 @@ for (const { device, options } of DEVICES) {
       test.use({ storageState: MEMBER_STATE });
 
       test('the section isn’t there', async ({ page }) => {
-        await page.goto('/dashboard/settings/#organization');
-        const panel = page.getByRole('tabpanel', { name: 'Organization' });
+        await page.goto('/dashboard/organization/');
+        const panel = page.getByRole('main');
         await expect(panel.getByRole('heading', { name: 'Members' })).toBeVisible();
         await expect(panel.getByRole('heading', { name: 'Service accounts' })).toBeHidden();
       });

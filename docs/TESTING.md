@@ -176,11 +176,12 @@ Specs run as the owner. To be a member instead, a second account on the Workspac
 `e2e_as=member`, which tells the fake Google page who it is (`tests/e2e/identities.py`); nothing but the harness
 reads it (`tests/test_e2e_guard.py`).
 
-Accessibility: `e2e/a11y.spec.ts` runs axe on the landing, login, dashboard, link, campaign, Analytics and Settings pages and
-the manual (and `e2e/waitlist.spec.ts` on both waitlist pages; `e2e/service-accounts.spec.ts` on Settings' service
-accounts, its token dialog with the token shown once, the links list filtered by a service, and the manual's page for
+Accessibility: `e2e/a11y.spec.ts` runs axe on the landing, login, dashboard, link, campaign, Analytics, Settings and
+Organization pages and the manual (and `e2e/waitlist.spec.ts` on both waitlist pages; `e2e/service-accounts.spec.ts` on
+the Organization page's service accounts, its token dialog with the token shown once, the links list filtered by a service, and the manual's page for
 owners; `e2e/profile-photo.spec.ts` and `e2e/organization-logo.spec.ts` on the photo dialog in each of its states: with
-a photo, without one, positioning a new one, removed but not saved, a file refused; and on a member's logo), once their content is in, on a desktop and on a phone (390 px, where the menu is a dialog, checked
+a photo, without one, positioning a new one, removed but not saved, a file refused; and on a member's logo; the camera
+badge shown on the phone, which can't hover, and hidden on the desktop, where hover and focus show the overlay), once their content is in, on a desktop and on a phone (390 px, where the menu is a dialog, checked
 open). A moderate, serious or critical issue fails the test (`IMPACTS`); a minor one doesn't. Fix what it finds, or
 add it to the spec's `ALLOWED` list with a reason and the issue that will fix it; never turn a rule off. axe leaves
 some contrast undecided (text over a gradient, a translucent panel or a scroll fade, SVG text, anything under a

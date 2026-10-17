@@ -40,7 +40,11 @@ test('the Pager specimen pages through 57 links, 20 at a time', async ({ page })
 test('the Photo and logo specimens open the photo dialog on the drawn samples, and Save shows the result', async ({ page }) => {
   await page.goto('/styleguide/');
   const buttons = page.getByRole('list', { name: 'Photo and logo buttons' });
-  await expect(buttons.locator('[data-photo-badge]')).toHaveCount(3); // the member's logo has none
+  await expect(buttons.locator('[data-photo-badge]')).toHaveCount(4); // the member's logo has none
+  // On this desktop, which hovers, only the touch-screen sample shows its badge (3.12.11).
+  await expect(buttons.locator('[data-photo-badge]:visible')).toHaveCount(1);
+  await expect(buttons.getByRole('button', { name: 'Change the touch-screen sample photo' }).locator('[data-photo-badge]')).toBeVisible();
+  await expect(buttons.getByRole('button', { name: 'Change the sample photo' }).locator('[data-photo-badge]')).toBeHidden();
 
   const sample = buttons.getByRole('button', { name: 'Change the sample photo' });
   await sample.click();

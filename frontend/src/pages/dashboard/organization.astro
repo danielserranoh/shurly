@@ -1,0 +1,13 @@
+---
+// Phase 3.14.7 — the organization, on its own page (it was a tab in Settings until then): its logo, the members and
+// their roles, the service accounts and the people removed, each with only what the viewer's role allows
+// (OrganizationPanel, which loads it all). The account menu links here; /dashboard/settings/#organization comes here.
+import AppLayout from '@/layouts/AppLayout.astro';
+import PageHeader from '@/components/ui/PageHeader.astro';
+import OrganizationPanel from '@/components/settings/OrganizationPanel.astro';
+---
+
+<AppLayout title="Organization" section="organization">
+  <PageHeader title="Organization" description="Everyone in your organization, what their roles let them do, and its logo." />
+  <OrganizationPanel />
+</AppLayout>
