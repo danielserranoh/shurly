@@ -950,6 +950,7 @@ condition on priority 12 nor a security group limited to CloudFront's origin-fac
 | Route 53 query traffic | ~$0.20 |
 | ACM certificate | $0 |
 | Lambda + EventBridge for ALB rule sync | $0 (free tier) |
+| Alarms, dashboard and alert emails (§ Error alerting) | ~$0–1 |
 | **Total** | **~$17 / month** |
 
 Standalone (no shared ALB): add ~$16 for a dedicated ALB. Sharing with Shlink amortizes that across services.
@@ -1276,46 +1277,213 @@ app's `/login/` page, and they choose Sign in with Google with their work accoun
 
 ## Error alerting (Phase 6.4)
 
-The app writes one JSON line per request (`http.request`: its `method`, `host`, `path`, `status`, `duration_ms`
-and `client_ip_source`) to the task's log group,
-`/aws/ecs/default/shurly-api-5fdb`. A generated MCP tool calls the API in-process, so its failures get a line too.
-Alerting therefore needs no code: a CloudWatch metric filter counts the errors, an alarm watches the count, and SNS
-sends the email. None of it is set up yet (ROADMAP 6.4).
+The app writes one JSON line per request (`http.request`: its `method`, `host`, `path`, `client_ip_source`,
+`status` and `duration_ms`) to the task's log group, `/aws/ecs/default/shurly-api-5fdb`. A generated MCP tool calls
+the API in-process, so its failures get a line too. Alerting therefore needs no code: CloudWatch metric filters count
+the errors, alarms watch the counts, and SNS sends the email.
 
-| Metric filter | Pattern | Alarm |
+All of it is defined in [`infra/monitoring/`](infra/monitoring/), one JSON file per kind (`metric-filters.json`,
+`alarms.json`, `dashboard.json`, `queries.json`), and applied by `scripts/setup_monitoring.sh`. Change the JSON and
+run the script again, never the console: whatever is clicked there gets overwritten at the next run.
+
+ECS's own three alarms (autoscaling and the deploy's canary rollback) aren't these, and the script leaves them alone.
+
+### The alarms
+
+Six, in eu-south-2. Each emails when it goes to ALARM **and** when it's back to OK, so the second email says it's
+over. Missing data counts as not breaching: a quiet hour isn't an alarm. Each alarm's description, in Spanish, says
+what it means and points here.
+
+| Alarm | Fires when | What it means | First thing to do |
+|---|---|---|---|
+| `shurly-api-5xx` | ≥ 5 `http.request` lines with `status` ≥ 500 in 5 min | The app answers with errors: an exception, the database, a bad deploy | Steps 1–3 below: which paths fail, whether a deploy just happened, whether the database is there |
+| `shurly-rate-limit-store` | ≥ 1 `rate_limit.store_failed` in 5 min | The rate limits can't reach their store, and fail open: they're letting everything through | The database (step 3): the limits keep their counts there |
+| `shurly-client-errors` | ≥ 10 `client.error` in 15 min | The web app is breaking in people's browsers | The `client.error` query (§ Browser errors), then whether a frontend deploy just went out |
+| `shurly-alb-5xx` | ALB `HTTPCode_ELB_5XX_Count` ≥ 5 in 5 min | The ALB answered itself because no target did: none running, none healthy, or the custom rule on the wrong target group. The ALB is shared, so this counts Shlink's too | Whether Shurly answers (`/api/v1/health` on both hosts), then `docs/AWS_ECS_DEPLOYMENT.md` § ALB returns 503 |
+| `shurly-no-healthy-target` | The sum of `HealthyHostCount` over the service's two target groups < 1 for 3 min | No task is passing health checks: the redirects, the API and the MCP are all down | The service's events and its last stopped task (`docs/AWS_ECS_DEPLOYMENT.md` § Container won't start) |
+| `shurly-db-storage-low` | RDS `FreeStorageSpace` < 2 GB | The database disk is filling up: when it's full, every write fails | Grow the instance's storage (`aws rds modify-db-instance --allocated-storage`), then look at what grew (visits, orphan visits) |
+
+The two ALB-side alarms catch what the app's own line can't: a task that doesn't answer writes no line.
+
+- `HTTPCode_ELB_5XX_Count` exists only for the whole load balancer. Since Shlink was removed (2026-10-17) Shurly is the
+  only service behind it; its other rule, `links.griddo.io`'s redirect, answers 302 from the ALB itself, never 5xx.
+- Express blue/green moves the service between two target groups at every deploy, so `shurly-no-healthy-target`
+  adds both: outside a deploy, one of them reads zero.
+- The script finds the ALB, the target groups and the RDS instance itself, so nothing in the JSON is hard-coded to
+  them.
+
+### The email
+
+- **The SNS topic is `shurly-alerts`**, with an email subscription to daniel.serrano@griddo.io.
+- **AWS confirms the address once.** The first run sends an "AWS Notification - Subscription Confirmation" email, and
+  nothing arrives until its link is clicked. An unconfirmed subscription expires after a few days: run the script
+  again for a new email.
+- **To add a recipient:** `ALERT_EMAIL=someone@griddo.io scripts/setup_monitoring.sh --for-real`. It subscribes that
+  address too (the others stay), and the new recipient confirms it the same way.
+- **To remove one:** the "unsubscribe" link at the bottom of any alert email, or:
+  ```bash
+  aws sns list-subscriptions-by-topic --region eu-south-2 --profile griddo-main \
+      --topic-arn arn:aws:sns:eu-south-2:686255983646:shurly-alerts
+  aws sns unsubscribe --region eu-south-2 --profile griddo-main --subscription-arn <its SubscriptionArn>
+  ```
+  `ALERT_EMAIL` only adds: leave a removed address out of later runs, or they subscribe it again.
+
+### The metrics
+
+Four metric filters on the log group, in namespace `Shurly`, each value `1` per line, default `0`:
+
+| Metric filter | Pattern | Metric | Used by |
+|---|---|---|---|
+| `shurly-5xx` | `{ $.event = "http.request" && $.status >= 500 }` | `ApiErrors5xx` | `shurly-api-5xx` |
+| `shurly-rate-limit-store` | `{ $.event = "rate_limit.store_failed" }` | `RateLimitStoreFailures` | `shurly-rate-limit-store` |
+| `shurly-client-errors` | `{ $.event = "client.error" }` | `ClientErrors` | `shurly-client-errors` |
+| `shurly-mcp-tool-errors` | `{ $.event = "mcp.tool_call" && $.outcome = "error" }` | `McpToolErrors` | the dashboard only |
+
+MCP tool errors include invalid input, a 4xx: Claude sending a bad argument isn't an outage. They belong on the
+dashboard, not an alarm (`mcp_server/README.md` § Usage log).
+
+### The dashboard
+
+CloudWatch → Dashboards → **`shurly`**:
+
+- **ECS:** the service's CPU and memory.
+- **ALB:** 5xx, healthy hosts and target response time.
+- **RDS:** connections, CPU and free storage.
+- **Shurly:** the four metrics above, and the top 5xx paths (a Logs Insights widget).
+- **Redirect latency**, p50 and p95, from the `http.request` lines with `host = go.griddo.io` (a Logs Insights
+  widget). `duration_ms` runs until the response headers are ready, which for a redirect is the whole answer.
+- **MCP vs API latency** (ROADMAP 5.7: "same SLO as the regular API", never measured until now): p50 and p95 of the
+  MCP's calls next to the API's `/api/v1/` requests (a Logs Insights widget).
+  - The MCP side has to come from the `mcp.tool_call` lines' `duration_ms`, the tool's own time. The `http.request`
+    line of a `POST /mcp/` can't measure it: the MCP answers as an event stream, so that line is written when the
+    stream opens, before the tool runs, and reads about 1 ms whatever the tool does.
+  - A generated tool's API call gets its own `/api/v1/` line, so the API side includes the calls the MCP makes.
+
+The Logs Insights widgets add no metric: they run their query when the dashboard loads.
+
+### The saved queries
+
+CloudWatch → Logs Insights → **Saved queries**, folder `shurly/`, each on the service's log group:
+
+| Folder | Queries | Reference |
 |---|---|---|
-| `shurly-5xx` | `{ $.event = "http.request" && $.status >= 500 }` | Sum ≥ 5 in 5 minutes |
-| `shurly-rate-limit-store` | `{ $.event = "rate_limit.store_failed" }` | Sum ≥ 1 in 5 minutes: the limits are letting everything through |
-| `shurly-client-errors` | `{ $.event = "client.error" }` | Sum ≥ 10 in 15 minutes: the web app is breaking in people's browsers |
+| `shurly/mcp/` | calls, errors and latency per tool, active users per day | `mcp_server/README.md` § Queries |
+| `shurly/web-app/` | calls per part of the API, links and campaigns made by week, the analytics tabs and CSVs | § What the web app is used for |
+| `shurly/errors/` | client errors, 5xx by path | § Browser errors, step 1 of the runbook |
+| `shurly/requests/` | everything for one request, client IP source per host | `mcp_server/README.md` § Queries, § Client IPs behind CloudFront |
+| `shurly/geo/` | the geolocation database's events | § Geolocation data |
+| `shurly/auth/` | logins by method | § What the event log records |
 
-- Each filter publishes a metric in namespace `Shurly`, value `1`, default `0`. The alarms notify an SNS topic with
-  an email subscription.
-- The ALB's `HTTPCode_Target_5XX_Count` and `HTTPCode_ELB_5XX_Count` catch a task that doesn't answer at all.
-- MCP tool errors (`{ $.event = "mcp.tool_call" && $.outcome = "error" }`) include invalid input, a 4xx. They belong
-  on a dashboard, not an alarm (`mcp_server/README.md` § Usage log).
-- **Browser errors** are `client.error` lines: the web app reports an uncaught error, a rejected promise, or a CSP or
-  Trusted Types block (`POST /api/v1/client-errors`, `server/app/client_errors.py`). Each has its `kind`, `message`,
-  `source` (script:line:column) and `page` (the path, never its query), and the account's `user_id` when signed in.
-  Never an IP. A page sends 5 at most; `RATE_LIMIT_CLIENT_ERRORS_PER_IP` caps an address. Which ones, most first:
+The queries in this document are the reference; `infra/monitoring/queries.json` is what gets saved.
+
+### Applying it
+
+```bash
+AWS_PROFILE=griddo-main scripts/setup_monitoring.sh              # dry run: lists what it would change
+AWS_PROFILE=griddo-main scripts/setup_monitoring.sh --for-real   # asks you to type the region (eu-south-2)
+```
+
+- **A dry run by default**, which writes nothing. `--for-real` applies it, once you've typed the region back.
+- **It's idempotent.** It finds the topic or creates it, subscribes the email only if it isn't already, and puts
+  the metric filters, the alarms and the dashboard (each put replaces the one of the same name). A saved query whose
+  name exists is updated in place. Running it again changes only what the JSON changed: re-run it after editing any
+  file in `infra/monitoring/`.
+- **`ALERT_EMAIL`** is the address it subscribes, daniel.serrano@griddo.io unless set.
+- It stops, having written nothing, if it can't find the ALB, the target groups or the RDS instance.
+
+### Testing an alarm
+
+```bash
+AWS_PROFILE=griddo-main scripts/setup_monitoring.sh --test-alarm shurly-api-5xx --for-real
+```
+
+Without `--for-real` it's a dry run that only checks the alarm exists. With it (after typing the region), it sets the
+alarm to ALARM (`set-alarm-state`), so the real email arrives. At its next evaluation, within its period
+(5 minutes for this one), CloudWatch finds the real data below the threshold and returns it to OK, with the second
+email. Both emails arriving proves the whole chain: the alarm's actions, the topic and the subscription.
+
+### The operator's permissions
+
+Running the script takes, on top of an SSO sign-in to `griddo-main`:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ShurlyMonitoring",
+      "Effect": "Allow",
+      "Action": [
+        "logs:PutMetricFilter",
+        "logs:DescribeMetricFilters",
+        "logs:PutQueryDefinition",
+        "logs:DescribeQueryDefinitions",
+        "cloudwatch:PutMetricAlarm",
+        "cloudwatch:DescribeAlarms",
+        "cloudwatch:SetAlarmState",
+        "cloudwatch:PutDashboard",
+        "cloudwatch:GetDashboard",
+        "sns:CreateTopic",
+        "sns:ListTopics",
+        "sns:Subscribe",
+        "sns:ListSubscriptionsByTopic",
+        "elasticloadbalancing:DescribeLoadBalancers",
+        "elasticloadbalancing:DescribeTargetGroups",
+        "elasticloadbalancing:DescribeRules",
+        "rds:DescribeDBInstances",
+        "ecs:DescribeServices",
+        "sts:GetCallerIdentity"
+      ],
+      "Resource": "*"
+    }
+  ]
+}
+```
+
+The `Describe`, `List` and `Get` actions are the script's lookups. `cloudwatch:SetAlarmState` is `--test-alarm`
+alone. Removing a recipient by hand also takes `sns:Unsubscribe`.
+
+### What it costs
+
+About 0–1 $ a month. CloudWatch's free tier covers 10 alarm metrics, 10 custom metrics and 3 dashboards, and SNS
+1,000 email notifications a month: six alarms (seven alarm metrics, as `shurly-no-healthy-target` adds two), four
+custom metrics and one dashboard fit inside it. Metric filters are free. The dashboard's Logs Insights widgets pay
+for what they scan, cents for this log group.
+
+The free tier is per account, though, and `griddo-main` has other services' alarms and metrics. Beyond it, each
+alarm metric and custom metric and the dashboard are billed by the month: check eu-south-2's prices on the
+CloudWatch and SNS pricing pages before assuming zero.
+
+### Browser errors
+
+**Browser errors** are `client.error` lines: the web app reports an uncaught error, a rejected promise, or a CSP or
+Trusted Types block (`POST /api/v1/client-errors`, `server/app/client_errors.py`).
+
+- Each has its `kind`, `message`, `source` (script:line:column) and `page` (the path, never its query), and the
+  account's `user_id` when signed in. Never an IP.
+- A page sends 5 at most; `RATE_LIMIT_CLIENT_ERRORS_PER_IP` caps an address.
+- Which ones, most first:
   ```
   filter event = "client.error"
   | stats count(*) as reports, count_distinct(user_id) as people by kind, message, page
   | sort reports desc
   ```
 
-### When it fires (runbook stub)
+### When it fires (runbook)
 
-1. **Which requests fail.** In Logs Insights:
+1. **Which requests fail.** In Logs Insights (saved as `shurly/errors/5xx-by-path`):
    ```
    filter event = "http.request" and status >= 500
    | stats count(*) as errors by path, status
    | sort errors desc
    ```
    Then follow one `request_id`: `filter request_id = "…"` shows its `http.request` line, the `mcp.tool_call` line if
-   it came through the MCP, and the traceback next to them.
-2. **Did a deploy just happen?** Check the service's events and the last backend deploy. If the errors started with
-   it, roll back by redeploying the previous image (§ Workflow trigger).
-3. **Is the database there?** `GET /api/v1/health/db`, then RDS's connections and CPU.
+   it came through the MCP, and the traceback next to them. No `http.request` lines at all, with `shurly-alb-5xx` or
+   `shurly-no-healthy-target` firing, means no task is answering: go to the service's events.
+2. **Did a deploy just happen?** Check the service's events (`aws ecs describe-services --cluster default --services
+   shurly-api`) and the last run of `deploy-backend.yml`. If the errors started with it, roll back: revert the release
+   on `main`, whose merge deploys the previous code (the workflow deploys from `main` only, § Workflow trigger).
+3. **Is the database there?** `GET /api/v1/health/db`, then the dashboard's RDS connections, CPU and free storage.
 4. **Write it down** in the troubleshooting catalog (`docs/AWS_ECS_DEPLOYMENT.md`): the symptom, the cause and the
    fix.
 
