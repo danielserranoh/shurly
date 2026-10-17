@@ -2,9 +2,10 @@
 id: epic_runbook
 title: Runbook: backup, recovery and costs
 type: epic
-status: backlog
+status: done
 priority: medium
 created: 2026-10-17
+completed: 2026-10-18
 ---
 
 # Epic: Runbook: backup, recovery and costs
@@ -21,4 +22,5 @@ There's no tested way back if the database is lost, and no view of what Shurly c
 From ROADMAP 7.1 and 7.2. Shlink was removed on 2026-10-17, so its costs are gone (8.6).
 
 ## Log
+- 2026-10-17T23:12:39Z Daniel Serrano moved backlog -> done
 - 2026-10-17T17:20:42Z Daniel Serrano created
