@@ -8,10 +8,13 @@ or how they fail. `UsageLogMiddleware` writes one `mcp.tool_call` line per call
 durations. Argument names only, never their values.
 
 `ApiErrorLogFilter` holds fastmcp's own line for a failed call to that rule.
-When a generated tool's API call fails, fastmcp raises
-`ValueError("HTTP error 422: … - <response body>")` and logs it with its
-traceback. A 422 body echoes each invalid field's value, or the whole request
-body when a field is missing, so a campaign's CSV rows could reach the log.
+When a generated tool's API call fails, fastmcp raises an error whose message
+carries the response body: `"HTTP error 422: … - <response body>"`. A 422 body
+echoes each invalid field's value, or the whole request body when a field is
+missing, so a campaign's CSV rows could reach the log. fastmcp 4.0 raised it as a
+`ValueError` and logged it with its traceback; 4.1 raises an `HTTPStatusError`
+and logs the line alone, with no exception attached (so with no status either:
+`mcp.tool_call` has it). The filter covers both.
 
 `forward_request_id` gives the API call a generated tool makes the same request
 id as the MCP request, so one id links the MCP request, the tool call and the
@@ -25,13 +28,14 @@ import re
 import time
 from typing import TYPE_CHECKING
 
+import httpx2
 from fastmcp.server.dependencies import get_access_token, get_http_request
 from fastmcp.server.middleware import Middleware
 
 from server.utils.event_log import log_event
 
 if TYPE_CHECKING:
-    import httpx2
+    pass
 
 # How fastmcp's OpenAPI tools report an API error: "HTTP error 404: Not Found - …".
 _HTTP_STATUS = re.compile(r"HTTP error (\d{3})")
@@ -96,7 +100,8 @@ class ApiErrorLogFilter(logging.Filter):
 
     def filter(self, record: logging.LogRecord) -> bool:
         error = record.exc_info[1] if record.exc_info else None
-        match = _HTTP_STATUS.match(str(error)) if isinstance(error, ValueError) else None
+        api_error = isinstance(error, (ValueError, httpx2.HTTPStatusError))
+        match = _HTTP_STATUS.match(str(error)) if api_error else None
         if match:
             status = match.group(1)
             record.msg = f"{record.getMessage()}: HTTP error {status} (response body not logged)"

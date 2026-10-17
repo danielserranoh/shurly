@@ -155,8 +155,9 @@ class TestMcpToolCallLine:
         [line] = _events(capsys.readouterr().err, "mcp.tool_call")
         assert line["tool"] == "get_current_user_info"
         assert line["outcome"] == "error"
-        # The underlying cause, not fastmcp's ToolError wrapper around it.
-        assert line["error_type"] == "ValueError"
+        # The underlying cause, not fastmcp's ToolError wrapper around it (fastmcp 4.1:
+        # an HTTPStatusError; 4.0 raised a ValueError).
+        assert line["error_type"] == "HTTPStatusError"
         assert line["http_status"] == 401
         assert line["user_id"] is None
 
@@ -315,7 +316,9 @@ class TestFastmcpErrorLine:
         assert EMAIL not in fastmcp_log.text()
         assert fastmcp_log.tool_errors()
 
-    def test_line_keeps_the_tool_and_the_status(self, mcp_on_test_db, signed_in_user, fastmcp_log):
+    def test_line_keeps_the_tool_and_no_body(self, mcp_on_test_db, signed_in_user, fastmcp_log):
+        """fastmcp 4.1 logs an API error as the line alone: the tool, no exception attached, so
+        no body and no traceback. The status is in `mcp.tool_call`."""
         from fastmcp.exceptions import ToolError
 
         with _signed_in_as(signed_in_user), pytest.raises(ToolError):
@@ -323,10 +326,41 @@ class TestFastmcpErrorLine:
 
         [record] = fastmcp_log.tool_errors()
         assert record.levelno == logging.ERROR
+        assert record.getMessage() == "Error calling tool 'create_short_url'"
+        # No exception attached (fastmcp passes exc_info=False): the traceback would print
+        # the body again, and it only walks fastmcp's HTTP client.
+        assert not record.exc_info
+
+    @pytest.mark.parametrize("raised_as", ["ValueError", "HTTPStatusError"])
+    def test_an_attached_api_error_loses_its_body(self, raised_as):
+        """Should fastmcp attach the error again (4.0 did, as a ValueError), the filter keeps the
+        tool and the status and drops the body and the traceback."""
+        httpx2 = pytest.importorskip("httpx2")
+        from mcp_server.usage import ApiErrorLogFilter
+
+        message = "HTTP error 422: Unprocessable Entity - {'url': 'jane@acme.example'}"
+        if raised_as == "ValueError":
+            error = ValueError(message)
+        else:
+            error = httpx2.HTTPStatusError(
+                message,
+                request=httpx2.Request("POST", "http://test/api/v1/urls"),
+                response=httpx2.Response(422),
+            )
+
+        record = logging.LogRecord(
+            "fastmcp",
+            logging.ERROR,
+            __file__,
+            1,
+            "Error calling tool %r",
+            ("create_short_url",),
+            (type(error), error, None),
+        )
+        assert ApiErrorLogFilter().filter(record)
         assert record.getMessage() == (
             "Error calling tool 'create_short_url': HTTP error 422 (response body not logged)"
         )
-        # The traceback would print the body again, and it only walks fastmcp's HTTP client.
         assert record.exc_info is None
 
     def test_exception_inside_the_api_keeps_its_traceback(

@@ -26,6 +26,13 @@ implementation lifecycle and is independent of the URL version segment.
 
 ## [Unreleased]
 
+### Changed — fastmcp 4.1 (dependencies)
+- **fastmcp 4.0.10 → 4.1.0**, with fastapi 0.143, google-auth 2.61 and ruff 0.17 (Dependabot). fastmcp now raises a
+  generated tool's API error as `HTTPStatusError` and logs it as `Error calling tool '<name>'` alone, with no
+  exception attached: no body and no traceback, as before, but no status in that line either. The status stays in
+  `mcp.tool_call` (`http_status`), whose `error_type` reads `HTTPStatusError` instead of `ValueError`.
+  `ApiErrorLogFilter` drops the body from either error, should fastmcp attach one again.
+
 ### Added — service accounts (10.1)
 - **A service account** is another system that makes links for the organization, such as Propuestas Griddo, with a
   name, a description, a person responsible and a role (`member` or `admin`). It's a user with `kind = 'service'`
