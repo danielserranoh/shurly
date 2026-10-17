@@ -1,7 +1,8 @@
 # Environment variables
 
 Every variable Shurly reads, with its default and what it does. **Defaults and meanings only.** Production's values
-live on the ECS service (see [DEPLOYMENT.md](../DEPLOYMENT.md)), never in this repository.
+live on the ECS service (see [DEPLOYMENT.md](../DEPLOYMENT.md)), and its five secrets in SSM Parameter Store, under
+`/shurly/production/` (DEPLOYMENT.md § Secrets), never in this repository.
 
 Reviewed on 2026-09-29. **Update this reference in the same PR as any new or changed setting.**
 `tests/test_environment_reference.py` fails when:
@@ -17,7 +18,8 @@ Reviewed on 2026-09-29. **Update this reference in the same PR as any new or cha
 - A `.env` file in the working directory is read too. The environment wins.
 - A list takes JSON (`["a", "b"]`) or, for `CORS_ORIGINS`, `TRUSTED_PROXIES`, `MCP_OAUTH_ALLOWED_REDIRECT_URIS` and
   `CLOUDFRONT_ORIGIN_SECRETS`, comma-separated values.
-- A secret is marked as one. Settings never log or echo one.
+- A secret is marked as one. Settings never log or echo one. In production ECS injects the five secrets as
+  environment variables when a task starts, from Parameter Store, so the app reads them like any other setting.
 
 ## Backend settings
 
@@ -28,7 +30,7 @@ Reviewed on 2026-09-29. **Update this reference in the same PR as any new or cha
 | `DB_HOST` | `localhost` | PostgreSQL's host |
 | `DB_PORT` | `5432` | PostgreSQL's port |
 | `DB_USER` | `postgres` | The database user |
-| `DB_PASSWORD` | (empty) | That user's password. A secret |
+| `DB_PASSWORD` | (empty) | That user's password, alphanumeric: it goes into the database URL unescaped. A secret. In production, injected from Parameter Store (`/shurly/production/DB_PASSWORD`, DEPLOYMENT.md § Secrets) |
 | `DB_NAME` | `shurly` | The database |
 | `DB_SSL_MODE` | `prefer` | libpq's `sslmode`: `require` on RDS |
 | `DB_POOL_SIZE` | `10` | Connections each task keeps open |
@@ -39,7 +41,7 @@ Reviewed on 2026-09-29. **Update this reference in the same PR as any new or cha
 
 | Variable | Default | What it does |
 |---|---|---|
-| `JWT_SECRET_KEY` | `your-secret-key-change-in-production` | Signs session tokens. A long random secret in production: whoever has it can sign in as anyone |
+| `JWT_SECRET_KEY` | `your-secret-key-change-in-production` | Signs session tokens. A long random secret in production: whoever has it can sign in as anyone. A secret. In production, injected from Parameter Store (`/shurly/production/JWT_SECRET_KEY`, DEPLOYMENT.md § Secrets) |
 | `JWT_ALGORITHM` | `HS256` | The tokens' signature algorithm |
 | `JWT_ACCESS_TOKEN_EXPIRE_MINUTES` | `10080` | How long a session lasts: 7 days |
 
@@ -62,7 +64,7 @@ Reviewed on 2026-09-29. **Update this reference in the same PR as any new or cha
 |---|---|---|
 | `ANONYMIZE_REMOTE_ADDR` | `true` | Truncate a visit's IP before storing it: IPv4 to /24, IPv6 to /64. Off only after a legal review |
 | `TRUSTED_PROXIES` | (empty) | The CIDRs whose `X-Forwarded-For` is believed: the ALB's. Empty: never believed, and each per-IP rate limit becomes one limit for everybody behind the ALB |
-| `CLOUDFRONT_ORIGIN_SECRETS` | (empty) | Behind CloudFront, the value its custom origin header carries, proving `CloudFront-Viewer-Address` is CloudFront's. Two while rotating, each at least 32 characters. A secret |
+| `CLOUDFRONT_ORIGIN_SECRETS` | (empty) | Behind CloudFront, the value its custom origin header carries, proving `CloudFront-Viewer-Address` is CloudFront's. Two while rotating, each at least 32 characters. A secret. In production, injected from Parameter Store (`/shurly/production/CLOUDFRONT_ORIGIN_SECRETS`, DEPLOYMENT.md § Secrets), as a JSON array |
 | `CLOUDFRONT_ORIGIN_HEADER` | `X-Origin-Verify` | That header's name |
 | `GEOIP_DATABASE` | `data/GeoLite2-City.mmdb` | MaxMind's GeoLite2 City, which gives a visit its country (the image build fetches it, with MaxMind's credentials). Empty turns lookups off |
 | `GEOIP_FALLBACK_DATABASE` | `data/dbip-country-lite.mmdb` | DB-IP's country database, used when `GEOIP_DATABASE`'s file isn't there. The image build fetches it too |
@@ -88,7 +90,7 @@ Reviewed on 2026-09-29. **Update this reference in the same PR as any new or cha
 | `ORGANIZATION_DOMAIN` | `griddo.io` | The Google Workspace domain whose accounts may sign in. Empty would let any Google account in |
 | `BOOTSTRAP_OWNER_EMAIL` | (empty) | The first owner: the account that becomes owner when it joins an organization without one. At startup, it's also made owner again if none is left |
 | `GOOGLE_CLIENT_ID` | (empty) | The Google OAuth client. Until it, the secret, the redirect URI, `FRONTEND_URL` and `ORGANIZATION_DOMAIN` are set, Google's endpoints answer 503 |
-| `GOOGLE_CLIENT_SECRET` | (empty) | Its secret. A secret |
+| `GOOGLE_CLIENT_SECRET` | (empty) | Its secret. A secret. In production, injected from Parameter Store (`/shurly/production/GOOGLE_CLIENT_SECRET`, DEPLOYMENT.md § Secrets) |
 | `GOOGLE_REDIRECT_URI` | (empty) | This API's `/api/v1/auth/google/callback`, as registered with the client |
 | `FRONTEND_URL` | (empty) | The frontend: after Google, the browser goes to its `/login/` with a one-time code. Without `MCP_PUBLIC_URL`, its host is the app's (below) |
 | `ALLOW_PASSWORD_SIGNUP` | `false` | Turns `POST /api/v1/auth/register` on. Local development and tests only |
@@ -98,7 +100,7 @@ Reviewed on 2026-09-29. **Update this reference in the same PR as any new or cha
 | Variable | Default | What it does |
 |---|---|---|
 | `MCP_PUBLIC_URL` | (empty) | The MCP endpoint as clients reach it, without the trailing slash. With the Google client, `ORGANIZATION_DOMAIN` and the signing key, it turns on sign-in with Google for MCP clients. Its host is the app's: the MCP, its OAuth metadata and the docs answer there only, and on any other host `/mcp`, `/docs` and `/redoc` are short links. Without it or `FRONTEND_URL`, every host is the app's |
-| `MCP_OAUTH_SIGNING_KEY` | (empty) | Signs the MCP's OAuth tokens and encrypts what it stores. The same on every task; changing it signs every MCP client out. A secret |
+| `MCP_OAUTH_SIGNING_KEY` | (empty) | Signs the MCP's OAuth tokens and encrypts what it stores. The same on every task; changing it signs every MCP client out. A secret. In production, injected from Parameter Store (`/shurly/production/MCP_OAUTH_SIGNING_KEY`, DEPLOYMENT.md § Secrets) |
 | `MCP_OAUTH_ALLOWED_REDIRECT_URIS` | `["https://claude.ai/api/mcp/auth_callback", "https://claude.com/api/mcp/auth_callback", "http://localhost:*", "http://127.0.0.1:*"]` | The redirect URIs an MCP client may register: claude.ai's, and Claude Code's loopback. Nothing else can ask a person to consent |
 
 ### Rate limits

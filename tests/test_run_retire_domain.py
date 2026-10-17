@@ -6,8 +6,9 @@ environment and network, like the promotion's (scripts/one_off_task.sh). Run aga
 
 - A dry run unless --for-real, which needs the domain typed back.
 - One container, the live one's image and environment, and no task role: it reads nothing from AWS.
-- The service's secrets never reach the terminal; the task definition and the local files are
-  deleted at the end, whatever happened.
+- The container keeps the live one's `secrets` (Parameter Store ARNs) as they are.
+- The service's secrets, values or ARNs, never reach the terminal; the task definition and the
+  local files are deleted at the end, whatever happened.
 """
 
 import json
@@ -16,7 +17,15 @@ from pathlib import Path
 import pytest
 
 from tests import test_run_shlink_import as shared
-from tests.test_run_shlink_import import LIVE, NETWORK, NEW_TD, SECRETS, SERVICE_TD, _calls
+from tests.test_run_shlink_import import (
+    LIVE,
+    NETWORK,
+    NEW_TD,
+    SECRET_ARNS,
+    SECRETS,
+    SERVICE_TD,
+    _calls,
+)
 
 SCRIPT = Path(__file__).resolve().parent.parent / "scripts" / "run_retire_domain.sh"
 
@@ -57,6 +66,7 @@ def test_the_task_is_the_live_services_container_and_no_role(aws):
     assert registered["executionRoleArn"] == LIVE["executionRoleArn"]
     assert registered["runtimePlatform"] == LIVE["runtimePlatform"]
     assert (retire["image"], retire["environment"]) == (live["image"], live["environment"])
+    assert retire["secrets"] == live["secrets"]  # the Parameter Store ARNs, as the service has them
     assert retire["logConfiguration"]["options"] == {
         **live["logConfiguration"]["options"],
         "awslogs-stream-prefix": "retire-domain",
@@ -90,6 +100,7 @@ def test_its_output_from_cloudwatch_and_no_secret(aws):
 
     assert "[retire-domain/retire/abc123]" in result.stdout
     assert not [secret for secret in SECRETS if secret in result.stdout + result.stderr]
+    assert not [arn for arn in SECRET_ARNS if arn in result.stdout + result.stderr]
 
 
 def test_for_real_needs_the_domain_typed_back(aws):

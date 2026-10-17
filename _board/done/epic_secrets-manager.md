@@ -2,9 +2,10 @@
 id: epic_secrets-manager
 title: Secrets in Secrets Manager
 type: epic
-status: backlog
+status: done
 priority: high
 created: 2026-10-17
+completed: 2026-10-17
 ---
 
 # Epic: Secrets in Secrets Manager
@@ -23,4 +24,5 @@ secret are plain environment variables on the ECS service: anyone who can read t
 From ROADMAP 6.3 (Environment secrets audit, the Google client secret). Production change: needs the user's go-ahead.
 
 ## Log
+- 2026-10-17T17:51:45Z Daniel Serrano moved backlog -> done
 - 2026-10-17T17:20:42Z Daniel Serrano created

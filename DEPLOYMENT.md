@@ -82,7 +82,8 @@ The script:
 - Reuses the `shlink-db-subnets` subnet group when present (same VPC, fewer moving parts) or creates `shurly-db-subnets`.
 - Creates `shurly-db-sg` with VPC-only ingress on 5432.
 - Creates `shurly-db` (db.t4g.micro, gp3, 20 GB, encrypted, no public access, no multi-AZ for dev cost).
-- Generates a random master password and prints it once. Save it to AWS Secrets Manager and your password manager.
+- Generates a random master password, alphanumeric, and prints it once. Put it in Parameter Store as
+  `/shurly/production/DB_PASSWORD` without echoing it (step 3), and in your password manager.
 
 The instance takes ~5–10 minutes to become available. The script blocks until it does.
 
@@ -126,23 +127,29 @@ aws acm wait certificate-validated --region eu-south-2 --profile griddo-main \
     --certificate-arn "$CERT_ARN"
 ```
 
-### 3. JWT secret
+### 3. Secrets in Parameter Store
+
+The service reads its five secrets from Parameter Store (§ Secrets). Create them before step 4, which stops if one is
+missing, and give the execution role its policy (§ Secrets, "The execution role"). `put_secret` is defined in
+§ Secrets, "Writing a value":
 
 ```bash
-JWT_SECRET_KEY=$(openssl rand -hex 32)
-echo "JWT_SECRET_KEY=$JWT_SECRET_KEY"
-# Save it. You'll feed it into deploy_ecs.sh on first run.
+read -rs VALUE && printf '%s\n' "$VALUE" | put_secret DB_PASSWORD; unset VALUE   # paste create_rds.sh's
+openssl rand -hex 32 | put_secret JWT_SECRET_KEY
+openssl rand -hex 32 | put_secret MCP_OAUTH_SIGNING_KEY
+# Until the Google client and the distribution exist: sign in with Google stays off while
+# GOOGLE_CLIENT_ID is unset, and an empty array takes no client IP from CloudFront
+echo not-set | put_secret GOOGLE_CLIENT_SECRET
+echo '[]' | put_secret CLOUDFRONT_ORIGIN_SECRETS
 ```
 
 ### 4. ECS Express service
 
-Create a `.env` file in the project root with the credentials gathered above:
+Create a `.env` file in the project root with the database's host. The secrets aren't read from it:
 
 ```bash
 cat > .env <<EOF
 DB_HOST=<from create_rds.sh output>
-DB_PASSWORD=<from create_rds.sh output>
-JWT_SECRET_KEY=<from step 3>
 EOF
 chmod 600 .env  # avoid accidental git add
 ```
@@ -160,12 +167,17 @@ The script:
 - Creates the ECR repository `shurly-api` if needed (with image scanning + immutable tags).
 - Builds the container for `linux/amd64` and `linux/arm64` (Fargate runs the first) and pushes it tagged
   `<sha>-<timestamp>`.
-- Calls `aws ecs create-express-gateway-service` with all Phase 3.9/3.10 settings as env vars, `--cpu 256 --memory 512`, healthcheck `/api/v1/health`, scaling 1–2 tasks, and Shlink's existing IAM roles.
+- Checks the five parameters exist (names only, never their values), and stops before building anything if one
+  is missing.
+- Calls `aws ecs create-express-gateway-service` with all Phase 3.9/3.10 settings as env vars, the five secrets
+  in `secrets` (their parameters' ARNs, never in `environment`), `--cpu 256 --memory 512`, healthcheck
+  `/api/v1/health`, scaling 1–2 tasks, and Shlink's existing IAM roles.
 - Tolerates the documented `--monitor-resources` timeout (Shlink lesson #2) and verifies via `describe-express-gateway-service`.
 - **Creates only.** Once the service exists, the script stops before building anything: an update would send
   the container it builds, whose environment holds only the variables above, and drop every setting added on
   the service since. Later images go out with the deploy workflow (§ CI/CD with OIDC), which changes only the
-  image; settings change on the live service (§ Settings, under Sign in with Google).
+  image; settings change on the live service (§ Change a setting on the live service), secrets in Parameter
+  Store (§ Secrets).
 
 Smoke the auto-generated host:
 
@@ -406,14 +418,182 @@ That's the only secret needed. No `AWS_ACCESS_KEY_ID`, no `AWS_SECRET_ACCESS_KEY
 
 ---
 
+## Secrets (Phase 6.3)
+
+The five secrets live in **SSM Parameter Store**, as `SecureString` parameters (standard tier, encrypted with the
+AWS-managed key `alias/aws/ssm`) under `/shurly/production/`, in `griddo-main` (686255983646), `eu-south-2`. The
+`shurly-api` container lists them in its `secrets`, each with the parameter's ARN as `valueFrom`. ECS reads them with
+the execution role when a task starts, and hands them to the app as environment variables. The app reads them once, at
+startup (`server/core/config.py`), like any other setting. The settings that aren't secret stay in `environment`.
+
+- **Why not Secrets Manager** (decided 2026-10-17): Parameter Store's standard tier is free, and Secrets Manager's
+  automatic rotation wouldn't help an app that reads its secrets only at startup. A new value needs new tasks either
+  way.
+- **The deploy keeps them.** The workflow sends the live container back with only its image changed (§ CI/CD with
+  OIDC), so `secrets` survive. The one-off tasks (`scripts/run_*.sh`) copy them too. `scripts/deploy_ecs.sh`, which
+  only creates the service, puts the five in `secrets` and stops if a parameter is missing.
+- **A new value changes nothing until new tasks start.** Put it, then force a redeploy and wait for the rollout
+  (§ Force a redeploy). Redeploy straight away: until then, a task that starts on its own (a scale-out, a replaced
+  task) already takes the new value, while the others keep the old one.
+- **No value shows in the task definition, a deploy log or `describe-*`'s output**: they show the parameter's ARN.
+- **A task can't start** if a parameter is missing or the execution role can't read it (`ResourceInitializationError`
+  in the service's events). A rollout then fails, and the circuit breaker rolls it back.
+
+| Parameter | What it is | Rotating it |
+|---|---|---|
+| `/shurly/production/DB_PASSWORD` | The database user's password (`DB_USER`) | § Rotate the database password. RDS first; new connections from the old tasks fail until the rollout ends |
+| `/shurly/production/JWT_SECRET_KEY` | Signs the web sessions, and keys the rate-limit counters | § Rotate the JWT secret. Everyone signs in again |
+| `/shurly/production/GOOGLE_CLIENT_SECRET` | The Google OAuth client's secret | § Sign in with Google, "Settings". Both secrets work at Google until the old one is deleted: no downtime |
+| `/shurly/production/MCP_OAUTH_SIGNING_KEY` | Signs the MCP's tokens and encrypts `mcp_oauth_store`, both derived from it (HKDF) | § Rotate the MCP signing key. Every MCP client signs in again |
+| `/shurly/production/CLOUDFRONT_ORIGIN_SECRETS` | The values of CloudFront's origin header, a JSON array | § Client IPs behind CloudFront. Three steps, no downtime |
+
+### Writing a value
+
+A value never goes on the command line or the screen: an argument lands in the shell history and the process list.
+It goes through a file of mode 0600, removed at once. This helper writes its standard input's first line to
+`/shurly/production/<NAME>`, creating the parameter or overwriting it, and prints only the new version number:
+
+```bash
+put_secret() {
+  local dir rc   # not `status`: zsh reserves it
+  dir=$(mktemp -d) || return 1   # mode 0700
+  ( umask 077
+    jq -Rn --arg name "/shurly/production/$1" \
+        '{Name: $name, Type: "SecureString", Overwrite: true, Value: input}' > "$dir/parameter.json" ) \
+    && aws ssm put-parameter --region eu-south-2 --profile griddo-main \
+        --cli-input-json "file://$dir/parameter.json" --query Version --output text
+  rc=$?
+  shred -u "$dir/parameter.json" 2>/dev/null || rm -f "$dir/parameter.json"   # macOS has no shred
+  rmdir "$dir"
+  return $rc
+}
+
+openssl rand -hex 32 | put_secret JWT_SECRET_KEY                                     # a new random value
+read -rs VALUE && printf '%s\n' "$VALUE" | put_secret GOOGLE_CLIENT_SECRET; unset VALUE   # one you paste, not echoed
+```
+
+**Reading a value back** (`aws ssm get-parameter --with-decryption`) prints it. Avoid it. Where a runbook can't (the
+CloudFront rotation), it pipes the value straight into what needs it, never to the terminal.
+
+### The execution role
+
+`ecsTaskExecutionRole` is shared with other services. Shurly's access is one inline policy, `shurly-read-parameters`,
+limited to its prefix:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ReadShurlyParameters",
+      "Effect": "Allow",
+      "Action": "ssm:GetParameters",
+      "Resource": "arn:aws:ssm:eu-south-2:686255983646:parameter/shurly/production/*"
+    },
+    {
+      "Sid": "DecryptThroughSsm",
+      "Effect": "Allow",
+      "Action": "kms:Decrypt",
+      "Resource": "arn:aws:kms:eu-south-2:686255983646:key/<the key id of alias/aws/ssm>",
+      "Condition": {
+        "StringEquals": {"kms:ViaService": "ssm.eu-south-2.amazonaws.com"}
+      }
+    }
+  ]
+}
+```
+
+- The key's ARN: `aws kms describe-key --region eu-south-2 --profile griddo-main --key-id alias/aws/ssm --query
+  KeyMetadata.Arn --output text`. AWS creates that key with the account's first `SecureString`, so create the
+  parameters first.
+- Apply it with `aws iam put-role-policy --profile griddo-main --role-name ecsTaskExecutionRole --policy-name
+  shurly-read-parameters --policy-document file://shurly-read-parameters.json`.
+
+### Reading the live config
+
+The service's newest configuration, as the deploy workflow takes it: the names in `environment`, and the `secrets`
+with their ARNs. No value is printed.
+
+```bash
+SERVICE_ARN=$(aws ecs list-services --region eu-south-2 --profile griddo-main --cluster default \
+    --query "serviceArns[?contains(@, 'shurly-api')] | [0]" --output text)
+
+aws ecs describe-express-gateway-service --region eu-south-2 --profile griddo-main \
+    --service-arn "$SERVICE_ARN" --output json \
+  | jq '.service.activeConfigurations | max_by(.createdAt) | .primaryContainer
+        | {environment: [.environment[]?.name], secrets}'
+
+# The parameters themselves: name, version, last change. No value
+aws ssm describe-parameters --region eu-south-2 --profile griddo-main \
+    --parameter-filters Key=Path,Option=OneLevel,Values=/shurly/production \
+    --query 'Parameters[].{name:Name,type:Type,version:Version,changed:LastModifiedDate}' --output table
+```
+
+### The switch from `environment` to `secrets`
+
+Done once in production, right after the release that documents it (ROADMAP 6.3 records it). Until then the five are
+plain variables in `environment`. The JWT and MCP keys are rotated on the way; the other three keep their values.
+
+```bash
+dir=$(mktemp -d)   # 0700: everything below stays in it
+NAMES='["DB_PASSWORD","JWT_SECRET_KEY","GOOGLE_CLIENT_SECRET","MCP_OAUTH_SIGNING_KEY","CLOUDFRONT_ORIGIN_SECRETS"]'
+
+# 1. The current container ($SERVICE_ARN as above). It holds the five in clear: copy it to
+#    _exchange/ (0600) for a rollback, and never print it
+( umask 077; aws ecs describe-express-gateway-service --region eu-south-2 --profile griddo-main \
+    --service-arn "$SERVICE_ARN" --output json \
+  | jq '.service.activeConfigurations | max_by(.createdAt) | .primaryContainer' > "$dir/current.json" )
+
+# 2. The parameters: three values copied from it, two keys new (§ Writing a value has put_secret)
+for name in DB_PASSWORD GOOGLE_CLIENT_SECRET CLOUDFRONT_ORIGIN_SECRETS; do
+  jq -r --arg n "$name" '.environment[] | select(.name == $n) | .value' "$dir/current.json" | put_secret "$name"
+done
+openssl rand -hex 32 | put_secret JWT_SECRET_KEY
+openssl rand -hex 32 | put_secret MCP_OAUTH_SIGNING_KEY
+
+# 3. The container to send: the five leave environment and join secrets. Nothing else changes
+( umask 077; jq --argjson names "$NAMES" \
+    --arg arn "arn:aws:ssm:eu-south-2:686255983646:parameter/shurly/production/" '
+    .environment |= map(select(.name | IN($names[]) | not))
+    | .secrets = ([.secrets[]? | select(.name | IN($names[]) | not)]
+                  + [$names[] | {name: ., valueFrom: ($arn + .)}])' \
+    "$dir/current.json" > "$dir/new.json" )
+
+# 4. A dry run, names only. Go on only if `removed` is the five, and nothing else
+jq -n --slurpfile a "$dir/current.json" --slurpfile b "$dir/new.json" '{
+    removed: (($a[0].environment | map(.name)) - ($b[0].environment | map(.name))),
+    secrets: ($b[0].secrets | map(.name)), same_image: ($a[0].image == $b[0].image)}'
+
+# 5. One update. Never let it print: its response echoes the container
+aws ecs update-express-gateway-service --region eu-south-2 --profile griddo-main \
+    --service-arn "$SERVICE_ARN" --primary-container "file://$dir/new.json" > /dev/null
+```
+
+Then:
+
+1. Wait for the rollout (§ Force a redeploy). § Reading the live config should show the five in `secrets` and none in
+   `environment`.
+2. Smoke: health, a `go.griddo.io` link, `/mcp` answering 308 and `/mcp/` 401, and `client_ip_source` `cloudfront` on
+   `shurly.griddo.io` (§ Client IPs behind CloudFront). Everyone signs in again, on the web and in the MCP.
+3. `rm -rf "$dir"` (`shred -u` its files first where there is one).
+4. Deregister and delete every `default-shurly-api` task definition revision but the active one
+   (`aws ecs deregister-task-definition`, then `aws ecs delete-task-definitions`), each with its output sent to
+   `/dev/null`: the revisions from before hold the five in clear, and both responses print them.
+
+**Rollback:** put the five back in `environment` from the copy in `_exchange/`, in one update. The rotated keys can't
+go back: everyone signs in again either way.
+
+---
+
 ## Frontend hosting (Phase 4.10)
 
 **Live since 2026-09-29.** Distribution `EJDA8EMBWVGDG` (`d1e7o4qkz3x60l.cloudfront.net`), bucket
 `shurly-frontend-686255983646` (eu-south-2), OAC `shurly-frontend-oac`, response-headers policy
 `shurly-security-headers`, function `shurly-static-paths`, certificate in us-east-1 for `shurly.griddo.io`, deploy role
 `github-actions-shurly-frontend-deploy` (repo secret `AWS_FRONTEND_DEPLOY_ROLE_ARN`, variables `FRONTEND_BUCKET` and
-`CLOUDFRONT_DISTRIBUTION_ID`). The task has `CLOUDFRONT_ORIGIN_SECRETS`, `FRONTEND_URL=https://shurly.griddo.io` and
-`CORS_ORIGINS='[]'`. No custom error responses. The secret origin header's value is in `_exchange/credentials.md`.
+`CLOUDFRONT_DISTRIBUTION_ID`). The task has `CLOUDFRONT_ORIGIN_SECRETS` (from Parameter Store, § Secrets),
+`FRONTEND_URL=https://shurly.griddo.io` and `CORS_ORIGINS='[]'`. No custom error responses. The origin header's value
+is the parameter's.
 
 The static build (`frontend/dist/`) lives in a private S3 bucket behind **one CloudFront distribution for
 `shurly.griddo.io`**, which also carries the API and the MCP to the ALB. The app and the API then share one
@@ -688,17 +868,47 @@ filter event = "http.request" and path != "/api/v1/health"
 
 **The task:**
 
-- `CLOUDFRONT_ORIGIN_SECRETS='["<value>"]'`, a JSON array. Until the secrets move to Secrets Manager (ROADMAP 6.3)
-  it's an ECS environment variable like the others. Its name contains `SECRET`, so the deploy log masks it. The app
-  never logs it, and printed settings show `**********`.
+- `CLOUDFRONT_ORIGIN_SECRETS` comes from Parameter Store, `/shurly/production/CLOUDFRONT_ORIGIN_SECRETS` (§ Secrets).
+  Its value is a JSON array, `["<value>"]`, with nothing around it: a bare value, or the array in shell quotes
+  (`'["<value>"]'`, as an env file has it), stops the app at startup. The app never logs it, and printed settings
+  show `**********`.
 - Each value needs at least 32 characters, or the app doesn't start.
 - `CLOUDFRONT_ORIGIN_HEADER` names the header: `X-Origin-Verify` by default.
 
-**Rotating the secret:**
+**Rotating the secret,** with no downtime. The app accepts both values while the distribution switches. `put_secret`
+is in § Secrets, "Writing a value". The new value stays in a 0600 file until the end, and the current one is read
+from the parameter straight into the next command, never shown:
 
-1. Give the task both values, `CLOUDFRONT_ORIGIN_SECRETS='["<new>","<old>"]'`, and deploy.
-2. Set the distribution's custom header to the new value, and wait for the distribution to deploy.
-3. Take the old value out of the task, and deploy.
+```bash
+DIST=EJDA8EMBWVGDG
+dir=$(mktemp -d)   # 0700
+( umask 077; openssl rand -hex 32 > "$dir/new" )
+
+# 1. Both values, the new one first. Then force a redeploy, and wait for the rollout (§ Force a redeploy)
+aws ssm get-parameter --region eu-south-2 --profile griddo-main --with-decryption \
+    --name /shurly/production/CLOUDFRONT_ORIGIN_SECRETS --query Parameter.Value --output text \
+  | jq -c --rawfile new "$dir/new" '[($new | rtrimstr("\n"))] + .' | put_secret CLOUDFRONT_ORIGIN_SECRETS
+
+# 2. The distribution's header gets the new value. Both responses carry the header: to files or /dev/null
+( umask 077; aws cloudfront get-distribution-config --profile griddo-main --id "$DIST" > "$dir/dist.json" )
+( umask 077; jq --rawfile new "$dir/new" '.DistributionConfig
+    | (.Origins.Items[].CustomHeaders.Items[]? | select(.HeaderName == "X-Origin-Verify") | .HeaderValue)
+      |= ($new | rtrimstr("\n"))' "$dir/dist.json" > "$dir/dist-new.json" )
+aws cloudfront update-distribution --profile griddo-main --id "$DIST" \
+    --if-match "$(jq -r .ETag "$dir/dist.json")" --distribution-config "file://$dir/dist-new.json" > /dev/null
+aws cloudfront wait distribution-deployed --profile griddo-main --id "$DIST"
+
+# 3. Only the new value. Then force a redeploy, and wait for the rollout
+aws ssm get-parameter --region eu-south-2 --profile griddo-main --with-decryption \
+    --name /shurly/production/CLOUDFRONT_ORIGIN_SECRETS --query Parameter.Value --output text \
+  | jq -c '.[:1]' | put_secret CLOUDFRONT_ORIGIN_SECRETS
+
+rm -rf "$dir"   # shred -u its files first where there is one
+```
+
+Don't start step 2 before step 1's rollout has ended: a task that only knows the old value would treat CloudFront's
+requests as direct ones, and count the edges' addresses instead of people's. Afterwards, `shurly.griddo.io`'s `http.request` lines still read `client_ip_source`
+`cloudfront` (the query above).
 
 **Defence in depth, at the ALB (optional):** the ALB can refuse requests for `shurly.griddo.io` that skip
 CloudFront, so they never reach the app. The app doesn't depend on it. It has to be per host: the ALB is shared,
@@ -878,14 +1088,15 @@ Done once, by whoever administers Google Workspace (ROADMAP 3.13.2). Step by ste
    `profile`: the web sign-in asks for `profile` to name a new account (3.12); the MCP's, for the first two.
 3. An OAuth client of type **Web application**, with the authorized redirect URI
    `https://shurly.griddo.io/api/v1/auth/google/callback` (the MCP proxy's joins it in 5.8).
-4. The client secret goes to Secrets Manager (6.3), never into the repo or a task definition in clear.
+4. The client secret goes to Parameter Store, `/shurly/production/GOOGLE_CLIENT_SECRET` (§ Secrets), never into the
+   repo or a task definition in clear.
 
 ### Settings
 
 | Variable | Example | Notes |
 |---|---|---|
 | `GOOGLE_CLIENT_ID` | `1234-abc.apps.googleusercontent.com` | The OAuth client's id |
-| `GOOGLE_CLIENT_SECRET` | from Secrets Manager | Never logged |
+| `GOOGLE_CLIENT_SECRET` | from Parameter Store | Injected through the container's `secrets` (§ Secrets). Never logged |
 | `GOOGLE_REDIRECT_URI` | `https://shurly.griddo.io/api/v1/auth/google/callback` | Exactly as registered with the client |
 | `FRONTEND_URL` | the frontend's origin | After Google, the browser goes to `{FRONTEND_URL}/login/` |
 | `ORGANIZATION_DOMAIN` | `griddo.io` (default) | Only ID tokens whose `hd` claim is this domain get in |
@@ -899,12 +1110,18 @@ Done once, by whoever administers Google Workspace (ROADMAP 3.13.2). Step by ste
 - The page `POST`s the one-time code to `/api/v1/auth/google/exchange`. In production that's the same origin
   (`shurly.griddo.io`), so `CORS_ORIGINS` needs no entry for it (§ CORS); a frontend served from another origin
   needs its origin listed.
-- **Where they go:** the GitHub deploy keeps the live service's environment and swaps only the image,
-  so add these variables to the live ECS config ([docs/setup_google_app.md](docs/setup_google_app.md),
-  step 7). Changing it starts a deployment. `scripts/deploy_ecs.sh` only creates the service, and stops once
-  it exists.
-- To rotate the client secret: add a new secret to the OAuth client, update Secrets Manager, redeploy,
-  then delete the old secret in Google Cloud.
+- **Where they go:** the GitHub deploy keeps the live service's environment and secrets and swaps only the
+  image, so add these variables to the live ECS config (§ Change a setting on the live service,
+  [docs/setup_google_app.md](docs/setup_google_app.md), step 7), and the client secret to its parameter
+  (§ Secrets). Changing the config starts a deployment; a new parameter value needs a forced one.
+  `scripts/deploy_ecs.sh` only creates the service, and stops once it exists.
+- **To rotate the client secret,** with no downtime: Google keeps both secrets valid until you delete one.
+  1. In Google Cloud, Google Auth Platform → Clients → `Shurly web` → **Add secret**. It shows once.
+  2. Put it in the parameter without echoing it (`put_secret` is in § Secrets, "Writing a value"):
+     `read -rs VALUE && printf '%s\n' "$VALUE" | put_secret GOOGLE_CLIENT_SECRET; unset VALUE`
+  3. Force a redeploy, and wait for the rollout (§ Force a redeploy).
+  4. Sign in with Google, on the web and in the MCP.
+  5. Delete the old secret in Google Cloud.
 
 ### The flow, and the frontend's contract
 
@@ -935,7 +1152,7 @@ Google client and `ORGANIZATION_DOMAIN` above:
 | Variable | Example | Notes |
 |---|---|---|
 | `MCP_PUBLIC_URL` | `https://shurly.griddo.io/mcp` | The MCP endpoint as clients reach it, without the slash. People connect to `{MCP_PUBLIC_URL}/`, with it: the metadata's `resource` has to match what they enter |
-| `MCP_OAUTH_SIGNING_KEY` | `openssl rand -hex 32` | Signs the MCP's tokens and, derived, encrypts what the proxy stores. High entropy (it goes through HKDF, not a password hash), the same on every task, never the Google secret. Changing it signs every MCP client out. Masked in the deploy logs like any `*KEY*` |
+| `MCP_OAUTH_SIGNING_KEY` | `openssl rand -hex 32` | Signs the MCP's tokens and, derived, encrypts what the proxy stores. High entropy (it goes through HKDF, not a password hash), the same on every task, never the Google secret. Changing it signs every MCP client out (§ Rotate the MCP signing key). From Parameter Store, `/shurly/production/MCP_OAUTH_SIGNING_KEY` (§ Secrets) |
 | `MCP_OAUTH_ALLOWED_REDIRECT_URIS` | the default | Who may register as an MCP client. Default: `https://claude.ai/api/mcp/auth_callback`, `https://claude.com/api/mcp/auth_callback` (where Anthropic says it may move) and loopback on any port (`http://localhost:*`, `http://127.0.0.1:*`, Claude Code). A JSON array to change it; any other client is refused |
 
 - **Google:** add `{MCP_PUBLIC_URL}/auth/callback` (`https://shurly.griddo.io/mcp/auth/callback`) as a
@@ -1257,9 +1474,10 @@ The task has two containers, sharing a volume:
 - **Output:** both write to the service's CloudWatch log group (`/aws/ecs/default/shurly-api-5fdb`, kept 60
   days), in the streams `shlink-import/fetch/<task>` and `shlink-import/import/<task>`. The script waits for the
   task and prints both. The import's report carries counts, codes and destinations, not visits.
-- **Secrets:** the task definition carries the service's environment, `DB_PASSWORD` included, as the live one
-  does. The script sends it to AWS and never prints it; its local copy lives in a private temporary directory
-  that's removed at the end.
+- **Secrets:** the task definition copies the live one's `environment` and `secrets`. The secrets are
+  parameter ARNs, which ECS resolves when the task starts (§ Secrets), so no secret value is in the task definition
+  or on the operator's machine. The script sends it to AWS and never prints it; its local copy lives in a private
+  temporary directory that's removed at the end.
 
 **Made once, by hand** (the script creates nothing lasting): a private bucket, and the task role. Both were deleted
 with Shlink on 2026-10-17 (ROADMAP 8.6): a new import recreates them as below first.
@@ -1375,8 +1593,8 @@ scripts/run_promote_domain.sh go.griddo.io
 # 2. For real (it asks for the domain again)
 scripts/run_promote_domain.sh go.griddo.io --for-real
 
-# 3. DEFAULT_DOMAIN=go.griddo.io on the service, from its current container (§ Rotate the JWT secret has
-#    how), and a redeploy
+# 3. DEFAULT_DOMAIN=go.griddo.io on the service, from its current container (§ Change a setting on the
+#    live service has how), and a redeploy
 
 # 4. The frontend: the variable, then its deploy by hand, with no release
 gh variable set PUBLIC_SHORT_DOMAIN --body go.griddo.io --repo danielserranoh/shurly
@@ -1474,14 +1692,48 @@ The log group keeps **60 days** (set 2026-09-28; `mcp_server/README.md` § Usage
 
 ### Force a redeploy (e.g. after Lambda rule-sync change)
 
+Also after a parameter in Parameter Store changes: tasks read their secrets when they start (§ Secrets).
+
 ```bash
 SERVICE_ARN=$(aws ecs list-services --region eu-south-2 --profile griddo-main \
     --cluster default \
     --query "serviceArns[?contains(@, 'shurly-api')] | [0]" --output text)
 
 aws ecs update-express-gateway-service --region eu-south-2 --profile griddo-main \
-    --service-arn "$SERVICE_ARN" --force-new-deployment
+    --service-arn "$SERVICE_ARN" --force-new-deployment > /dev/null
 ```
+
+Then wait for the rollout: a canary of about 10 to 12 minutes, in which old and new tasks both serve. It has ended
+when the primary deployment's state is `COMPLETED`; `FAILED` means the circuit breaker rolled it back (the service's
+events say why).
+
+```bash
+sleep 30
+while STATE=$(aws ecs describe-services --region eu-south-2 --profile griddo-main --cluster default \
+    --services shurly-api --query "services[0].deployments[?status=='PRIMARY'] | [0].rolloutState" \
+    --output text) && [ "$STATE" = IN_PROGRESS ]; do sleep 30; done; echo "$STATE"
+```
+
+### Change a setting on the live service
+
+`--primary-container` replaces the whole container, so start from the current one, as the deploy workflow does: one
+built from scratch drops every other setting, and the `secrets`. Secrets don't go here: they go to Parameter Store
+(§ Secrets). For example, `DEFAULT_DOMAIN`:
+
+```bash
+dir=$(mktemp -d)   # 0700
+( umask 077; aws ecs describe-express-gateway-service --region eu-south-2 --profile griddo-main \
+    --service-arn "$SERVICE_ARN" --output json \
+  | jq '.service.activeConfigurations | max_by(.createdAt) | .primaryContainer' > "$dir/current.json" )
+( umask 077; jq --arg name DEFAULT_DOMAIN --arg value go.griddo.io \
+    '.environment = ([.environment[]? | select(.name != $name)] + [{name: $name, value: $value}])' \
+    "$dir/current.json" > "$dir/new.json" )
+aws ecs update-express-gateway-service --region eu-south-2 --profile griddo-main \
+    --service-arn "$SERVICE_ARN" --primary-container "file://$dir/new.json" > /dev/null
+rm -rf "$dir"
+```
+
+The update starts a deployment by itself; wait for the rollout as above. The console's ECS page does the same.
 
 ### Open a psql shell from a Fargate task (ECS Exec)
 
@@ -1500,11 +1752,69 @@ PGPASSWORD=$DB_PASSWORD psql -h $DB_HOST -U $DB_USER -d $DB_NAME
 
 ### Rotate the JWT secret
 
-1. `JWT_SECRET_KEY=$(openssl rand -hex 32)`
-2. Update the env var in the ECS service (console or `aws ecs update-express-gateway-service`). With the CLI,
-   start from the service's current container, as the deploy workflow does: `--primary-container` replaces
-   the whole environment, so one built from scratch drops every other setting.
-3. Force a redeploy. Existing JWTs will become invalid; clients will need to re-authenticate.
+`JWT_SECRET_KEY` takes one key only, so there's no overlap:
+
+- **Everyone is signed out of the web,** and signs in again. API keys and service tokens aren't JWTs, and MCP
+  sign-ins use the MCP key, so neither is affected.
+- **The rate-limit counters start over:** their keys are HMACs of the secret (`server/utils/rate_limit.py`).
+- **During the canary (about 10 minutes) old and new tasks disagree:** a session one task issued, the other refuses.
+  Someone may be signed out twice; signing in after the rollout ends sticks.
+
+```bash
+openssl rand -hex 32 | put_secret JWT_SECRET_KEY   # § Secrets, "Writing a value"
+```
+
+Then force a redeploy, and wait for the rollout (§ Force a redeploy).
+
+### Rotate the MCP signing key
+
+`MCP_OAUTH_SIGNING_KEY` derives two keys (HKDF): the one that signs the MCP's tokens, and the one that encrypts
+`mcp_oauth_store` (`mcp_server/oauth_store.py`). It takes one value only, so changing it:
+
+- **Signs every MCP client out.** Its tokens no longer verify, and its stored registration no longer decrypts, so a
+  client registers again and its person signs in with Google again (in claude.ai, reconnect the connector). API keys
+  used with the MCP keep working.
+- **Leaves the old rows unreadable.** A row that doesn't decrypt reads as missing. A row with an expiry is deleted
+  after it, by the housekeeping on a later write; a row with none stays, unreadable and unused. There's no cleanup
+  command in the repo.
+- **Mixes keys during the canary:** a client that signs in on a new task can be refused by an old one. Reconnect once
+  the rollout ends.
+
+```bash
+openssl rand -hex 32 | put_secret MCP_OAUTH_SIGNING_KEY   # § Secrets, "Writing a value"
+```
+
+Then force a redeploy, and wait for the rollout (§ Force a redeploy).
+
+### Rotate the database password
+
+RDS first, then the parameter, then a redeploy. **Keep the password alphanumeric:** the app puts it into the
+database URL unescaped (`database_url`, `server/core/config.py`), so a `@`, `/`, `:` or `%` breaks it.
+`openssl rand -hex 32` is alphanumeric.
+
+```bash
+dir=$(mktemp -d)   # 0700
+( umask 077; openssl rand -hex 32 > "$dir/password"
+  jq -Rn '{DBInstanceIdentifier: "shurly-db", MasterUserPassword: input, ApplyImmediately: true}' \
+      < "$dir/password" > "$dir/rds.json" )
+
+# 1. RDS. Its response masks the password; it goes to /dev/null anyway
+aws rds modify-db-instance --region eu-south-2 --profile griddo-main \
+    --cli-input-json "file://$dir/rds.json" > /dev/null
+aws rds wait db-instance-available --region eu-south-2 --profile griddo-main \
+    --db-instance-identifier shurly-db
+
+# 2. The parameter (§ Secrets, "Writing a value")
+put_secret DB_PASSWORD < "$dir/password"
+rm -rf "$dir"   # shred -u its files first where there is one
+```
+
+3. Force a redeploy, and wait for the rollout (§ Force a redeploy).
+
+**New connections from the old tasks fail until the rollout ends.** From step 1 on, the running tasks keep the
+connections they have open, but any new one (the pool growing under load, a connection recycled after an hour, one
+that dropped) is refused, and the request that needed it fails. Do it at a quiet hour, and go from step 1 to step 3
+without a pause.
 
 ---
 
@@ -1525,6 +1835,12 @@ aws ecs describe-express-gateway-service --region eu-south-2 --profile griddo-ma
 The ALB rule at priority 12 is pointing at the inactive target group. Either:
 - The Lambda `ecs-alb-rule-sync`'s `RULE_SYNC_MAP` is missing Shurly's mapping. Add it (see step 6 above).
 - Or invoke the Lambda manually: `aws lambda invoke --function-name ecs-alb-rule-sync --payload '{}' /dev/stdout`.
+
+### A rollout fails with `ResourceInitializationError`
+
+A task couldn't fetch its secrets, so it never started, and the circuit breaker rolled the deployment back. A
+parameter the container's `secrets` name is missing (or misspelled), or the execution role lacks
+`shurly-read-parameters` (§ Secrets). § Reading the live config lists both sides, without values.
 
 ### ACM cert stuck in `PENDING_VALIDATION`
 
