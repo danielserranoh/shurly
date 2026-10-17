@@ -5,6 +5,10 @@ Decoding the upload safely, and dropping its metadata, is `server/utils/images.p
 with the avatar. A logo isn't a face, so unlike the avatar it's never cropped: it keeps its
 shape, shrunk to fit within 512×512 (never enlarged, which would only blur it), and its
 transparency, so it sits on any background.
+
+Since 3.14.6 the page crops the logo to a square first, as it does the avatar, and sends a PNG
+of 512 px at most: a square upload stays square, so nothing here changed for that. An upload
+through the API keeps whatever shape it has.
 """
 
 from PIL import Image

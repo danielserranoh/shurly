@@ -26,6 +26,31 @@ implementation lifecycle and is independent of the URL version segment.
 
 ## [Unreleased]
 
+### Changed — click the photo to change it, and a round logo (3.12.10, 3.14.6)
+- **Settings → Account:** the photo is the button now ("Change your photo"). It has a camera badge at its corner,
+  always there, and on hover or keyboard focus a dark overlay with a camera. Next to it are your name and, under it,
+  your email. The "Upload photo" and "Remove" buttons and their hint are gone. Dropping an image on the photo
+  opens the dialog with the image loaded.
+- **The "Profile photo" dialog** replaces "Position your photo". It has a large circle, **Change photo** and **Remove
+  photo** under it, then **Cancel** and **Save photo**. It opens on your photo, shown read-only (only its square
+  is kept, so there's nothing to move), or on your initial. Change photo picks a new photo, which you position in
+  the circle as before: drag, wheel, pinch, arrow keys, + and −, and a zoom slider that shows only then. Remove
+  photo shows the initial. Nothing changes until Save, which stays disabled until something would. Cancel or Esc
+  keeps the photo you had. The file note and file errors are in the dialog. The avatar is still saved as a
+  512 px WebP.
+- **The organization's logo** gets the same treatment and the same shape: a circle, in Settings → Organization,
+  the members card and the account menu (`OrgMark`). For owners and admins the logo is the button, with the badge,
+  the overlay and the same dialog, titled "Organization logo". Members see it with no button. A logo is now
+  **positioned and cropped to a square** like the avatar, and sent as a **PNG** (lossless, with its alpha) of
+  512 px at most, never enlarged. The API keeps its transparency, and a transparent logo sits on white in the
+  circle, with a hairline ring. Since the browser crops it first, a logo can be up to 10 MB going in, like a
+  photo (2 MB before). The API is unchanged.
+- **A logo saved before this change that isn't square** shows cropped to the circle (`object-cover`) until
+  someone uploads it again. The API still keeps the shape of whatever it's sent.
+- One component and module pair for both: `ui/PhotoTrigger` (the button), `ui/PhotoPicker` (the dialog),
+  `src/utils/photo-picker.ts` (`pickPhoto`) and its rules in `photo-picker-state.ts`. `ui/AvatarCropper` and
+  `avatar-cropper.ts` are removed. The crop maths stay in `avatar-crop.ts`.
+
 ### Changed — fastmcp 4.1 (dependencies)
 - **fastmcp 4.0.10 → 4.1.0**, with fastapi 0.143, google-auth 2.61 and ruff 0.17 (Dependabot). fastmcp now raises a
   generated tool's API error as `HTTPStatusError` and logs it as `Error calling tool '<name>'` alone, with no

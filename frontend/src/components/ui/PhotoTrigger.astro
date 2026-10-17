@@ -1,0 +1,45 @@
+---
+/**
+ * Phase 3.12.10, 3.14.6 — a photo that's its own button: the avatar in Settings → Account, and the
+ * organization's logo in Settings → Organization for owners and admins (members get the plain
+ * `OrgMark`). The circle's content is the slot. A camera badge sits at its bottom-right corner, always,
+ * on every device; hovering, keyboard focus or a file dragged over (`data-dragging`) lays a dark overlay
+ * with a camera over the photo. The focus ring is the app's own. Clicking opens the photo dialog
+ * (`ui/PhotoPicker`, driven by `pickPhoto` in src/utils/photo-picker.ts).
+ */
+import type { HTMLAttributes } from 'astro/types';
+import Icon from './Icon.astro';
+
+interface Props extends HTMLAttributes<'button'> {
+  /** The accessible name: what pressing it does, e.g. "Change your photo". */
+  label: string;
+}
+
+const { label, class: className, ...rest } = Astro.props;
+---
+
+<button
+  type="button"
+  class:list={[
+    'group relative size-20 shrink-0 cursor-pointer rounded-full transition-shadow data-dragging:ring-4 data-dragging:ring-brand-400 disabled:cursor-default',
+    className,
+  ]}
+  aria-label={label}
+  {...rest}
+>
+  <slot />
+  <span
+    class="pointer-events-none absolute inset-0 grid place-items-center rounded-full bg-ink-950/60 text-white opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100 group-disabled:opacity-0 group-data-dragging:opacity-100"
+    aria-hidden="true"
+    data-photo-overlay
+  >
+    <Icon name="camera" class="size-6" />
+  </span>
+  <span
+    class="pointer-events-none absolute right-0 bottom-0 grid size-7 place-items-center rounded-full bg-ink-950 text-white ring-2 ring-white"
+    aria-hidden="true"
+    data-photo-badge
+  >
+    <Icon name="camera" class="size-3.5" />
+  </span>
+</button>

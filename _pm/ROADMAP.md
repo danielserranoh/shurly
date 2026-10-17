@@ -726,7 +726,8 @@ Australia have several. So store `country` *and* `timezone`:
     and the saved square alike
 - [x] Keyboard access: arrow keys pan, +/- zoom; Save / Cancel; Esc cancels
 - [x] Follow `design/DESIGN_SYSTEM.md` (tokens, `Modal`, copy voice) and add the component to `/styleguide/`
-      → `ui/AvatarCropper` (markup) and `src/utils/avatar-cropper.ts` (`cropAvatar(file, onSave)`); Forms → Photo
+      → `ui/AvatarCropper` (markup) and `src/utils/avatar-cropper.ts` (`cropAvatar(file, onSave)`); Forms → Photo.
+      Replaced by the photo dialog in 3.12.10 (`ui/PhotoPicker`, `pickPhoto`)
 
 ### 3.12.5 Avatar save (backend)
 - [x] Crop **client-side** and upload the final square only (e.g. 512×512 WebP, ~30–80 KB), so the server
@@ -799,6 +800,27 @@ for the day before. Now a day is local to the viewer (`server/utils/local_days.p
       cards and the campaign and link pages by name, the email as tooltip. Each list loads its creators'
       profiles in one query, pinned by `tests/test_phase312_creator_names.py`
 - [ ] Photos in the members list: needs an endpoint that serves another member's avatar
+
+### 3.12.10 Click the photo to change it ✅
+Decided with the user (2026-10-17): the avatar itself is the trigger, and one dialog does change, remove and save.
+- [x] Settings → Account: the "Upload photo" / "Remove" buttons and their hint are gone. The avatar is a `<button>`
+      ("Change your photo") with a camera badge at its bottom-right corner, always visible, and a dark overlay with a
+      camera on hover and keyboard focus (the app's focus ring kept). The name is next to it, with the email under it
+      in muted text (the email alone without a name) → `ui/PhotoTrigger`
+- [x] The "Profile photo" dialog replaces "Position your photo": a large circle, **Change photo** and **Remove
+      photo** under it, **Cancel** and **Save photo** (disabled until something would change). It opens on the saved
+      photo, read-only, or on the initial ("Choose a photo to position it in the frame"). Change positions the new one
+      with the 3.12.4 crop (drag, wheel, pinch, arrow keys, + and −, the slider only then). Remove shows the initial.
+      Save uploads the crop or deletes the photo, and Cancel or Esc keeps what there was. The file note and errors are
+      in the dialog → `ui/PhotoPicker`, `pickPhoto` (`src/utils/photo-picker.ts`), rules in `photo-picker-state.ts`;
+      `ui/AvatarCropper` removed
+- [x] Drag and drop: an image dropped on the avatar opens the dialog with it loaded; one dropped on the dialog loads
+- [x] `/styleguide/`: the buttons (with a photo, without one, the owner's logo, a member's read-only logo) and the
+      dialog's states (with a photo, without one, positioning, removed but not saved), with live samples
+- [x] Tests: `frontend/tests/photo-picker-state.test.mjs` (open with and without a photo, change, remove, cancel,
+      Save only once changed, the export per kind); `frontend/e2e/profile-photo.spec.ts` (the button opens the dialog,
+      the saved photo read-only, change → position → save, remove → save, remove → cancel and change → Esc keep it,
+      drop on the avatar, a refused file; axe in each state on a desktop and a phone)
 
 ---
 
@@ -1013,6 +1035,22 @@ copied (`server/utils/images.py`, `server/utils/stored_image.py`; `frontend/src/
   - [x] The owner's links and campaigns locked for them, saying why, and a click sends nothing; their own they edit
         and save; bulk tagging skips the owner's and says so; the members card has no role menus; the welcome greets
         them. axe on each page, desktop and phone (`e2e/member.spec.ts`)
+
+### 3.14.6 A round logo, changed like the avatar ✅
+3.12.10's treatment for the organization's logo (decided with the user, 2026-10-17).
+- [x] Circular, like an avatar, wherever `OrgMark` shows: Settings → Organization, the members card, the account
+      menu. The initial on navy without a logo; a logo on white with a hairline ring, so a transparent one sits on a
+      neutral light ground
+- [x] Owners and admins: the logo is the button (badge, overlay) and opens the same dialog, "Organization logo".
+      Members: no button, no badge, no overlay; a file they drop goes nowhere
+- [x] Cropped like the avatar, to a square shown as a circle, and sent as a lossless PNG with its alpha, 512 px at
+      most and never enlarged (`exportFor`, `photo-picker-state.ts`); the avatar keeps its 512 px WebP. 10 MB in, as a
+      photo, since what's sent is small. The server is unchanged: a square upload stays square, transparent corners
+      included (`tests/test_phase3144_organization_logo.py`)
+- [x] A logo saved before, not square: cut to the circle by `object-cover` until it's uploaded again (CHANGELOG)
+- [x] Tests: `frontend/e2e/organization-logo.spec.ts` (the owner positions and saves a transparent logo, kept square
+      with alpha; read-only, remove; an older wide logo cut to the circle; a member sees it without a button; axe in
+      each state on a desktop and a phone), `frontend/tests/image-file.test.mjs`
 
 ---
 
