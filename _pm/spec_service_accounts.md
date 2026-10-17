@@ -76,7 +76,7 @@ Only one token per account is active (not replaced, not revoked), plus at most o
 - **`via_service_account_id`** (nullable): the service account that created the link. Shown on the link's page and
   in the API.
 - **`via_token_id`** (nullable): the token it used. Internal only: not in the link's API response or its page. It
-  answers "which links did this token create?" in Settings → Organization and in the event log.
+  answers "which links did this token create?" on the Organization page and in the event log.
 
 Links created before this have both empty, meaning created by the person, whatever the tool.
 
@@ -129,7 +129,7 @@ them. None of them is an MCP tool.
 
 ## In the app
 
-- **Settings → Organization → Service accounts:**
+- **The Organization page (`/dashboard/organization/`; a Settings tab until 3.14.7) → Service accounts:**
   - the accounts (name, person responsible, role, its token's prefix, expiry and last use);
   - for the owner: create, edit, renew the token, revoke, and remove;
   - the secret shown once, with copy-to-clipboard and "you won't see it again";

@@ -1,4 +1,4 @@
-// People in Settings → Organization go by their name, and by their email without one.
+// People on the Organization page go by their name, and by their email without one.
 // Run: `npm test` (node --test; Node 22.18+ runs the TypeScript module as is).
 
 import assert from 'node:assert/strict';

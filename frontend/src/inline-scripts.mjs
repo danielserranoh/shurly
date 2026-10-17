@@ -16,9 +16,14 @@ export const PROTECTED_GUARD =
 export const GUEST_GUARD =
   "if (localStorage.getItem('shurly_auth_token') && !/^#(code|error)=/.test(location.hash)) location.replace('/dashboard/');";
 
-/** Settings: open the tab the address names (#organization, #api…) before the page paints. */
+/**
+ * Settings: open the tab the address names (#api, #tags…) before the page paints. The organization has its own
+ * page since 3.14.7: an old link to #organization goes there, its query kept.
+ */
 export const SETTINGS_TAB_FROM_HASH = `(function () {
-  var tab = document.getElementById('tab-' + location.hash.slice(1).toLowerCase());
+  var key = location.hash.slice(1).toLowerCase();
+  if (key === 'organization') return location.replace('/dashboard/organization/' + location.search);
+  var tab = document.getElementById('tab-' + key);
   if (!tab || tab.getAttribute('role') !== 'tab') return;
   document.querySelectorAll('[data-tablist] [role="tab"]').forEach(function (t) {
     var on = t === tab;

@@ -189,7 +189,7 @@ Another system, such as Propuestas Griddo, makes links for the organization with
   who made and who revoked each one, when, its expiry, and its last use to the minute. **No IP**, ever.
 - **On a link:** `urls.via_service_account_id`, the service account that made it, shown with its name ("via
   Propuestas Griddo"), and `urls.via_token_id`, the token it used. The token's reference is internal: it's never in
-  a link's response or page, only in what the owners and admins read in Settings → Organization (`…/links?token_id=`),
+  a link's response or page, only in what the owners and admins read on the Organization page (`…/links?token_id=`),
   to answer "which links did this token create?" when a token leaks.
 - **Whom a link is for:** `X-Shurly-On-Behalf-Of` names a person by email; they become the link's creator, as if
   they'd made it. The email itself isn't kept or logged: the event log has their user id (`on_behalf_of`).

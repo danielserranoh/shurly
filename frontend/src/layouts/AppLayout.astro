@@ -6,7 +6,7 @@ import OrgMark from '@/components/ui/OrgMark.astro';
 import { site } from '@/config/site';
 import { feedbackHref } from '@/utils/feedback';
 
-type Section = 'links' | 'campaigns' | 'analytics' | 'waitlist' | 'settings';
+type Section = 'links' | 'campaigns' | 'analytics' | 'waitlist' | 'settings' | 'organization';
 
 interface Props {
   title: string;
@@ -48,10 +48,11 @@ const maxWidth = { default: 'max-w-6xl', narrow: 'max-w-3xl', wide: 'max-w-7xl' 
       </nav>
 
       <div class="ml-auto flex items-center gap-2">
-        <a href="/dashboard/create/" class="btn btn-primary btn-sm hidden sm:inline-flex" data-tooltip="Shortcut: N" data-tooltip-align="end">
+        <!-- mr-3: 20 px between New link and the avatar (the row's gap is 8), so neither is pressed by mistake -->
+        <a href="/dashboard/create/" class="btn btn-primary btn-sm mr-3 hidden sm:inline-flex" data-tooltip="Shortcut: N" data-tooltip-align="end" data-new-link>
           <Icon name="plus" />New link
         </a>
-        <a href="/dashboard/create/" class="btn btn-primary btn-sm btn-icon sm:hidden" aria-label="New link">
+        <a href="/dashboard/create/" class="btn btn-primary btn-sm btn-icon mr-3 sm:hidden" aria-label="New link" data-new-link>
           <Icon name="plus" />
         </a>
 
@@ -70,16 +71,16 @@ const maxWidth = { default: 'max-w-6xl', narrow: 'max-w-3xl', wide: 'max-w-7xl' 
             <p class="truncate text-sm font-semibold text-ink-950" data-user-email>…</p>
             <span class="badge badge-brand mt-2"><span class="status-dot text-brand-600"></span>Early access</span>
           </div>
-          <!-- Phase 3.14.4: the organization, with its logo; not there for an account outside one -->
+          <!-- Phase 3.14.4, 3.14.7: the organization, with its logo, a link to its page; not there for an account outside one -->
           <div data-user-org hidden>
             <div class="menu-sep"></div>
-            <div class="flex items-center gap-2.5 px-2.5 py-2">
+            <a class="menu-item h-auto py-2" href="/dashboard/organization/" aria-current={section === 'organization' ? 'page' : undefined}>
               <OrgMark class="size-8 text-sm" />
-              <div class="min-w-0">
-                <p class="text-xs text-ink-500">Organization</p>
-                <p class="truncate text-sm font-semibold text-ink-950" data-user-org-name></p>
-              </div>
-            </div>
+              <span class="grid min-w-0">
+                <span class="text-xs font-normal text-ink-500">Organization</span>
+                <span class="truncate text-sm font-semibold text-ink-950" data-user-org-name></span>
+              </span>
+            </a>
           </div>
           <div class="menu-sep"></div>
           <a class="menu-item" href="/dashboard/settings/"><Icon name="settings" />Settings</a>
@@ -233,7 +234,7 @@ const maxWidth = { default: 'max-w-6xl', narrow: 'max-w-3xl', wide: 'max-w-7xl' 
     .catch(() => {
       /* the cached one stays */
     });
-  // Its logo changed, in Settings → Organization.
+  // Its logo changed, on the Organization page.
   window.addEventListener('shurly:organization', (e) => rememberOrg((e as CustomEvent<Organization>).detail));
 
   document.addEventListener('click', (e) => {

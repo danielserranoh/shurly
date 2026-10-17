@@ -26,9 +26,27 @@ implementation lifecycle and is independent of the URL version segment.
 
 ## [Unreleased]
 
+### Changed — the organization gets its own page, and the camera badge is for touch screens (3.14.7, 3.12.11)
+- **`/dashboard/organization/`** is a page of its own, titled "Organization": the logo, the members and their roles,
+  the service accounts and the people removed, as the Settings tab had them, with the same rules for owners, admins
+  and members. Settings loses its Organization tab and keeps Account, API & MCP, Tags, Notifications and Plan, their
+  hashes and keyboard navigation unchanged.
+- **Old links keep working:** `/dashboard/settings/#organization` goes to `/dashboard/organization/` before the page
+  paints, its query kept (`location.replace`, so Back skips it). The hash was the only anchor the tab had.
+- **The account menu's organization row** (its logo, "Organization" and its name) is now a link to the page, a menu
+  item in the menu's keyboard order, marked as the current page there. It still shows only to accounts in an
+  organization. The mobile menu lists no Settings sections, so it's unchanged.
+- **The header:** 20 px between **New link** and the avatar, from 8 px (`mr-3` on New link, both its desktop and its
+  phone icon form), so neither is pressed for the other. Nothing wraps or scrolls sideways from 320 px up.
+- **The camera badge** on the photo and logo buttons (`ui/PhotoTrigger`) shows only where the primary input can't
+  hover (`@media (hover: none)`: phones and tablets). With a mouse or a trackpad it only repeated the overlay, which
+  hover and keyboard focus still show, with its camera, on every device. `/styleguide/` adds a sample with the badge
+  forced on, to see it from a desktop.
+- The manual, DEPLOYMENT.md, the design system and the service-accounts spec point to the Organization page.
+
 ### Changed — click the photo to change it, and a round logo (3.12.10, 3.14.6)
-- **Settings → Account:** the photo is the button now ("Change your photo"). It has a camera badge at its corner,
-  always there, and on hover or keyboard focus a dark overlay with a camera. Next to it are your name and, under it,
+- **Settings → Account:** the photo is the button now ("Change your photo"). It has a camera badge at its corner on
+  a touch screen (3.12.11 above), and on hover or keyboard focus a dark overlay with a camera. Next to it are your name and, under it,
   your email. The "Upload photo" and "Remove" buttons and their hint are gone. Dropping an image on the photo
   opens the dialog with the image loaded.
 - **The "Profile photo" dialog** replaces "Position your photo". It has a large circle, **Change photo** and **Remove
