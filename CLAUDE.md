@@ -50,7 +50,8 @@ Backend (FastAPI)               Frontend (Astro 7 + Tailwind 4)
 │   └── /rules                  ├── /dashboard/link/?code=…
 ├── /api/v1/campaigns/*         ├── /dashboard/campaigns/, …/create
 ├── /api/v1/tags/*              ├── /dashboard/campaign/?id=…
-├── /api/v1/organization/*      │   (members + roles)
+├── /api/v1/organization/*      ├── /dashboard/organization/ (members, roles, logo,
+├── /api/v1/service-accounts/*  │   service accounts)
 │                               └── /dashboard/analytics, /dashboard/settings
 ├── /api/v1/analytics/*
 │   └── /orphan-visits
