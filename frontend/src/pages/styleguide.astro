@@ -13,7 +13,9 @@ import Modal from '@/components/ui/Modal.astro';
 import ProBadge from '@/components/ui/ProBadge.astro';
 import PasswordField from '@/components/ui/PasswordField.astro';
 import Pager from '@/components/ui/Pager.astro';
-import AvatarCropper from '@/components/ui/AvatarCropper.astro';
+import OrgMark from '@/components/ui/OrgMark.astro';
+import PhotoPicker from '@/components/ui/PhotoPicker.astro';
+import PhotoTrigger from '@/components/ui/PhotoTrigger.astro';
 import Illustration from '@/components/illustrations/Illustration.astro';
 import Section from '@/components/styleguide/Section.astro';
 import Specimen from '@/components/styleguide/Specimen.astro';
@@ -1359,12 +1361,86 @@ const colorCount = allColors.length;
           </div>
         </Specimen>
 
-        <Specimen title="Photo" description="An initial until there’s a photo. A photo is cropped in a dialog where the circle is always covered: zoom out stops when the picture’s short side fills it, and it can’t be dragged off. Saved as a 512 px square." code={['<AvatarCropper />', 'cropAvatar(file, onSave)']} stage="white">
-          <div class="flex flex-wrap items-center gap-5">
-            <span class="grid size-16 place-items-center rounded-full bg-ink-950 text-2xl font-semibold text-brand-300" aria-hidden="true">A</span>
-            <span class="grid size-16 place-items-center overflow-hidden rounded-full bg-ink-100 text-ink-400" data-sg-avatar><Icon name="image" class="size-5" /></span>
-            <button type="button" class="btn btn-secondary btn-sm" data-sg-crop><Icon name="image" />Try the crop</button>
-          </div>
+        <Specimen
+          title="Photo and logo"
+          description="The photo is the button: a camera badge at its bottom-right corner, always there, and on hover or keyboard focus a dark overlay with a camera. It opens the photo dialog; a file dropped on it opens the dialog with the file. The organization’s logo is the same circle and the same button for owners and admins. A member sees it, with no badge and no button. Try the samples."
+          code={['<PhotoTrigger label="Change your photo">', '<OrgMark />']}
+          stage="white"
+        >
+          <ul class="flex flex-wrap items-start gap-x-8 gap-y-5" aria-label="Photo and logo buttons">
+            <li class="grid w-24 justify-items-center gap-2 text-center">
+              <PhotoTrigger label="Change the sample photo" data-sg-photo="current">
+                <span class="grid size-full place-items-center overflow-hidden rounded-full bg-ink-950 text-3xl font-semibold text-brand-300 data-has-photo:bg-white" data-sg-photo-circle data-has-photo>
+                  <span aria-hidden="true" hidden data-sg-photo-initial>A</span>
+                  <img class="size-full object-cover" alt="" data-sg-sample data-sg-photo-image />
+                </span>
+              </PhotoTrigger>
+              <span class="text-xs text-ink-500">With a photo</span>
+            </li>
+            <li class="grid w-24 justify-items-center gap-2 text-center">
+              <PhotoTrigger label="Add a sample photo" data-sg-photo="none">
+                <span class="grid size-full place-items-center overflow-hidden rounded-full bg-ink-950 text-3xl font-semibold text-brand-300 data-has-photo:bg-white" data-sg-photo-circle>
+                  <span aria-hidden="true" data-sg-photo-initial>A</span>
+                  <img class="size-full object-cover" alt="" hidden data-sg-photo-image />
+                </span>
+              </PhotoTrigger>
+              <span class="text-xs text-ink-500">Without one: the initial</span>
+            </li>
+            <li class="grid w-24 justify-items-center gap-2 text-center">
+              <PhotoTrigger label="Change the sample logo" data-sg-photo="logo">
+                <OrgMark class="size-full text-3xl" />
+              </PhotoTrigger>
+              <span class="text-xs text-ink-500">Logo, owner or admin</span>
+            </li>
+            <li class="grid w-24 justify-items-center gap-2 text-center">
+              <OrgMark class="size-20 text-3xl" alt="A sample logo" />
+              <span class="text-xs text-ink-500">Logo, a member: read-only</span>
+            </li>
+          </ul>
+        </Specimen>
+
+        <Specimen
+          title="Photo dialog"
+          description="One dialog for the photo and the logo (“Profile photo”, “Organization logo”). Nothing changes until Save, which is off until something would. The saved photo can’t be moved, since only its square is kept: Change picks a new one, which is positioned in the circle (drag, wheel, pinch, arrow keys, + and −, and the zoom slider, shown only then). The circle is always covered. Remove shows the initial, and Save deletes; Cancel or Esc keeps what there was. The avatar is saved as a 512 px WebP; the logo as a PNG of 512 px at most, its transparency kept, on white in the circle."
+          code={['<PhotoPicker id title noun>', 'pickPhoto({ dialog, kind, … })', 'photo-picker-state.ts']}
+          stage="canvas"
+        >
+          <ul class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4" aria-label="Photo dialog states">
+            {
+              [
+                { title: 'With a photo', body: 'Shown read-only. Change photo and Remove photo; Save is off.', shows: 'current' },
+                { title: 'Without one', body: 'The initial, and “Choose a photo to position it in the frame”. Change photo; Save is off.', shows: 'initials' },
+                { title: 'Positioning', body: 'A new photo: drag, zoom, arrow keys, + and −. Change and Remove; Save uploads it.', shows: 'new' },
+                { title: 'Removed, not saved', body: 'The initial again. Save deletes the photo; Cancel keeps it.', shows: 'removed' },
+              ].map((state) => (
+                <li class="card grid content-start justify-items-center gap-3 p-4 text-center">
+                  <span
+                    class:list={[
+                      'relative grid size-28 place-items-center overflow-hidden rounded-full text-4xl font-semibold ring-1 ring-line',
+                      state.shows === 'current' || state.shows === 'new' ? 'bg-white' : 'bg-ink-950 text-brand-300',
+                      state.shows === 'new' && 'cursor-grab outline-2 outline-offset-2 outline-ink-950',
+                    ]}
+                    aria-hidden="true"
+                  >
+                    {state.shows === 'current' && <img class="size-full object-cover" alt="" data-sg-sample />}
+                    {state.shows === 'new' && <img class="absolute max-w-none" style="width: 200%; left: -50%; top: -25%" alt="" data-sg-sample />}
+                    {(state.shows === 'initials' || state.shows === 'removed') && 'A'}
+                  </span>
+                  {state.shows === 'new' && (
+                    <span class="flex w-full items-center gap-2 text-ink-500" aria-hidden="true">
+                      <Icon name="image" class="size-3 shrink-0" />
+                      <span class="relative h-1 flex-1 rounded-full bg-ink-200">
+                        <span class="absolute top-1/2 left-[40%] size-3 -translate-y-1/2 rounded-full bg-ink-950" />
+                      </span>
+                      <Icon name="image" class="size-4 shrink-0" />
+                    </span>
+                  )}
+                  <p class="text-sm font-semibold text-ink-950">{state.title}</p>
+                  <p class="text-xs leading-5 text-ink-600">{state.body}</p>
+                </li>
+              ))
+            }
+          </ul>
         </Specimen>
       </Section>
 
@@ -1998,7 +2074,8 @@ const colorCount = allColors.length;
     </div>
   </footer>
 
-  <AvatarCropper />
+  <PhotoPicker id="sg-photo-picker" title="Profile photo" noun="photo" currentAlt="The current sample photo" />
+  <PhotoPicker id="sg-logo-picker" title="Organization logo" noun="logo" currentAlt="The current sample logo" note="A transparent logo keeps its transparency." />
 
   <Modal id="sg-modal" title="Add tags" description="Tags are added to every selected link. Existing tags stay." width="30rem">
     <div class="grid gap-2 px-6 py-5">
@@ -2040,7 +2117,8 @@ const colorCount = allColors.length;
   import { linkThumb, renderLinkCard, renderLinkSkeleton } from '@/utils/links';
   import { renderPager } from '@/utils/paging';
   import { closeDialog, confirmDialog, hydrateTimes, setLoading, toast } from '@/utils/ui';
-  import { cropAvatar } from '@/utils/avatar-cropper';
+  import { avatarFileProblem, logoFileProblem } from '@/utils/image-file';
+  import { pickPhoto } from '@/utils/photo-picker';
   import type { ShortLink, Tag } from '@/utils/types';
 
   const $ = <T extends HTMLElement = HTMLElement>(sel: string, root: ParentNode = document) => root.querySelector<T>(sel);
@@ -2555,31 +2633,106 @@ const colorCount = allColors.length;
     if (empty) empty.hidden = shown > 0;
   });
 
-  // ------------------------------------------------------------ Photo: the crop dialog, on a drawn sample
-  $('[data-sg-crop]')?.addEventListener('click', async () => {
-    const sample = document.createElement('canvas');
-    [sample.width, sample.height] = [960, 640];
-    const paint = sample.getContext('2d')!;
-    const sky = paint.createLinearGradient(0, 0, 0, 640);
-    sky.addColorStop(0, '#dbe7ff');
-    sky.addColorStop(1, '#1d3b8a');
-    paint.fillStyle = sky;
-    paint.fillRect(0, 0, 960, 640);
-    paint.fillStyle = '#ffd166';
-    paint.beginPath();
-    paint.arc(480, 300, 150, 0, Math.PI * 2);
-    paint.fill();
-    const image = await new Promise<Blob | null>((resolve) => sample.toBlob(resolve, 'image/png'));
-    if (!image) return;
-    await cropAvatar(image, async (square) => {
-      const result = $('[data-sg-avatar]');
-      if (!result) return;
-      const photo = document.createElement('img');
-      photo.src = URL.createObjectURL(square);
-      photo.alt = 'The cropped photo';
-      photo.className = 'size-full object-cover';
-      result.replaceChildren(photo);
-      toast('Photo saved', 'success', { description: `${square.type}, ${Math.round(square.size / 1024)} KB` });
+  // ------------------------------------------------------------ Photo and logo: the photo dialog, on drawn samples
+  // A sample photo and a transparent sample logo, drawn here: nothing is sent anywhere.
+  async function drawn(width: number, height: number, paint: (context: CanvasRenderingContext2D) => void): Promise<string> {
+    const canvas = document.createElement('canvas');
+    [canvas.width, canvas.height] = [width, height];
+    paint(canvas.getContext('2d')!);
+    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'));
+    return blob ? URL.createObjectURL(blob) : '';
+  }
+  /** A sample logo mark, painted as paintOrgMark paints one: `sample` (a blob: URL), or the initial without it. */
+  function paintSampleMark(mark: HTMLElement, sample: string | null) {
+    const logo = mark.querySelector<HTMLImageElement>('img[data-org-logo]')!;
+    const initial = mark.querySelector<HTMLElement>('[data-org-initial]')!;
+    initial.textContent = 'G';
+    if (sample) logo.src = sample;
+    else logo.removeAttribute('src');
+    logo.hidden = !sample;
+    initial.hidden = Boolean(sample);
+    mark.toggleAttribute('data-has-logo', Boolean(sample));
+  }
+
+  /** A sample avatar: `sample` (a blob: URL), or the initial without one. */
+  function paintSamplePhoto(trigger: HTMLElement, sample: string | null) {
+    const image = trigger.querySelector<HTMLImageElement>('[data-sg-photo-image]')!;
+    if (sample) image.src = sample;
+    else image.removeAttribute('src');
+    image.hidden = !sample;
+    trigger.querySelector<HTMLElement>('[data-sg-photo-initial]')!.hidden = Boolean(sample);
+    trigger.querySelector<HTMLElement>('[data-sg-photo-circle]')!.toggleAttribute('data-has-photo', Boolean(sample));
+  }
+
+  /** What each sample shows now: a blob: URL, or null for the initial. */
+  const photoNow = new Map<HTMLElement, string | null>();
+  let logoNow: string | null = null;
+  $$('[data-org-mark]').forEach((mark) => paintSampleMark(mark, null));
+
+  void (async () => {
+    const samplePhoto = await drawn(960, 640, (paint) => {
+      const sky = paint.createLinearGradient(0, 0, 0, 640);
+      sky.addColorStop(0, '#dbe7ff');
+      sky.addColorStop(1, '#1d3b8a');
+      paint.fillStyle = sky;
+      paint.fillRect(0, 0, 960, 640);
+      paint.fillStyle = '#ffd166';
+      paint.beginPath();
+      paint.arc(480, 300, 150, 0, Math.PI * 2);
+      paint.fill();
     });
-  });
+    // Transparent around a navy ring and a blue dot: it sits on white in the circle.
+    const sampleLogo = await drawn(400, 400, (paint) => {
+      paint.lineWidth = 44;
+      paint.strokeStyle = '#022958';
+      paint.beginPath();
+      paint.arc(200, 200, 120, 0, Math.PI * 2);
+      paint.stroke();
+      paint.fillStyle = '#5057ff';
+      paint.beginPath();
+      paint.arc(200, 200, 48, 0, Math.PI * 2);
+      paint.fill();
+    });
+    $$<HTMLImageElement>('[data-sg-sample]').forEach((img) => (img.src = samplePhoto));
+    const withPhoto = $('[data-sg-photo="current"]');
+    if (withPhoto) photoNow.set(withPhoto, samplePhoto);
+    logoNow = sampleLogo;
+    $$('[data-org-mark]').forEach((mark) => paintSampleMark(mark, sampleLogo));
+  })();
+
+  $$<HTMLButtonElement>('[data-sg-photo]').forEach((trigger) =>
+    trigger.addEventListener('click', async () => {
+      const logo = trigger.dataset.sgPhoto === 'logo';
+      const current = logo ? logoNow : (photoNow.get(trigger) ?? null);
+      await pickPhoto({
+        dialog: $<HTMLDialogElement>(logo ? '#sg-logo-picker' : '#sg-photo-picker')!,
+        kind: logo ? 'logo' : 'avatar',
+        hasCurrent: Boolean(current),
+        currentUrl: current,
+        initial: logo ? 'G' : 'A',
+        fileProblem: logo ? logoFileProblem : avatarFileProblem,
+        upload: async (square) => {
+          const saved = URL.createObjectURL(square);
+          if (logo) {
+            logoNow = saved;
+            $$('[data-org-mark]').forEach((mark) => paintSampleMark(mark, saved));
+          } else {
+            photoNow.set(trigger, saved);
+            paintSamplePhoto(trigger, saved);
+          }
+          toast(logo ? 'Logo saved' : 'Photo saved', 'success', { description: `${square.type}, ${Math.round(square.size / 1024)} KB` });
+        },
+        remove: async () => {
+          if (logo) {
+            logoNow = null;
+            $$('[data-org-mark]').forEach((mark) => paintSampleMark(mark, null));
+          } else {
+            photoNow.set(trigger, null);
+            paintSamplePhoto(trigger, null);
+          }
+          toast(logo ? 'Logo removed' : 'Photo removed', 'success');
+        },
+      });
+    }),
+  );
 </script>
