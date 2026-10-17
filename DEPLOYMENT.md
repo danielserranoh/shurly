@@ -1261,7 +1261,8 @@ The task has two containers, sharing a volume:
   does. The script sends it to AWS and never prints it; its local copy lives in a private temporary directory
   that's removed at the end.
 
-**Made once, by hand** (the script creates nothing lasting): a private bucket, and the task role.
+**Made once, by hand** (the script creates nothing lasting): a private bucket, and the task role. Both were deleted
+with Shlink on 2026-10-17 (ROADMAP 8.6): a new import recreates them as below first.
 
 The bucket, e.g. `shurly-imports-<account id>` in `eu-south-2`: Block Public Access on (all four), default
 encryption SSE-S3, no versioning, so that an expired object is gone. Its policy refuses anything but TLS:
