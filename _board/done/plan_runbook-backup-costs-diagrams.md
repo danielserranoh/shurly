@@ -2,16 +2,16 @@
 id: plan_runbook-backup-costs-diagrams
 title: Runbook: backup, recovery, costs and diagrams
 type: plan
-status: wip
+status: done
 priority: medium
 created: 2026-10-18
 started: 2026-10-18
-completed: null
-progress: 50
+completed: 2026-10-18
+progress: 100
 epic: epic_runbook
-owner: Daniel Serrano
-claimed_at: 2026-10-17T23:12:39Z
-lease_until: 2026-10-18T07:12:39Z
+owner: null
+claimed_at: null
+lease_until: null
 blocked_by: []
 parallel_safe: true
 worktree: null
@@ -92,20 +92,20 @@ verify: none
 files: _pm/ROADMAP.md
 depends_on: T1, T2, T3
 verify: none
-- [ ] `shurly-db`: turn on deletion protection and copy tags to snapshots (`modify-db-instance --apply-immediately`, no downtime)
-- [ ] tag every Shurly resource `Project=Shurly`: the CloudFront distribution, the S3 frontend bucket, the ALB and its target groups, the ECR repo, the log group, the SNS topic, the SSM parameters and the alarms
-- [ ] activate `Project` as a cost-allocation tag (Cost Explorer; data starts from activation, up to 24 h)
-- [ ] AWS Budgets `shurly-monthly`: 80 $ a month filtered on `Project=Shurly`, emailing daniel.serrano@griddo.io at 80 % actual and at 100 % forecasted
-- [ ] **restore rehearsal:**
+- [x] `shurly-db`: turn on deletion protection and copy tags to snapshots (`modify-db-instance --apply-immediately`, no downtime)
+- [x] tag every Shurly resource `Project=Shurly`: the CloudFront distribution, the S3 frontend bucket, the ALB and its target groups, the ECR repo, the log group, the SNS topic, the SSM parameters and the alarms
+- [x] activate `Project` as a cost-allocation tag (Cost Explorer; data starts from activation, up to 24 h)
+- [x] AWS Budgets `shurly-monthly`: 80 $ a month filtered on `Project=Shurly`, emailing daniel.serrano@griddo.io at 80 % actual and at 100 % forecasted
+- [x] **restore rehearsal:**
   - point-in-time restore to `shurly-db-restore-test`;
   - check row counts against production with a one-off psql task;
   - time each step;
   - delete it with no final snapshot
-- [ ] DEPLOYMENT.md gets the measured times; ROADMAP 7.1 and 7.2 record it
+- [x] DEPLOYMENT.md gets the measured times; ROADMAP 7.1 and 7.2 record it
 
 ## Verificación global
-- [ ] `uv run pytest` and `uv run ruff check . && uv run ruff format --check .` green
-- [ ] production: deletion protection on, tags and budget in place, a restore rehearsed and timed
+- [x] `uv run pytest` and `uv run ruff check . && uv run ruff format --check .` green
+- [x] production: deletion protection on, tags and budget in place, a restore rehearsed and timed
 
 ## Notas
 - **Cost of the rehearsal:** a few hours of a db.t4g.micro, cents.
@@ -115,6 +115,9 @@ verify: none
 - T2, T3 and T4 have `verify: none`: docs, and AWS work checked by hand.
 
 ## Log
+- 2026-10-18T00:25:08Z Daniel Serrano moved wip -> done
+- 2026-10-18T00:25:08Z Daniel Serrano released
+- 2026-10-18T00:25:08Z Daniel Serrano T4 in production 2026-10-17/18: deletion protection and copy-tags on shurly-db; Project=Shurly on every resource; Project active as cost-allocation tag; budget shurly-monthly 80 USD; restore rehearsal usable in 8m19s, data identical, deleted. Times in DEPLOYMENT § Backup and recovery
 - 2026-10-17T23:29:10Z Daniel Serrano wave 1 done (T1-T3) plus stale-passage fixes in DEPLOYMENT, AWS_ECS_DEPLOYMENT and ARCHITECTURE; T4 waits for the user's go-ahead
 - 2026-10-17T23:12:40Z Daniel Serrano moved todo -> wip
 - 2026-10-17T23:12:39Z Daniel Serrano claimed (lease 480m)
