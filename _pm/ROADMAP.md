@@ -1978,8 +1978,8 @@ live in `mcp_server/README.md`, written for developers. There is no user manual 
   - [x] "Make a campaign from a CSV" and "Read your analytics" (a link's page and a campaign's), reached from Help in
         the account menu, "How to read this" in both pages' Analytics, and "How campaigns work" in the wizard's CSV
         step. `tests/manual-links.test.mjs` fails on a link inside the manual that goes nowhere, heading included
-- ⇢ [`epic_runbook`](../_board/backlog/epic_runbook.md) Architecture diagram
-- ⇢ [`epic_runbook`](../_board/backlog/epic_runbook.md) Database schema diagram
+- [x] Architecture diagram → 2026-10-18: [docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md)
+- [x] Database schema diagram → 2026-10-18: [docs/DATABASE_SCHEMA.md](../docs/DATABASE_SCHEMA.md), generated from the models (`scripts/generate_schema_diagram.py`, kept honest by `tests/test_schema_diagram.py`)
 - [x] Environment variables reference → [docs/ENVIRONMENT.md](../docs/ENVIRONMENT.md) (2026-09-29): every variable
       Shurly reads, with its default and meaning, never a production value. `tests/test_environment_reference.py`
       fails on a setting without a row or with another default, a variable read anywhere without a row, and a stale row
@@ -1990,8 +1990,8 @@ live in `mcp_server/README.md`, written for developers. There is no user manual 
       (3.14), and the rollout's steps
 - [x] How to investigate issues → troubleshooting catalog in `docs/AWS_ECS_DEPLOYMENT.md`
 - [x] How to scale if needed → "Scale up/down" in the same runbook
-- ⇢ [`epic_runbook`](../_board/backlog/epic_runbook.md) Backup and recovery procedures
-- ⇢ [`epic_runbook`](../_board/backlog/epic_runbook.md) Cost monitoring guide
+- [x] Backup and recovery procedures → 2026-10-18: DEPLOYMENT.md § Backup and recovery, rehearsed: a point-in-time restore usable in 8 min 19 s, data checked in 2 min and matching exactly, then deleted. `shurly-db` now has deletion protection and copies tags to its snapshots; retention stays 7 days (the user's call)
+- [x] Cost monitoring guide → 2026-10-18: DEPLOYMENT.md § Cost estimation (~55–65 $/month estimated); every Shurly resource tagged `Project=Shurly`, `Project` active as a cost-allocation tag, and the AWS Budget `shurly-monthly` (80 $, emails at 80 % actual and 100 % forecast)
 
 ---
 

@@ -2330,13 +2330,23 @@ aws rds wait db-instance-deleted --region eu-south-2 --profile griddo-main --db-
 
 ### Measured times
 
-From the rehearsal, a point-in-time restore of production to `shurly-db-restore-test`:
+From the rehearsal on 2026-10-17/18, a point-in-time restore of production (to 23:48:46 UTC, the latest restorable
+time) into `shurly-db-restore-test`:
 
 | Step | Time |
 |---|---|
-| Restore: from the command to `available` | (measured in the rehearsal) |
-| Data check: the one-off task, from `run-task` to its output | (measured in the rehearsal) |
-| Total: from picking the time to checked data | (measured in the rehearsal) |
+| Restore: from the command to accepting connections (event "DB instance restarted") | **8 min 19 s** |
+| Its first automated backup (status `backing-up`; the instance is already usable) | 18 min more |
+| Restore: from the command to `available` (what `aws rds wait db-instance-available` waits for) | **28 min** |
+| Data check: the one-off task, from `run-task` to its output, against both instances | **2 min** |
+| Deleting the test instance (`--skip-final-snapshot`) | 1 min 31 s |
+| Total: from picking the time to checked data, not waiting for the first backup | **~11 min** |
+
+- The data matched exactly: row counts up to the restore point for `urls` (352), `visits` (4,240), `orphan_visits`
+  (7,473), and `users`, `campaigns` and `service_tokens`, and the same Alembic revision (17).
+- Don't wait for `available` before checking or pointing the service at it: the restored instance accepts
+  connections from "DB instance restarted" on (`aws rds describe-events --source-identifier <new> --source-type
+  db-instance`), while RDS takes its first backup.
 
 The way back adds a rollout for (a) (§ Force a redeploy: about 10 to 12 minutes), or the two renames and a rollout
 for (b).
