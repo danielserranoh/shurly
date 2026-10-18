@@ -622,7 +622,9 @@ Since go.griddo.io moved to Shurly, "Typos & broken links" (3.10.4) was flooded 
 - [x] Verified: 336 tests, `astro check` clean, e2e smoke of 14 core flows, 1440 px + 390 px layouts
 - [x] Astro 7.3.4 upgrade (Vite 8): rendered text + screenshots match the Astro 6 build
 - [x] Custom-preview badge on link cards → 2026-10-18 (3.7.7)
-- [ ] Campaign edit screen; Pro billing (pricing TBD) — not part of the cleanup sweep (2026-10-18); no epic yet
+- ⇢ [`epic_campaign-edit`](../_board/backlog/epic_campaign-edit.md) Campaign edit screen (rename, add recipients, edit or
+      delete a recipient), scoped 2026-10-18
+- [ ] Pro billing (pricing TBD): no epic yet
 
 ---
 
