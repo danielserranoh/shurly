@@ -139,6 +139,7 @@ def _no_preview_fetch(request, monkeypatch):
         return OpenGraphMetadata.failed()
 
     monkeypatch.setattr("server.app.urls.fetch_opengraph_metadata", _unanswered)
+    monkeypatch.setattr("server.utils.previews.fetch_opengraph_metadata", _unanswered)
 
 
 @pytest.fixture(scope="function")

@@ -16,8 +16,11 @@ Reviewed on 2026-09-29. **Update this reference in the same PR as any new or cha
 - A setting's variable is its name in capitals: `rate_limit_login_per_ip` is `RATE_LIMIT_LOGIN_PER_IP`. Case doesn't
   matter.
 - A `.env` file in the working directory is read too. The environment wins.
-- A list takes JSON (`["a", "b"]`) or, for `CORS_ORIGINS`, `TRUSTED_PROXIES`, `MCP_OAUTH_ALLOWED_REDIRECT_URIS` and
-  `CLOUDFRONT_ORIGIN_SECRETS`, comma-separated values.
+- A list takes JSON (`["a", "b"]`). `CORS_ORIGINS`, `TRUSTED_PROXIES`, `MCP_OAUTH_ALLOWED_REDIRECT_URIS` and
+  `CLOUDFRONT_ORIGIN_SECRETS` also take comma-separated values (`a, b`), a single value (`172.31.0.0/16`) or an
+  empty value, which means an empty list. Spaces around items and blank items are ignored. A value starting with
+  `[` must be a valid JSON array, or the app refuses to start; so does an array left in quotes (`'["a"]'`). The
+  other lists take JSON only.
 - A secret is marked as one. Settings never log or echo one. In production ECS injects the five secrets as
   environment variables when a task starts, from Parameter Store, so the app reads them like any other setting.
 

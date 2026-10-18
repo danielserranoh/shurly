@@ -248,6 +248,13 @@ aws ecs describe-express-gateway-service --region "$REGION" \
     --query "service.{status:status,desiredCount:desiredCount,runningCount:runningCount}" \
     --output table
 
+# The auto-generated host is opaque, sh-<32 hex>.ecs.<region>.on.aws, not named after
+# the service (docs/AWS_ECS_DEPLOYMENT.md, lesson 1): read it from the service, as
+# DEPLOYMENT.md § 4 does. A new service may not have it yet.
+SERVICE_HOST=$(aws ecs describe-express-gateway-service --region "$REGION" \
+    --service-arn "$SERVICE_ARN" --output json 2>/dev/null \
+  | grep -o "sh-[0-9a-f]*\.ecs\.${REGION}\.on\.aws" | sort -u | head -1 || true)
+
 echo ""
 echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo -e "${GREEN}Deploy initiated.${NC}"
@@ -257,7 +264,16 @@ echo "  Service ARN: $SERVICE_ARN"
 echo "  Image:       $IMAGE_URI"
 echo ""
 echo "Next steps:"
-echo "  • Wait ~1-2 min, then probe the auto-generated host:"
-echo "      curl https://${SERVICE_NAME}.ecs.${REGION}.on.aws/api/v1/health"
+if [ -n "$SERVICE_HOST" ]; then
+    echo "  • Wait ~1-2 min, then probe the auto-generated host:"
+    echo "      curl https://${SERVICE_HOST}/api/v1/health"
+else
+    echo "  • The auto-generated host isn't assigned yet. In ~1-2 min, read it and probe it"
+    echo "    (DEPLOYMENT.md § 4. ECS Express service):"
+    echo "      HOST=\$(aws ecs describe-express-gateway-service --region $REGION \\"
+    echo "          --service-arn $SERVICE_ARN --output json \\"
+    echo "        | grep -o 'sh-[0-9a-f]*\.ecs\.${REGION}\.on\.aws' | sort -u | head -1)"
+    echo "      curl \"https://\$HOST/api/v1/health\""
+fi
 echo "  • Once healthy: ./scripts/setup_custom_domain.sh"
 echo ""

@@ -163,7 +163,6 @@ erDiagram
         string og_title "nullable"
         text og_description "nullable"
         text og_image_url "nullable"
-        datetime og_fetched_at "nullable"
         string page_og_title "nullable"
         text page_og_description "nullable"
         text page_og_image_url "nullable"

@@ -23,6 +23,7 @@ from server.utils.campaign import generate_campaign_urls, parse_csv, validate_cs
 from server.utils.csv_export import stream_csv
 from server.utils.domain import get_or_create_default_domain
 from server.utils.event_log import log_event
+from server.utils.previews import store_page_preview_on_links
 from server.utils.service_accounts import acting_for
 
 # Phase 3.11 — campaign short URLs (detail + CSV export) use the shared resolver
@@ -144,6 +145,9 @@ def create_campaign(
     # Add all URLs to session
     db.add_all(urls)
     db.commit()
+    # Phase 8.7 — the destination's own preview, fetched once for all the links (they share it),
+    # after the commit: no transaction waits on the page. A failure leaves them without one yet.
+    store_page_preview_on_links(db, campaign_data.original_url, urls)
     db.refresh(campaign)
     if acting.service is not None:
         log_event(

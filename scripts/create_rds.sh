@@ -14,6 +14,15 @@
 #   * Reuses the shlink-db-subnets subnet group when present (we share the
 #     default VPC across services). Falls back to creating a fresh
 #     shurly-db-subnets group if not.
+#   * The master password is generated only when the instance is created, and goes
+#     straight to SSM Parameter Store as a SecureString, ${SSM_PREFIX}/DB_PASSWORD
+#     (default /shurly/production/DB_PASSWORD), where deploy_ecs.sh and the container
+#     read it. It is never printed, and reaches put-parameter through a 0600 file,
+#     removed at once, not its command line (DEPLOYMENT.md § Secrets, "Writing a
+#     value"); create-db-instance still takes it as --master-user-password. A re-run
+#     against an existing instance generates and writes nothing.
+#
+# Requires jq.
 #
 # Run with the griddo-main SSO profile:
 #   AWS_PROFILE=griddo-main ./scripts/create_rds.sh
@@ -30,6 +39,10 @@ DB_ALLOCATED_STORAGE="20"
 DB_BACKUP_RETENTION="7"
 DB_SUBNET_GROUP_NAME="${DB_SUBNET_GROUP_NAME:-shurly-db-subnets}"
 DB_SG_NAME="${DB_SG_NAME:-shurly-db-sg}"
+SSM_PREFIX="${SSM_PREFIX:-/shurly/production}"
+SSM_PREFIX="/${SSM_PREFIX#/}"
+SSM_PREFIX="${SSM_PREFIX%/}"
+DB_PASSWORD_PARAMETER="${SSM_PREFIX}/DB_PASSWORD"
 
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
@@ -39,10 +52,40 @@ NC='\033[0m'
 echo -e "${YELLOW}Shurly RDS PostgreSQL setup (region: $REGION)${NC}"
 echo ""
 
-# Generate a strong password automatically. The user copies it from the script's
-# output into Secrets Manager (or .env for the very first deploy) — we never
-# echo it to disk.
-DB_PASSWORD="$(openssl rand -base64 24 | tr -d '/+=' | head -c 32)"
+if ! command -v jq >/dev/null 2>&1; then
+    echo -e "${RED}jq is required (brew install jq / apt-get install -y jq)${NC}"
+    exit 1
+fi
+
+# The parameter's JSON, holding the password, lives in a 0700 directory for the
+# few moments put-parameter needs it. The trap removes it on any exit.
+SECRET_DIR=""
+remove_secret_dir() {
+    if [ -n "$SECRET_DIR" ]; then
+        rm -f "${SECRET_DIR:?}/parameter.json"
+        rmdir "${SECRET_DIR:?}" 2>/dev/null || true
+        SECRET_DIR=""
+    fi
+}
+trap remove_secret_dir EXIT
+
+# Write $DB_PASSWORD to $DB_PASSWORD_PARAMETER (SecureString, overwriting), the way
+# DEPLOYMENT.md § Secrets' put_secret does: through a 0600 file passed with
+# --cli-input-json, so the value is on no command line. Prints the new version only.
+store_db_password() {
+    local version
+    SECRET_DIR=$(mktemp -d)   # mode 0700
+    ( umask 077
+      printf '%s\n' "$DB_PASSWORD" | jq -Rn --arg name "$DB_PASSWORD_PARAMETER" \
+          '{Name: $name, Type: "SecureString", Overwrite: true, Value: input}' \
+          > "${SECRET_DIR:?}/parameter.json" )
+    version=$(aws ssm put-parameter --region "$REGION" \
+        --cli-input-json "file://${SECRET_DIR:?}/parameter.json" \
+        --query Version --output text)
+    shred -u "${SECRET_DIR:?}/parameter.json" 2>/dev/null || true   # macOS has no shred
+    remove_secret_dir
+    echo -e "${GREEN}✓ Stored the master password in SSM $DB_PASSWORD_PARAMETER (SecureString, version $version)${NC}"
+}
 
 # ─── 1. Default VPC ─────────────────────────────────────────────────────────
 echo -e "${YELLOW}1. Locating default VPC...${NC}"
@@ -115,8 +158,16 @@ echo "   This takes ~5-10 minutes."
 
 if aws rds describe-db-instances --region "$REGION" \
     --db-instance-identifier "$DB_INSTANCE_ID" >/dev/null 2>&1; then
+    INSTANCE_CREATED=false
     echo -e "${YELLOW}!  $DB_INSTANCE_ID already exists — skipping creation. Continuing to wait for availability.${NC}"
+    echo -e "${YELLOW}   No password generated, nothing written to SSM: $DB_PASSWORD_PARAMETER is left as it is.${NC}"
 else
+    INSTANCE_CREATED=true
+    # A strong password, alphanumeric (no quoting surprises in a connection URL).
+    # Stored before the instance is created: if the store fails, nothing is created
+    # with a password nobody has; if the create fails, a re-run overwrites it.
+    DB_PASSWORD="$(openssl rand -base64 48 | tr -d '/+=\n' | head -c 32)"
+    store_db_password
     aws rds create-db-instance --region "$REGION" \
         --db-instance-identifier "$DB_INSTANCE_ID" \
         --db-instance-class "$DB_INSTANCE_CLASS" \
@@ -133,6 +184,7 @@ else
         --no-multi-az \
         --storage-encrypted \
         --tags "Key=Project,Value=Shurly" "Key=ManagedBy,Value=create_rds.sh" >/dev/null
+    unset DB_PASSWORD
     echo -e "${GREEN}✓ Creation initiated${NC}"
 fi
 
@@ -153,12 +205,15 @@ echo "  DB_HOST     = $DB_ENDPOINT"
 echo "  DB_PORT     = 5432"
 echo "  DB_NAME     = $DB_NAME"
 echo "  DB_USER     = $DB_USER"
-echo "  DB_PASSWORD = $DB_PASSWORD"
+if [ "$INSTANCE_CREATED" = true ]; then
+    echo "  DB_PASSWORD = in SSM $DB_PASSWORD_PARAMETER (SecureString, never printed)"
+else
+    echo "  DB_PASSWORD = unchanged: the instance existed, so none was generated or written"
+fi
 echo "  DB_SG       = $SG_ID"
 echo ""
 echo "Next steps:"
-echo "  • Save DB_PASSWORD into AWS Secrets Manager (or your password manager)."
-echo "    The script generated it; it is not stored anywhere else."
-echo "  • Generate a JWT secret: openssl rand -hex 32"
-echo "  • Run ./scripts/deploy_ecs.sh to build and deploy the container."
+echo "  • Write the other secrets under $SSM_PREFIX/ (DEPLOYMENT.md § Secrets in Parameter Store)."
+echo "    deploy_ecs.sh checks all five exist; the container reads them through its \`secrets\`."
+echo "  • Put DB_HOST in .env, then run ./scripts/deploy_ecs.sh to build and deploy the container."
 echo ""

@@ -1,18 +1,16 @@
 """
-Phase 8.7 — `python -m server.tools.previews backfill`: the page's own preview and icon for the
-links made before 8.7 (the ones imported from Shlink had none), and their old og_* values separated.
+Phase 8.7 — `python -m server.tools.previews backfill`: the page's own preview and icon for every
+link (the ones imported from Shlink had none).
 
 - Each distinct destination is fetched once, a few at a time, and its page cached on every link
   with that URL.
-- A link whose og_fetched_at is set had its og_* copied from the page: each value that equals the
-  page's now is cleared; one that differs stays, an override. Without og_fetched_at they all stay.
+- The overrides (og_*, what a person typed) are never touched, even one that equals the page's.
 - A page that doesn't answer leaves its links as they were.
-- Re-runnable: a second run refreshes the page's values and clears nothing new.
+- Re-runnable: a second run refreshes the page's values.
 - A dry run unless --for-real. What it prints are counts, never a destination.
 """
 
 import asyncio
-from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -79,9 +77,6 @@ def link(db_session, test_user):
     return make
 
 
-COPIED = datetime.now(timezone.utc) - timedelta(days=30)  # og_fetched_at: copied at create
-
-
 def _fresh(db_session, url: URL) -> URL:
     db_session.expire_all()
     return db_session.get(URL, url.id)
@@ -121,91 +116,63 @@ class TestTheFetch:
         assert pages.most_in_flight == 3
 
     def test_a_page_that_doesnt_answer_leaves_its_links(self, db_session, link, pages):
-        down = link("down", DOWN, og_title="Kept", og_fetched_at=COPIED)
+        down = link("down", DOWN, og_title="Kept", page_og_title="From before")
 
         counts = previews.backfill(db_session, for_real=True)
 
         down = _fresh(db_session, down)
         assert (down.page_fetched_at, down.og_title) == (None, "Kept")
-        assert down.og_fetched_at is not None  # a later run separates it
+        assert down.page_og_title == "From before"  # a later run refreshes it
         assert (counts["urls_failed"], counts["links_unanswered"]) == (1, 1)
 
 
-class TestSeparatingTheOldValues:
-    def test_a_copy_of_the_pages_is_cleared(self, db_session, link, pages):
-        copied = link(
-            "old",
-            og_title="The article",
-            og_description="What it's about",
-            og_image_url="https://example.com/img/share.png",
-            og_fetched_at=COPIED,
-        )
-
-        counts = previews.backfill(db_session, for_real=True)
-
-        copied = _fresh(db_session, copied)
-        assert (copied.og_title, copied.og_description, copied.og_image_url) == (None,) * 3
-        assert copied.has_custom_preview is False
-        assert copied.og_fetched_at is None
-        assert (counts["overrides_cleared"], counts["overrides_kept"]) == (3, 0)
-
-    def test_one_that_differs_stays_an_override(self, db_session, link, pages):
-        """The page changed its description since, or a person edited it: nobody's text is lost."""
-        edited = link(
-            "edited",
+class TestTheOverrides:
+    def test_are_never_touched(self, db_session, link, pages):
+        """Even one that equals the page's: a person typed it, and only a person clears it."""
+        typed = link(
+            "typed",
             og_title="The article",
             og_description="Our own words",
-            og_fetched_at=COPIED,
+            og_image_url="/img/share.png",
         )
-
-        counts = previews.backfill(db_session, for_real=True)
-
-        edited = _fresh(db_session, edited)
-        assert (edited.og_title, edited.og_description) == (None, "Our own words")
-        assert (counts["overrides_cleared"], counts["overrides_kept"]) == (1, 1)
-
-    def test_a_relative_image_copied_as_written(self, db_session, link, pages):
-        copied = link("rel", og_image_url="/img/share.png", og_fetched_at=COPIED)
-
-        previews.backfill(db_session, for_real=True)
-
-        assert _fresh(db_session, copied).og_image_url is None
-
-    def test_without_og_fetched_at_a_person_typed_them(self, db_session, link, pages):
-        typed = link("typed", og_title="The article", og_description="Ours")
 
         counts = previews.backfill(db_session, for_real=True)
 
         typed = _fresh(db_session, typed)
-        assert (typed.og_title, typed.og_description) == ("The article", "Ours")
-        assert (counts["overrides_cleared"], counts["overrides_kept"]) == (0, 2)
+        assert (typed.og_title, typed.og_description, typed.og_image_url) == (
+            "The article",
+            "Our own words",
+            "/img/share.png",
+        )
+        assert typed.page_og_title == "The article"
+        assert typed.has_custom_preview is True
+        assert counts["links_done"] == 1
 
 
 class TestRunningAgain:
-    def test_refreshes_the_page_and_clears_nothing_new(self, db_session, link, pages):
-        url = link("again", og_title="The article", og_description="Ours", og_fetched_at=COPIED)
+    def test_refreshes_the_page(self, db_session, link, pages):
+        url = link("again", og_description="Ours")
         previews.backfill(db_session, for_real=True)
 
-        # The page's title is now the one the override kept... and it changed its image.
-        pages.pages[ARTICLE] = OpenGraphMetadata(title="Ours", description="Ours")
+        # The page changed its title, and dropped its image.
+        pages.pages[ARTICLE] = OpenGraphMetadata(title="Retitled", description="New words")
         counts = previews.backfill(db_session, for_real=True)
 
         url = _fresh(db_session, url)
-        assert url.og_description == "Ours"  # kept: no longer a candidate copy
-        assert (url.page_og_title, url.page_og_image_url) == ("Ours", None)
-        assert (counts["overrides_cleared"], counts["overrides_kept"]) == (0, 1)
+        assert (url.page_og_title, url.page_og_image_url) == ("Retitled", None)
+        assert url.og_description == "Ours"
+        assert counts["links_done"] == 1
 
 
 class TestDryRun:
     def test_reports_and_writes_nothing(self, db_session, link, pages):
-        url = link("dry", og_title="The article", og_fetched_at=COPIED)
+        url = link("dry", og_title="Typed")
 
         counts = previews.backfill(db_session)
 
         url = _fresh(db_session, url)
-        assert (url.og_title, url.page_fetched_at) == ("The article", None)
-        assert url.og_fetched_at is not None
-        assert (counts["links_done"], counts["overrides_cleared"]) == (1, 1)
+        assert (url.og_title, url.page_og_title, url.page_fetched_at) == ("Typed", None, None)
+        assert counts["links_done"] == 1
 
 
 class TestTheCommand:

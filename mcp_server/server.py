@@ -131,7 +131,7 @@ EXCLUDED_ROUTE_MAPS: list[RouteMap] = [
 #
 # Keep this dict in sync with the FastAPI route handlers: when a route is
 # added or its function renamed, add/update its entry here so the MCP tool
-# name stays stable. Tests in `tests/test_mcp_tools.py` enforce coverage.
+# name stays stable. Tests in `tests/test_phase52_mcp_tools.py` enforce coverage.
 MCP_TOOL_NAMES: dict[str, str] = {
     # Auth. `register` is a tool only with ALLOW_PASSWORD_SIGNUP on at startup (local
     # development, Phase 3.13.2); otherwise its route is out of the schema.
@@ -315,6 +315,8 @@ def _register_curated_tools(server: FastMCP) -> None:
         rows: list[dict[str, str]],
         visibility: Visibility = "organization",
     ) -> dict:
+        # A sync `def` on purpose: fastmcp runs it in an AnyIO worker thread, so the campaign's
+        # preview fetch (store_page_preview_on_links) runs on the server's loop while this waits.
         from server.core import SessionLocal
 
         with SessionLocal() as db:
