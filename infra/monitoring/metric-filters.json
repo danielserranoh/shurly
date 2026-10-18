@@ -1,0 +1,54 @@
+[
+  {
+    "logGroupName": "${LOG_GROUP}",
+    "filterName": "shurly-5xx",
+    "filterPattern": "{ $.event = \"http.request\" && $.status >= 500 }",
+    "metricTransformations": [
+      {
+        "metricName": "ApiErrors5xx",
+        "metricNamespace": "Shurly",
+        "metricValue": "1",
+        "defaultValue": 0
+      }
+    ]
+  },
+  {
+    "logGroupName": "${LOG_GROUP}",
+    "filterName": "shurly-rate-limit-store",
+    "filterPattern": "{ $.event = \"rate_limit.store_failed\" }",
+    "metricTransformations": [
+      {
+        "metricName": "RateLimitStoreFailures",
+        "metricNamespace": "Shurly",
+        "metricValue": "1",
+        "defaultValue": 0
+      }
+    ]
+  },
+  {
+    "logGroupName": "${LOG_GROUP}",
+    "filterName": "shurly-client-errors",
+    "filterPattern": "{ $.event = \"client.error\" }",
+    "metricTransformations": [
+      {
+        "metricName": "ClientErrors",
+        "metricNamespace": "Shurly",
+        "metricValue": "1",
+        "defaultValue": 0
+      }
+    ]
+  },
+  {
+    "logGroupName": "${LOG_GROUP}",
+    "filterName": "shurly-mcp-tool-errors",
+    "filterPattern": "{ $.event = \"mcp.tool_call\" && $.outcome = \"error\" }",
+    "metricTransformations": [
+      {
+        "metricName": "McpToolErrors",
+        "metricNamespace": "Shurly",
+        "metricValue": "1",
+        "defaultValue": 0
+      }
+    ]
+  }
+]

@@ -201,7 +201,8 @@ claude mcp add --transport http shurly https://shurly.griddo.io/mcp/ \
 ## Auto-generated tool surface (Phase 5.2)
 
 Phase 5.1 produced 47 raw tools — every FastAPI route, verbatim. Phase 5.2
-filters and renames that set down to **44 LLM-facing tools** with clean names.
+filters and renames that set to LLM-facing tools with clean names: **44 generated
+tools** today (October 2026), out of many more routes.
 
 Two filters live in `mcp_server/server.py`:
 
@@ -216,9 +217,12 @@ Two filters live in `mcp_server/server.py`:
   (`create_short_url_api_v1_urls_post`) to clean MCP tool names
   (`create_short_url`).
 
-The surface is now **44 tools**: auth (2), organization (2), URL CRUD + tagging +
-previews (11), redirect rules (4), campaigns (6), analytics (15), tags (4). Phase 3.11
-added `get_url` and `fetch_url_metadata` to the original 36; Phase 3.14.2 added
+The generated surface is **44 tools**: auth and profile (2), organization (2), URL
+CRUD + tagging + previews (11), redirect rules (4), campaigns (6), analytics (15),
+tags (4). `MCP_TOOL_NAMES` has one entry more, `register`, which is a tool only with
+`ALLOW_PASSWORD_SIGNUP` on. Phase 3.11
+added `get_url` and `fetch_url_metadata` to the original 36; Phase 3.12 added
+`update_my_profile`; Phase 3.14.2 added
 `get_organization` and `list_organization_members`; Phase 3.16 added `get_url_totals`,
 `get_url_timeseries`, `get_url_breakdown` and `list_url_visits` (not the visits' CSV); Phase 3.17
 added `get_campaign_totals`, `get_campaign_timeseries`, `get_campaign_breakdown` and
@@ -279,9 +283,82 @@ The pure logic lives in `mcp_server/curated.py` (takes `db: Session` and
 `mcp_server/server.py` open a `SessionLocal` per call and resolve the
 caller with `resolve_current_user(db)` (Phase 5.4).
 
-Total tool surface: **48 tools** (44 auto-generated + 4 curated). The 5.2 contract test (`tests/test_phase52_mcp_tools.py`) and
-the 5.3 logic tests (`tests/test_phase53_curated_tools.py`) together pin
-the surface.
+Total tool surface: **48 tools** (44 auto-generated + 4 curated, October 2026). The
+5.2 contract test (`tests/test_phase52_mcp_tools.py`) pins the names, the 5.3 logic
+tests (`tests/test_phase53_curated_tools.py`) what the curated ones do. When a count
+here and that test disagree, the test is right.
+
+## How to add a tool
+
+Most tools aren't written: they're a route of the API, projected. Write a tool by hand
+only when the route's shape is awkward for an assistant (a CSV in a string, three calls
+that are always made together).
+
+### A generated tool (a route)
+
+1. **Add or change the route** in `server/app/<domain>.py`, with its tests, as for any
+   endpoint. Its request and response models, their field descriptions and the route's
+   docstring become the tool's input schema, output schema and description, so write
+   them for a reader who has only those.
+2. **Decide whether it's a tool.** `from_fastapi` makes every route one unless it's
+   filtered out, in `mcp_server/server.py`:
+   - `EXCLUDED_ROUTE_MAPS`: the routes that are not tools (public pages, probes, files,
+     and what only the person should do: organization changes, passwords, API keys,
+     service accounts, the waitlist). Exclude a route whose answer would put a secret in
+     the assistant's context, or whose action untrusted text (a link title, a fetched
+     page) could talk the assistant into.
+   - `MCP_TOOL_NAMES`: the route's operationId (`<function>_<path>_<method>`, e.g.
+     `get_url_totals_api_v1_analytics_urls__short_code__totals_get`) to the tool's name
+     (`get_url_totals`). A route that's neither excluded nor named leaks in with its
+     verbose name.
+3. **Pin the surface:** add the name to `EXPECTED_TOOLS` in
+   `tests/test_phase52_mcp_tools.py`. It fails on any tool added, renamed or gone, so
+   the surface only changes on purpose. For an excluded route, add a test there saying
+   why it stays out.
+4. **Its row in `docs/PERSONAL_DATA.md`**, in the same PR: what people's data the route
+   returns, who sees it, the guard, and its tool's name (or `excluded`) in the MCP
+   column. `tests/test_personal_data_inventory.py` fails on a route or tool without one,
+   on a guard that isn't in the code, and on an MCP column that doesn't match the tools.
+5. **Dates:** a datetime in a response model is `UtcDateTime` (UTC, written with `Z`)
+   or `LocalDateTime` (the viewer's zone, with its offset), from
+   `server/schemas/datetimes.py`. A bare `datetime` goes out naive, and strict clients
+   (claude.ai) reject the whole response. `tests/test_mcp_output_dates.py` calls every
+   tool and checks its output against its schema: give the new tool a call in its
+   `TOOL_CALLS`, or `test_every_tool_is_called` fails.
+6. **Optionally, the round trip:** `tests/test_mcp_roundtrip.py` calls a set of
+   generated tools and their routes as the same user, with the same arguments, and
+   requires the same answer. Add a row to its `READS` when the route's arguments are
+   unusual (a list in the query, a body the tool flattens).
+
+### A curated tool (written by hand)
+
+1. **The logic** goes in `mcp_server/curated.py`: a plain function taking `db: Session`
+   and `user: User`, that scopes as a route does (`viewer(db, user)`, `find_url`, from
+   `server/utils/access.py`), and returns a JSON-ready dict. Its datetimes go out through
+   `utc_isoformat` (`server/schemas/datetimes.py`), with `Z`.
+2. **The wrapper** goes in `_register_curated_tools` in `mcp_server/server.py`:
+   `@server.tool(name=..., description=...)`, the arguments typed and bounded
+   (`Annotated[int, Field(ge=..., le=...)]`, the limits the logic checks), opening a
+   `SessionLocal` and resolving the caller with `resolve_current_user(db)`. Types used
+   in its signature are imported at module level (fastmcp resolves them against the
+   module's globals).
+3. **Tests** of the logic in `tests/test_phase53_curated_tools.py`, against `db_session`
+   with a user, no MCP needed.
+4. The same bookkeeping as a generated tool: its name in `EXPECTED_TOOLS`
+   (`tests/test_phase52_mcp_tools.py`), a call in `TOOL_CALLS`
+   (`tests/test_mcp_output_dates.py`), and a row ``MCP `<name>` `` in
+   `docs/PERSONAL_DATA.md`, with `curated` in the MCP column and a guard that appears in
+   its `curated.py` function.
+
+### What the usage log does with it
+
+Nothing to do: `UsageLogMiddleware` (`mcp_server/usage.py`) wraps every tool, generated
+or curated, and writes one `mcp.tool_call` line per call, with the tool's name, its
+argument **names** (never values), the user, the outcome and the duration
+(§ Usage log, below). A new tool shows up in the saved queries by itself. Keep values
+that identify people out of an exception's message: the line logs only the error's
+type, but fastmcp's own line for a failure that isn't an API error keeps the message
+and its traceback.
 
 ## Authentication (Phase 5.4)
 
@@ -440,11 +517,15 @@ itself.
 
 ```json
 {"ts": "2026-09-27T18:04:12.330+00:00", "event": "http.request", "request_id": "5c1e…",
- "method": "POST", "path": "/mcp/", "status": 200, "duration_ms": 25.1}
+ "method": "POST", "host": "shurly.griddo.io", "path": "/mcp/", "client_ip_source": "cloudfront",
+ "status": 200, "duration_ms": 1.1}
 ```
 
-The path goes without its query string, which can carry tokens. `duration_ms` runs
-until the response headers are ready.
+The path goes without its query string, which can carry tokens. `client_ip_source`
+says how the client IP was found, never the IP itself (DEPLOYMENT.md § Client IPs
+behind CloudFront). `duration_ms` runs until the response headers are ready. For a
+`POST /mcp/` that's when the event stream opens, before the tool runs, so a tool's
+time is the `mcp.tool_call` line's `duration_ms`, not this one.
 
 A generated tool calls the API over an in-process HTTP client, and that call
 carries the MCP request's id. So one `request_id` links the `POST /mcp/`, the
@@ -470,6 +551,11 @@ Never run production with `FASTMCP_LOG_LEVEL=DEBUG`: at that level fastmcp logs
 every call's arguments in full.
 
 ### Queries (CloudWatch Logs Insights)
+
+`scripts/setup_monitoring.sh` saves these under **Saved queries**: the first four
+in folder `shurly/mcp/`, the last as `shurly/requests/one-request` (DEPLOYMENT.md
+§ Error alerting). They're listed here as the reference;
+`infra/monitoring/queries.json` is what gets saved, so change both.
 
 Calls per tool:
 
@@ -519,15 +605,11 @@ AWS_PROFILE=griddo-main aws logs put-retention-policy --region eu-south-2 \
     --log-group-name /aws/ecs/default/shurly-api-5fdb --retention-in-days 60
 ```
 
-Save a query so it shows up under **Saved queries** in the console (the `/` in the
-name makes a folder). Repeat for each query above:
-
-```bash
-AWS_PROFILE=griddo-main aws logs put-query-definition --region eu-south-2 \
-    --name "shurly/mcp-calls-per-tool" \
-    --log-group-names /aws/ecs/default/shurly-api-5fdb \
-    --query-string 'filter event = "mcp.tool_call" | stats count(*) as calls by tool | sort calls desc'
-```
+The queries above aren't saved by hand: `scripts/setup_monitoring.sh` saves them
+(and updates them in place when they change), along with the alarms and the
+dashboard. DEPLOYMENT.md § Error alerting has how to run it and the permissions it
+needs. The dashboard `shurly` also charts MCP tool errors and the MCP's latency
+next to the API's.
 
 ## Roadmap reference
 

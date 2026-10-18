@@ -241,6 +241,7 @@ const buttonSizes = [
 const badges: { cls: string; label: string; icon?: IconName; dot?: string; use: string }[] = [
   { cls: 'badge-neutral', label: 'No param forwarding', icon: 'ban', use: 'Neutral facts' },
   { cls: 'badge-outline', label: 'Custom', icon: 'pencil', use: 'Link type' },
+  { cls: 'badge-outline', label: 'Custom preview', icon: 'image', use: 'Preview set by hand' },
   { cls: 'badge-brand', label: 'Early access', dot: 'text-brand-600', use: 'Positive, live' },
   { cls: 'badge-info', label: 'Scheduled', icon: 'calendar-clock', use: 'Informational' },
   { cls: 'badge-warn', label: 'Expires soon', icon: 'timer', use: 'Needs attention' },
@@ -2409,6 +2410,8 @@ const colorCount = allColors.length;
 
   // Phase 8.7 — the page's own preview: an image and its icon on the first link, the icon alone on the second.
   Object.assign(demoLinks[0], { page_og_image_url: '/og-image.png', page_favicon_url: '/favicon.svg' });
+  // And a social preview set for the first link, over the page's: the quiet "Custom preview" badge.
+  Object.assign(demoLinks[0], { has_custom_preview: true });
   Object.assign(demoLinks[1], { page_favicon_url: '/favicon-32x32.png' });
 
   const thumbList = $('[data-sg-thumbs]');

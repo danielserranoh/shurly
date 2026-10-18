@@ -357,6 +357,15 @@ shurly/
 └── README.md / CHANGELOG.md / DEPLOYMENT.md / CLAUDE.md
 ```
 
+## Architecture
+
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): how production fits together on AWS (DNS, CloudFront, the ALB, ECS,
+  RDS, Parameter Store, CloudWatch), with a diagram and the path of a short link, the web app, the API and the MCP.
+- [docs/DATABASE_SCHEMA.md](docs/DATABASE_SCHEMA.md): the database's tables and their relations, an ER diagram
+  generated from the models.
+- [DEPLOYMENT.md § Backup and recovery](DEPLOYMENT.md#backup-and-recovery): what's backed up, and how to restore the
+  database to a point in time.
+
 ## API Endpoints
 
 The HTTP API is versioned under `/api/v1/`. The redirect path (`/{short_code}`),
@@ -584,7 +593,7 @@ with its default and meaning, is in [docs/ENVIRONMENT.md](docs/ENVIRONMENT.md). 
 8. Set up PostgreSQL with restricted user permissions
 9. Configure HTTPS/TLS at the edge
 10. Configure log aggregation (CloudWatch picks up the `X-Request-Id` header automatically)
-11. Set up automated database backups
+11. Set up automated database backups (production's, and how to restore them: [DEPLOYMENT.md § Backup and recovery](DEPLOYMENT.md#backup-and-recovery))
 
 ## Contributing
 

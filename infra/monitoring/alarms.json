@@ -1,0 +1,136 @@
+[
+  {
+    "AlarmName": "shurly-api-5xx",
+    "AlarmDescription": "La API ha respondido 5 o más errores 5xx en 5 minutos. Mira primero qué rutas fallan (consulta guardada shurly/errors/5xx-by-path) y si acaba de haber un despliegue. Runbook: DEPLOYMENT.md § Error alerting",
+    "ActionsEnabled": true,
+    "AlarmActions": ["${TOPIC_ARN}"],
+    "OKActions": ["${TOPIC_ARN}"],
+    "Namespace": "Shurly",
+    "MetricName": "ApiErrors5xx",
+    "Statistic": "Sum",
+    "Period": 300,
+    "EvaluationPeriods": 1,
+    "DatapointsToAlarm": 1,
+    "Threshold": 5,
+    "ComparisonOperator": "GreaterThanOrEqualToThreshold",
+    "TreatMissingData": "notBreaching"
+  },
+  {
+    "AlarmName": "shurly-rate-limit-store",
+    "AlarmDescription": "El almacén de los límites de peticiones ha fallado (rate_limit.store_failed): los límites están dejando pasar todo. Mira primero si la base de datos responde (GET /api/v1/health/db) y el campo error de esas líneas. Runbook: DEPLOYMENT.md § Error alerting",
+    "ActionsEnabled": true,
+    "AlarmActions": ["${TOPIC_ARN}"],
+    "OKActions": ["${TOPIC_ARN}"],
+    "Namespace": "Shurly",
+    "MetricName": "RateLimitStoreFailures",
+    "Statistic": "Sum",
+    "Period": 300,
+    "EvaluationPeriods": 1,
+    "DatapointsToAlarm": 1,
+    "Threshold": 1,
+    "ComparisonOperator": "GreaterThanOrEqualToThreshold",
+    "TreatMissingData": "notBreaching"
+  },
+  {
+    "AlarmName": "shurly-client-errors",
+    "AlarmDescription": "La app web ha notificado 10 o más errores de navegador (client.error) en 15 minutos: se está rompiendo en el navegador de la gente. Mira primero cuáles son (consulta guardada shurly/errors/client-errors) y si acaba de desplegarse el frontend. Runbook: DEPLOYMENT.md § Error alerting",
+    "ActionsEnabled": true,
+    "AlarmActions": ["${TOPIC_ARN}"],
+    "OKActions": ["${TOPIC_ARN}"],
+    "Namespace": "Shurly",
+    "MetricName": "ClientErrors",
+    "Statistic": "Sum",
+    "Period": 900,
+    "EvaluationPeriods": 1,
+    "DatapointsToAlarm": 1,
+    "Threshold": 10,
+    "ComparisonOperator": "GreaterThanOrEqualToThreshold",
+    "TreatMissingData": "notBreaching"
+  },
+  {
+    "AlarmName": "shurly-alb-5xx",
+    "AlarmDescription": "El ALB ha devuelto 5 o más errores 5xx propios en 5 minutos: una tarea no responde, o no hay ninguna sana a la que enviar la petición. Mira primero los eventos del servicio shurly-api en ECS y la salud de sus target groups. Runbook: DEPLOYMENT.md § Error alerting",
+    "ActionsEnabled": true,
+    "AlarmActions": ["${TOPIC_ARN}"],
+    "OKActions": ["${TOPIC_ARN}"],
+    "Namespace": "AWS/ApplicationELB",
+    "MetricName": "HTTPCode_ELB_5XX_Count",
+    "Dimensions": [{ "Name": "LoadBalancer", "Value": "${ALB}" }],
+    "Statistic": "Sum",
+    "Period": 300,
+    "EvaluationPeriods": 1,
+    "DatapointsToAlarm": 1,
+    "Threshold": 5,
+    "ComparisonOperator": "GreaterThanOrEqualToThreshold",
+    "TreatMissingData": "notBreaching"
+  },
+  {
+    "AlarmName": "shurly-no-healthy-target",
+    "AlarmDescription": "Ninguno de los dos target groups del servicio (blue/green de Express) tiene una tarea sana desde hace 3 minutos: la API no responde. Mira primero los eventos del servicio shurly-api en ECS y por qué se paran sus tareas (health check, arranque, migraciones). Runbook: DEPLOYMENT.md § Error alerting",
+    "ActionsEnabled": true,
+    "AlarmActions": ["${TOPIC_ARN}"],
+    "OKActions": ["${TOPIC_ARN}"],
+    "Metrics": [
+      {
+        "Id": "tg1",
+        "MetricStat": {
+          "Metric": {
+            "Namespace": "AWS/ApplicationELB",
+            "MetricName": "HealthyHostCount",
+            "Dimensions": [
+              { "Name": "LoadBalancer", "Value": "${ALB}" },
+              { "Name": "TargetGroup", "Value": "${TG_1}" }
+            ]
+          },
+          "Period": 60,
+          "Stat": "Maximum"
+        },
+        "ReturnData": false
+      },
+      {
+        "Id": "tg2",
+        "MetricStat": {
+          "Metric": {
+            "Namespace": "AWS/ApplicationELB",
+            "MetricName": "HealthyHostCount",
+            "Dimensions": [
+              { "Name": "LoadBalancer", "Value": "${ALB}" },
+              { "Name": "TargetGroup", "Value": "${TG_2}" }
+            ]
+          },
+          "Period": 60,
+          "Stat": "Maximum"
+        },
+        "ReturnData": false
+      },
+      {
+        "Id": "healthy",
+        "Expression": "SUM([tg1, tg2])",
+        "Label": "Healthy targets (both target groups)",
+        "ReturnData": true
+      }
+    ],
+    "EvaluationPeriods": 3,
+    "DatapointsToAlarm": 3,
+    "Threshold": 1,
+    "ComparisonOperator": "LessThanThreshold",
+    "TreatMissingData": "notBreaching"
+  },
+  {
+    "AlarmName": "shurly-db-storage-low",
+    "AlarmDescription": "La base de datos RDS tiene menos de 2 GB libres. Mira primero cómo ha bajado FreeStorageSpace en el dashboard shurly y amplía el almacenamiento de la instancia antes de que se llene. Runbook: DEPLOYMENT.md § Error alerting",
+    "ActionsEnabled": true,
+    "AlarmActions": ["${TOPIC_ARN}"],
+    "OKActions": ["${TOPIC_ARN}"],
+    "Namespace": "AWS/RDS",
+    "MetricName": "FreeStorageSpace",
+    "Dimensions": [{ "Name": "DBInstanceIdentifier", "Value": "${DB}" }],
+    "Statistic": "Minimum",
+    "Period": 300,
+    "EvaluationPeriods": 1,
+    "DatapointsToAlarm": 1,
+    "Threshold": 2147483648,
+    "ComparisonOperator": "LessThanThreshold",
+    "TreatMissingData": "notBreaching"
+  }
+]

@@ -168,7 +168,6 @@ def seeded(db_session, bound) -> dict:
         url_type=URLType.STANDARD,
         title="Launch",
         og_title="Launch",
-        og_fetched_at=now - timedelta(days=3),
         page_og_title="Launch, the page",
         page_fetched_at=now - timedelta(days=2),
         last_click_at=now - timedelta(hours=1),

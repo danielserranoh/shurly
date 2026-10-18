@@ -361,8 +361,8 @@ System creates:
   - [x] Visual preview card (how it appears on social media)
   - [x] "Refresh from destination" button
   - [x] Edit modal for custom og_* values
-- ⇢ [`epic_cleanup-sweep`](../_board/backlog/epic_cleanup-sweep.md) Add preview indicators to URL list
-  - ⇢ [`epic_cleanup-sweep`](../_board/backlog/epic_cleanup-sweep.md) Icon/badge if custom preview is set
+- [x] Add preview indicators to URL list
+  - [x] Icon/badge if custom preview is set → 2026-10-18: a quiet "Custom preview" badge (`badge-outline`, an image icon) among the exceptions on a link's card and its page, when `has_custom_preview` is set (`linkBadges`, `/styleguide/`, `frontend/tests/link-badges.test.mjs`)
   - [x] Preview thumbnail on every card
 
 ---
@@ -459,7 +459,7 @@ System creates:
   from the page as served (`tests/test_unavailable_link.py`)
 - [x] The short-link host's other answers (2026-09-29): `/favicon.ico` is a 204 cached a week, never an orphan
   visit; a crawler's preview page has the same strict CSP (`tests/test_short_link_host_pages.py`)
-- ⇢ [`epic_cleanup-sweep`](../_board/backlog/epic_cleanup-sweep.md) Future CLI / scheduled Lambda for `delete-expired` (deferred to Phase 6 — bundled with the post-launch optimization sweep)
+- ✕ Future CLI / scheduled Lambda for `delete-expired` (deferred to Phase 6 — bundled with the post-launch optimization sweep) — dropped 2026-10-18, the user's call: an expired link keeps answering 410, with its analytics, and nothing deletes it
 
 ### 3.9.3 Bot Detection in Analytics ✅
 - [x] Add `is_bot` (BOOLEAN, default false) to Visitor model
@@ -621,7 +621,8 @@ Since go.griddo.io moved to Shurly, "Typos & broken links" (3.10.4) was flooded 
       `short_url` + `title` in overview `top_urls`, tags on campaign detail
 - [x] Verified: 336 tests, `astro check` clean, e2e smoke of 14 core flows, 1440 px + 390 px layouts
 - [x] Astro 7.3.4 upgrade (Vite 8): rendered text + screenshots match the Astro 6 build
-- ⇢ [`epic_cleanup-sweep`](../_board/backlog/epic_cleanup-sweep.md) Custom-preview badge on link cards; campaign edit screen; Pro billing (pricing TBD)
+- [x] Custom-preview badge on link cards → 2026-10-18 (3.7.7)
+- [ ] Campaign edit screen; Pro billing (pricing TBD) — not part of the cleanup sweep (2026-10-18); no epic yet
 
 ---
 
@@ -1653,7 +1654,7 @@ for this.
 - [x] Audit the generated tool list: for each `/api/v1/...` endpoint, verify the tool name, description, schema, and return shape are LLM-friendly. → `MCP_TOOL_NAMES` strips the `_api_v1_<path>_<method>` suffix from operationIds; `tests/test_phase52_mcp_tools.py` pins the surface (40 tools today)
 - [x] Filter out endpoints that should NOT be MCP tools: legacy `statistics.py`, internal-only routes, anything that handles file uploads (campaign CSV — see 5.3). → `EXCLUDED_ROUTE_MAPS` drops `/api/v1/stats/*` and the health probes (the legacy stats routes were removed on 2026-09-29, and their exclusion with them). No route takes a file upload: `create_campaign` takes the CSV as a string and stays a tool, with `create_campaign_from_rows` (5.3) as the LLM-friendly variant
 - [x] Verify the OG-preview, robots.txt, redirect path, and tracking pixel routes are excluded (they're public unversioned routes, not management API). → `/`, `/robots.txt`, `/{short_code}` and `/{short_code}/track` are excluded. The OG-preview routes (`/api/v1/urls/{code}/preview`, `…/refresh-preview`, `fetch-metadata`) are authenticated management API, so they **stay** as tools
-- ⇢ [`epic_cleanup-sweep`](../_board/backlog/epic_cleanup-sweep.md) Tests: each auto-generated tool round-trips through the MCP server and produces the same output as the underlying endpoint. → open: only `get_current_user_info` is called through the MCP layer (`tests/test_phase54_mcp_auth.py`); the other generated tools are covered by their REST tests, not through MCP
+- [x] Tests: each auto-generated tool round-trips through the MCP server and produces the same output as the underlying endpoint. → open: only `get_current_user_info` is called through the MCP layer (`tests/test_phase54_mcp_auth.py`); the other generated tools are covered by their REST tests, not through MCP → 2026-10-18: `tests/test_mcp_roundtrip.py`, for a representative set, reads and writes (`list_urls`, `get_url`, `get_url_totals`, `list_tags`, `list_redirect_rules`, `get_url_preview`, `list_campaigns`, `get_campaign`, `get_campaign_totals`, `create_short_url`, `update_url`): the MCP's `structured_content` equals the REST response for the same user and arguments, and a write made through one surface reads back the same through both. Every tool, each, is called through the MCP by `tests/test_mcp_output_dates.py`, its answer checked against its outputSchema
 
 ### 5.3 Hand-curated tools (where auto-gen is awkward) ✅
 - [x] **`create_campaign_from_rows`** — accepts `rows: list[dict]`, serialises to CSV in-memory, reuses the existing campaign generator.
@@ -1719,7 +1720,7 @@ records which tools get used, how often, or how they fail.
 - [x] Logs Insights queries (calls, errors and latency per tool, daily users, one request end to end) documented
       in `mcp_server/README.md` § Usage log
 - [x] Retention on the log group: **60 days** (decided and set 2026-09-28)
-- ⇢ [`epic_alerting`](../_board/backlog/epic_alerting.md) Save those queries in CloudWatch: commands in the same section, to run once with SSO
+- [x] Save those queries in CloudWatch: commands in the same section, to run once with SSO → 2026-10-17: saved by `scripts/setup_monitoring.sh` (13 queries under `shurly/`, from `infra/monitoring/queries.json`)
 - [x] Tests: `tests/test_phase560_usage_log.py` (14)
 
 #### 5.6.1 Rollout and signal capture
@@ -1737,11 +1738,11 @@ records which tools get used, how often, or how they fail.
 - [ ] Output: a "frontend feature priority" list backed by real signal, fed into the frontend backlog. — yours, the dogfood
 
 ### 5.7 Verification
-- ⇢ [`epic_cleanup-sweep`](../_board/backlog/epic_cleanup-sweep.md) All auto-generated + curated tools have at least one happy-path test. → curated tools: yes (`tests/test_phase53_curated_tools.py`); auto-generated: see the open item in 5.2
-- ⇢ [`epic_alerting`](../_board/backlog/epic_alerting.md) MCP endpoint responds within the same SLO as the regular API. → same task and ALB rule, but never measured
+- [x] All auto-generated + curated tools have at least one happy-path test. → curated tools: yes (`tests/test_phase53_curated_tools.py`); auto-generated: see the open item in 5.2 → 2026-10-18: every tool is called on seeded data by `tests/test_mcp_output_dates.py`, and a set of generated ones round-trips against REST (`tests/test_mcp_roundtrip.py`, 5.2)
+- [x] MCP endpoint responds within the same SLO as the regular API. → same task and ALB rule, but never measured → measured 2026-10-17 over 14 days (the dashboard's "MCP tool calls vs API requests" widget): API requests p50 23 ms, p95 301 ms (791); MCP tool calls p50 26 ms, p95 708 ms (38). Same median; the tail is the tools that wrap a slow API call (creating a link fetches the page's preview). Few calls yet: re-read it after the dogfood
 - [x] No regression in existing tests (backend behavior unchanged). → 465 passing (2026-09-26)
-- ⇢ [`epic_cleanup-sweep`](../_board/backlog/epic_cleanup-sweep.md) `mcp_server/README.md` exists and covers: architecture, framework choice, auth, deployment, how to add a new tool. → everything but "how to add a new tool"
-- ⇢ [`epic_cleanup-sweep`](../_board/backlog/epic_cleanup-sweep.md) CHANGELOG.md entry under "Added" describing the MCP surface. → missing: the CHANGELOG only mentions MCP in passing (fixes and the Phase 3.11 tools)
+- [x] `mcp_server/README.md` exists and covers: architecture, framework choice, auth, deployment, how to add a new tool. → everything but "how to add a new tool" → 2026-10-18: § How to add a tool (a generated one: the route, `MCP_TOOL_NAMES` or `EXCLUDED_ROUTE_MAPS`, the 5.2 test, its PERSONAL_DATA row; a curated one: `curated.py`, its wrapper in `server.py`), and the tool counts refreshed
+- [x] CHANGELOG.md entry under "Added" describing the MCP surface. → missing: the CHANGELOG only mentions MCP in passing (fixes and the Phase 3.11 tools) → 2026-10-18: "Added — the MCP surface (Phase 5)": the server, its 44 generated and 4 curated tools, what's left out and why, sign-in, the usage log and the tests
 
 ### 5.8 OAuth 2.1 sign-in for the MCP, alongside API keys 🔎 R8
 **Decided (2026-09-27):** MCP clients can sign in with OAuth 2.1; API keys keep working. claude.ai's custom
@@ -1953,19 +1954,19 @@ live in `mcp_server/README.md`, written for developers. There is no user manual 
 
 ### 6.4 Monitoring & Logging
 - [x] CloudWatch Logs setup → `/aws/ecs/default/shurly-api-5fdb`; `X-Request-Id` correlates requests
-- ⇢ [`epic_alerting`](../_board/backlog/epic_alerting.md) Error alerting (SNS/email) — required before the Shlink cutover (8.5)
+- [x] Error alerting (SNS/email) — required before the Shlink cutover (8.5) → 2026-10-17: 6 alarms to SNS `shurly-alerts` (email to daniel.serrano@griddo.io, confirmed), on ALARM and OK; a test alarm went OK → ALARM → OK with all three emails sent (DEPLOYMENT.md § Error alerting)
   - [x] What to count, and a runbook stub: `DEPLOYMENT.md` § Error alerting. No code: `http.request` lines already
         carry the status, so a metric filter on 5xx does it
-  - ⇢ [`epic_alerting`](../_board/backlog/epic_alerting.md) AWS: the metric filters, the alarms and an SNS topic with an email subscription
+  - [x] AWS: the metric filters, the alarms and an SNS topic with an email subscription → `infra/monitoring/`, applied by `scripts/setup_monitoring.sh`
   - [x] Browser errors reach the logs: the web app reports an uncaught error, a rejected promise, or a CSP or Trusted
         Types block (which a `<meta>` policy can't report) to `POST /api/v1/client-errors`, logged as `client.error`
         lines (never an IP; the page's path, never its query; the account's id when signed in). Five a page, limited
         per IP. Its metric filter and a query are in `DEPLOYMENT.md` § Error alerting
-- ⇢ [`epic_alerting`](../_board/backlog/epic_alerting.md) Key metrics dashboard
-  - ⇢ [`epic_alerting`](../_board/backlog/epic_alerting.md) ECS task count / CPU / memory
-  - ⇢ [`epic_alerting`](../_board/backlog/epic_alerting.md) ALB 5xx and target health
-  - ⇢ [`epic_alerting`](../_board/backlog/epic_alerting.md) RDS connections
-  - ⇢ [`epic_alerting`](../_board/backlog/epic_alerting.md) Redirect latency
+- [x] Key metrics dashboard → 2026-10-17: the `shurly` dashboard
+  - [x] ECS task count / CPU / memory
+  - [x] ALB 5xx and target health
+  - [x] RDS connections
+  - [x] Redirect latency
 
 ---
 
@@ -1978,8 +1979,8 @@ live in `mcp_server/README.md`, written for developers. There is no user manual 
   - [x] "Make a campaign from a CSV" and "Read your analytics" (a link's page and a campaign's), reached from Help in
         the account menu, "How to read this" in both pages' Analytics, and "How campaigns work" in the wizard's CSV
         step. `tests/manual-links.test.mjs` fails on a link inside the manual that goes nowhere, heading included
-- ⇢ [`epic_runbook`](../_board/backlog/epic_runbook.md) Architecture diagram
-- ⇢ [`epic_runbook`](../_board/backlog/epic_runbook.md) Database schema diagram
+- [x] Architecture diagram → 2026-10-18: [docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md)
+- [x] Database schema diagram → 2026-10-18: [docs/DATABASE_SCHEMA.md](../docs/DATABASE_SCHEMA.md), generated from the models (`scripts/generate_schema_diagram.py`, kept honest by `tests/test_schema_diagram.py`)
 - [x] Environment variables reference → [docs/ENVIRONMENT.md](../docs/ENVIRONMENT.md) (2026-09-29): every variable
       Shurly reads, with its default and meaning, never a production value. `tests/test_environment_reference.py`
       fails on a setting without a row or with another default, a variable read anywhere without a row, and a stale row
@@ -1990,8 +1991,8 @@ live in `mcp_server/README.md`, written for developers. There is no user manual 
       (3.14), and the rollout's steps
 - [x] How to investigate issues → troubleshooting catalog in `docs/AWS_ECS_DEPLOYMENT.md`
 - [x] How to scale if needed → "Scale up/down" in the same runbook
-- ⇢ [`epic_runbook`](../_board/backlog/epic_runbook.md) Backup and recovery procedures
-- ⇢ [`epic_runbook`](../_board/backlog/epic_runbook.md) Cost monitoring guide
+- [x] Backup and recovery procedures → 2026-10-18: DEPLOYMENT.md § Backup and recovery, rehearsed: a point-in-time restore usable in 8 min 19 s, data checked in 2 min and matching exactly, then deleted. `shurly-db` now has deletion protection and copies tags to its snapshots; retention stays 7 days (the user's call)
+- [x] Cost monitoring guide → 2026-10-18: DEPLOYMENT.md § Cost estimation (~55–65 $/month estimated); every Shurly resource tagged `Project=Shurly`, `Project` active as a cost-allocation tag, and the AWS Budget `shurly-monthly` (80 $, emails at 80 % actual and 100 % forecast)
 
 ---
 
@@ -2240,16 +2241,22 @@ image and the URL as their title.
 - [x] `python -m server.tools.previews backfill [--for-real]` for the links from before: each distinct destination
       fetched once, a few at a time; og_* values that equal the page's on a link with `og_fetched_at` are cleared,
       the rest kept; re-runnable. `scripts/run_backfill_previews.sh` runs it as a one-off ECS task (DEPLOYMENT.md
-      § Previews from the page)
+      § Previews from the page). Since 2026-10-18, its job done, it no longer clears anything: it refreshes `page_*`
+      and leaves the overrides alone
 - [x] Run the backfill in production after the release: a dry run, then `--for-real` — 2026-10-04, after #214:
       346 links, 342 destinations, 314 with a preview, 318 with an icon; 7 old copies cleared, 0 overrides kept;
       2 pages didn't answer (left as they were). 13 griddo destinations answer 404 (reported to the user)
-- ⇢ [`epic_cleanup-sweep`](../_board/backlog/epic_cleanup-sweep.md) Re-fetch stale `page_*` now and then (a page changes its image; nothing re-reads it but refresh-preview, a
-      change of destination or the backfill). Not in scope of 8.7
-- ⇢ [`epic_cleanup-sweep`](../_board/backlog/epic_cleanup-sweep.md) Campaign links get the page's preview only from the backfill: fetch a campaign's destination once when it's
-      made. Not in scope of 8.7
-- ⇢ [`epic_cleanup-sweep`](../_board/backlog/epic_cleanup-sweep.md) Drop `urls.og_fetched_at` in a later migration, once the release before 8.7 is gone: unused since 0015, kept
-      because the previous release writes it and the backfill reads it
+- [x] Re-fetch stale `page_*` now and then (a page changes its image; nothing re-reads it but refresh-preview, a
+      change of destination or the backfill). Not in scope of 8.7 → 2026-10-18: the daily housekeeping fetches again
+      the previews missing or more than 30 days old, 200 links a run, oldest first, each destination once
+      (`server/utils/housekeeping.py`, DEPLOYMENT.md § Daily housekeeping)
+- [x] Campaign links get the page's preview only from the backfill: fetch a campaign's destination once when it's
+      made. Not in scope of 8.7 → 2026-10-18: through the API and `create_campaign_from_rows`, after the links are
+      committed; a failed fetch doesn't fail the campaign (`store_page_preview_on_links`, `tests/test_campaign_previews.py`)
+- ⇢ [`epic_drop-og-fetched-at`](../_board/backlog/epic_drop-og-fetched-at.md) Drop `urls.og_fetched_at` in a later migration, once the release before 8.7 is gone: unused since 0015, kept
+      because the previous release writes it and the backfill reads it → 2026-10-18: unmapped and out of the backfill; the API keeps
+      the deprecated field as a copy of `page_fetched_at` (no breaking change within /api/v1/); the column goes in the next release (0018), since the previous release's tasks still
+      SELECT it during the rollout
 
 ---
 
@@ -2271,8 +2278,9 @@ tell how many would, or whether they'd come as individuals or for companies.
       it is an MCP tool
 - [x] docs/PERSONAL_DATA.md: the table, its routes, who sees it, retention: until asked, or 12 months after the
       latest sign-up (confirmed by the user 2026-10-05)
-- ⇢ [`epic_cleanup-sweep`](../_board/backlog/epic_cleanup-sweep.md) Retention confirmed (12 months, 2026-10-05); delete entries past it by themselves (a startup or scheduled job);
-      until then an owner removes them by hand
+- [x] Retention confirmed (12 months, 2026-10-05); delete entries past it by themselves (a startup or scheduled job);
+      until then an owner removes them by hand → 2026-10-18: the daily housekeeping deletes the entries whose
+      `consent_at` is more than 12 months old (DEPLOYMENT.md § Daily housekeeping)
 - ⇢ [`epic_invitations-email`](../_board/backlog/epic_invitations-email.md) Tell the people on it when there's a place: an email, or an invitation once external users exist (3.15)
 
 ## Phase 10: Integrations
@@ -2364,6 +2372,16 @@ To maximize velocity, we'll use specialized agents:
 - Privacy-friendly (no PII in URLs)
 - Flexible (any CSV columns)
 - Server-side parameter injection on redirect
+
+### Periodic work runs inside the app ✅ (decided 2026-10-18)
+- A daily background loop in every task (`server/utils/housekeeping.py`), started by the app's lifespan, with a
+  PostgreSQL advisory lock so two tasks never run it at once: no scheduler, task or Lambda to run beside the app
+- Its jobs: the waitlist's 12-month retention and stale page previews (cleanup sweep, DEPLOYMENT.md § Daily
+  housekeeping)
+
+### Expired links are kept ✅ (decided 2026-10-18)
+- A link past its `valid_until` or its visit cap keeps answering 410, with its analytics; nothing deletes it. The
+  `delete-expired` job (3.9.2) is dropped
 
 ---
 
@@ -2546,3 +2564,14 @@ check earlier in the next project.
   key in the data before importing it. And before fixing a symptom, ask the source directly: here one search
   would have told paging from a real duplicate
 
+
+### R18 — List settings from the environment took JSON only · wrong record · found 2026-10-17
+- **What:** docs/ENVIRONMENT.md said `CORS_ORIGINS`, `TRUSTED_PROXIES`, `MCP_OAUTH_ALLOWED_REDIRECT_URIS` and
+  `CLOUDFRONT_ORIGIN_SECRETS` take comma-separated values, and `parse_string_list` was written for them. But
+  pydantic-settings JSON-decodes a list from an environment variable before any validator runs, so a comma-separated
+  list, a single value or an empty `TRUSTED_PROXIES=` raised `SettingsError` and the app didn't start → the four
+  marked `NoDecode` (pydantic-settings ≥ 2.7), so the parser gets the raw text (cleanup sweep, 2026-10-18)
+- **How it surfaced:** writing the cleanup sweep's epic (2026-10-17), and checked when planning it (2026-10-18)
+- **Why it slipped:** the tests built `Settings(...)` from keyword arguments, which skip the environment's decoding;
+  production sets every list as JSON, so it never met the gap
+- **Lesson:** test a setting the way it's set: through the environment, with `monkeypatch.setenv`

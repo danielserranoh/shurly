@@ -1,9 +1,9 @@
 import json
-from typing import Any
+from typing import Annotated, Any
 from urllib.parse import urlsplit
 
 from pydantic import SecretStr, field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
 class Settings(BaseSettings):
@@ -43,7 +43,7 @@ class Settings(BaseSettings):
     # the frontend is hosted, 4.10), so CORS_ORIGINS needs no entry there; this is for
     # the dev server on another port. The frontend sends a bearer token, never cookies,
     # so no credentials, and only the methods and request headers the API uses.
-    cors_origins: list[str] = [
+    cors_origins: Annotated[list[str], NoDecode] = [
         "http://localhost:4321",
         "http://localhost:4232",
         "http://localhost:3000",
@@ -69,14 +69,14 @@ class Settings(BaseSettings):
     # Phase 3.9.6 — Trust boundaries for X-Forwarded-For. Empty list (default) = never
     # trust X-F-F. Set this to the ALB's CIDR in prod; CloudFront isn't listed here, see
     # cloudfront_origin_secrets below.
-    trusted_proxies: list[str] = []
+    trusted_proxies: Annotated[list[str], NoDecode] = []
 
     # Phase 6.3 — behind CloudFront (shurly.griddo.io, 4.10) the client IP comes from
     # CloudFront-Viewer-Address, believed only on a request that carries one of these
     # values in CLOUDFRONT_ORIGIN_HEADER, a custom origin header the distribution adds.
     # Two values while the secret rotates, each at least 32 characters. Empty (the
     # default): X-Forwarded-For, as before (`client_ip`, server/utils/network.py).
-    cloudfront_origin_secrets: list[SecretStr] = []
+    cloudfront_origin_secrets: Annotated[list[SecretStr], NoDecode] = []
     cloudfront_origin_header: str = "X-Origin-Verify"
 
     # Phase 3.9.6 — Visit-suppression query param ("nostat" by default). When the
@@ -140,7 +140,7 @@ class Settings(BaseSettings):
     # Document): claude.ai's callback (and claude.com's, where Anthropic says it may
     # move) and Claude Code's loopback on any port. Anything else can't register, so
     # a stranger's app can't ask a Griddo person to consent (consent phishing).
-    mcp_oauth_allowed_redirect_uris: list[str] = [
+    mcp_oauth_allowed_redirect_uris: Annotated[list[str], NoDecode] = [
         "https://claude.ai/api/mcp/auth_callback",
         "https://claude.com/api/mcp/auth_callback",
         "http://localhost:*",
@@ -237,6 +237,9 @@ class Settings(BaseSettings):
     db_pool_recycle: int = 3600  # Recycle connections after 1 hour
     db_ssl_mode: str = "prefer"  # Use "require" for RDS SSL
 
+    # The four list settings people set from the environment. NoDecode on each: pydantic-settings
+    # would JSON-decode the variable first and refuse anything else, so the app wouldn't start
+    # on `TRUSTED_PROXIES=172.31.0.0/16`, a comma-separated list or an empty value.
     @field_validator(
         "cors_origins",
         "trusted_proxies",
@@ -245,19 +248,27 @@ class Settings(BaseSettings):
         mode="before",
     )
     @classmethod
-    def parse_string_list(cls, v: Any) -> list[str]:
-        """Parse a list-typed setting from a JSON string, comma-separated string, or list."""
-        if v is None or v == "":
+    def parse_string_list(cls, v: Any) -> Any:
+        """A list from the environment: a JSON array, comma-separated values, one value or
+        nothing. Blank items are dropped. Anything that isn't text (keyword arguments) passes
+        through to the field's own validation."""
+        if v is None:
             return []
-        if isinstance(v, str):
+        if not isinstance(v, str):
+            return v
+        text = v.strip()
+        if text[:1] in "'\"" and text[1:].lstrip().startswith("["):
+            # An env file's shell quotes, read literally: one value, brackets and all, otherwise.
+            raise ValueError("a JSON array inside quotes: remove the quotes around it")
+        if text.startswith("["):
             try:
-                return json.loads(v)
-            except json.JSONDecodeError:
-                # Fall back to comma-separated for trusted_proxies; single item for origins
-                if "," in v:
-                    return [item.strip() for item in v.split(",") if item.strip()]
-                return [v]
-        return v
+                items = json.loads(text)
+            except json.JSONDecodeError as exc:
+                raise ValueError(f"not a valid JSON array: {exc.msg}") from exc
+            if not isinstance(items, list):
+                raise ValueError("not a valid JSON array")
+            return [item for item in items if not (isinstance(item, str) and not item.strip())]
+        return [item.strip() for item in text.split(",") if item.strip()]
 
     @field_validator("cloudfront_origin_secrets")
     @classmethod

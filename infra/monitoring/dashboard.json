@@ -1,0 +1,379 @@
+{
+  "start": "-PT24H",
+  "periodOverride": "inherit",
+  "widgets": [
+    {
+      "type": "metric",
+      "x": 0,
+      "y": 0,
+      "width": 8,
+      "height": 6,
+      "properties": {
+        "title": "ECS shurly-api: CPU and memory (%)",
+        "region": "eu-south-2",
+        "view": "timeSeries",
+        "stacked": false,
+        "stat": "Average",
+        "period": 300,
+        "metrics": [
+          [
+            "AWS/ECS",
+            "CPUUtilization",
+            "ClusterName",
+            "default",
+            "ServiceName",
+            "shurly-api",
+            {
+              "label": "CPU"
+            }
+          ],
+          [
+            "AWS/ECS",
+            "MemoryUtilization",
+            "ClusterName",
+            "default",
+            "ServiceName",
+            "shurly-api",
+            {
+              "label": "Memory"
+            }
+          ]
+        ],
+        "yAxis": {
+          "left": {
+            "min": 0,
+            "max": 100
+          }
+        }
+      }
+    },
+    {
+      "type": "metric",
+      "x": 8,
+      "y": 0,
+      "width": 8,
+      "height": 6,
+      "properties": {
+        "title": "ALB 5xx",
+        "region": "eu-south-2",
+        "view": "timeSeries",
+        "stacked": false,
+        "stat": "Sum",
+        "period": 300,
+        "metrics": [
+          [
+            "AWS/ApplicationELB",
+            "HTTPCode_ELB_5XX_Count",
+            "LoadBalancer",
+            "${ALB}",
+            {
+              "label": "ELB 5xx (whole ALB)"
+            }
+          ],
+          [
+            "AWS/ApplicationELB",
+            "HTTPCode_Target_5XX_Count",
+            "LoadBalancer",
+            "${ALB}",
+            "TargetGroup",
+            "${TG_1}",
+            {
+              "label": "Target 5xx, target group 1"
+            }
+          ],
+          [
+            "AWS/ApplicationELB",
+            "HTTPCode_Target_5XX_Count",
+            "LoadBalancer",
+            "${ALB}",
+            "TargetGroup",
+            "${TG_2}",
+            {
+              "label": "Target 5xx, target group 2"
+            }
+          ]
+        ]
+      }
+    },
+    {
+      "type": "metric",
+      "x": 16,
+      "y": 0,
+      "width": 8,
+      "height": 6,
+      "properties": {
+        "title": "Healthy targets",
+        "region": "eu-south-2",
+        "view": "timeSeries",
+        "stacked": false,
+        "stat": "Maximum",
+        "period": 60,
+        "metrics": [
+          [
+            "AWS/ApplicationELB",
+            "HealthyHostCount",
+            "LoadBalancer",
+            "${ALB}",
+            "TargetGroup",
+            "${TG_1}",
+            {
+              "label": "Target group 1"
+            }
+          ],
+          [
+            "AWS/ApplicationELB",
+            "HealthyHostCount",
+            "LoadBalancer",
+            "${ALB}",
+            "TargetGroup",
+            "${TG_2}",
+            {
+              "label": "Target group 2"
+            }
+          ]
+        ]
+      }
+    },
+    {
+      "type": "metric",
+      "x": 0,
+      "y": 6,
+      "width": 8,
+      "height": 6,
+      "properties": {
+        "title": "Target response time (s)",
+        "region": "eu-south-2",
+        "view": "timeSeries",
+        "stacked": false,
+        "stat": "Average",
+        "period": 300,
+        "metrics": [
+          [
+            "AWS/ApplicationELB",
+            "TargetResponseTime",
+            "LoadBalancer",
+            "${ALB}",
+            "TargetGroup",
+            "${TG_1}",
+            {
+              "stat": "p50",
+              "label": "p50, target group 1"
+            }
+          ],
+          [
+            "AWS/ApplicationELB",
+            "TargetResponseTime",
+            "LoadBalancer",
+            "${ALB}",
+            "TargetGroup",
+            "${TG_1}",
+            {
+              "stat": "p95",
+              "label": "p95, target group 1"
+            }
+          ],
+          [
+            "AWS/ApplicationELB",
+            "TargetResponseTime",
+            "LoadBalancer",
+            "${ALB}",
+            "TargetGroup",
+            "${TG_2}",
+            {
+              "stat": "p50",
+              "label": "p50, target group 2"
+            }
+          ],
+          [
+            "AWS/ApplicationELB",
+            "TargetResponseTime",
+            "LoadBalancer",
+            "${ALB}",
+            "TargetGroup",
+            "${TG_2}",
+            {
+              "stat": "p95",
+              "label": "p95, target group 2"
+            }
+          ]
+        ]
+      }
+    },
+    {
+      "type": "metric",
+      "x": 8,
+      "y": 6,
+      "width": 16,
+      "height": 6,
+      "properties": {
+        "title": "Shurly: errors from the log (metric filters)",
+        "region": "eu-south-2",
+        "view": "timeSeries",
+        "stacked": false,
+        "stat": "Sum",
+        "period": 300,
+        "metrics": [
+          [
+            "Shurly",
+            "ApiErrors5xx",
+            {
+              "label": "API 5xx (alarm at 5 in 5 min)"
+            }
+          ],
+          [
+            "Shurly",
+            "RateLimitStoreFailures",
+            {
+              "label": "Rate-limit store failures (alarm at 1)"
+            }
+          ],
+          [
+            "Shurly",
+            "ClientErrors",
+            {
+              "label": "Browser errors (alarm at 10 in 15 min)"
+            }
+          ],
+          [
+            "Shurly",
+            "McpToolErrors",
+            {
+              "label": "MCP tool errors (no alarm)"
+            }
+          ]
+        ]
+      }
+    },
+    {
+      "type": "metric",
+      "x": 0,
+      "y": 12,
+      "width": 8,
+      "height": 6,
+      "properties": {
+        "title": "RDS connections",
+        "region": "eu-south-2",
+        "view": "timeSeries",
+        "stacked": false,
+        "stat": "Maximum",
+        "period": 300,
+        "metrics": [
+          [
+            "AWS/RDS",
+            "DatabaseConnections",
+            "DBInstanceIdentifier",
+            "${DB}",
+            {
+              "label": "Connections"
+            }
+          ]
+        ]
+      }
+    },
+    {
+      "type": "metric",
+      "x": 8,
+      "y": 12,
+      "width": 8,
+      "height": 6,
+      "properties": {
+        "title": "RDS CPU (%)",
+        "region": "eu-south-2",
+        "view": "timeSeries",
+        "stacked": false,
+        "stat": "Average",
+        "period": 300,
+        "metrics": [
+          [
+            "AWS/RDS",
+            "CPUUtilization",
+            "DBInstanceIdentifier",
+            "${DB}",
+            {
+              "label": "CPU"
+            }
+          ]
+        ],
+        "yAxis": {
+          "left": {
+            "min": 0,
+            "max": 100
+          }
+        }
+      }
+    },
+    {
+      "type": "metric",
+      "x": 16,
+      "y": 12,
+      "width": 8,
+      "height": 6,
+      "properties": {
+        "title": "RDS free storage (bytes)",
+        "region": "eu-south-2",
+        "view": "timeSeries",
+        "stacked": false,
+        "stat": "Minimum",
+        "period": 300,
+        "metrics": [
+          [
+            "AWS/RDS",
+            "FreeStorageSpace",
+            "DBInstanceIdentifier",
+            "${DB}",
+            {
+              "label": "Free storage"
+            }
+          ]
+        ],
+        "annotations": {
+          "horizontal": [
+            {
+              "label": "Alarm: 2 GiB",
+              "value": 2147483648
+            }
+          ]
+        }
+      }
+    },
+    {
+      "type": "log",
+      "x": 0,
+      "y": 18,
+      "width": 12,
+      "height": 6,
+      "properties": {
+        "title": "Redirect latency on go.griddo.io (ms, p50/p95 by 5 min)",
+        "region": "eu-south-2",
+        "view": "timeSeries",
+        "query": "SOURCE '${LOG_GROUP}' | filter event = \"http.request\" and host = \"go.griddo.io\" | stats pct(duration_ms, 50) as p50_ms, pct(duration_ms, 95) as p95_ms by bin(5m)"
+      }
+    },
+    {
+      "type": "log",
+      "x": 12,
+      "y": 18,
+      "width": 12,
+      "height": 6,
+      "properties": {
+        "title": "MCP tool calls vs API requests (ms, p50/p95)",
+        "region": "eu-south-2",
+        "view": "table",
+        "query": "SOURCE '${LOG_GROUP}' | filter event = \"mcp.tool_call\" or (event = \"http.request\" and path like /^\\/api\\/v1\\// and path != \"/api/v1/health\") | stats count(*) as calls, pct(duration_ms, 50) as p50_ms, pct(duration_ms, 95) as p95_ms by event"
+      }
+    },
+    {
+      "type": "log",
+      "x": 0,
+      "y": 24,
+      "width": 24,
+      "height": 6,
+      "properties": {
+        "title": "Top 5xx paths",
+        "region": "eu-south-2",
+        "view": "table",
+        "query": "SOURCE '${LOG_GROUP}' | filter event = \"http.request\" and status >= 500 | stats count(*) as errors by path, status | sort errors desc | limit 20"
+      }
+    }
+  ]
+}

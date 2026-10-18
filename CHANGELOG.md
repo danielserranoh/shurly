@@ -26,6 +26,102 @@ implementation lifecycle and is independent of the URL version segment.
 
 ## [Unreleased]
 
+### Added — daily housekeeping, inside the app (9.1, 8.7)
+- **A background loop in every task** (`server/utils/housekeeping.py`, started by the app's lifespan): its first run
+  5 minutes after the app starts, so a deploy isn't slowed, then one every 24 hours. Each run takes a PostgreSQL
+  advisory lock (`pg_try_advisory_lock`), so two tasks never run it at once: one that finds it held skips that run.
+  It doesn't start under `TESTING`, and stops at shutdown.
+- **The waitlist's retention is enforced:** entries whose latest sign-up (`consent_at`) is more than 12 months old
+  are deleted (docs/PERSONAL_DATA.md § The waitlist). Until now an owner removed them by hand.
+- **Stale previews are fetched again:** links whose page preview is missing or more than 30 days old, at most 200 a
+  run, the never fetched first, then the oldest. Each distinct destination is fetched once, 8 at a time, through the
+  SSRF-guarded fetcher, and stored as creating a link stores it. The overrides are never touched, and a page that
+  doesn't answer leaves its links as they were. Before, only refresh-preview, a new destination or the backfill read
+  a page again.
+- **One job failing doesn't stop the other** (`housekeeping.job_failed`, with the job and the error's class). Each
+  run logs `housekeeping.run` with counts only: `waitlist_deleted`, `previews_checked`, `previews_refreshed`,
+  `previews_failed`, `skipped_lock`, `failed_jobs` and `duration_ms`. Never a destination or an email.
+  DEPLOYMENT.md § Daily housekeeping has the query, and the limit: more than 200 links whose page never answers
+  would take every run's places.
+
+### Added — a campaign's links get their page's preview (8.7)
+- **Creating a campaign fetches its destination once** and stores the page's preview and icon (`page_*`) on every
+  one of its links: through the API (`POST /api/v1/campaigns`, and so the MCP's `create_campaign`) and the curated
+  `create_campaign_from_rows`. The same SSRF-guarded fetcher as a link's. Until now a campaign's links had no page
+  preview until the backfill ran.
+- **The fetch runs once the links are committed,** with no transaction open, so a slow page holds no database
+  connection. The answer waits for it, as creating a link's does.
+- **A fetch that fails doesn't fail the campaign:** its links have no page preview yet, and the daily housekeeping
+  fetches it (above). `store_page_preview_on_links` (`server/utils/previews.py`) serves both.
+
+### Added — a "Custom preview" badge on link cards (3.7.7)
+- **A link with a custom preview** (`has_custom_preview`: at least one override set) shows a quiet badge, "Custom
+  preview" with an image icon, among the exceptions on its card in the links list and on its page. Its tooltip:
+  "Its social preview was set here and shows over the page’s own". In `/styleguide/` too, and
+  `frontend/tests/link-badges.test.mjs` pins when it shows.
+
+### Added — the MCP surface (Phase 5)
+Not new in this release: the entry ROADMAP 5.7 asked for, describing what the MCP is, in one place.
+- **Shurly is an MCP server** at `https://shurly.griddo.io/mcp/`, Streamable HTTP, mounted on the API's app in the
+  same task (5.5), built on the standalone `fastmcp` (`mcp_server/`). Locally it also runs on stdio
+  (`python -m mcp_server`).
+- **48 tools.** 44 are generated from the API's routes (`FastMCP.from_fastapi`), renamed by `MCP_TOOL_NAMES` and
+  filtered by `EXCLUDED_ROUTE_MAPS`: links, their tags and previews, redirect rules, campaigns, analytics, the
+  profile and the organization. 4 are written by hand (`mcp_server/curated.py`): `create_campaign_from_rows`,
+  `get_url_analytics_summary`, `add_redirect_rule` and `list_orphan_visits_grouped`.
+- **Left out on purpose:** the public routes (the redirect, the pixel, `robots.txt`), the health probes, the CSV
+  downloads, changing the organization, the password or the API key, signing in with a password, and managing
+  service accounts and the waitlist.
+- **Signed in** with an API key as a bearer, or with Google through OAuth 2.1 (5.8), which claude.ai's connectors
+  need. A tool acts as the person, with their role. A service account's token is refused.
+- **Every call is logged** as an `mcp.tool_call` line (5.6.0).
+- **Tests:** `tests/test_phase52_mcp_tools.py` pins the tools' names, `tests/test_phase53_curated_tools.py` what the
+  curated ones do, and `tests/test_mcp_output_dates.py` checks every tool's answer against its outputSchema. New:
+  `tests/test_mcp_roundtrip.py` calls generated tools, reads and writes (`list_urls`, `get_url`, `get_url_totals`,
+  `list_tags`, `list_redirect_rules`, `get_url_preview`, `list_campaigns`, `get_campaign`, `get_campaign_totals`,
+  `create_short_url`, `update_url`), through the in-process MCP server and their routes through the API, as the
+  same user with the same arguments: the MCP's `structured_content` must equal the REST response. A write made
+  through one surface is read back through both.
+- **`mcp_server/README.md`** covers the architecture, the framework choice, authentication, deployment and, new,
+  "How to add a tool": a generated one (the route, `MCP_TOOL_NAMES` or `EXCLUDED_ROUTE_MAPS`, the 5.2 test) and a
+  curated one (`curated.py`, its wrapper in `server.py`), each with its docs/PERSONAL_DATA.md row.
+
+### Fixed — list settings from the environment
+- **`CORS_ORIGINS`, `TRUSTED_PROXIES`, `MCP_OAUTH_ALLOWED_REDIRECT_URIS` and `CLOUDFRONT_ORIGIN_SECRETS` take what
+  docs/ENVIRONMENT.md promised:** a JSON array, comma-separated values, a single value
+  (`TRUSTED_PROXIES=172.31.0.0/16`), or an empty value for an empty list. pydantic-settings JSON-decoded the
+  variable before Shurly's parser saw it, so anything else stopped the app at startup with a `SettingsError`. The
+  tests built the settings from keyword arguments and never saw it. The four are marked `NoDecode` now, which
+  takes pydantic-settings 2.7 at least.
+- **A value starting with `[` must be a valid JSON array,** or the app refuses to start, and so does an array left in
+  its shell quotes (`'["…"]'`), which would otherwise be read as one value. Spaces around items and
+  blank items are dropped. Each `CLOUDFRONT_ORIGIN_SECRETS` value still needs 32 characters.
+- `tests/test_config_list_settings.py` sets real environment variables.
+
+### Fixed — `create_rds.sh` keeps the database password to itself, and `deploy_ecs.sh` names the real host
+- **`scripts/create_rds.sh` no longer prints the password.** It writes the one it generates straight to Parameter
+  Store, `${SSM_PREFIX:-/shurly/production}/DB_PASSWORD`, as a SecureString, through a 0600 file as `put_secret`
+  does (DEPLOYMENT.md § Secrets), before it creates the instance. Run again against an instance that exists, it
+  generates and writes nothing. It used to print it and say to save it in Secrets Manager, which Shurly doesn't use.
+  `tests/test_create_rds_script.py` runs it against a fake `aws`.
+- **`scripts/deploy_ecs.sh`'s next step probes the service's own host,** the opaque `sh-<hex>.ecs.<region>.on.aws`
+  read from `describe-express-gateway-service`, or prints the command to read it while it isn't assigned yet. It
+  printed `https://shurly-api.ecs.eu-south-2.on.aws/api/v1/health`, a host that doesn't exist.
+- `tests/test_client_ip_source.py` pointed to a "DEPLOYMENT.md § Monitoring" that doesn't exist: now § Client IPs
+  behind CloudFront.
+
+### Removed — the `urls.og_fetched_at` column's mapping (8.7)
+- **The model no longer maps `urls.og_fetched_at`.** The API's link responses keep `og_fetched_at`, still deprecated
+  and still a copy of `page_fetched_at`: removing a field within `/api/v1/` would be a breaking change (the policy
+  above).
+- **The column stays one more release, unmapped:** the app migrates at startup, and the
+  previous release's tasks, still serving during the rollout, name every mapped column in their SELECTs. Migration
+  0018 drops it in the next release (`_board/backlog/epic_drop-og-fetched-at.md`); until then the drift test ignores
+  that one column (`_PENDING_DROP`), as it did for `users.api_key`.
+- **The previews backfill no longer separates old copies from overrides,** a job done in production on 2026-10-04:
+  it fetches every destination and stores `page_*`, and never touches an override. Its report loses the overrides'
+  counts.
+
 ### Changed — the organization gets its own page, and the camera badge is for touch screens (3.14.7, 3.12.11)
 - **`/dashboard/organization/`** is a page of its own, titled "Organization": the logo, the members and their roles,
   the service accounts and the people removed, as the Settings tab had them, with the same rules for owners, admins
@@ -145,7 +241,7 @@ implementation lifecycle and is independent of the URL version segment.
   counts. Its nav link shows for owners and admins only; a member gets a 403 and the page's no-access state.
 - **Not in the MCP**: the sign-up is a public form, and the list is strangers' free text.
 - Kept until the person asks to be removed, or 12 months after their latest sign-up (docs/PERSONAL_DATA.md §
-  The waitlist). Nothing deletes the old ones by itself yet.
+  The waitlist). The daily housekeeping deletes the old ones (above).
 ### Changed — the login page leads with Google (3.13.7)
 - **The password form waits behind "Log in with email and password"**, a closed disclosure under "Sign in with
   Google": accounts come from Google, and people without one tried the password and got stuck. It's a native

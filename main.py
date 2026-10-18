@@ -12,6 +12,7 @@ from server.app import api_router
 from server.app.urls import redirect_router
 from server.core import get_db
 from server.core.config import settings
+from server.utils import housekeeping
 from server.utils.app_paths import serve_on_the_app_host_only
 from server.utils.errors import CodedHTTPException, coded_http_exception_handler
 from server.utils.event_log import log_event
@@ -159,24 +160,33 @@ def create_app(mcp_auth=None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
-        # `TESTING=1` skips DB seeding (conftest manages the in-memory schema).
+        # `TESTING=1` skips DB seeding (conftest manages the in-memory schema), and the
+        # housekeeping loop with it.
+        housekeeping_task = None
         if not os.getenv("TESTING"):
             _seed_database()
             # Phase 8.4 — open the geolocation database now: a missing one is logged at startup.
             from server.utils.geo import open_database
 
             open_database()
+            # Daily housekeeping (server/utils/housekeeping.py): its first run a few minutes
+            # from now, then once a day; cancelled at shutdown.
+            housekeeping_task = housekeeping.start()
 
-        # `app.state.mcp_app` is set during construction below (after the
-        # routers are registered, so the MCP introspection sees them all).
-        # The lifespan executes only after construction returns, so reading
-        # state here is safe even though the value is set later in the call.
-        mounted_mcp = getattr(app.state, "mcp_app", None)
-        if mounted_mcp is not None:
-            async with mounted_mcp.lifespan(app):
+        try:
+            # `app.state.mcp_app` is set during construction below (after the
+            # routers are registered, so the MCP introspection sees them all).
+            # The lifespan executes only after construction returns, so reading
+            # state here is safe even though the value is set later in the call.
+            mounted_mcp = getattr(app.state, "mcp_app", None)
+            if mounted_mcp is not None:
+                async with mounted_mcp.lifespan(app):
+                    yield
+            else:
                 yield
-        else:
-            yield
+        finally:
+            if housekeeping_task is not None:
+                await housekeeping.stop(housekeeping_task)
 
     app = FastAPI(
         title=settings.api_title,

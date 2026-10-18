@@ -191,15 +191,19 @@ class TestRefreshing:
         db_session.refresh(link)
         assert link.page_fetched_at.replace(tzinfo=None) == fetched_at.replace(tzinfo=None)
 
-    def test_the_old_og_fetched_at_isnt_written(
+    def test_the_old_og_fetched_at_is_only_page_fetched_at(
         self, client, auth_headers, db_session, test_user, pages
     ):
+        """Deprecated by 8.7 as page_fetched_at's twin: the API still gives the field (no breaking
+        change within /api/v1/), but the model no longer maps the column, which a later
+        migration drops (epic_drop-og-fetched-at)."""
         link = _link(db_session, test_user)
 
         client.post("/api/v1/urls/pv1/refresh-preview", headers=auth_headers)
+        body = client.get("/api/v1/urls/pv1", headers=auth_headers).json()
 
-        db_session.refresh(link)
-        assert link.og_fetched_at is None and link.page_fetched_at is not None
+        assert body["page_fetched_at"] and body["og_fetched_at"] == body["page_fetched_at"]
+        assert not hasattr(link, "og_fetched_at")
 
 
 class TestThePreview:

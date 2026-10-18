@@ -198,7 +198,7 @@ Who sees it: the accounts and their tokens' prefixes, the organization's owners 
 whoever sees the link. None of the management routes is an MCP tool, and the MCP never takes a service token or the
 header.
 
-## The waitlist (9.1, proposed 2026-10-05)
+## The waitlist (9.1, decided 2026-10-05)
 
 People outside Griddo can't sign in (accounts come from Google Workspace, 3.13), so `/waitlist/` asks those who'd
 like Shurly to leave their details. `waitlist_entries` (`server/core/models/waitlist.py`) keeps:
@@ -215,9 +215,11 @@ Who sees it: the organization's owners and admins, in the dashboard (`/dashboard
 a 403. It's not in the MCP: the entries are strangers' free text, and an assistant with write tools shouldn't read
 them as its context.
 
-**Retention, proposed:** until the person asks to be removed (an owner or admin removes the entry in the dashboard,
-`DELETE /api/v1/waitlist/{entry_id}`), or 12 months after their latest sign-up, whichever comes first. Nothing deletes
-the old entries by itself yet (ROADMAP 9.1): until it does, an owner removes those past 12 months by hand.
+**Retention** (confirmed by the user 2026-10-05): until the person asks to be removed (an owner or admin removes the
+entry in the dashboard, `DELETE /api/v1/waitlist/{entry_id}`), or 12 months after their latest sign-up
+(`consent_at`), whichever comes first. The 12 months are enforced since 2026-10-18: the daily housekeeping
+(`server/utils/housekeeping.py`, DEPLOYMENT.md § Daily housekeeping) deletes the entries whose `consent_at` is older,
+and logs how many (`waitlist_deleted`), never who.
 
 ## Cities (8.4, decided 2026-09-29)
 

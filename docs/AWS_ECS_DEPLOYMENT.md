@@ -1,8 +1,9 @@
 # Shurly on AWS ECS Express — Operational Playbook
 
 > **Audience:** anyone deploying, operating, or debugging Shurly in production.
-> **Scope:** ECS Express on Fargate in `griddo-main` (eu-south-2), serving `shurly.griddo.io` (the API and the
-> MCP; the frontend from 4.10) and `go.griddo.io` (the short links, since the Phase 8 cutover), both on ALB rule 12.
+> **Scope:** ECS Express on Fargate in `griddo-main` (eu-south-2), serving `shurly.griddo.io` (the web app, the API
+> and the MCP, through CloudFront since 2026-09-29) and `go.griddo.io` (the short links, since the Phase 8 cutover,
+> straight to the ALB), both ending on ALB rule 12.
 >
 > This document is a complement to [`DEPLOYMENT.md`](../DEPLOYMENT.md), not a replacement:
 > - `DEPLOYMENT.md` is the **step-by-step walkthrough** for deploying from scratch.
@@ -16,13 +17,15 @@
 
 ```
 ┌────────────────────────────────────────────────────────────────────┐
-│  Production: shurly.griddo.io (API, MCP), go.griddo.io (links)     │
+│  Production: shurly.griddo.io (web app, API, MCP; via CloudFront)  │
+│              go.griddo.io (short links; straight to the ALB)       │
 │  Account:    griddo-main (686255983646)  /  Region: eu-south-2     │
 │                                                                    │
 │  ECS service:        shurly-api  (cluster: default)                │
 │  ECR repo:           686255983646.dkr.ecr.eu-south-2.amazonaws...  │
 │  RDS instance:       shurly-db  (db.t4g.micro, postgres 17)        │
 │  ALB:                ecs-express-gateway-alb-d37ca364              │
+│  CloudFront:         EJDA8EMBWVGDG (S3 frontend + the ALB)         │
 │  Listener:           …8d6cb22fed5c0e8b/f182b836d7cff456            │
 │  Express priority:   4         (auto-managed by Express Mode)      │
 │  Custom rule:        priority 12  → shurly.griddo.io, go.griddo.io │
@@ -48,34 +51,48 @@
 ## Architecture in one diagram
 
 ```
-            ┌──────────────────────────────────────────┐
-            │                                          │
-   user ────►  https://shurly.griddo.io/api/…, /mcp/   │
-            │  https://go.griddo.io/<short_code>       │
-   (any HTTP client; browser, curl, MCP, ...)         │
-            │                                          │
-            │   DNS (Route 53 in griddo-production):   │
-            │     shurly.griddo.io  ALIAS A → ALB      │
-            │     go.griddo.io      ALIAS A → ALB      │
-            │                                          │
-            └────────────────┬─────────────────────────┘
-                             │
-                             ▼
+            ┌───────────────────────────────────────────────┐
+            │                                               │
+   user ────►  https://shurly.griddo.io/ (the web app,      │
+            │    /api/…, /mcp/, /docs)                      │
+            │  https://go.griddo.io/<short_code>            │
+   (any HTTP client; browser, curl, MCP, ...)               │
+            │                                               │
+            │   DNS (Route 53 in griddo-production):        │
+            │     shurly.griddo.io  ALIAS A → CloudFront    │
+            │     go.griddo.io      ALIAS A → ALB           │
+            │                                               │
+            └───────┬───────────────────────────────┬───────┘
+                    │ shurly.griddo.io              │ go.griddo.io
+                    ▼                               │
+   ┌───────────────────────────────────────────┐    │
+   │  CloudFront EJDA8EMBWVGDG (since          │    │
+   │  2026-09-29)                              │    │
+   │   default (*)  → S3 bucket                │    │
+   │                  shurly-frontend-         │    │
+   │                  686255983646 (OAC)       │    │
+   │   /api/*, /mcp*, /.well-known/*,          │    │
+   │   /docs*, /redoc, /openapi.json           │    │
+   │                → the ALB, HTTPS, with the │    │
+   │                  viewer's Host            │    │
+   └─────────────────────┬─────────────────────┘    │
+                         │                          │
+                         ▼                          ▼
    ┌─────────────────────────────────────────────────────────────┐
-   │  Shared ALB (eu-south-2, griddo-main)                       │
+   │  ALB (eu-south-2, griddo-main): Shurly's alone since        │
+   │  Shlink was removed (2026-10-17)                            │
    │  ecs-express-gateway-alb-d37ca364                           │
    │                                                             │
    │  HTTPS listener (port 443):                                 │
    │   • cert *.ecs.eu-south-2.on.aws  (auto from Express Mode)  │
    │   • cert shurly.griddo.io          (manual, ACM)            │
    │   • cert go.griddo.io              (manual, ACM)            │
-   │   • cert links.griddo.io           (Shlink web client)      │
+   │   • cert links.griddo.io           (rule 11's redirect)     │
    │                                                             │
    │  Rules:                                                     │
-   │   priority 1   sh-<hex>.ecs.…  → shlink-api active TG       │
-   │   priority 3   sh-<hex>.ecs.…  → shlink-web active TG       │
    │   priority 4   sh-<hex>.ecs.…  → shurly-api active TG ◄──┐  │
-   │   priority 11  links.griddo.io → shlink-web active TG    │  │
+   │   priority 11  links.griddo.io → 302 to                  │  │
+   │                https://shurly.griddo.io/dashboard/       │  │
    │   priority 12  go.griddo.io    → shurly-api active TG    │  │  follows priority 4
    │                shurly.griddo.io (same rule)              │  │  via ecs-alb-rule-sync
    │  Default rule: 404                                       │  │  Lambda
@@ -266,6 +283,13 @@ Added `Base.metadata.create_all(bind=engine)` to the FastAPI startup event. Idem
 
 Symptom-driven. When something breaks, search this section by error message or symptom.
 
+**An alert email arrived** (from the SNS topic `shurly-alerts`, an alarm named `shurly-…`)? Start at
+[DEPLOYMENT.md § Error alerting](../DEPLOYMENT.md#error-alerting-phase-64): its table says what each alarm means and
+what to do first, and its runbook walks the rest. `shurly-alb-5xx` and `shurly-no-healthy-target` usually land in
+[ALB returns 503](#alb-returns-503-service-temporarily-unavailable) or
+[Container won't start](#container-wont-start-crashloopbackoff-equivalent) below. Once it's fixed, add what you
+found here.
+
 ### ALB returns 503 Service Temporarily Unavailable
 
 Three causes, usually one of:
@@ -304,7 +328,8 @@ Expected output: `["Synced priority 12 with 4"]` or `["No changes needed"]`.
 **C. DNS hasn't propagated.** Less common but possible right after `setup_custom_domain.sh`.
 
 ```bash
-dig shurly.griddo.io +short  # and go.griddo.io: both should return the ALB's IPs
+dig go.griddo.io +short      # the ALB's IPs
+dig shurly.griddo.io +short  # CloudFront's edge IPs (the distribution, not the ALB)
 ```
 
 If empty, wait 60s and try again. Route 53 propagation is normally <30s but can spike.
@@ -370,8 +395,8 @@ aws lambda get-function --function-name ecs-alb-rule-sync \
 
 Should include `"4": "12"` for Shurly. If missing, edit `RULE_SYNC_MAP` in
 [`infra/ecs-alb-rule-sync/alb-rule-sync.py`](../infra/ecs-alb-rule-sync/alb-rule-sync.py) and redeploy it as its
-[README](../infra/ecs-alb-rule-sync/README.md) § Deploy says. The Lambda serves Shlink's rules too, so a change
-there changes their routing as well.
+[README](../infra/ecs-alb-rule-sync/README.md) § Deploy says. Since the cutover (2026-10-02) the map holds Shurly's
+rule alone; Shlink's entries went then, and Shlink itself on 2026-10-17.
 
 ### Auto-deploy from GitHub Actions failed
 
@@ -529,7 +554,7 @@ Decided in this conversation, 2026-04-26. Three reasons:
 2. **Cold-start latency on the redirect path.** Users click a short URL and expect <100ms. Lambda cold start on first hit is 200-800ms.
 3. **RDS connection pool churn.** Lambda execution contexts recycle every ~15 min; container keeps the pool warm.
 
-Cost trade: ~$15-20/mo more than Lambda. ALB shared with Shlink amortizes the load-balancer cost across services so the marginal cost of adding Shurly was ~$17/mo total.
+Cost trade: ~$15-20/mo more than Lambda. At the time the ALB was shared with Shlink, so the marginal cost of adding Shurly was ~$17/mo total. Since Shlink was removed (2026-10-17) the ALB is Shurly's alone, and the current estimate is in [`DEPLOYMENT.md`](../DEPLOYMENT.md#cost-estimation-eu-south-2-monthly) § Cost estimation.
 
 ### Why multi-arch image (amd64 + arm64)?
 
@@ -549,6 +574,10 @@ Inherited from existing Griddo infrastructure. The `griddo.io` apex zone is in `
 
 ### Why share the ALB with Shlink instead of a dedicated one?
 
+> **History.** Shlink was removed on 2026-10-17: the ALB is Shurly's alone now, and its whole cost is Shurly's
+> ([`DEPLOYMENT.md`](../DEPLOYMENT.md#cost-estimation-eu-south-2-monthly) § Cost estimation). The reasoning below is
+> what was decided while both ran.
+
 ~$16/mo savings per service. The shared ALB has multiple listeners and rules; Shurly's traffic doesn't impact Shlink's and vice versa. Operational cost: a deploy of either service may need the rule-sync Lambda to fire (it handles both). Acceptable.
 
 ### Why `auto-deploy on main merge` instead of a manual gate?
@@ -567,11 +596,11 @@ Considered after Phase 4 went live (2026-04-27). Lightsail Containers is **genui
 
 **Why we kept ECS Express anyway:**
 
-- The ALB is already shared with Shlink at zero marginal cost. Lightsail's standalone-friendly economics don't beat "free" for the load-balancing piece.
+- The ALB was already shared with Shlink at zero marginal cost. Lightsail's standalone-friendly economics didn't beat "free" for the load-balancing piece. Since Shlink was removed (2026-10-17) the ALB is Shurly's alone and no longer free: [`DEPLOYMENT.md`](../DEPLOYMENT.md#cost-estimation-eu-south-2-monthly) § Cost estimation has what it costs now.
 - RDS lives in the same VPC as the Fargate task — connectivity is private and free. Lightsail Containers can reach a VPC via peering but it adds setup we'd have to do.
 - Lightsail vCPU is burstable (shared on a host, with credit budget); Fargate is dedicated. For Shurly's volume the burst is fine, but we'd need to re-validate under sustained load.
 - Migration cost: replicate IAM/OIDC, GitHub Actions, deploy scripts, smoke tests for a different deploy mechanism. Days of work for ~$5/mo savings.
-- Consistency with Shlink (also on ECS Express in `griddo-main`) — splitting services across two products doubles operational surface (different consoles, CLIs, log shapes).
+- Consistency with Shlink (also on ECS Express in `griddo-main` until its removal on 2026-10-17) — splitting services across two products doubles operational surface (different consoles, CLIs, log shapes).
 
 **When Lightsail WOULD be the right call:**
 
@@ -580,6 +609,8 @@ Considered after Phase 4 went live (2026-04-27). Lightsail Containers is **genui
 - If Shurly's traffic ever shrinks to "I want to pay $5/mo or zero for this", Lightsail is the natural target — at that point the migration cost may be worth the savings.
 
 **Threshold for reconsidering**: if Shurly's compute cost grows (e.g., we stop sharing the ALB, or scale beyond a single Fargate task that the Nano tier can absorb), revisit. For now: stay put.
+
+The first of those happened on 2026-10-17: with Shlink gone, the ALB and its public addresses (~30 $ a month) are Shurly's alone ([`DEPLOYMENT.md`](../DEPLOYMENT.md#cost-estimation-eu-south-2-monthly) § Cost estimation). Not revisited yet.
 
 ---
 

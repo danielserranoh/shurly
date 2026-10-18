@@ -1,15 +1,16 @@
 #!/usr/bin/env bash
-# Phase 8.7 — previews from the page, for the links made before them: every link's destination
-# fetched (each distinct URL once) and its own preview and icon cached on the link, the old og_*
-# copies of the page's cleared (`python -m server.tools.previews backfill`), in production's
-# database, as a one-off ECS task from the live service's own image, environment and network
-# (scripts/one_off_task.sh). DEPLOYMENT.md § Previews from the page.
+# Phase 8.7 — previews from the page, for every link at once: every link's destination fetched
+# (each distinct URL once) and its own preview and icon cached on the link, the og_* overrides
+# left as they are (`python -m server.tools.previews backfill`), in production's database, as a
+# one-off ECS task from the live service's own image, environment and network
+# (scripts/one_off_task.sh). The daily housekeeping keeps previews fresh 200 links a run; this is
+# for all of them, after a Shlink import, say. DEPLOYMENT.md § Previews from the page.
 #
 # One container, `backfill`, with no task role: it reads nothing from AWS. It needs outbound
 # internet to fetch the pages, which the service's network has (the API fetches previews too). A
 # dry run unless --for-real, which needs the service's name typed back. Running it twice is
-# harmless: the second run refreshes the pages' values and clears nothing new. Its output, counts
-# and never a destination, goes to the service's log group, in streams `backfill-previews/…`.
+# harmless: the second run refreshes the pages' values. Its output, counts and never a
+# destination, goes to the service's log group, in streams `backfill-previews/…`.
 #
 #   scripts/run_backfill_previews.sh [--for-real]
 #
@@ -38,7 +39,7 @@ command -v jq >/dev/null || die "jq is required (brew install jq / apt-get insta
 
 if $FOR_REAL; then
     echo "This fetches every link's destination and writes its preview and icon on ${SERVICE}'s"
-    echo "links, in production, clearing the old preview fields that copy the page's."
+    echo "links, in production. The overrides people set are left as they are."
     read -r -p "Type ${SERVICE} to go on: " typed
     [[ "$typed" == "$SERVICE" ]] || die "Not confirmed: nothing was run."
 fi
