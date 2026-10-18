@@ -86,8 +86,10 @@ The script:
 - Reuses the `shlink-db-subnets` subnet group when present (same VPC, fewer moving parts) or creates `shurly-db-subnets`.
 - Creates `shurly-db-sg` with VPC-only ingress on 5432.
 - Creates `shurly-db` (db.t4g.micro, gp3, 20 GB, encrypted, no public access, no multi-AZ for dev cost).
-- Generates a random master password, alphanumeric, and prints it once. Put it in Parameter Store as
-  `/shurly/production/DB_PASSWORD` without echoing it (step 3), and in your password manager.
+- Generates a random master password, 32 alphanumeric characters, and writes it straight to Parameter Store as
+  `/shurly/production/DB_PASSWORD` (a SecureString, through a 0600 file, as `put_secret` does: § Secrets), before it
+  creates the instance. It never prints it. `SSM_PREFIX` changes the prefix. Run again once the instance exists, it
+  generates and writes nothing: the parameter is left as it is.
 
 The instance takes ~5–10 minutes to become available. The script blocks until it does.
 
@@ -134,11 +136,10 @@ aws acm wait certificate-validated --region eu-south-2 --profile griddo-main \
 ### 3. Secrets in Parameter Store
 
 The service reads its five secrets from Parameter Store (§ Secrets). Create them before step 4, which stops if one is
-missing, and give the execution role its policy (§ Secrets, "The execution role"). `put_secret` is defined in
-§ Secrets, "Writing a value":
+missing, and give the execution role its policy (§ Secrets, "The execution role"). `DB_PASSWORD` is there already:
+`create_rds.sh` wrote it (step 1). `put_secret` is defined in § Secrets, "Writing a value":
 
 ```bash
-read -rs VALUE && printf '%s\n' "$VALUE" | put_secret DB_PASSWORD; unset VALUE   # paste create_rds.sh's
 openssl rand -hex 32 | put_secret JWT_SECRET_KEY
 openssl rand -hex 32 | put_secret MCP_OAUTH_SIGNING_KEY
 # Until the Google client and the distribution exist: sign in with Google stays off while
@@ -184,8 +185,9 @@ The script:
   Store (§ Secrets).
 
 Smoke the auto-generated host. It's opaque, `sh-<32 hex>.ecs.eu-south-2.on.aws`, not named after the service
-([docs/AWS_ECS_DEPLOYMENT.md](docs/AWS_ECS_DEPLOYMENT.md), lesson 1), so read it from the service. On a service that
-already has its custom domains, `https://shurly.griddo.io/api/v1/health` does the same.
+([docs/AWS_ECS_DEPLOYMENT.md](docs/AWS_ECS_DEPLOYMENT.md), lesson 1), so read it from the service. The script's
+next step prints the `curl` with that host once the service has one, or these commands while it doesn't. On a
+service that already has its custom domains, `https://shurly.griddo.io/api/v1/health` does the same.
 
 ```bash
 SERVICE_ARN=$(aws ecs list-services --region eu-south-2 --profile griddo-main --cluster default \
@@ -889,9 +891,11 @@ filter event = "http.request" and path != "/api/v1/health"
 **The task:**
 
 - `CLOUDFRONT_ORIGIN_SECRETS` comes from Parameter Store, `/shurly/production/CLOUDFRONT_ORIGIN_SECRETS` (§ Secrets).
-  Its value is a JSON array, `["<value>"]`, with nothing around it: a bare value, or the array in shell quotes
-  (`'["<value>"]'`, as an env file has it), stops the app at startup. The app never logs it, and printed settings
-  show `**********`.
+  Keep its value a JSON array, `["<value>"]`, with nothing around it: the rotation below reads and writes it with
+  `jq`. The app also takes a bare value or comma-separated values (docs/ENVIRONMENT.md). The array in shell quotes
+  (`'["<value>"]'`, as an env file has it) stops the app at startup: read literally it would be one value, quotes
+  and brackets included, long enough to pass the length check, that no request carries. The app never logs the
+  value, and printed settings show `**********`.
 - Each value needs at least 32 characters, or the app doesn't start.
 - `CLOUDFRONT_ORIGIN_HEADER` names the header: `X-Origin-Verify` by default.
 
@@ -1076,6 +1080,7 @@ Visitor logging is privacy-first by default, configured via env vars (every vari
 - MCP tool arguments stay out of the logs: the usage log records argument names only, and fastmcp's own line for a failed API call leaves out the response body, which can echo them (`mcp_server/README.md` § Usage log). Never set `FASTMCP_LOG_LEVEL=DEBUG` in production: at that level fastmcp logs every tool call's arguments in full.
 - Database errors leave the SQL parameters out of their message (`hide_parameters=True` in `server/core/__init__.py`), so a traceback in the logs doesn't print what the user sent. PostgreSQL's own detail for a constraint violation still names the value: `Key (email)=(…) already exists`, or the whole row for a `NOT NULL` violation.
 - Link-preview failures log the destination URL's origin (scheme, host, port), never its path or query string (`url_origin` in `server/utils/url.py`). App warnings reach CloudWatch without any log configuration: Python's last-resort handler prints them to stderr.
+- Waitlist entries are deleted 12 months after their latest sign-up, by the daily housekeeping (§ Daily housekeeping; `docs/PERSONAL_DATA.md` § The waitlist).
 
 If your privacy policy permits storing full IPs, set `ANONYMIZE_REMOTE_ADDR=false` — but document the decision.
 
@@ -1251,7 +1256,7 @@ Google client and `ORGANIZATION_DOMAIN` above:
 |---|---|---|
 | `MCP_PUBLIC_URL` | `https://shurly.griddo.io/mcp` | The MCP endpoint as clients reach it, without the slash. People connect to `{MCP_PUBLIC_URL}/`, with it: the metadata's `resource` has to match what they enter |
 | `MCP_OAUTH_SIGNING_KEY` | `openssl rand -hex 32` | Signs the MCP's tokens and, derived, encrypts what the proxy stores. High entropy (it goes through HKDF, not a password hash), the same on every task, never the Google secret. Changing it signs every MCP client out (§ Rotate the MCP signing key). From Parameter Store, `/shurly/production/MCP_OAUTH_SIGNING_KEY` (§ Secrets) |
-| `MCP_OAUTH_ALLOWED_REDIRECT_URIS` | the default | Who may register as an MCP client. Default: `https://claude.ai/api/mcp/auth_callback`, `https://claude.com/api/mcp/auth_callback` (where Anthropic says it may move) and loopback on any port (`http://localhost:*`, `http://127.0.0.1:*`, Claude Code). A JSON array to change it; any other client is refused |
+| `MCP_OAUTH_ALLOWED_REDIRECT_URIS` | the default | Who may register as an MCP client. Default: `https://claude.ai/api/mcp/auth_callback`, `https://claude.com/api/mcp/auth_callback` (where Anthropic says it may move) and loopback on any port (`http://localhost:*`, `http://127.0.0.1:*`, Claude Code). A JSON array or comma-separated values to change it; any other client is refused |
 
 - **Google:** add `{MCP_PUBLIC_URL}/auth/callback` (`https://shurly.griddo.io/mcp/auth/callback`) as a
   second authorized redirect URI of the same OAuth client ([docs/setup_google_app.md](docs/setup_google_app.md),
@@ -1911,32 +1916,31 @@ stays.
 
 From 8.7 a link's social preview is its destination's own: creating a link fetches the page (its Open Graph tags
 and its icon) into the `page_*` columns, and `og_*` hold only what a person typed. A social crawler gets the plain
-redirect unless something is rewritten. Migration 0015 adds the columns empty, so the links from before have no
-page preview until the backfill: the 346 imported from Shlink, which never fetched, and the ones made in Shurly, whose
-`og_*` hold a copy of the page's taken at create (`og_fetched_at` set).
+redirect unless something is rewritten. Migration 0015 added the columns empty, and the backfill filled them for the
+links from before on 2026-10-04 (it also cleared the `og_*` values that copied the page's, a job done once and gone
+from it since). A campaign's links get their page's preview when the campaign is made, and the daily housekeeping
+(§ Daily housekeeping) fetches again every preview that's missing or more than 30 days old, so the backfill is for
+refreshing every link at once: after a Shlink import, say.
 
 `scripts/run_backfill_previews.sh` runs `python -m server.tools.previews backfill` as a one-off ECS task, with one
 container, `backfill`, from the live service's image, environment and network, like the places backfill
-(`scripts/one_off_task.sh`). Run it once the release with 0015 is serving, and after any later Shlink import.
+(`scripts/one_off_task.sh`).
 
 - **It fetches each distinct destination once,** 8 at a time, through the API's own fetcher (SSRF guard, 5-second
   timeout), so it needs outbound internet: the service's network has it, as the API fetches previews too. Every
-  link with that URL gets the page's values.
-- **It separates the old values.** On a link with `og_fetched_at` set, each `og_*` value that equals the page's,
-  fetched now, was a copy: it's cleared, and the page's shows through. One that differs stays an override, so
-  nobody's text is lost (the link's page offers "Use the page’s preview"). A link without `og_fetched_at` keeps its
-  `og_*`. A done link's `og_fetched_at` is cleared.
+  link with that URL gets the page's values, its `page_*`. The overrides (`og_*`, what a person typed) are never
+  touched.
 - **A page that doesn't answer** (refused, timed out, a 5xx) leaves its links as they were; a later run picks them
-  up. Running it again is harmless: it refreshes the pages' values and clears nothing new.
+  up. Running it again is harmless: it refreshes the pages' values.
 - **A dry run unless `--for-real`,** which needs the service's name typed back. The dry run fetches everything and
   reports what it would do. The fetches happen outside any transaction; the writes in one, at the end.
 - **The report** is counts: links, distinct destinations fetched, how many had a preview, an icon or didn't answer,
-  and the overrides cleared and kept. Never a destination: one can carry a recipient's details. It goes to the
+  and the links whose previews were stored. Never a destination: one can carry a recipient's details. It goes to the
   service's log group, in streams `backfill-previews/…`. No task role: it reads nothing from AWS. Not during a
   rollout: the script stops until there's one deployment.
 
 ```bash
-# 1. A dry run: what it would fetch, find and clear
+# 1. A dry run: what it would fetch and find
 scripts/run_backfill_previews.sh
 
 # 2. For real (it asks for the service's name)
@@ -1944,7 +1948,49 @@ scripts/run_backfill_previews.sh --for-real
 ```
 
 `tests/test_run_backfill_previews.py` runs the script against the import's fake `aws`, and
-`tests/test_phase87_backfill_previews.py` pins what the backfill fetches, clears and keeps.
+`tests/test_phase87_backfill_previews.py` pins what the backfill fetches and stores, and that it leaves the
+overrides alone.
+
+## Daily housekeeping
+
+Every task runs a background loop (`server/utils/housekeeping.py`), started by the app's lifespan, never under
+`TESTING`. Its first run is 5 minutes after the app starts, so a deploy isn't slowed, then one every 24 hours; a
+restart starts the count again. A run in progress at shutdown finishes in its thread.
+
+- **One run at a time.** Each run takes a PostgreSQL advisory lock (`pg_try_advisory_lock`) on a connection of its
+  own, held for the run with no transaction open. A task that finds it held skips that run (`skipped_lock`).
+- **The waitlist:** deletes the entries whose latest sign-up (`consent_at`) is more than 12 months old, the
+  retention in docs/PERSONAL_DATA.md § The waitlist.
+- **Previews:** fetches again the page previews that are missing (`page_fetched_at` null) or more than 30 days old,
+  at most **200 links a run**, the never fetched first, then the oldest. Each distinct destination once, 8 at a
+  time, through the SSRF-guarded fetcher, stored as creating a link stores it. The overrides are never touched. The
+  links are read, the session closed, the pages fetched, then the results written in a new one.
+- **Each job runs on its own:** one that fails is logged and the next still runs.
+
+What it logs, never a destination or an email:
+- `housekeeping.run`, once a run: `waitlist_deleted`, `previews_checked` (links picked), `previews_refreshed`,
+  `previews_failed` (links whose page didn't answer), `skipped_lock`, `failed_jobs` (`waitlist`, `previews`) and
+  `duration_ms`.
+- `housekeeping.job_failed`: a job that raised, with `job` and `error`, the exception's class only.
+- `housekeeping.failed`: a run that couldn't start (the lock itself, say). The loop goes on to the next day.
+
+In CloudWatch Logs Insights:
+```
+filter event like /^housekeeping\./
+| fields @timestamp, event, waitlist_deleted, previews_checked, previews_refreshed, previews_failed, skipped_lock, failed_jobs.0, job, error, duration_ms
+| sort @timestamp desc
+```
+Each task writes its own `housekeeping.run` line a day (the service runs 1 or 2). The lock keeps two runs from
+overlapping, not from both happening: it's held only while a run lasts, and each task counts from its own start.
+Two tasks whose runs don't meet both do the work, `skipped_lock` false: the second finds the waitlist already done
+and takes the next stale previews, so two tasks refresh up to 400 links a day. `skipped_lock` true means two runs
+met. The query isn't among the saved ones (§ The saved queries).
+
+**The limit: pages that never answer.** A fetch that's refused (the SSRF guard), times out, can't connect or gets a
+5xx fails, and leaves the link's `page_fetched_at` as it was, null or old (a 404 is an answer: no preview, but
+fetched). So that link stays at the front of the queue and is tried again on the next run. Up to 200 such links
+only slow the rest down; more than 200 would take every run's places, and no other preview would be refreshed.
+`previews_failed` close to 200 run after run is the sign: point those links to pages that answer, or delete them.
 
 ## Routine operations
 

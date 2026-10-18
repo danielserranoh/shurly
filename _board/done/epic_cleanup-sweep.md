@@ -2,7 +2,7 @@
 id: epic_cleanup-sweep
 title: Cleanup sweep
 type: epic
-status: backlog
+status: done
 priority: medium
 created: 2026-10-17
 ---
@@ -29,4 +29,6 @@ Small, well-understood leftovers from earlier phases. Each can be a chore of its
 From ROADMAP 3.7.7, 3.9.2, 3.10.8, 5.2, 5.7, 8.7 and 9.1.
 
 ## Log
+- 2026-10-18T13:13:41Z Daniel Serrano moved done -> wip
 - 2026-10-17T17:20:42Z Daniel Serrano created
+- 2026-10-18T13:15:00Z Daniel Serrano moved backlog -> done (planned as plan_cleanup-sweep; moved by hand, `board.sh move` resolved the name to the plan)

@@ -118,7 +118,7 @@ export function linkThumb(link: ThumbLink, size = 'size-11'): RawHTML {
   }, monogram);
 }
 
-/** Only exceptions get a badge: standard, active, forwarding links stay clean. */
+/** Only exceptions get a badge: standard, active, forwarding links stay clean. A custom preview gets a quiet one. */
 export function linkBadges(link: ShortLink, { withType = true } = {}): RawHTML {
   const out: RawHTML[] = [];
   if (withType && link.url_type === 'custom') out.push(html`<span class="badge badge-outline">${icon('pencil', 'size-3')}Custom</span>`);
@@ -140,6 +140,8 @@ export function linkBadges(link: ShortLink, { withType = true } = {}): RawHTML {
   }
   if (!link.forward_parameters && link.url_type !== 'campaign')
     out.push(html`<span class="badge badge-neutral" title="Query parameters on the short link are not passed to the destination">${icon('ban', 'size-3')}No param forwarding</span>`);
+  if (link.has_custom_preview)
+    out.push(html`<span class="badge badge-outline" title="Its social preview was set here and shows over the page’s own">${icon('image', 'size-3')}Custom preview</span>`);
   return html`${out}`;
 }
 

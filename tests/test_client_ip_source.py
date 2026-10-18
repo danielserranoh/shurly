@@ -9,7 +9,7 @@ the address itself (`client_ip_and_source`, server/utils/network.py).
 With the request's host next to it, CloudWatch can count them: in production shurly.griddo.io
 reads cloudfront and go.griddo.io xff. xff on shurly.griddo.io means the viewer address isn't
 used, and the rate limits count CloudFront's edges; socket, the health checks aside, means
-TRUSTED_PROXIES doesn't name the ALB (DEPLOYMENT.md § Monitoring).
+TRUSTED_PROXIES doesn't name the ALB (DEPLOYMENT.md § Client IPs behind CloudFront).
 """
 
 import json

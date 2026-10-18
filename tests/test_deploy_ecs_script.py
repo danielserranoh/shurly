@@ -10,6 +10,9 @@ The five secrets live in SSM Parameter Store (`/shurly/production/<NAME>`, Secur
 container through its `secrets` field, never its `environment`. The script checks they exist (names
 only) before building anything, and never reads a secret from the env or `.env`.
 
+Its last "next step" probes the auto-generated host, which is opaque (`sh-<32 hex>.ecs.<region>.on.aws`),
+so it reads it from `describe-express-gateway-service`, as DEPLOYMENT.md § 4 does.
+
 `aws` and `docker` are stubs on PATH that log their calls. The script runs with no AWS configuration
 or credentials, so even a stub that failed to load couldn't reach a real account.
 """
@@ -33,6 +36,20 @@ SECRETS = [
     "MCP_OAUTH_SIGNING_KEY",
     "CLOUDFRONT_ORIGIN_SECRETS",
 ]
+HOST = "sh-0f3a9c5e7b1d4a2f8c6e0b9d3a5f7c1e.ecs.eu-south-2.on.aws"
+# What `describe-express-gateway-service --output json` returns, trimmed: the host sits in the
+# service's ingress paths. The script only needs to find it in the text.
+DESCRIBED = json.dumps(
+    {
+        "service": {
+            "serviceName": "shurly-api",
+            "status": {"statusCode": "ACTIVE"},
+            "activeConfigurations": [
+                {"ingressPaths": [{"accessType": "PUBLIC", "endpoint": f"https://{HOST}"}]}
+            ],
+        }
+    }
+)
 # A stale `.env` or shell may still carry the old plain values: none of them may go anywhere.
 LEFTOVER_VALUES = {name: f"leftover-{name.lower()}-0f3a9c" for name in SECRETS}
 
@@ -49,6 +66,8 @@ case "$1 $2" in
       if [ "$1" = "--primary-container" ]; then printf '%s' "$2" > "$CONTAINER"; fi
       shift
     done ;;
+  "ecs describe-express-gateway-service")
+    case " $* " in *" json "*) printf '%s\n' "$STUB_DESCRIBED" ;; esac ;;
 esac
 exit 0
 """
@@ -77,7 +96,9 @@ def deploy(tmp_path):
     calls = tmp_path / "calls.log"
     container = tmp_path / "container.json"
 
-    def run(service_arn: str, missing_parameters: str = "", **extra_env: str):
+    def run(
+        service_arn: str, missing_parameters: str = "", described: str = DESCRIBED, **extra_env: str
+    ):
         env = {
             "PATH": f"{stubs}{os.pathsep}{os.environ['PATH']}",
             "HOME": str(tmp_path),
@@ -89,6 +110,7 @@ def deploy(tmp_path):
             "STUB_SERVICE_ARN": service_arn,
             # What `--query InvalidParameters --output text` prints: tab-separated names.
             "STUB_MISSING_PARAMETERS": missing_parameters,
+            "STUB_DESCRIBED": described,
             "DB_HOST": "db.test",
             **LEFTOVER_VALUES,
             **extra_env,
@@ -229,3 +251,26 @@ def test_the_prefix_can_be_changed(deploy):
     assert {s["valueFrom"] for s in container["secrets"]} == {
         f"arn:aws:ssm:eu-south-2:{ACCOUNT}:parameter/shurly/staging/{name}" for name in SECRETS
     }
+
+
+@pytest.mark.skipif(shutil.which("jq") is None, reason="the script builds its JSON with jq")
+def test_the_next_step_probes_the_host_the_service_has(deploy):
+    result, calls, _ = deploy("None")
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert f"curl https://{HOST}/api/v1/health" in result.stdout
+    # Not a host made from the service's name: Express hosts are opaque.
+    assert "shurly-api.ecs." not in result.stdout
+    assert any("ecs describe-express-gateway-service" in c and "--output json" in c for c in calls)
+
+
+@pytest.mark.skipif(shutil.which("jq") is None, reason="the script builds its JSON with jq")
+def test_without_a_host_yet_it_says_how_to_read_it(deploy):
+    result, _, _ = deploy("None", described=json.dumps({"service": {"serviceName": "shurly-api"}}))
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "isn't assigned yet" in result.stdout
+    assert "describe-express-gateway-service" in result.stdout
+    assert "DEPLOYMENT.md § 4" in result.stdout
+    assert "curl https://" not in result.stdout
+    assert "shurly-api.ecs." not in result.stdout

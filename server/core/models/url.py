@@ -61,9 +61,6 @@ class URL(Base):
     og_title = Column(String(255), nullable=True)
     og_description = Column(Text, nullable=True)
     og_image_url = Column(Text, nullable=True)
-    # Unused since 8.7 (migration 0015), kept for the previous release; a later migration
-    # drops it. The backfill reads it: set, the og_* were most likely copied from the page.
-    og_fetched_at = Column(DateTime(timezone=True), nullable=True)
     page_og_title = Column(String(255), nullable=True)
     page_og_description = Column(Text, nullable=True)
     page_og_image_url = Column(Text, nullable=True)

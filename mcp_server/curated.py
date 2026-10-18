@@ -55,6 +55,7 @@ from server.utils.campaign import (
 from server.utils.domain import get_or_create_default_domain
 from server.utils.local_days import LocalDays, last_days
 from server.utils.orphans import did_you_mean, orphan_groups, typo_hits
+from server.utils.previews import store_page_preview_on_links
 from server.utils.url import is_valid_url, link_hostname
 
 # ---------------------------------------------------------------------------
@@ -131,6 +132,8 @@ def create_campaign_from_rows(
     )
     db.add_all(urls)
     db.commit()
+    # As the endpoint: the destination's preview, fetched once after the commit, on every link.
+    store_page_preview_on_links(db, original_url, urls)
     db.refresh(campaign)
 
     return {
