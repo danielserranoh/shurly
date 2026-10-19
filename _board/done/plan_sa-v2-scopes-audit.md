@@ -2,16 +2,16 @@
 id: plan_sa-v2-scopes-audit
 title: Service accounts v2: scopes, limits, IP ranges, warnings, audit
 type: plan
-status: wip
+status: done
 priority: low
 created: 2026-10-19
 started: 2026-10-19
-completed: null
+completed: 2026-10-19
 progress: 100
 origin: epic_service-accounts-v2
-owner: Daniel Serrano
-claimed_at: 2026-10-19T09:03:39Z
-lease_until: 2026-10-19T11:03:39Z
+owner: null
+claimed_at: null
+lease_until: null
 blocked_by: []
 parallel_safe: true
 worktree: null
@@ -154,6 +154,9 @@ verify: uv run pytest tests/test_personal_data_inventory.py tests/test_environme
 - The plan's name differs from the epic's on purpose (board.sh resolves same-name cards wrongly).
 
 ## Log
+- 2026-10-19T11:27:14Z Daniel Serrano moved wip -> done
+- 2026-10-19T11:27:14Z Daniel Serrano released
+- 2026-10-19T11:27:14Z Daniel Serrano released in #251 (36c10d2, td 52): alembic 0019, og_fetched_at gone, Propuestas token with all 6 scopes and no ranges, audit_events empty until its next action; housekeeping.run 11:20Z with audit_deleted 0, no failed jobs; 0 5xx
 - 2026-10-19T10:10:32Z Daniel Serrano T1-T7 done and verified: 2505 passed, PostgreSQL 212 + migrations 5, frontend 295 + e2e 140; PR to dev
 - 2026-10-19T09:03:39Z Daniel Serrano moved todo -> wip
 - 2026-10-19T09:03:39Z Daniel Serrano claimed (lease 120m)

@@ -97,6 +97,18 @@ export interface ShortLink {
   created_by_last_name?: string | null;
   /** Phase 10.1: the service account that made it, for its creator or itself; null when a person did. */
   via_service_account?: { id: string; display_name: string | null } | null;
+  /**
+   * Phase 10.3 — the service account managing it: a link made through one, not a campaign link. Only it changes or
+   * deletes the link; people change its tags. Null: not managed. Absent from older APIs.
+   */
+  managed_by?: { id: string; display_name: string | null } | null;
+}
+
+/** Phase 10.3 — GET /api/v1/urls/managers: a service account managing links the viewer can see, and how many. */
+export interface LinkManager {
+  id: string;
+  display_name: string | null;
+  link_count: number;
 }
 
 export interface LinkListResponse {

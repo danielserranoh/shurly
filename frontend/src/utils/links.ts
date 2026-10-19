@@ -9,7 +9,8 @@ import { openDialog } from './ui';
 import { canChange, creatorEmailBehindName, creatorName, lockedMenuAttrs, personalBadge, type Viewer } from './viewer';
 import { linkApi, linkHref, type LinkAddress } from './link-address';
 import { thumbSteps } from './preview';
-import type { CreateLinkRequest, LinkListResponse, LinkMetadata, ShortLink, Tag, UpdateLinkRequest, URLType } from './types';
+import { serviceName } from './people';
+import type { CreateLinkRequest, LinkListResponse, LinkManager, LinkMetadata, ShortLink, Tag, UpdateLinkRequest, URLType } from './types';
 
 export { linkHref, type LinkAddress } from './link-address';
 export const campaignHref = (id: string) => `/dashboard/campaign/?id=${encodeURIComponent(id)}`;
@@ -30,6 +31,10 @@ export interface LinkQuery {
   match?: 'any' | 'all';
   /** Phase 10.1: only the links this service account made. */
   via?: string;
+  /** Phase 10.3: leave out the links service accounts manage, or keep only those. */
+  managed?: 'exclude' | 'only';
+  /** Phase 10.3: only the links this service account manages. */
+  managedBy?: string;
   skip?: number;
   limit?: number;
 }
@@ -42,6 +47,8 @@ export function listLinks(query: LinkQuery = {}): Promise<LinkListResponse> {
       tags: query.tags?.length ? query.tags.join(',') : undefined,
       tag_filter: query.tags && query.tags.length > 1 ? query.match ?? 'any' : undefined,
       via_service_account: query.via || undefined,
+      managed: query.managed,
+      managed_by: query.managedBy || undefined,
       skip: query.skip ?? 0,
       limit: query.limit ?? 20,
     })}`,
@@ -72,6 +79,73 @@ export const bulkTagLinks = (links: LinkAddress[], tagIds: string[]) =>
 export const deleteLink = (link: LinkAddress) => apiDelete(linkApi(link));
 
 export const fetchMetadata = (url: string) => apiPost<LinkMetadata>('/api/v1/urls/fetch-metadata', { url });
+
+/** Phase 10.3 — the service accounts managing links the viewer can see, each with how many. Any role may ask. */
+export const listManagers = () => apiGet<LinkManager[]>('/api/v1/urls/managers');
+
+// ---------------------------------------------------------------------------
+// Phase 10.3 — the links list's tabs: Links | Campaign links | one per service account managing links
+// ---------------------------------------------------------------------------
+
+/** A tab of the links list (/dashboard/). There's no "All": every link is in exactly one tab. */
+export type LinkTab = { kind: 'links' } | { kind: 'campaign' } | { kind: 'managed'; id: string };
+
+export const LINKS_TAB: LinkTab = { kind: 'links' };
+
+/**
+ * The tab an address asks for. `?managed_by=<id>` is that account's tab and `?type=campaign` the campaign links';
+ * anything else is Links. Older addresses: `?type=all` lands on Links, and `?via_service_account=<id>` (the
+ * removed "Made via" filter) on that account's tab, if it manages links (`settleTab`).
+ */
+export function tabFromParams(params: URLSearchParams): LinkTab {
+  const managedBy = params.get('managed_by')?.trim() || params.get('via_service_account')?.trim();
+  if (managedBy) return { kind: 'managed', id: managedBy };
+  return params.get('type') === 'campaign' ? { kind: 'campaign' } : LINKS_TAB;
+}
+
+/**
+ * An account's tab only while it manages links the viewer sees (`managers`, from `listManagers`): otherwise Links.
+ * Without the list (it failed to load), the tab stays and the API decides.
+ */
+export function settleTab(tab: LinkTab, managers: LinkManager[] | null): LinkTab {
+  if (tab.kind !== 'managed' || managers === null) return tab;
+  return managers.some((m) => m.id === tab.id && m.link_count > 0) ? tab : LINKS_TAB;
+}
+
+/** What the list asks the API for, in a tab: the Links tab leaves the managed links to their own tabs. */
+export function tabQuery(tab: LinkTab): Pick<LinkQuery, 'types' | 'managed' | 'managedBy'> {
+  if (tab.kind === 'campaign') return { types: ['campaign'] };
+  if (tab.kind === 'managed') return { managedBy: tab.id };
+  return { types: ['standard', 'custom'], managed: 'exclude' };
+}
+
+/** The tab in the address: nothing for Links. */
+export function tabParams(tab: LinkTab): Record<string, string> {
+  if (tab.kind === 'campaign') return { type: 'campaign' };
+  if (tab.kind === 'managed') return { managed_by: tab.id };
+  return {};
+}
+
+/** The list in a tab, filtered by tags: where a card's tag pill leads, so it keeps the tab. */
+export function listHref(tab: LinkTab, tags: string[] = []): string {
+  const p = new URLSearchParams(tabParams(tab));
+  if (tags.length) p.set('tags', tags.join(','));
+  const s = p.toString();
+  return s ? `/dashboard/?${s}` : '/dashboard/';
+}
+
+/** A tab's radio value, and back. */
+export const tabValue = (tab: LinkTab) => (tab.kind === 'managed' ? `managed:${tab.id}` : tab.kind);
+export function tabFromValue(value: string): LinkTab {
+  if (value.startsWith('managed:')) return { kind: 'managed', id: value.slice('managed:'.length) };
+  return value === 'campaign' ? { kind: 'campaign' } : LINKS_TAB;
+}
+
+/** An account's name as a tab says it. */
+export const managerLabel = (manager: Pick<LinkManager, 'display_name'>) => manager.display_name?.trim() || 'Service account';
+
+/** The API masks a managed link's destination for most people (`https://host/…`): there's nothing to open. */
+export const isMaskedDestination = (url: string | null | undefined) => Boolean(url?.endsWith('…'));
 
 /** Show the QR modal (components/app/QrModal.astro) for a link. */
 export function openQr(link: Pick<ShortLink, 'short_url' | 'short_code'>): void {
@@ -118,9 +192,16 @@ export function linkThumb(link: ThumbLink, size = 'size-11'): RawHTML {
   }, monogram);
 }
 
-/** Only exceptions get a badge: standard, active, forwarding links stay clean. A custom preview gets a quiet one. */
-export function linkBadges(link: ShortLink, { withType = true } = {}): RawHTML {
+/**
+ * Only exceptions get a badge: standard, active, forwarding links stay clean. A custom preview gets a quiet one.
+ * Phase 10.3: a managed link says who manages it (`withManager: false` leaves it out, for a page that says so already).
+ */
+export function linkBadges(link: ShortLink, { withType = true, withManager = true } = {}): RawHTML {
   const out: RawHTML[] = [];
+  if (withManager && link.managed_by)
+    out.push(
+      html`<span class="badge badge-outline" title="${managedTitle(link.managed_by)}">${icon('plug', 'size-3')}Managed by ${serviceName(link.managed_by)}</span>`,
+    );
   if (withType && link.url_type === 'custom') out.push(html`<span class="badge badge-outline">${icon('pencil', 'size-3')}Custom</span>`);
   if (withType && link.url_type === 'campaign')
     out.push(
@@ -145,18 +226,28 @@ export function linkBadges(link: ShortLink, { withType = true } = {}): RawHTML {
   return html`${out}`;
 }
 
+/** Phase 10.3 — why a managed link is read-only, on hover. */
+export const managedTitle = (manager: NonNullable<ShortLink['managed_by']>) =>
+  `Only ${serviceName(manager)} changes or deletes it; people can change its tags.`;
+
 export interface CardOptions {
   selected?: boolean;
   fresh?: boolean;
   /** Who's looking: names the creator "you" and locks what they can't change. */
   viewer?: Viewer | null;
+  /** Where a tag pill leads (a tag's id): the list filtered by it. Phase 10.3: the list keeps its tab. */
+  tagHref?: (tagId: string) => string;
 }
 
 export function renderLinkCard(link: ShortLink, opts: CardOptions = {}): RawHTML {
   const title = linkTitle(link);
   const short = shortDisplay(link);
   const menuId = `menu-${link.id}`;
-  const canDelete = link.url_type !== 'campaign';
+  // Phase 10.3 — a managed link changes only through its service account: no Edit and no Delete here.
+  const manager = link.managed_by ?? null;
+  const managerName = manager ? serviceName(manager) : '';
+  const canDelete = link.url_type !== 'campaign' && !manager;
+  const tagHref = opts.tagHref ?? ((id: string) => listHref(LINKS_TAB, [id]));
   const shortUrl = link.short_url ?? '';
   const creator = creatorName(link, opts.viewer ?? null);
   const creatorEmail = creatorEmailBehindName(link, opts.viewer ?? null);
@@ -179,10 +270,12 @@ export function renderLinkCard(link: ShortLink, opts: CardOptions = {}): RawHTML
       </div>
       <p class="mt-1 flex min-w-0 items-center gap-1.5 text-[13px] text-ink-500">
         ${icon('corner-down-right', 'size-3.5 shrink-0')}
-        <a href="${safeUrl(link.original_url)}" target="_blank" rel="noopener noreferrer" class="truncate hover:text-ink-800" title="${link.original_url}">${prettyUrl(link.original_url)}</a>
+        ${isMaskedDestination(link.original_url)
+          ? html`<span class="truncate" title="Only ${manager ? managerName : 'its service account'} and the organization’s owners see the full destination">${prettyUrl(link.original_url)}</span>`
+          : html`<a href="${safeUrl(link.original_url)}" target="_blank" rel="noopener noreferrer" class="truncate hover:text-ink-800" title="${link.original_url}">${prettyUrl(link.original_url)}</a>`}
       </p>
       ${creator ? html`<p class="mt-1 flex min-w-0 items-center gap-1.5 text-[13px] text-ink-500">${icon('user', 'size-3.5 shrink-0')}<span class="truncate" ${creatorEmail ? html`title="${creatorEmail}"` : ''}>Created by ${creator}</span></p>` : ''}
-      ${link.tags.length ? html`<div class="mt-2.5 flex flex-wrap gap-1.5">${link.tags.map((t) => tagPill(t, { href: `/dashboard/?tags=${encodeURIComponent(t.id)}` }))}</div>` : ''}
+      ${link.tags.length ? html`<div class="mt-2.5 flex flex-wrap gap-1.5">${link.tags.map((t) => tagPill(t, { href: tagHref(t.id) }))}</div>` : ''}
       <p class="mt-3 flex items-center gap-3 text-[13px] text-ink-500 sm:hidden">
         <span><b class="font-semibold text-ink-900">${formatNumber(link.click_count)}</b> ${link.click_count === 1 ? 'click' : 'clicks'}</span>
         <span aria-hidden="true">·</span>
@@ -203,15 +296,19 @@ export function renderLinkCard(link: ShortLink, opts: CardOptions = {}): RawHTML
       <button type="button" class="btn btn-ghost btn-sm btn-icon" popovertarget="${menuId}" aria-label="More actions for ${title}">${icon('more')}</button>
       <div id="${menuId}" popover class="menu" data-align="end">
         <a class="menu-item" href="${linkHref(link.short_code, link.domain)}">${icon('chart')}View details</a>
-        ${canDelete
-          ? html`<button type="button" class="menu-item" data-action="edit" data-id="${link.id}" ${locked}>${icon('pencil')}Edit</button>`
-          : html`<a class="menu-item" href="${link.campaign_id ? campaignHref(link.campaign_id) : '/dashboard/campaigns/'}">${icon('megaphone')}Open campaign</a>`}
+        ${manager
+          ? html`<span class="menu-item" aria-disabled="true" title="Managed by ${managerName}: change it from there. Its tags can be changed on its page.">${icon('lock')}Edit via ${managerName}</span>`
+          : canDelete
+            ? html`<button type="button" class="menu-item" data-action="edit" data-id="${link.id}" ${locked}>${icon('pencil')}Edit</button>`
+            : html`<a class="menu-item" href="${link.campaign_id ? campaignHref(link.campaign_id) : '/dashboard/campaigns/'}">${icon('megaphone')}Open campaign</a>`}
         <button type="button" class="menu-item" data-action="qr" data-id="${link.id}">${icon('qr')}QR code</button>
         <a class="menu-item" href="${safeUrl(shortUrl)}" target="_blank" rel="noopener">${icon('external-link')}Open short link</a>
         <div class="menu-sep"></div>
-        ${canDelete
-          ? html`<button type="button" class="menu-item" data-danger data-action="delete" data-id="${link.id}" ${locked}>${icon('trash')}Delete</button>`
-          : html`<span class="menu-item" aria-disabled="true" title="Campaign links are deleted together with their campaign">${icon('lock')}Delete via campaign</span>`}
+        ${manager
+          ? html`<span class="menu-item" aria-disabled="true" title="Managed by ${managerName}: delete it from there">${icon('lock')}Delete via ${managerName}</span>`
+          : canDelete
+            ? html`<button type="button" class="menu-item" data-danger data-action="delete" data-id="${link.id}" ${locked}>${icon('trash')}Delete</button>`
+            : html`<span class="menu-item" aria-disabled="true" title="Campaign links are deleted together with their campaign">${icon('lock')}Delete via campaign</span>`}
       </div>
     </div>
   </li>`;

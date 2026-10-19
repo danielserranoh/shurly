@@ -3,17 +3,23 @@ import Modal from '@/components/ui/Modal.astro';
 import Icon from '@/components/ui/Icon.astro';
 ---
 
+<!-- Phase 10.3: on a link a service account manages, it opens on its tags alone (`data-full-only` hides the rest). -->
 <Modal id="edit-link" title="Edit link" description="The short link stays the same — only what it does changes." width="38rem" staticBackdrop>
   <form id="edit-link-form" class="grid gap-5 px-6 py-5" novalidate>
     <div data-form-alert hidden></div>
 
-    <div class="grid gap-1.5">
+    <p class="flex gap-2.5 rounded-xl border border-line bg-ink-50 px-3.5 py-3 text-sm text-ink-700" data-tags-only hidden>
+      <Icon name="plug" class="mt-0.5 size-4 shrink-0 text-ink-500" />
+      <span data-tags-only-text></span>
+    </p>
+
+    <div class="grid gap-1.5" data-full-only>
       <label for="edit-title" class="label">Title</label>
       <input id="edit-title" name="title" class="input" maxlength="255" placeholder="e.g. Q4 proposal — Acme" />
       <p class="field-error" data-error-for="title" hidden></p>
     </div>
 
-    <div class="grid gap-1.5">
+    <div class="grid gap-1.5" data-full-only>
       <label for="edit-destination" class="label">Destination</label>
       <input id="edit-destination" name="original_url" class="input" type="url" inputmode="url" required />
       <p class="hint" data-destination-hint>Everyone who already has this link will go to the new destination.</p>
@@ -25,7 +31,7 @@ import Icon from '@/components/ui/Icon.astro';
       <div id="edit-tags" data-label="Tags" aria-labelledby="edit-tags-label"></div>
     </div>
 
-    <label class="flex items-start justify-between gap-4 rounded-xl border border-line p-4">
+    <label class="flex items-start justify-between gap-4 rounded-xl border border-line p-4" data-full-only>
       <span>
         <span class="block text-sm font-medium text-ink-900">Forward query parameters</span>
         <span class="hint mt-0.5 block">Pass ?utm_source=… and friends from the short link through to the destination.</span>
@@ -33,7 +39,7 @@ import Icon from '@/components/ui/Icon.astro';
       <span class="switch mt-0.5"><input type="checkbox" name="forward_parameters" role="switch" /><span></span></span>
     </label>
 
-    <details class="disclosure rounded-xl border border-line" data-og-section>
+    <details class="disclosure rounded-xl border border-line" data-og-section data-full-only>
       <summary class="px-4 py-3.5">
         <Icon name="share" class="size-4 text-ink-500" />
         <span class="text-sm font-medium text-ink-900">Social preview</span>
@@ -62,7 +68,7 @@ import Icon from '@/components/ui/Icon.astro';
       </div>
     </details>
 
-    <details class="disclosure rounded-xl border border-line" data-advanced-section>
+    <details class="disclosure rounded-xl border border-line" data-advanced-section data-full-only>
       <summary class="px-4 py-3.5">
         <Icon name="settings" class="size-4 text-ink-500" />
         <span class="text-sm font-medium text-ink-900">Schedule & limits</span>

@@ -56,6 +56,7 @@ from server.schemas.analytics import (
 )
 from server.schemas.datetimes import utc_isoformat
 from server.schemas.responses import get_responses
+from server.utils import managed
 from server.utils.access import (
     LinkDomain,
     viewer,
@@ -1501,7 +1502,9 @@ def get_overview_stats(
     included, in your profile's time zone (or `tz`, else UTC; `timezone` says which).
     `recent_clicks_7d` is their sum.
     Each `top_urls` item has `short_code`, `short_url`, `title`, `original_url`,
-    `url_type` and `clicks` (tracking-pixel opens are never counted as clicks).
+    `url_type` and `clicks` (tracking-pixel opens are never counted as clicks). A link a
+    service account manages (Phase 10.3) shows its destination masked
+    (`https://host/…`) unless you're its organization's owner; it still counts in every total.
     """
     who = viewer(db, current_user)
 
@@ -1550,12 +1553,16 @@ def get_overview_stats(
     visitor_join = (URL.id == Visitor.url_id) & (Visitor.is_pixel.is_(False))
     if not include_bots:
         visitor_join = visitor_join & (Visitor.is_bot.is_(False))
+    # Phase 10.3 — with what `managed.destination_for` decides on: a managed link's
+    # destination is masked for all but its manager and the organization's owners.
     top_urls_data = (
         db.query(
             URL.short_code,
             URL.original_url,
             URL.url_type,
             URL.title,
+            URL.via_service_account_id,
+            URL.organization_id,
             Domain.hostname,
             func.count(Visitor.id).label("click_count"),
         )
@@ -1563,7 +1570,14 @@ def get_overview_stats(
         .outerjoin(Domain, URL.domain_id == Domain.id)
         .filter(who.sees(URL))
         .group_by(
-            URL.id, URL.short_code, URL.original_url, URL.url_type, URL.title, Domain.hostname
+            URL.id,
+            URL.short_code,
+            URL.original_url,
+            URL.url_type,
+            URL.title,
+            URL.via_service_account_id,
+            URL.organization_id,
+            Domain.hostname,
         )
         .order_by(func.count(Visitor.id).desc())
         .limit(5)
@@ -1578,7 +1592,7 @@ def get_overview_stats(
             "short_url": build_short_url(url.short_code, url.hostname),
             "domain": url.hostname or normalize_hostname(settings.default_domain),
             "title": url.title,
-            "original_url": url.original_url,
+            "original_url": managed.destination_for(who, url),
             "url_type": url.url_type.value,
             "clicks": url.click_count or 0,
         }

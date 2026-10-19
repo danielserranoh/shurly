@@ -12,7 +12,7 @@ import VisibilityToggle from '@/components/app/VisibilityToggle.astro';
 ---
 
 <AppLayout title="Links" section="links">
-  <PageHeader title="Links" description="Every short link you and your team made — and who’s clicking." />
+  <PageHeader title="Links" description="Your team’s short links, and who’s clicking them." />
 
   <!-- A new member's first 14 days (src/utils/welcome.ts), until dismissed: the list shows the team's links, not an empty state -->
   <section id="welcome" hidden class="mb-5 flex animate-fade-up items-start gap-4 rounded-2xl bg-ink-950 p-5 text-white" aria-labelledby="welcome-title">
@@ -75,18 +75,18 @@ import VisibilityToggle from '@/components/app/VisibilityToggle.astro';
   <!-- Toolbar -->
   <section class="mt-10" aria-labelledby="list-title">
     <div class="flex flex-col gap-3 lg:flex-row lg:items-center">
-      <h2 id="list-title" class="text-lg font-semibold text-ink-950">All links <span class="font-normal text-ink-500" data-count></span></h2>
-      <div class="flex flex-col gap-2 sm:flex-row lg:ml-auto">
+      <h2 id="list-title" class="text-lg font-semibold text-ink-950"><span data-list-title>Links</span> <span class="font-normal text-ink-500" data-count></span></h2>
+      <div class="flex min-w-0 flex-col gap-2 sm:flex-row lg:ml-auto">
         <div class="relative">
           <span class="pointer-events-none absolute inset-y-0 left-3 flex items-center text-ink-400"><Icon name="search" /></span>
           <label for="search" class="sr-only">Search links</label>
           <input id="search" type="search" class="input w-full pr-9 pl-9 sm:w-72" placeholder="Search title, link or destination" data-search autocomplete="off" />
           <span class="kbd pointer-events-none absolute inset-y-0 right-2.5 my-auto hidden sm:inline-flex" aria-hidden="true">/</span>
         </div>
-        <div class="segmented self-start" role="radiogroup" aria-label="Link type">
+        <!-- Phase 10.3: Links | Campaign links | a tab per service account managing links (src/utils/links.ts → LinkTab), scrolling sideways when they don't fit -->
+        <div class="segmented scrollbar-none max-w-full min-w-0 self-start overflow-x-auto" role="radiogroup" aria-label="Which links" data-tabs>
           <label><input type="radio" name="type" value="links" checked /><span>Links</span></label>
           <label><input type="radio" name="type" value="campaign" /><span>Campaign links</span></label>
-          <label><input type="radio" name="type" value="all" /><span>All</span></label>
         </div>
       </div>
     </div>
@@ -99,13 +99,8 @@ import VisibilityToggle from '@/components/app/VisibilityToggle.astro';
       </div>
       <button type="button" class="btn btn-ghost btn-sm shrink-0" data-clear-tags hidden>Clear</button>
     </div>
-    <!-- Phase 10.1: the links a service account made. Owners and admins pick from the list; anyone can follow a link here -->
-    <div class="mt-3 flex items-center gap-2" id="via-filter" hidden>
-      <label for="via" class="flex shrink-0 items-center gap-1.5 text-xs font-medium text-ink-500"><Icon name="plug" class="size-3.5" />Made via</label>
-      <select id="via" class="select h-8 w-auto max-w-full py-0 text-sm" data-via>
-        <option value="">Anyone</option>
-      </select>
-    </div>
+    <!-- Phase 10.3: an account's tab says its links are read-only here -->
+    <p class="mt-3 flex items-start gap-2 text-sm text-ink-600" id="managed-note" hidden><Icon name="plug" class="mt-0.5 size-4 shrink-0 text-ink-500" /><span data-managed-note></span></p>
   </section>
 
   <ul id="link-list" class="mt-4 grid gap-3 transition-opacity duration-200" aria-live="polite" aria-busy="true"></ul>
@@ -113,6 +108,10 @@ import VisibilityToggle from '@/components/app/VisibilityToggle.astro';
   <EmptyState id="empty-first" hidden level={3} illustration="links" title="Your links will live here" body="Paste a long link in the box above — a Drive folder, a deck, a landing page. You’ll see every click right here.">
     <a href="/dashboard/create/" class="btn btn-secondary"><Icon name="wand" />Open the full editor</a>
   </EmptyState>
+  <EmptyState id="empty-campaign" hidden level={3} illustration="campaigns" title="No campaign links yet" body="A campaign makes a personal link for everyone on a CSV list. Its links show up here.">
+    <a href="/dashboard/campaigns/create/" class="btn btn-secondary"><Icon name="megaphone" />Track a campaign</a>
+  </EmptyState>
+  <EmptyState id="empty-managed" hidden level={3} illustration="links" title="No links from this service account" body="The links it makes show up here. It manages them, so change them from there." />
   <EmptyState id="empty-filtered" hidden level={3} illustration="search" title="No links match" body="Try a different search or clear the filters.">
     <button type="button" class="btn btn-secondary" data-clear-all>Clear filters</button>
   </EmptyState>
@@ -152,35 +151,51 @@ import VisibilityToggle from '@/components/app/VisibilityToggle.astro';
   import { clearErrors, setFieldError } from '@/utils/forms';
   import { formatNumber, isValidHttpUrl, normalizeUrlInput, pluralize } from '@/utils/format';
   import { html, raw, safeUrl, setHTML } from '@/utils/html';
+  import { icon } from '@/utils/icons';
   import { sparkline } from '@/utils/charts';
   import { openLinkEditor } from '@/utils/link-editor';
-  import { bulkTagLinks, createLink, deleteLink, listLinks, openQr, renderLinkCard, renderLinkSkeleton } from '@/utils/links';
+  import {
+    bulkTagLinks,
+    createLink,
+    deleteLink,
+    LINKS_TAB,
+    listHref,
+    listLinks,
+    listManagers,
+    managerLabel,
+    openQr,
+    renderLinkCard,
+    renderLinkSkeleton,
+    settleTab,
+    tabFromParams,
+    tabFromValue,
+    tabParams,
+    tabQuery,
+    tabValue,
+    type LinkTab,
+  } from '@/utils/links';
   import { mountTagInput } from '@/utils/tag-input';
   import { loadTags, tagPill } from '@/utils/tags';
   import { closeDialog, confirmDialog, copyWithFeedback, hydrateTimes, openDialog, setLoading, toast, writeClipboard } from '@/utils/ui';
   import { apiGet } from '@/utils/api';
   import { pageFromQuery, renderPager } from '@/utils/paging';
-  import { getMe, getMyOrganization, getViewer, installLockedControls, onForbidden, visibilityOf, type Viewer } from '@/utils/viewer';
-  import { serviceName } from '@/utils/people';
+  import { getMe, getViewer, installLockedControls, onForbidden, visibilityOf, type Viewer } from '@/utils/viewer';
   import { sharingLine, shouldWelcome, welcomeDismissedKey } from '@/utils/welcome';
-  import type { OverviewStats, ServiceAccount, ShortLink, Tag, URLType } from '@/utils/types';
+  import type { LinkManager, OverviewStats, ShortLink, Tag } from '@/utils/types';
 
   const PAGE_SIZE = 20;
-  const TYPES: Record<string, URLType[] | undefined> = { links: ['standard', 'custom'], campaign: ['campaign'], all: undefined };
 
   const $ = <T extends HTMLElement = HTMLElement>(sel: string) => document.querySelector<T>(sel)!;
   const list = $('#link-list');
   const params = new URLSearchParams(location.search);
   const state = {
     q: params.get('q') ?? '',
-    type: (params.get('type') as keyof typeof TYPES) ?? 'links',
+    /** Phase 10.3: Links, Campaign links or a service account's (src/utils/links.ts → LinkTab). */
+    tab: tabFromParams(params),
     tags: (params.get('tags') ?? '').split(',').filter(Boolean),
     match: (params.get('match') === 'all' ? 'all' : 'any') as 'any' | 'all',
-    /** Phase 10.1: a service account's id, to list the links it made. */
-    via: params.get('via_service_account') ?? '',
     page: pageFromQuery(params.get('page'), PAGE_SIZE),
   };
-  if (!(state.type in TYPES)) state.type = 'links';
 
   let links = new Map<string, ShortLink>();
   let total = 0;
@@ -202,16 +217,16 @@ import VisibilityToggle from '@/components/app/VisibilityToggle.astro';
   function syncUrl() {
     const p = new URLSearchParams();
     if (state.q) p.set('q', state.q);
-    if (state.type !== 'links') p.set('type', state.type);
+    Object.entries(tabParams(state.tab)).forEach(([k, v]) => p.set(k, v));
     if (state.tags.length) p.set('tags', state.tags.join(','));
     if (state.tags.length > 1 && state.match === 'all') p.set('match', 'all');
-    if (state.via) p.set('via_service_account', state.via);
     if (state.page > 1) p.set('page', String(state.page));
     const s = p.toString();
     history.replaceState(null, '', s ? `?${s}` : location.pathname);
   }
 
-  const hasFilters = () => Boolean(state.q || state.tags.length || state.type !== 'links' || state.via);
+  /** Search and tags narrow the tab; the tab itself isn't a filter. */
+  const hasFilters = () => Boolean(state.q || state.tags.length);
 
   // ---------------------------------------------------------------- List
   async function load() {
@@ -219,16 +234,16 @@ import VisibilityToggle from '@/components/app/VisibilityToggle.astro';
     list.setAttribute('aria-busy', 'true');
     if (firstLoad) setHTML(list, renderLinkSkeleton(4));
     else list.classList.add('opacity-50');
-    ['#empty-first', '#empty-filtered', '#load-error'].forEach((s) => ($(s).hidden = true));
+    ['#empty-first', '#empty-campaign', '#empty-managed', '#empty-filtered', '#load-error'].forEach((s) => ($(s).hidden = true));
+    renderTabHeading();
 
     try {
       const [res] = await Promise.all([
         listLinks({
           q: state.q,
-          types: TYPES[state.type],
+          ...tabQuery(state.tab),
           tags: state.tags,
           match: state.match,
-          via: state.via,
           skip: (state.page - 1) * PAGE_SIZE,
           limit: PAGE_SIZE,
         }),
@@ -260,16 +275,23 @@ import VisibilityToggle from '@/components/app/VisibilityToggle.astro';
 
   function render(freshId?: string) {
     const items = [...links.values()];
-    setHTML(list, html`${items.map((l) => renderLinkCard(l, { selected: selected.has(l.id), fresh: l.id === freshId, viewer }))}`);
+    const tagHref = (id: string) => listHref(state.tab, [id]);
+    setHTML(list, html`${items.map((l) => renderLinkCard(l, { selected: selected.has(l.id), fresh: l.id === freshId, viewer, tagHref }))}`);
     list.classList.toggle('selecting', selected.size > 0);
     hydrateTimes(list);
     renderTagChips();
-    renderViaFilter();
+    renderTabHeading();
+    // Without the managers, an account's tab takes its name from its links.
+    if (managers === null && state.tab.kind === 'managed') renderTabs();
     $('[data-count]').textContent = total ? `· ${formatNumber(total)}` : '';
 
     const empty = items.length === 0;
-    $('#empty-first').hidden = !(empty && !hasFilters());
+    const kind = state.tab.kind;
+    $('#empty-first').hidden = !(empty && !hasFilters() && kind === 'links');
+    $('#empty-campaign').hidden = !(empty && !hasFilters() && kind === 'campaign');
+    $('#empty-managed').hidden = !(empty && !hasFilters() && kind === 'managed');
     $('#empty-filtered').hidden = !(empty && hasFilters());
+    $('#managed-note').hidden = kind !== 'managed' || !$('#empty-managed').hidden;
 
     renderPager($('#pagination'), state.page, PAGE_SIZE, total, items.length);
   }
@@ -285,12 +307,13 @@ import VisibilityToggle from '@/components/app/VisibilityToggle.astro';
       }
     };
     try {
-      const [overview, individual] = await Promise.all([
+      // Phase 10.3: both counted directly, with no `managed` filter: the links service accounts manage are links.
+      const [overview, individual, campaign] = await Promise.all([
         apiGet<OverviewStats>('/api/v1/analytics/overview'),
         listLinks({ types: ['standard', 'custom'], limit: 1 }),
+        listLinks({ types: ['campaign'], limit: 1 }),
       ]);
-      const campaignLinks = overview.total_urls - individual.total;
-      setStat('links', formatNumber(individual.total), campaignLinks > 0 ? `+ ${pluralize(campaignLinks, 'campaign link')}` : 'Standard and custom');
+      setStat('links', formatNumber(individual.total), campaign.total > 0 ? `+ ${pluralize(campaign.total, 'campaign link')}` : 'Standard and custom');
       setStat('clicks', formatNumber(overview.total_clicks), `${pluralize(overview.total_unique_visitors, 'unique visitor')}`);
       setStat(
         'recent',
@@ -357,37 +380,55 @@ import VisibilityToggle from '@/components/app/VisibilityToggle.astro';
     });
   });
 
-  // ---------------------------------------------------------------- Service accounts (Phase 10.1)
-  // Owners and admins read the organization's service accounts, so they get the whole list. Anyone else
-  // gets the filter when the address names one (a link from Settings): its name comes from the links shown.
-  const viaSelect = $<HTMLSelectElement>('[data-via]');
-  const services = new Map<string, string>();
+  // ---------------------------------------------------------------- Tabs (Phase 10.3)
+  // Links | Campaign links | a tab per service account managing links the viewer sees (GET /urls/managers).
+  // Their links are read-only here (src/utils/links.ts → renderLinkCard); there's no "All".
+  const tabs = $('[data-tabs]');
+  /** The accounts with links, by name; null while loading or when it failed. */
+  let managers: LinkManager[] | null = null;
+  const managersReady: Promise<LinkManager[] | null> = listManagers()
+    .then((all) => (managers = all.filter((m) => m.link_count > 0)))
+    .catch(() => null);
 
-  async function loadServices() {
-    try {
-      const org = await getMyOrganization();
-      if (org?.role !== 'owner' && org?.role !== 'admin') return;
-      for (const account of await apiGet<ServiceAccount[]>('/api/v1/service-accounts')) services.set(account.id, account.display_name);
-    } catch {
-      return; // the filter is a convenience: without the list, links still name their service
-    }
-    renderViaFilter();
+  /** An account's name: from the managers, else from its links, else unnamed. */
+  function managerName(id: string): string {
+    const known = managers?.find((m) => m.id === id) ?? [...links.values()].find((l) => l.managed_by?.id === id)?.managed_by;
+    return managerLabel(known ?? { display_name: null });
   }
 
-  function renderViaFilter() {
-    links.forEach((l) => {
-      if (l.via_service_account && !services.has(l.via_service_account.id)) services.set(l.via_service_account.id, serviceName(l.via_service_account));
-    });
-    if (state.via && !services.has(state.via)) services.set(state.via, 'A service account');
-    $('#via-filter').hidden = services.size === 0;
+  function renderTabs() {
+    const accounts: Pick<LinkManager, 'id' | 'display_name'>[] = [...(managers ?? [])];
+    // Without the list, an account's tab from the address still shows.
+    const current = state.tab;
+    if (current.kind === 'managed' && !accounts.some((m) => m.id === current.id)) accounts.push({ id: current.id, display_name: managerName(current.id) });
+    const value = tabValue(state.tab);
+    const radio = (tab: LinkTab, label: ReturnType<typeof html> | string) =>
+      html`<label><input type="radio" name="type" value="${tabValue(tab)}" ${tabValue(tab) === value ? raw('checked') : ''} /><span>${label}</span></label>`;
     setHTML(
-      viaSelect,
-      html`<option value="">Anyone</option>${[...services].map(([id, name]) => html`<option value="${id}" ${id === state.via ? raw('selected') : ''}>${name}</option>`)}`,
+      tabs,
+      html`${radio(LINKS_TAB, 'Links')}${radio({ kind: 'campaign' }, 'Campaign links')}${accounts.map((m) =>
+        radio({ kind: 'managed', id: m.id }, html`${icon('plug')}${managerLabel(m)}`),
+      )}`,
     );
+    // The chosen tab in view, when they scroll sideways (a phone), without moving the page.
+    const checked = tabs.querySelector<HTMLInputElement>('input:checked')?.parentElement;
+    if (checked) tabs.scrollLeft += checked.getBoundingClientRect().left - tabs.getBoundingClientRect().left - 4;
   }
 
-  viaSelect.addEventListener('change', () => {
-    state.via = viaSelect.value;
+  /** The heading, the note and the empty state follow the tab. */
+  function renderTabHeading() {
+    const tab = state.tab;
+    const name = tab.kind === 'managed' ? managerName(tab.id) : '';
+    $('[data-list-title]').textContent = tab.kind === 'campaign' ? 'Campaign links' : tab.kind === 'managed' ? `Links from ${name}` : 'Links';
+    $('[data-managed-note]').textContent = `Managed by ${name}. Its links are read-only here, apart from their tags; change them from there.`;
+    $('#empty-managed [data-empty-title]').textContent = `No links from ${name}`;
+    $('#empty-managed [data-empty-body]').textContent = `The links ${name} makes show up here. It manages them, so change them from there.`;
+  }
+
+  tabs.addEventListener('change', (e) => {
+    const input = e.target as HTMLInputElement;
+    if (input.name !== 'type') return;
+    state.tab = tabFromValue(input.value);
     state.page = 1;
     syncUrl();
     load();
@@ -412,23 +453,12 @@ import VisibilityToggle from '@/components/app/VisibilityToggle.astro';
       search.dispatchEvent(new Event('input'));
     }
   });
-  document.querySelectorAll<HTMLInputElement>('input[name="type"]').forEach((r) => {
-    r.checked = r.value === state.type;
-    r.addEventListener('change', () => {
-      state.type = r.value as keyof typeof TYPES;
-      state.page = 1;
-      syncUrl();
-      load();
-    });
-  });
+  // Clears the search and the tags; the tab stays.
   document.querySelector('[data-clear-all]')!.addEventListener('click', () => {
     state.q = '';
     search.value = '';
     state.tags = [];
-    state.type = 'links';
-    state.via = '';
     state.page = 1;
-    document.querySelectorAll<HTMLInputElement>('input[name="type"]').forEach((r) => (r.checked = r.value === 'links'));
     renderTagChips();
     syncUrl();
     load();
@@ -569,7 +599,7 @@ import VisibilityToggle from '@/components/app/VisibilityToggle.astro';
       a.href = safeUrl(link.short_url);
       result.hidden = false;
       toast(copied ? 'Link created and copied' : 'Link created', 'success');
-      if (state.page === 1 && !hasFilters()) {
+      if (state.page === 1 && !hasFilters() && state.tab.kind === 'links') {
         links = new Map([[link.id, link], ...links]);
         total += 1;
         render(link.id);
@@ -626,8 +656,21 @@ import VisibilityToggle from '@/components/app/VisibilityToggle.astro';
     })
     .catch(() => {});
 
-  load();
+  // An account's tab from the address waits for the managers: an account with no links to show lands on Links.
+  // The address is rewritten either way, so older ones (`?type=all`, `?via_service_account=`) read as today's.
+  async function start() {
+    if (state.tab.kind === 'managed') {
+      const asked = state.tab;
+      state.tab = settleTab(asked, await managersReady);
+      if (state.tab !== asked) toast('That service account doesn’t manage any links you can see', 'info');
+    }
+    syncUrl();
+    renderTabs();
+    load();
+    void managersReady.then(renderTabs);
+  }
+
+  void start();
   loadStats();
   loadTagChips();
-  loadServices();
 </script>

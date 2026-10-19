@@ -15,6 +15,12 @@ admin). It also changes the links it created on someone's behalf (`via_service_a
 their creator is the person, and the service still has to set their expiry or revoke them.
 Its links always belong to the organization, never to it alone.
 
+Phase 10.3 — a link made through a service account is managed by it (server/utils/managed.py):
+only that account changes it (`can_change`, the path every changing route takes), with a 403
+`managed_link_protected` for anyone else, owners included. Its tags are the exception: they
+change by the tags path (`can_change_tags`, `to_change="tags"`), which keeps the rule above for
+every link, managed or not.
+
 Every route that reads one link or campaign decides with `visible_url_or_404` or
 `visible_campaign_or_404`, so a route can't answer for more people than another
 (docs/PERSONAL_DATA.md, checked by tests/test_personal_data_inventory.py).
@@ -29,6 +35,7 @@ from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session, joinedload
 
 from server.core.models import URL, Campaign, Domain, OrgRole, User
+from server.utils import managed
 from server.utils.domain import normalize_hostname
 from server.utils.organization import get_membership
 
@@ -49,6 +56,25 @@ class Viewer:
         return or_(model.organization_id == self.organization_id, own_personal)
 
     def can_change(self, item) -> bool:
+        """
+        May change or delete it: its destination, code, validity, cap, rules, preview and
+        visibility (the locked fields). A managed link (10.3): only its manager. Otherwise its
+        creator, the service account that made it, and the organization's admins and owners.
+        """
+        if managed.is_managed(item):
+            return managed.is_manager(self, item)
+        return self._is_creator_or_admin(item)
+
+    def can_change_tags(self, item) -> bool:
+        """
+        May change its tags, the one thing people change on a managed link (10.3). The rule
+        from before managed links, for every link: its creator (on a managed link, the person
+        it was made for), the service account that made it (the manager), and the
+        organization's admins and owners. Nobody gains or loses tags by a link being managed.
+        """
+        return self._is_creator_or_admin(item)
+
+    def _is_creator_or_admin(self, item) -> bool:
         if item.created_by == self.user.id:
             return True
         # Phase 10.1 — the service account that created a link (campaigns have no such column).
@@ -62,11 +88,16 @@ class Viewer:
         )
 
     def ensure_can_change(self, item, noun: str = "link") -> None:
+        """`can_change`, or a 403: `managed_link_protected` (naming its manager) on a managed
+        link, the plain one otherwise."""
+        managed.ensure_may_change(self, item)
         if not self.can_change(item):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"Only its creator, or an admin or owner, can change this {noun}.",
-            )
+            raise _not_yours(noun)
+
+    def ensure_can_change_tags(self, item, noun: str = "link") -> None:
+        """`can_change_tags`, or the plain 403."""
+        if not self.can_change_tags(item):
+            raise _not_yours(noun)
 
     def organization_for(self, visibility: Visibility) -> UUID | None:
         """The `organization_id` for something this person creates. A service account's are
@@ -74,6 +105,13 @@ class Viewer:
         if self.user.is_service:
             return self.organization_id
         return None if visibility == "personal" else self.organization_id
+
+
+def _not_yours(noun: str) -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail=f"Only its creator, or an admin or owner, can change this {noun}.",
+    )
 
 
 def viewer(db: Session, user: User) -> Viewer:
@@ -112,17 +150,22 @@ def visible_url_or_404(
     short_code: str,
     domain: str | None = None,
     *,
-    to_change: bool = False,
+    to_change: bool | Literal["tags"] = False,
 ) -> URL:
     """
     The link a code names on `domain` (`find_url`, Phase 8.3), if the person can see it:
-    404 otherwise. With `to_change`, a 403 if they may see it but not change it.
+    404 otherwise. With `to_change=True`, a 403 if they may see it but not change it
+    (`ensure_can_change`: on a managed link, only its manager). With `to_change="tags"`, the
+    same for its tags (`ensure_can_change_tags`), which people may still change on a managed
+    link.
     """
     who = viewer(db, user)
     url = find_url(db, who, short_code, domain)
     if not url:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="URL not found")
-    if to_change:
+    if to_change == "tags":
+        who.ensure_can_change_tags(url)
+    elif to_change:
         who.ensure_can_change(url)
     return url
 

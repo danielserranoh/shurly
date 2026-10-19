@@ -42,8 +42,9 @@ of the same module that the route calls.
 | `get_current_user` | Any signed-in account: a session token (JWT), an API key or a service token (10.1). A service token only on the routes its scopes allow, from its allowed IP ranges (10.2, `server/utils/service_scopes.py`, checked where it authenticates): elsewhere a 403 |
 | `get_signed_in_session` | A session token only: an API key gets a 403, a service token a 403 with `code: service_account_not_allowed` |
 | `sees` | A list, filtered to what the caller can see: their organization's, and their own personal ones (`Viewer.sees`, `server/utils/access.py`) |
-| `visible_url_or_404`, `visible_campaign_or_404` | One link or campaign the caller can see, else 404. When a route changes it, one they can change, else 403: its creator, or an organization admin or owner (`server/utils/access.py`) |
-| `find_urls`, `find_url`, `can_change` | The same rules, where the MCP's curated tools and bulk tagging apply them |
+| `visible_url_or_404`, `visible_campaign_or_404` | One link or campaign the caller can see, else 404. When a route changes it, one they can change, else 403: its creator, or an organization admin or owner (`server/utils/access.py`). A link a service account manages (10.3, `server/utils/managed.py`): only that account changes it, anyone else gets a 403 `managed_link_protected`; its tags change by the rule before |
+| `find_urls`, `find_url`, `can_change`, `can_change_tags` | The same rules, where the MCP's curated tools and bulk tagging apply them |
+| `_ensure_may_override` | A person who owns the link's organization, for a link a service account manages (10.3): anyone else gets a 403, an unmanaged link a 400 (`server/app/urls.py`) |
 | `viewer` | The caller's organization, for something they create |
 | `_my_membership` | A member of the caller's organization |
 | `change_role`, `remove_member`, `transfer_ownership`, `removed_members`, `adopt_personal_links` | The organization's roles (`server/utils/organization.py`) |
@@ -67,7 +68,7 @@ of the same module that the route calls.
 | `GET /api/v1/analytics/campaigns/{campaign_id}/users` | **recipients' rows** and **recipients' activity**: every recipient's `user_data`, clicks and last click | who can see the campaign | `visible_campaign_or_404` | `get_campaign_users` |
 | `GET /api/v1/analytics/orphan-visits` | **addresses**: the anonymized IP, user agent and referrer of each hit on an unknown code | any signed-in account: they belong to no organization. **Kept (2026-09-29):** the IPs are shown, to revisit after the dogfood | `get_current_user` | `get_orphan_visits` |
 | `GET /api/v1/analytics/orphan-visits/grouped` | none: the paths tried on unknown codes, counted, their first and last hit, and the links each may have meant. With `typos_only` (3.10.8), only the hits a person could have mistyped, and how many hits and paths that left out: a hit's user agent decides whether it's a bot's, and isn't returned. Never an IP, a user agent or a referrer | any signed-in account: they belong to no organization. The links suggested are the caller's to see | `get_current_user`, `viewer` | excluded |
-| `GET /api/v1/analytics/overview` | **visits**, counted: totals, and the top links by code (a campaign link's clicks are one recipient's) | the links the caller can see | `sees` | `get_overview_stats` |
+| `GET /api/v1/analytics/overview` | **visits**, counted: totals, and the top links by code (a campaign link's clicks are one recipient's). A top link a service account manages (10.3) has its destination masked (`https://host/…`) for everyone but that account and the organization's owners; it still counts in every total | the links the caller can see | `sees` | `get_overview_stats` |
 | `GET /api/v1/analytics/urls/{short_code}/breakdown` | **visits**, counted, cities included. On a campaign link, one recipient's, and no cities | who can see the link | `visible_url_or_404` | `get_url_breakdown` |
 | `GET /api/v1/analytics/urls/{short_code}/daily` | **visits**, counted. On a campaign link, one recipient's | who can see the link | `visible_url_or_404` | `get_url_daily_stats` |
 | `GET /api/v1/analytics/urls/{short_code}/geo` | **visits**, counted. On a campaign link, one recipient's | who can see the link | `visible_url_or_404` | `get_url_geo_stats` |
@@ -112,31 +113,33 @@ of the same module that the route calls.
 | `POST /api/v1/organization/transfer-ownership` | **accounts**: the new owner's email, names and role | the owner | `transfer_ownership` | excluded |
 | `GET /api/v1/service-accounts` | **accounts**: the organization's service accounts, each one's name, description, role and person responsible (email and names), and its tokens' prefix, creation, expiry, last use, scopes, warnings and allowed IP ranges (10.2: an allowlist the owner set, never an address seen). Never a token or its hash, never an IP it was used from | an owner or admin, signed in | `get_signed_in_session`, `ensure_reader` | excluded |
 | `POST /api/v1/service-accounts` | **accounts**: the new service account, with its person responsible | the owner, signed in | `get_signed_in_session`, `create_account` | excluded |
-| `GET /api/v1/service-accounts/audit` | **accounts** (10.2): the audit of the organization's service accounts, newest first. Each event's time, action, target id (a link's short code while it exists and the reader sees it), the service account's id and name, the token's id, and the email and name of the person who made it (an owner) or the service acted for, looked up when read: someone deleted shows as deleted, by id. Ids and field names only, never the values changed, never an IP | an owner or admin, signed in | `get_signed_in_session`, `ensure_reader` | excluded |
+| `GET /api/v1/service-accounts/audit` | **accounts** (10.2): the audit of the organization's service accounts, newest first. Each event's time, action, target id (a link's short code while it exists and the reader sees it), the service account's id and name, the token's id, and the email and name of the person who made it (an owner) or the service acted for, looked up when read: someone deleted shows as deleted, by id. Ids and field names only, never the values changed, never an IP. The one exception (10.3): an owner's override of a managed link carries the reason they typed (§ The audit of service accounts) | an owner or admin, signed in | `get_signed_in_session`, `ensure_reader` | excluded |
 | `DELETE /api/v1/service-accounts/{account_id}` | none: it revokes the account's tokens and removes it | the owner, signed in | `get_signed_in_session`, `remove_account` | excluded |
 | `PATCH /api/v1/service-accounts/{account_id}` | **accounts**: the service account, with its person responsible | the owner, signed in | `get_signed_in_session`, `update_account` | excluded |
-| `GET /api/v1/service-accounts/{account_id}/links` | **recipients' rows** and **recipients' activity**: a campaign link's, as `GET /api/v1/urls`. **accounts**: each link's creator's email and names. The links the account made, `?token_id=` those one token made | an owner or admin, signed in | `get_signed_in_session`, `ensure_reader`, `sees` | excluded |
+| `GET /api/v1/service-accounts/{account_id}/links` | **recipients' rows** and **recipients' activity**: a campaign link's, as `GET /api/v1/urls`. **accounts**: each link's creator's email and names. The links the account made, `?token_id=` those one token made. The ones it manages (10.3) have their destination masked for admins: only owners read it here | an owner or admin, signed in | `get_signed_in_session`, `ensure_reader`, `sees` | excluded |
 | `DELETE /api/v1/service-accounts/{account_id}/token` | none | the owner, signed in | `get_signed_in_session`, `revoke_tokens` | excluded |
 | `POST /api/v1/service-accounts/{account_id}/token` | **accounts**: the service account, with its person responsible, and its new token, shown this once, with its scopes and allowed IP ranges (10.2: an allowlist the owner set, never an address seen) | the owner, signed in | `get_signed_in_session`, `issue_token` | excluded |
 | `GET /api/v1/tags` | none: tags are names shared by everyone | any signed-in account | `get_current_user` | `list_tags` |
 | `POST /api/v1/tags` | none | any signed-in account | `get_current_user` | `create_tag` |
 | `DELETE /api/v1/tags/{tag_id}` | none | any signed-in account | `get_current_user` | `delete_tag` |
 | `PATCH /api/v1/tags/{tag_id}` | none | any signed-in account | `get_current_user` | `update_tag` |
-| `GET /api/v1/urls` | **recipients' rows** and **recipients' activity**: a campaign link's `user_data`, clicks and last click. **accounts**: each link's creator's email and names, and the service account that made it, `{id, display_name}` (10.1; never its token). `?via_service_account=` filters by it | the links the caller can see: their organization's, and their own | `sees` | `list_urls` |
+| `GET /api/v1/urls` | **recipients' rows** and **recipients' activity**: a campaign link's `user_data`, clicks and last click. **accounts**: each link's creator's email and names, and the service account that made it, `{id, display_name}` (10.1; never its token), and the one managing it, `managed_by` (10.3). `?via_service_account=`, `?managed=` and `?managed_by=` filter by them. On a link a service account manages (10.3), the destination is masked (`https://host/…`) for everyone but that account and the organization's owners, since it can carry a credential; `q` doesn't match a destination the caller reads masked | the links the caller can see: their organization's, and their own | `sees` | `list_urls` |
+| `GET /api/v1/urls/managers` | **accounts**: the service accounts managing links the caller can see (10.3), each one's id, name and how many of those links | the links the caller can see: their organization's, and their own | `sees` | `list_link_managers` |
 | `POST /api/v1/urls` | **own account**: the new link, the caller as its creator. With a service token and `X-Shurly-On-Behalf-Of` (10.1), **accounts**: the person named becomes its creator, with their email and names; an email nobody in the organization has is a 422 that says no more | any signed-in account. The header only from a service token | `get_current_user`, `acting_for` | `create_short_url` |
-| `POST /api/v1/urls/bulk/tags` | none: counts | the links the caller can change | `find_urls`, `can_change` | `bulk_tag_urls` |
+| `POST /api/v1/urls/bulk/tags` | none: counts | the links whose tags the caller can change: also a link a service account manages (10.3) | `find_urls`, `can_change_tags` | `bulk_tag_urls` |
 | `POST /api/v1/urls/custom` | **own account**: the new link, the caller as its creator. With a service token and `X-Shurly-On-Behalf-Of` (10.1), **accounts**: the person named becomes its creator, with their email and names | any signed-in account. The header only from a service token | `get_current_user`, `acting_for` | `create_custom_url` |
 | `POST /api/v1/urls/fetch-metadata` | none: a page's Open Graph tags | any signed-in account | `get_current_user` | `fetch_url_metadata` |
-| `DELETE /api/v1/urls/{short_code}` | none | who can change the link | `visible_url_or_404` | `delete_url` |
-| `GET /api/v1/urls/{short_code}` | **recipients' rows** and **recipients' activity**, for a campaign link. **accounts**: the creator's email and names | who can see the link | `visible_url_or_404` | `get_url` |
-| `PATCH /api/v1/urls/{short_code}` | **recipients' rows** and **recipients' activity**, for a campaign link. **accounts**: the creator's email and names | who can change the link | `visible_url_or_404` | `update_url` |
+| `DELETE /api/v1/urls/{short_code}` | none | who can change the link: a link a service account manages, only that account (10.3) | `visible_url_or_404` | `delete_url` |
+| `GET /api/v1/urls/{short_code}` | **recipients' rows** and **recipients' activity**, for a campaign link. **accounts**: the creator's email and names, and the service account managing it (10.3). On a link a service account manages (10.3), the destination is masked (`https://host/…`) for everyone but that account and the organization's owners, since it can carry a credential | who can see the link | `visible_url_or_404` | `get_url` |
+| `POST /api/v1/urls/{short_code}/override-delete` | none. It writes the service account's audit row (10.3): the owner who deleted, the link's id, and the reason they typed, the audit's one free text | an owner of the link's organization, a person, for a link a service account manages. Never a service token | `get_current_user`, `visible_url_or_404`, `_ensure_may_override` | excluded |
+| `PATCH /api/v1/urls/{short_code}` | **recipients' rows** and **recipients' activity**, for a campaign link. **accounts**: the creator's email and names | who can change the link: a link a service account manages, only that account (10.3) | `visible_url_or_404` | `update_url` |
 | `GET /api/v1/urls/{short_code}/preview` | none: the destination's Open Graph tags and icon, and the overrides typed for the link | who can see the link | `visible_url_or_404` | `get_url_preview` |
-| `POST /api/v1/urls/{short_code}/refresh-preview` | none | who can change the link | `visible_url_or_404` | `refresh_url_preview` |
-| `GET /api/v1/urls/{short_code}/rules` | none | who can see the link | `visible_url_or_404` | `list_redirect_rules` |
-| `POST /api/v1/urls/{short_code}/rules` | none | who can change the link | `visible_url_or_404` | `create_redirect_rule` |
-| `DELETE /api/v1/urls/{short_code}/rules/{rule_id}` | none | who can change the link | `visible_url_or_404` | `delete_redirect_rule` |
-| `PATCH /api/v1/urls/{short_code}/rules/{rule_id}` | none | who can change the link | `visible_url_or_404` | `update_redirect_rule` |
-| `PATCH /api/v1/urls/{short_code}/tags` | none | who can change the link | `visible_url_or_404` | `update_url_tags` |
+| `POST /api/v1/urls/{short_code}/refresh-preview` | none | who can change the link: a link a service account manages, only that account (10.3) | `visible_url_or_404` | `refresh_url_preview` |
+| `GET /api/v1/urls/{short_code}/rules` | none. On a link a service account manages (10.3), each rule's target is masked as its destination is | who can see the link | `visible_url_or_404` | `list_redirect_rules` |
+| `POST /api/v1/urls/{short_code}/rules` | none | who can change the link: a link a service account manages, only that account (10.3) | `visible_url_or_404` | `create_redirect_rule` |
+| `DELETE /api/v1/urls/{short_code}/rules/{rule_id}` | none | who can change the link: a link a service account manages, only that account (10.3) | `visible_url_or_404` | `delete_redirect_rule` |
+| `PATCH /api/v1/urls/{short_code}/rules/{rule_id}` | none | who can change the link: a link a service account manages, only that account (10.3) | `visible_url_or_404` | `update_redirect_rule` |
+| `PATCH /api/v1/urls/{short_code}/tags` | none | who can change the link's tags: its creator, the service account that made it, an admin or owner; on a link a service account manages too (10.3) | `visible_url_or_404` | `update_url_tags` |
 | `DELETE /api/v1/waitlist/{entry_id}` | none: it removes the entry, when its person asks (§ The waitlist) | an owner or admin | `ensure_owner_or_admin` | excluded |
 | `GET /api/v1/waitlist` | **prospects**: every entry, newest first and paged, with the counts by kind and by company size | an owner or admin | `ensure_owner_or_admin` | excluded |
 | `GET /api/v1/waitlist/export` | **prospects**: every entry, as a CSV | an owner or admin | `ensure_owner_or_admin` | excluded |
@@ -174,7 +177,7 @@ Each also runs behind `POST /mcp/`, the MCP's sign-in.
 
 | Route | People's data it returns | Who sees it | Guard | MCP |
 |---|---|---|---|---|
-| MCP `get_url_analytics_summary` | **visits**, counted, and how many distinct addresses. On a campaign link, one recipient's | who can see the link | `find_url` | curated |
+| MCP `get_url_analytics_summary` | **visits**, counted, and how many distinct addresses. On a campaign link, one recipient's. On a link a service account manages (10.3), the destination is masked for everyone but that account and the organization's owners | who can see the link | `find_url` | curated |
 | MCP `list_orphan_visits_grouped` | **addresses**: the anonymized IPs, user agents and referrers of each path's newest 3 hits on unknown codes, with the paths' counts, first and last hit, and the links each may have meant. With `typos_only` (3.10.8), only the hits a person could have mistyped, samples included, and how many hits and paths that left out | any account: they belong to no organization. The links suggested are the caller's to see. **Kept (2026-09-29):** the IPs are shown, to revisit after the dogfood | `RequireAuthMiddleware`, `viewer` | curated |
 | MCP `create_campaign_from_rows` | **own account**: the new campaign | any account | `viewer` | curated |
 | MCP `add_redirect_rule` | none | who can change the link | `find_url`, `can_change` | curated |
@@ -219,7 +222,16 @@ What service accounts do, and what's done to them, kept longer than the event lo
 - **Ids only**, as the event log: the service account, the token, the people and the target by id, the action, and
   in `detail` ids and the names of the fields changed, never their values. No email, no IP, no short code or title
   (a slug can be someone's name). The ids have no foreign keys, so a row outlives what it names, and deleting a
-  person isn't held up by it.
+  person isn't held up by it. One exception, below: an override's reason (10.3).
+- **An owner's override (10.3)**, deleting a link a service account manages past it (`POST
+  /api/v1/urls/{short_code}/override-delete`, § Links managed by a service account): a `url.deleted` row on the
+  manager, with the owner as `actor_id` and `detail` `{"override": true, "reason": …}`. **The reason is the audit's
+  one free-text field**: what the owner typed to say why, 10 to 500 characters, required, since it's the point of
+  the row. It's the owner's own words, meant to say why ("the recipient asked us to delete their data", "a leaked
+  access token"); the dialog doesn't ask for anyone's name or email, but nothing stops one being typed, so it's read
+  as possibly personal. It's kept with the row (2 years, below), read by the same owners and admins as the rest
+  (each account's **Activity** shows it under the event), and never written to the event log, whose
+  `url.override_deleted` has ids only.
 - **People are looked up when it's read:** `GET /api/v1/service-accounts/audit` gives the email and name of the
   person acted for or the owner who acted, as they are then, and someone deleted shows as deleted, with their id
   only. A link shows its short code while it exists and the reader sees it.
@@ -230,6 +242,30 @@ tool, like every route under `/api/v1/service-accounts`.
 
 **Retention:** 2 years from each event. The daily housekeeping (`server/utils/housekeeping.py`, DEPLOYMENT.md
 § Daily housekeeping) deletes the older rows, and logs how many (`audit_deleted`), never which.
+
+## Links managed by a service account (10.3, decided 2026-10-19)
+
+A link made through a service account, other than a campaign link, is **managed** by it (`server/utils/managed.py`;
+derived from `urls.via_service_account_id`, no new column). Only that account changes or deletes it; people change
+its tags. Its destination can carry a credential: Propuestas' links end in the proposal's access token. So:
+- **Who reads the destination whole:** the managing service account, and the owners of the link's organization.
+  Everyone else, the person the link was made for and the admins included, reads it masked: its scheme and host, and
+  `…` for the rest (`https://propuestas.griddo.io/…`; a `user:pass@` in the address is dropped). A removed service
+  account's links stay managed and masked.
+- **Where:** every route that returns a link's destination: `GET /api/v1/urls` and `GET /api/v1/urls/{short_code}`
+  (and so the MCP's `list_urls` and `get_url`), the link the create and change routes answer with, the targets of its
+  redirect rules (`GET …/rules`), the overview's top links (`GET /api/v1/analytics/overview`), the admins' list of
+  an account's links (`GET /api/v1/service-accounts/{account_id}/links`), and the curated
+  `get_url_analytics_summary`. The app shows the mask as plain text, titled "Only <service> and the organization's
+  owners see the full destination".
+- **Search:** `q` on `GET /api/v1/urls` doesn't match the destination of a link whose destination the caller reads
+  masked, so a search can't find what the mask hides (it still matches its title and code).
+- **What it doesn't stop:** whoever follows the short link reaches the destination. The mask keeps the credential
+  out of the dashboard, the API and the MCP's context, not away from the recipient.
+- **`managed_by`** (`{id, display_name}`) names the managing account on each link, and `GET /api/v1/urls/managers`
+  lists the accounts managing links the caller sees, with how many: names of service accounts, no people.
+- **Deleting one past its service account** is an owner's override, with a reason, kept in the audit (§ The audit
+  of service accounts). It isn't an MCP tool, and a service token can't call it.
 
 ## The waitlist (9.1, decided 2026-10-05)
 

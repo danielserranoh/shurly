@@ -387,15 +387,17 @@ def list_service_account_links(
     """
     The links the service account created, newest first, also those it made for a person;
     with `token_id`, only those that token created. Owners and admins, signed in.
+
+    Phase 10.3 — the links it manages show their destination to owners only: an admin gets it
+    masked (`https://host/…`), as everywhere else.
     """
     try:
         mine = service.ensure_reader(db, session.user)
         account, _ = service.get_account(db, mine, account_id)
     except service.ServiceAccountError as exc:
         raise _http_error(exc) from exc
-    query = db.query(URL).filter(
-        URL.via_service_account_id == account.id, viewer(db, session.user).sees(URL)
-    )
+    who = viewer(db, session.user)
+    query = db.query(URL).filter(URL.via_service_account_id == account.id, who.sees(URL))
     if token_id is not None:
         query = query.filter(URL.via_token_id == token_id)
     urls = (
@@ -412,6 +414,7 @@ def list_service_account_links(
     )
     total = query.offset(0).limit(None).count()
     counts = _click_counts(db, [url.id for url in urls])
+    # Phase 10.3 — `_to_url_response` masks what `who` may not read (`destination_for`).
     return URLListResponse(
-        urls=[_to_url_response(url, counts.get(url.id, 0)) for url in urls], total=total
+        urls=[_to_url_response(url, counts.get(url.id, 0), who) for url in urls], total=total
     )

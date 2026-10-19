@@ -2,7 +2,9 @@
 // - the owner makes one and its token; the token shows once, with Copy and "you won't see it again", and after
 //   Done only its prefix is left;
 // - the service, with that token, makes a link for the member (X-Shurly-On-Behalf-Of): its page and its card
-//   say "Created by <member> via <service>", and the links list filters by the service;
+//   say "Created by <member> via <service>";
+// - Phase 10.3: the service manages that link: it's in the service's tab on the links list (from an older
+//   "Made via" address too, and from "Its links"), read-only, and not under Links;
 // - Phase 10.2: the token form asks what it may do (every scope to start with, at least one), where from (IP
 //   ranges, one per line, a bad one refused on its field) and when it expires (a year from today, or No expiry);
 //   the token's line says them, and "Expires soon" when it does, with the avatar's dot; a renewal starts from them;
@@ -16,6 +18,7 @@ import { devices, type APIRequestContext, type Page } from '@playwright/test';
 
 import { API_URL, MEMBER, MEMBER_STATE } from './env';
 import { expect, test } from './fixtures';
+import { pick } from './helpers';
 
 const IMPACTS = ['moderate', 'serious', 'critical'];
 
@@ -42,6 +45,20 @@ async function makeAccount(ownerApi: APIRequestContext, name: string): Promise<A
 
 /** Whatever an earlier run left: this spec's service accounts go, so the list starts clean. */
 async function removeEarlier(ownerApi: APIRequestContext) {
+  // Phase 10.3 — a removed account keeps managing its links, and its tab with them: delete
+  // earlier runs' managed links first (an owner's override), or their tabs pile up by name.
+  const managers = (await (await ownerApi.get('/api/v1/urls/managers')).json()) as Account[];
+  for (const manager of managers.filter((m) => m.display_name?.startsWith('Propuestas E2E'))) {
+    const { urls } = (await (await ownerApi.get(`/api/v1/urls?managed_by=${manager.id}&limit=100`)).json()) as {
+      urls: { short_code: string; domain: string }[];
+    };
+    for (const link of urls) {
+      const gone = await ownerApi.post(`/api/v1/urls/${link.short_code}/override-delete?domain=${encodeURIComponent(link.domain)}`, {
+        data: { reason: 'Clean-up after an end-to-end run' },
+      });
+      expect(gone.status()).toBe(204);
+    }
+  }
   const accounts = (await (await ownerApi.get('/api/v1/service-accounts')).json()) as Account[];
   for (const account of accounts.filter((a) => a.display_name.startsWith('Propuestas E2E'))) {
     await ownerApi.delete(`/api/v1/service-accounts/${account.id}`);
@@ -118,16 +135,43 @@ for (const { device, options } of DEVICES) {
       await page.goto(`/dashboard/link/?code=${link.short_code}&domain=${link.domain}`);
       await expect(page.locator('[data-meta]')).toContainText(`by ${MEMBER} via ${name}`);
 
-      // The links list, filtered by the service.
-      await page.goto('/dashboard/?type=all');
-      const via = page.getByLabel('Made via');
-      await expect(via).toBeVisible();
-      await via.selectOption({ label: name });
-      await expect(page).toHaveURL(/via_service_account=/);
+      // Phase 10.3 — its links are managed by it: in its own tab on the links list, not under Links. An older
+      // address (the "Made via" filter's) opens that tab.
+      const accountId = link.via_service_account.id;
+      await page.goto(`/dashboard/?type=all&via_service_account=${accountId}`);
+      await expect(page).toHaveURL(new RegExp(`/dashboard/\\?managed_by=${accountId}$`));
+      const tab = page.getByRole('radio', { name, exact: true });
+      await expect(tab).toBeChecked();
+      await expect(page.getByRole('heading', { name: new RegExp(`^Links from ${name}`) })).toBeVisible();
+      await expect(page.getByText(`Managed by ${name}. Its links are read-only here`)).toBeVisible();
       const cards = page.locator('#link-list > li');
       await expect(cards).toHaveCount(1);
       await expect(cards.first()).toContainText(`Created by ${MEMBER} via ${name}`);
-      await expectNoIssues(page, `links filtered by a service, ${device}`);
+      await expect(cards.first()).toContainText(`Managed by ${name}`);
+      // Read-only: no Edit and no Delete, only where they happen.
+      await cards.first().getByRole('button', { name: /^More actions for/ }).click();
+      const menu = cards.first().locator('[popover]');
+      await expect(menu.locator('[data-action="edit"], [data-action="delete"]')).toHaveCount(0);
+      await expect(menu.getByText(`Delete via ${name}`)).toHaveAttribute('aria-disabled', 'true');
+      await page.keyboard.press('Escape');
+      await expectNoIssues(page, `a service account's tab, ${device}`);
+      if (device === 'phone') {
+        // Its tab among the others scrolls sideways; the page doesn't.
+        expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+      }
+
+      // Links leaves it out.
+      await pick(page.getByRole('radio', { name: 'Links', exact: true }));
+      await expect(page).toHaveURL(/\/dashboard\/$/);
+      await expect(cards.filter({ hasText: `Proposal ${device}` })).toHaveCount(0);
+
+      // "Its links", on the Organization page, opens the same tab.
+      await page.goto('/dashboard/organization/');
+      await row.getByRole('button', { name: `More actions for ${name}` }).click();
+      await row.getByRole('link', { name: 'Its links' }).click();
+      await expect(page).toHaveURL(new RegExp(`/dashboard/\\?managed_by=${accountId}$`));
+      await expect(tab).toBeChecked();
+      await expect(cards).toHaveCount(1);
 
       // Its last use shows, and revoking it locks it out at once.
       await page.goto('/dashboard/organization/');
