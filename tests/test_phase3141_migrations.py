@@ -18,7 +18,7 @@ from alembic import command
 from alembic.autogenerate import compare_metadata
 from alembic.runtime.migration import MigrationContext
 from alembic.script import ScriptDirectory
-from sqlalchemy import Column, DateTime, MetaData, Table, inspect, text
+from sqlalchemy import text
 
 from server.core import Base
 from server.core.migrations import BASELINE_REVISION, alembic_config, run_migrations
@@ -38,23 +38,10 @@ def _version(engine) -> str | None:
         return MigrationContext.configure(conn).get_current_revision()
 
 
-# urls.og_fetched_at, unwritten since 8.7, is no longer mapped, and the migration that drops it
-# ships in the release after: the previous release's tasks still select it, and would fail
-# mid-rollout (users.api_key went the same way, 0014). Until then the drift check ignores exactly
-# that column; test_the_pending_drop_is_still_pending fails once it's gone, and both go.
-_PENDING_DROP = {("column", "urls", "og_fetched_at")}
-
-
-def _not_a_pending_drop(obj, name, type_, reflected, compare_to) -> bool:
-    table = getattr(getattr(obj, "table", None), "name", None)
-    return (type_, table, name) not in _PENDING_DROP
-
-
 def _drift(engine) -> list:
     """What `alembic revision --autogenerate` would still write: models vs. database."""
     with engine.connect() as conn:
-        context = MigrationContext.configure(conn, opts={"include_object": _not_a_pending_drop})
-        return compare_metadata(context, Base.metadata)
+        return compare_metadata(MigrationContext.configure(conn), Base.metadata)
 
 
 def test_empty_database_migrates_to_the_models(pg_engine):
@@ -126,33 +113,3 @@ def test_tasks_booting_together_migrate_once(pg_engine):
 
     assert failures == []
     assert _version(pg_engine) == _head()
-
-
-def _what(diff) -> tuple:
-    if diff[0] == "remove_column":
-        return ("column", diff[2], diff[3].name)
-    return diff
-
-
-def test_the_pending_drop_is_still_pending(pg_engine):
-    """The drift check ignores urls.og_fetched_at until its migration drops it, and nothing
-    else. When this fails because it's gone: delete `_PENDING_DROP` and this test."""
-    run_migrations(pg_engine)
-
-    assert "og_fetched_at" in {column["name"] for column in inspect(pg_engine).get_columns("urls")}
-    with pg_engine.connect() as conn:
-        unfiltered = compare_metadata(MigrationContext.configure(conn), Base.metadata)
-    assert {_what(diff) for diff in unfiltered} == _PENDING_DROP
-
-
-def test_the_drift_check_ignores_nothing_else():
-    """Exactly urls.og_fetched_at: not a column of that name elsewhere, nor another of urls'
-    columns or the table."""
-    legacy = Table("urls", MetaData(), Column("og_fetched_at", DateTime(timezone=True)))
-    elsewhere = Table("visitors", MetaData(), Column("og_fetched_at", DateTime(timezone=True)))
-    urls = Base.metadata.tables["urls"]
-
-    assert not _not_a_pending_drop(legacy.c.og_fetched_at, "og_fetched_at", "column", True, None)
-    assert _not_a_pending_drop(elsewhere.c.og_fetched_at, "og_fetched_at", "column", True, None)
-    assert _not_a_pending_drop(urls.c.page_fetched_at, "page_fetched_at", "column", False, None)
-    assert _not_a_pending_drop(urls, "urls", "table", False, None)

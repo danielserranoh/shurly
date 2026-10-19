@@ -1,4 +1,4 @@
-# Service accounts (ROADMAP 10.1)
+# Service accounts (ROADMAP 10.1, 10.2)
 
 Decided 2026-10-16 with the user, from Propuestas Griddo's proposal (`propuestas.griddo.io`, the first consumer:
 its MCP hosts a proposal, builds a tokenized URL with UTMs, and asks Shurly for the short link). This is the
@@ -37,12 +37,12 @@ sign in to generate a key, and nobody would own it.
 | **No "channel"** (ui / api / mcp) | It answers no useful question, and an honest version would need ui, mcp, personal key and service account. What matters is the creator, and the service account when there was one. An empty service account means the person did it with their own credentials |
 | **The token's reference**, never the token | The link keeps the token's row id. The token itself is only ever a hash. The link page shows "via Propuestas Griddo", never the token. The reference is there to answer "which links did this token create?" when a token leaks |
 | **One token per account, with a 24-hour overlap on renewal** | Renewing makes a new token, and the old one keeps working for 24 hours (or until "Revoke the old one now") so the service can switch without failing requests. Revoking ends a token at once. The proposal's several tokens per account would do the same with more to manage |
-| **Expiry optional** in v1 | Without warnings before it (v2), a required expiry would bring the integration down silently on the day. The token's last use is visible instead |
+| **Expiry optional** in v1 | Without warnings before it (v2), a required expiry would bring the integration down silently on the day. The token's last use is visible instead. *v2 (2026-10-19):* still optional in the API, but the app's form starts at a year from today, and the app warns 14 days before |
 | **Acting on behalf grants nothing** | The service always acts with its own account's role. The header only decides whom the link is attributed to. A `member` service acting for an owner still can't change other people's links |
 | **The service account that created a link can change it** | The creator is the person, so without this a `member` service couldn't later set the expiry or revoke the links it made, which Propuestas does (`set_expiry`, `revoke_link`). With it, Propuestas doesn't need `admin` |
 | **Its links are the organization's**, never personal | A personal link is seen only by its creator, the person, so the service couldn't find its own link again |
 | **The header only works with a service token** | With a person's API key or session it's a 403 (`on_behalf_of_not_allowed`). Otherwise anyone could attribute links to someone else |
-| **The existing event log** for v1, not an audit table | Events go to CloudWatch, kept 60 days. A queryable two-year audit table with its API is v2 |
+| **The existing event log** for v1, not an audit table | Events go to CloudWatch, kept 60 days. A queryable two-year audit table with its API is v2 (built 2026-10-19, below) |
 | **Owner-only management** | The user's call. The proposal also allowed admins |
 
 ## The data
@@ -119,9 +119,10 @@ them. None of them is an MCP tool.
 | `POST /api/v1/service-accounts` | Creates one (`display_name`, `description`, `responsible_user_id`, `role`) |
 | `PATCH /api/v1/service-accounts/{id}` | Changes the display name, description, person responsible or role |
 | `DELETE /api/v1/service-accounts/{id}` | Revokes its tokens and removes it from the organization. Its links stay, with the account named |
-| `POST /api/v1/service-accounts/{id}/token` | Creates the token, or renews it (the old one stays valid for 24 hours). Optional `expires_at`. Returns the secret this once |
+| `POST /api/v1/service-accounts/{id}/token` | Creates the token, or renews it (the old one stays valid for 24 hours). Optional `expires_at`; v2 adds optional `scopes` and `allowed_ip_ranges`, a renewal keeping the replaced token's. Returns the secret this once |
 | `DELETE /api/v1/service-accounts/{id}/token` | Revokes every token of the account at once. `?old_only=true` ends just the one still in its overlap |
 | `GET /api/v1/service-accounts/{id}/links` | The links it created, filterable by `token_id`: what a leaked token touched |
+| `GET /api/v1/service-accounts/audit` | v2: the audit, newest first (`account`, `before`, `limit`). Owners and admins |
 
 `GET /api/v1/urls` gains `?via_service_account=<id>`.
 
@@ -155,7 +156,8 @@ the event log never carries an address (server/utils/event_log.py).
 ## Errors
 
 The current `{"detail": "…"}` stays. The new cases add a stable `code`: `on_behalf_of_unknown`,
-`on_behalf_of_not_allowed` and `service_account_not_allowed`. Shurly already answers 401, 403, 404, 409, 422 and 429
+`on_behalf_of_not_allowed` and `service_account_not_allowed`. v2 adds `scope_missing` and `ip_not_allowed`, both
+403, and a 429 with `Retry-After` over the rate limit (below). Shurly already answers 401, 403, 404, 409, 422 and 429
 with their message. When Propuestas reports every failure as an internal error, that's for its client to fix.
 
 ## Security
@@ -165,7 +167,7 @@ with their message. When Propuestas reports every failure as an internal error, 
 - **Acting on behalf:** grants no permission (see above).
 - **Sign-in:** `kind = 'service'` can't sign in, by Google or by password, nor reach the MCP's Google sign-in.
 - **Personal data:** docs/PERSONAL_DATA.md gets the new routes and the `via_*` columns. The tokens' `last_used_at`
-  carries no IP.
+  carries no IP. v2's `allowed_ip_ranges` are what the owner sets, never an address seen.
 
 ## Acceptance
 
@@ -188,15 +190,44 @@ with their message. When Propuestas reports every failure as an internal error, 
 - [ ] A service account can't sign in, generate an API key, set a password or manage service accounts.
 - [ ] People's API keys and sessions work as before. Their links have no `via_service_account`.
 
-## v2, not now
+## v2, built 2026-10-19 (ROADMAP 10.2)
 
-- A queryable audit table (`audit_events`) with its API, kept 2 years. It has to go in docs/PERSONAL_DATA.md, since
-  it holds emails.
-- Fine-grained scopes: `urls:read`, `urls:write`, `urls:delete`, `tags:write`, `analytics:read`, `act_on_behalf`.
-  Today's API keys have a scope that nothing enforces.
-- A rate limit per token, with `RateLimit-*` headers and 429 `Retry-After`. Propuestas expects about 60 a minute,
-  with bursts of 10.
-- Warnings before a token expires and after 90 days unused. Then a default expiry.
-- Allowed IP ranges per token.
-- Handing links Propuestas made with a person's API key, before this, over to its service account, from Propuestas'
-  own record (a one-off tool, like `adopt-personal-links`).
+Started once Propuestas had used v1 in production: on 17 October it made 5 links (1 for a person) and 8 updates, on
+the 18th 1 link for a person and 1 update. Decided with the user on 2026-10-19; plan
+`_board/plan_sa-v2-scopes-audit.md`.
+
+- [x] **A queryable audit table (`audit_events`) with its API, kept 2 years.**
+  - **What it covers: service accounts only.** What they do (links, campaigns, tags, redirect rules, and for whom)
+    and what's done to them (the account made, changed, removed; its token made, renewed, revoked, with the owner
+    as `actor_id`). A person's changes to links, campaigns, tags and rules aren't audited.
+  - **Ids only**, as the event log: no email after all. People are looked up when it's read, and someone deleted
+    shows as deleted. No foreign keys, so a row outlives what it names. In docs/PERSONAL_DATA.md § The audit of
+    service accounts.
+  - **Read by owners and admins**, the same people who see the list: `GET /api/v1/service-accounts/audit`
+    (`account`, `before`, `limit`), newest first, and each account's **Activity** on the Organization page. Not an
+    MCP tool.
+  - **2 years:** the daily housekeeping's `audit` job deletes older rows.
+- [x] **Scopes, per token:** `urls:read`, `urls:write`, `urls:delete`, `tags:write`, `analytics:read`,
+  `act_on_behalf`.
+  - **Campaigns and redirect rules sit under `urls:*`**, reading tags under `urls:read`, and the people list
+    (`GET /organization/members`) under `act_on_behalf`. The account's own routes need none.
+  - **One map** from method and route to scope (`server/utils/service_scopes.py`), checked where the token
+    authenticates. A route not in it is refused to service tokens, and a test walks the app's routes.
+  - **Set when the token is made or renewed, and inherited on renewal.** The tokens already in use got every scope
+    (migration 0019), so nothing Propuestas did is refused. Without the scope, a 403 `scope_missing`.
+  - People's API keys still have a scope nothing enforces: out of v2.
+- [x] **A rate limit per service account**, not per token, so the old and the new token share it during a renewal's
+  24 hours. `SERVICE_ACCOUNT_RATE_LIMIT_PER_MINUTE`, 120 by default (Propuestas expects about 60 a minute, with bursts
+  of 10), a fixed one-minute window in `rate_limits`. Every response to a service token carries `RateLimit-Limit`,
+  `RateLimit-Remaining` and `RateLimit-Reset`; over it, a 429 with `Retry-After`.
+- [x] **Warnings, in the app, not by email:** a token that expires within 14 days, and one unused for 90 days
+  (`last_used_at`, or `created_at` if never used). On the token's line, and as a dot on the avatar with a line in
+  the account menu, for owners and admins (`service_accounts_attention` on `GET /api/v1/organization`). Email waits
+  for `epic_invitations-email`.
+  - **The default expiry** is the form's: a year from today, with "No expiry" still there. The API without
+    `expires_at` still means no expiry, and existing tokens were left as they were.
+- [x] **Allowed IP ranges per token:** CIDRs, IPv4 or IPv6, checked against `client_ip` (CloudFront's viewer
+  address, or past `TRUSTED_PROXIES`). Empty means any address; a renewal copies them. Outside them, a 403
+  `ip_not_allowed`, checked first: such a request is neither counted nor a use.
+- ✕ **Handing links Propuestas made with a person's API key over to its service account.** Dropped by decision
+  (2026-10-19): those links can't be told apart from the ones that person made by hand.

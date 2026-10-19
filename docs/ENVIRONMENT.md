@@ -59,7 +59,7 @@ Reviewed on 2026-09-29. **Update this reference in the same PR as any new or cha
 | `CORS_ALLOW_CREDENTIALS` | `false` | The frontend sends a bearer token, never cookies |
 | `CORS_ALLOW_METHODS` | `["GET", "POST", "PUT", "PATCH", "DELETE"]` | The methods the API uses |
 | `CORS_ALLOW_HEADERS` | `["Authorization", "Content-Type", "X-Request-Id"]` | The request headers the API reads |
-| `CORS_EXPOSE_HEADERS` | `["Retry-After", "X-Request-Id"]` | The response headers the frontend reads |
+| `CORS_EXPOSE_HEADERS` | `["Retry-After", "X-Request-Id", "RateLimit-Limit", "RateLimit-Remaining", "RateLimit-Reset"]` | The response headers the frontend reads, and a service account's rate limit |
 
 ### Client addresses and privacy
 
@@ -118,6 +118,7 @@ Each is a count per window, and `0` turns it off. The per-IP ones need `TRUSTED_
 | `RATE_LIMIT_MCP_CLIENTS_PER_IP` | `60` | `/mcp/register` and `/mcp/token` per client IP, per minute: claude.ai calls them from shared addresses |
 | `RATE_LIMIT_CLIENT_ERRORS_PER_IP` | `30` | Browser error reports (`POST /api/v1/client-errors`) per client IP, per minute: the web app sends 5 at most per page |
 | `RATE_LIMIT_WAITLIST_PER_IP` | `10` | Sign-ups to the waitlist (`POST /api/v1/waitlist`) per client IP, per hour: public, and each writes a row |
+| `SERVICE_ACCOUNT_RATE_LIMIT_PER_MINUTE` | `120` | Requests per service account, per minute, all its tokens together (a renewed token and its replacement share it). Every response to its token carries `RateLimit-Limit`, `RateLimit-Remaining` and `RateLimit-Reset`; over it, a 429 with `Retry-After` |
 
 ### Tags
 

@@ -2,9 +2,10 @@
 id: epic_drop-og-fetched-at
 title: Drop urls.og_fetched_at (migration 0018)
 type: epic
-status: backlog
+status: done
 priority: low
 created: 2026-10-18
+completed: 2026-10-19
 ---
 
 # Epic: Drop urls.og_fetched_at (migration 0018)
@@ -29,4 +30,6 @@ redirects included. Same path as `users.api_key` (unmapped in c440652, dropped b
 - Fits as a one-task chore; no other code reads the column.
 
 ## Log
+- 2026-10-19T10:05:35Z Daniel Serrano done in plan_sa-v2-scopes-audit T1: migration 0018
+- 2026-10-19T10:05:35Z Daniel Serrano moved backlog -> done
 - 2026-10-18T13:23:02Z Daniel Serrano created

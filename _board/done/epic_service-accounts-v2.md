@@ -2,9 +2,10 @@
 id: epic_service-accounts-v2
 title: Service accounts v2
 type: epic
-status: backlog
+status: done
 priority: low
 created: 2026-10-17
+completed: 2026-10-19
 ---
 
 # Epic: Service accounts v2
@@ -24,4 +25,5 @@ v1 shipped on 2026-10-17 (ROADMAP 10.1, `_pm/spec_service_accounts.md`). These w
 From ROADMAP 10.1 and the spec's "v2, not now".
 
 ## Log
+- 2026-10-19T09:03:39Z Daniel Serrano moved backlog -> done
 - 2026-10-17T17:20:42Z Daniel Serrano created

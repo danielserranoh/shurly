@@ -1,6 +1,6 @@
 """API endpoints for tag management."""
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
@@ -14,6 +14,7 @@ from server.schemas.tag import (
     TagResponse,
     TagUpdate,
 )
+from server.utils import audit
 from server.utils.tags import normalize_tag_name, validate_tag_name
 
 tags_router = APIRouter(prefix="/tags", tags=["tags"])
@@ -61,6 +62,7 @@ def list_tags(
 @tags_router.post("", response_model=TagResponse, status_code=201)
 def create_tag(
     tag_data: TagCreate,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -89,6 +91,13 @@ def create_tag(
         created_by=current_user.id,
     )
     db.add(tag)
+    db.flush()  # its id, for the audit
+    audit.record(
+        db,
+        acting=audit.acting_on_any_change(db, request, current_user),
+        action="tag.created",
+        target_id=tag.id,
+    )
     db.commit()
     db.refresh(tag)
 
@@ -107,6 +116,7 @@ def create_tag(
 def update_tag(
     tag_id: str,
     tag_update: TagUpdate,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -142,6 +152,13 @@ def update_tag(
     # Update
     tag.name = normalized
     tag.display_name = tag_update.name.strip()
+    audit.record(
+        db,
+        acting=audit.acting_on_any_change(db, request, current_user),
+        action="tag.updated",
+        target_id=tag.id,
+        detail={"fields": ["name"]},
+    )
     db.commit()
     db.refresh(tag)
 
@@ -164,6 +181,7 @@ def update_tag(
 @tags_router.delete("/{tag_id}", status_code=204)
 def delete_tag(
     tag_id: str,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -183,6 +201,12 @@ def delete_tag(
     if tag.is_predefined:
         raise HTTPException(status_code=400, detail="Cannot delete predefined tags")
 
+    audit.record(
+        db,
+        acting=audit.acting_on_any_change(db, request, current_user),
+        action="tag.deleted",
+        target_id=tag.id,
+    )
     db.delete(tag)  # CASCADE will remove from url_tags and campaign_tags
     db.commit()
 

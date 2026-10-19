@@ -43,6 +43,7 @@ from server.schemas.url import (
     URLResponse,
     URLUpdate,
 )
+from server.utils import audit
 from server.utils.access import LinkDomain, find_urls, viewer, visible_url_or_404
 from server.utils.bounds import MAX_SKIP
 from server.utils.columns import fit, stored_referer, stored_user_agent
@@ -299,6 +300,8 @@ async def create_short_url(
 
     store_page_preview(url, metadata)
     db.add(url)
+    db.flush()  # its id, for the audit
+    audit.record(db, acting=acting, action="url.created", target_id=url.id)
     db.commit()
     db.refresh(url)
     _log_service_change("url.created", url.id, acting)
@@ -431,6 +434,8 @@ async def create_custom_url(
 
     store_page_preview(url, metadata)
     db.add(url)
+    db.flush()  # its id, for the audit
+    audit.record(db, acting=acting, action="url.created", target_id=url.id)
     db.commit()
     db.refresh(url)
     _log_service_change("url.created", url.id, acting)
@@ -692,6 +697,7 @@ def delete_url(
     # Delete the URL (visitors will be cascade deleted if configured)
     acting = acting_on_change(db, request, current_user)
     url_id = url.id  # gone with the row once committed
+    audit.record(db, acting=acting, action="url.deleted", target_id=url_id)
     db.delete(url)
     db.commit()
     _log_service_change("url.deleted", url_id, acting)
@@ -766,6 +772,13 @@ async def update_url(
     if moved and not store_page_preview(url, await fetch_opengraph_metadata(new_destination)):
         clear_page_preview(url)
 
+    audit.record(
+        db,
+        acting=acting,
+        action="url.updated",
+        target_id=url.id,
+        detail={"fields": sorted(update_data)},
+    )
     db.commit()
     db.refresh(url)
     _log_service_change("url.updated", url.id, acting)
@@ -831,6 +844,13 @@ def update_url_tags(
 
     # Replace tags
     url.tags = tags
+    audit.record(
+        db,
+        acting=acting,
+        action="url.updated",
+        target_id=url.id,
+        detail={"fields": ["tags"], "tag_ids": [str(tag.id) for tag in tags]},
+    )
     db.commit()
     db.refresh(url)
     _log_service_change("url.updated", url.id, acting)
@@ -853,6 +873,7 @@ def update_url_tags(
 )
 def bulk_tag_urls(
     bulk_data: dict,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -905,6 +926,8 @@ def bulk_tag_urls(
     if len(tags) != len(tag_ids):
         raise HTTPException(status_code=400, detail="One or more tags not found")
 
+    # Phase 10.2 — a service account's audit: one row for each link it added tags to.
+    acting = audit.acting_on_any_change(db, request, current_user)
     updated = 0
     failed = []
 
@@ -916,10 +939,18 @@ def bulk_tag_urls(
             continue
         try:
             # Add tags (don't replace, add to existing)
-            for tag in tags:
-                if tag not in url.tags:
-                    url.tags.append(tag)
+            added = [tag for tag in tags if tag not in url.tags]
+            for tag in added:
+                url.tags.append(tag)
             updated += 1
+            if added:
+                audit.record(
+                    db,
+                    acting=acting,
+                    action="url.updated",
+                    target_id=url.id,
+                    detail={"fields": ["tags"], "tag_ids": [str(tag.id) for tag in added]},
+                )
         except Exception as e:
             failed.append({"short_code": url.short_code, "error": str(e)})
 
@@ -1067,11 +1098,13 @@ def list_redirect_rules(
 def create_redirect_rule(
     short_code: str,
     rule_data: RedirectRuleCreate,
+    request: Request,
     domain: LinkDomain = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     url = visible_url_or_404(db, current_user, short_code, domain, to_change=True)
+    acting = audit.acting_on_any_change(db, request, current_user)
     rule = RedirectRule(
         url_id=url.id,
         priority=rule_data.priority,
@@ -1079,6 +1112,14 @@ def create_redirect_rule(
         target_url=rule_data.target_url,
     )
     db.add(rule)
+    db.flush()  # its id, for the audit
+    audit.record(
+        db,
+        acting=acting,
+        action="redirect_rule.created",
+        target_id=rule.id,
+        detail={"url_id": str(url.id)},
+    )
     db.commit()
     db.refresh(rule)
     return RedirectRuleResponse.model_validate(rule)
@@ -1093,6 +1134,7 @@ def update_redirect_rule(
     short_code: str,
     rule_id: str,
     rule_update: RedirectRuleUpdate,
+    request: Request,
     domain: LinkDomain = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -1111,8 +1153,17 @@ def update_redirect_rule(
     )
     if not rule:
         raise HTTPException(status_code=404, detail="Rule not found")
-    for field, value in rule_update.model_dump(exclude_unset=True).items():
+    acting = audit.acting_on_any_change(db, request, current_user)
+    changes = rule_update.model_dump(exclude_unset=True)
+    for field, value in changes.items():
         setattr(rule, field, value)
+    audit.record(
+        db,
+        acting=acting,
+        action="redirect_rule.updated",
+        target_id=rule.id,
+        detail={"url_id": str(url.id), "fields": sorted(changes)},
+    )
     db.commit()
     db.refresh(rule)
     return RedirectRuleResponse.model_validate(rule)
@@ -1126,6 +1177,7 @@ def update_redirect_rule(
 def delete_redirect_rule(
     short_code: str,
     rule_id: str,
+    request: Request,
     domain: LinkDomain = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -1144,6 +1196,14 @@ def delete_redirect_rule(
     )
     if not rule:
         raise HTTPException(status_code=404, detail="Rule not found")
+    acting = audit.acting_on_any_change(db, request, current_user)
+    audit.record(
+        db,
+        acting=acting,
+        action="redirect_rule.deleted",
+        target_id=rule.id,
+        detail={"url_id": str(url.id)},
+    )
     db.delete(rule)
     db.commit()
     return None

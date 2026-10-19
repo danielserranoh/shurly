@@ -1081,6 +1081,7 @@ Visitor logging is privacy-first by default, configured via env vars (every vari
 - Database errors leave the SQL parameters out of their message (`hide_parameters=True` in `server/core/__init__.py`), so a traceback in the logs doesn't print what the user sent. PostgreSQL's own detail for a constraint violation still names the value: `Key (email)=(…) already exists`, or the whole row for a `NOT NULL` violation.
 - Link-preview failures log the destination URL's origin (scheme, host, port), never its path or query string (`url_origin` in `server/utils/url.py`). App warnings reach CloudWatch without any log configuration: Python's last-resort handler prints them to stderr.
 - Waitlist entries are deleted 12 months after their latest sign-up, by the daily housekeeping (§ Daily housekeeping; `docs/PERSONAL_DATA.md` § The waitlist).
+- The audit of what service accounts do (Phase 10.2, `audit_events`) keeps ids only, never an email or an address, and is deleted 2 years after each event, by the same housekeeping (§ Service accounts; `docs/PERSONAL_DATA.md` § The audit of service accounts).
 
 If your privacy policy permits storing full IPs, set `ANONYMIZE_REMOTE_ADDR=false` — but document the decision.
 
@@ -1102,7 +1103,7 @@ Behind CloudFront (`shurly.griddo.io`, Phase 4.10) the client IP comes from `Clo
 
 ## Rate limits (Phase 6.3)
 
-What anyone can call is limited per client IP, counted in the database (`rate_limits`) so both tasks share the counts: the password login (every attempt runs a bcrypt check, on the tasks that also serve redirects) and the Google and MCP sign-in endpoints (each request writes a row). Redirects, anything signed in and CORS preflights are never limited.
+What anyone can call is limited per client IP, counted in the database (`rate_limits`) so both tasks share the counts: the password login (every attempt runs a bcrypt check, on the tasks that also serve redirects) and the Google and MCP sign-in endpoints (each request writes a row). Redirects, people signed in (a session or an API key) and CORS preflights are never limited. A service account is, per account rather than per IP (Phase 10.2, § Service accounts).
 
 - **`TRUSTED_PROXIES` must name the ALB** (`["172.31.0.0/16"]` in production): the limits key on the client IP it resolves. Unset, every request seems to come from the ALB, and each per-IP limit becomes one limit for everybody. Behind CloudFront, `CLOUDFRONT_ORIGIN_SECRETS` too (§ Frontend hosting), or everyone behind the same edge shares one count.
 - Settings, per minute unless said otherwise; `0` turns one off:
@@ -1113,6 +1114,7 @@ What anyone can call is limited per client IP, counted in the database (`rate_li
   | `RATE_LIMIT_LOGIN_FAILURES_PER_ACCOUNT` | `10` | Failed password checks per address, per 15 minutes: logins, and the current password given to `POST /api/v1/auth/change-password` or `PUT /api/v1/auth/password` |
   | `RATE_LIMIT_SIGN_IN_PER_IP` | `30` | Google's sign-in (`/api/v1/auth/google/*`), the MCP's sign-in pages (`/mcp/authorize`, `/mcp/consent`, `/mcp/auth/callback`) and `POST /auth/register` |
   | `RATE_LIMIT_MCP_CLIENTS_PER_IP` | `60` | `/mcp/register` and `/mcp/token`, which claude.ai calls from Anthropic's addresses, shared by everybody |
+  | `SERVICE_ACCOUNT_RATE_LIMIT_PER_MINUTE` | `120` | Every request a service account's tokens make, per account, not per IP (§ Service accounts) |
 
 - **Per account, only failed attempts count**, so the right password isn't counted with a guesser's. That also means anyone can lock an address's password login for 15 minutes by failing on purpose; signing in with Google stays open, so that's accepted. The address needn't have an account, so a 429 tells nothing about who has one.
 - Over a limit: `429` with `Retry-After`; Google's sign-in, a browser navigation, goes back to `{FRONTEND_URL}/login/#error=rate_limited` instead. The event log records `http.rate_limited {path, limit}`, never the IP or the address.
@@ -1123,7 +1125,8 @@ What anyone can call is limited per client IP, counted in the database (`rate_li
 
 The frontend calls the API with a bearer token, never cookies, so CORS allows no credentials, only the
 methods (`GET`, `POST`, `PUT`, `PATCH`, `DELETE`) and request headers (`Authorization`, `Content-Type`,
-`X-Request-Id`) the API uses, and exposes `Retry-After` and `X-Request-Id` to the frontend.
+`X-Request-Id`) the API uses, and exposes `Retry-After` and `X-Request-Id` to the frontend, and since 10.2 a service
+account's `RateLimit-Limit`, `RateLimit-Remaining` and `RateLimit-Reset` (§ Service accounts).
 
 - **Production's value is `[]`, since 2026-09-29** (§ Frontend hosting). Through CloudFront the web app and the
   API share one origin, `https://shurly.griddo.io` (the Hostnames table under Architecture), so the browser makes
@@ -1149,7 +1152,7 @@ An API key is kept as its SHA-256 hash and its first 12 characters (`users.api_k
   column back empty.
 - A downgrade past `0007` can't give the keys back: everyone generates a new one.
 
-## Service accounts (Phase 10.1)
+## Service accounts (Phase 10.1, 10.2)
 
 An integration (Propuestas Griddo) gets a service account instead of a person's API key: its own token, which
 survives people leaving, and links attributed to the person they're for. Spec: `_pm/spec_service_accounts.md`;
@@ -1159,19 +1162,72 @@ for owners, the manual's "Connect another service" (`/manual/connect-a-service/`
   name, what it's for, a person responsible, `member` unless it must change everyone's links), then **Create
   token**. The token, `shsa_<prefix>_<secret>`, shows once: put it in the integration's secret store (its own
   AWS Secrets Manager or environment), never in a repository. Shurly keeps a SHA-256 of it.
+- **What the token may do (10.2).** The token dialog asks for its scopes (`urls:read`, `urls:write`, `urls:delete`,
+  `tags:write`, `analytics:read`, `act_on_behalf`; every one checked to start with), an expiry (a year from today,
+  or **No expiry**) and allowed IP ranges. Give only what the integration needs; the tokens made before 10.2,
+  Propuestas' among them, have every scope and no ranges (migration `0019`). A request outside its scopes is a 403
+  with `code: scope_missing`; a route only people use, 403 `service_account_not_allowed`. The map of routes to
+  scopes is `server/utils/service_scopes.py`.
 - **Rotating without downtime.** **Renew token**: the new one works at once and the old one for 24 more hours.
   Deploy the integration with the new token, check its **Last used** moves (the old one's stops), then **End it
   now** on the previous token, or let the 24 hours run out. A token that may have leaked: **Links made with it**
-  shows what it touched, then renew, or **Revoke** to cut it off at once.
+  shows what it touched, then renew, or **Revoke** to cut it off at once. A renewal starts from the replaced
+  token's scopes and IP ranges: the dialog shows them to change, and the API keeps them when it isn't sent new ones.
+- **Warnings (10.2), in the app only.** A token that expires within 14 days, or that nothing has used for 90 days,
+  shows "Expires soon" or "Unused for 90 days" on its line, and owners and admins get a dot on their avatar and
+  "N service tokens need attention" in the account menu (`service_accounts_attention` on `GET
+  /api/v1/organization`). No email is sent yet: that waits for the invitations' email. An expired token is a 401,
+  so renew before the date.
+- **The rate limit (10.2).** `SERVICE_ACCOUNT_RATE_LIMIT_PER_MINUTE`, 120 by default, counts every request of a
+  service account, whichever of its tokens sent it, in a fixed one-minute window stored in `rate_limits`. So a
+  renewed token and the one it replaces share the limit during their 24 hours, and two tasks share the count.
+  Every response to a service token carries `RateLimit-Limit`, `RateLimit-Remaining` and `RateLimit-Reset` (the
+  seconds left in the window); over the limit it gets a 429 with `Retry-After`, and the event log records
+  `http.rate_limited` with `limit: service_account`. `0` turns it off, and then no `RateLimit-*` header is sent.
+  Propuestas expected about 60 a minute, with bursts of 10. If the database can't count, the request goes through
+  without the headers (`rate_limit.store_failed`), as with the other limits.
+- **Allowed IP ranges (10.2).** A token with ranges (CIDRs, IPv4 or IPv6, one per line in the dialog) works only from
+  an address in one of them. Elsewhere it gets a 403 with `code: ip_not_allowed`. The request isn't counted
+  against the limit, nor recorded as a use, and the event log's `service_token.refused` (`reason: address`) never
+  has the address. The address checked is the one `client_ip` resolves (§ Client IPs behind CloudFront): through
+  `shurly.griddo.io`, CloudFront's viewer address, on a request carrying the origin secret; straight to the ALB,
+  the client `X-Forwarded-For` gives past `TRUSTED_PROXIES`. So the ranges are the integration's own egress
+  addresses, never CloudFront's or the ALB's. Without `CLOUDFRONT_ORIGIN_SECRETS` (through CloudFront) or a
+  `TRUSTED_PROXIES` that names the ALB (straight to it), the address checked is an edge's or the ALB's, and a token
+  with ranges is refused. No ranges means any address.
 - **Revoking and removing** take effect on the next request: a 401. Removing the account also takes it out of the
   organization; its links keep working.
-- **Nothing to configure.** No setting, no new secret: migration `0017` adds `users.kind` (every existing
-  account is a `person`), the service fields, `service_tokens`, and `urls.via_service_account_id` /
-  `urls.via_token_id`, all add-only, so the previous release keeps working during the rollout.
+- **Little to configure.** No new secret. Migration `0017` adds `users.kind` (every existing account is a
+  `person`), the service fields, `service_tokens`, and `urls.via_service_account_id` / `urls.via_token_id`; `0019`
+  adds `service_tokens.scopes` (every scope for the tokens already in use), `service_tokens.allowed_ip_ranges` and
+  `audit_events`. All add-only, so the previous release keeps working during the rollout. The one setting is the
+  rate limit's.
 - **What the event log records** (CloudWatch, 60 days): `service_account.created` / `.updated` / `.removed`,
   `service_token.created` / `.renewed` / `.revoked`, and `url.created` / `.updated` / `.deleted` (and
   `campaign.created`) with `service_account_id`, `token_id` and `on_behalf_of` (a user id) when a service did
-  it. Ids only: never a token, its hash or an email.
+  it; since 10.2, `service_token.refused` with `service_account_id`, `token_id` and `reason` (`address`, `scope`
+  with the scope, method and route, or `route`). Ids only: never a token, its hash, an email or an address.
+- **The audit (10.2)**, kept 2 years, longer than the event log: the `audit_events` table has a row for each link,
+  campaign, tag or redirect rule a service account made, changed or deleted, with the person it acted for
+  (`on_behalf_of_id`), and for each event on an account or its token, with the owner who made it (`actor_id`). Ids
+  and field names only. Read it in the app (the account's **Activity**, owners and admins), from the API, or in
+  SQL:
+  ```bash
+  # Owners and admins, signed in: newest first, 50 a page; ?before=<next_before> for the next
+  curl -s -H "Authorization: Bearer $JWT" \
+    "https://shurly.griddo.io/api/v1/service-accounts/audit?account=$SERVICE_ACCOUNT_ID&limit=50"
+  ```
+  ```sql
+  -- From a psql shell (§ Open a psql shell from a Fargate task). `at` is naive UTC.
+  SELECT at, action, target_type, target_id, token_id, actor_id, on_behalf_of_id, detail
+  FROM audit_events
+  WHERE service_account_id = '<the account id>'
+    AND at > (now() AT TIME ZONE 'UTC') - interval '7 days'
+  ORDER BY at DESC
+  LIMIT 100;
+  ```
+  The API names people (email and name, looked up when read); SQL gives their ids, for `users.id`. The daily
+  housekeeping deletes the rows older than 2 years (§ Daily housekeeping).
 - A service account never signs in (Google, password, the MCP), never appears among the members, and can't
   generate an API key, set a password, manage service accounts or change the organization.
 
@@ -1961,6 +2017,8 @@ restart starts the count again. A run in progress at shutdown finishes in its th
   own, held for the run with no transaction open. A task that finds it held skips that run (`skipped_lock`).
 - **The waitlist:** deletes the entries whose latest sign-up (`consent_at`) is more than 12 months old, the
   retention in docs/PERSONAL_DATA.md § The waitlist.
+- **The audit** (Phase 10.2): deletes the audit events (`audit_events`, what service accounts did) more than 2 years
+  old (`at`), the retention in docs/PERSONAL_DATA.md § The audit of service accounts.
 - **Previews:** fetches again the page previews that are missing (`page_fetched_at` null) or more than 30 days old,
   at most **200 links a run**, the never fetched first, then the oldest. Each distinct destination once, 8 at a
   time, through the SSRF-guarded fetcher, stored as creating a link stores it. The overrides are never touched. The
@@ -1968,16 +2026,16 @@ restart starts the count again. A run in progress at shutdown finishes in its th
 - **Each job runs on its own:** one that fails is logged and the next still runs.
 
 What it logs, never a destination or an email:
-- `housekeeping.run`, once a run: `waitlist_deleted`, `previews_checked` (links picked), `previews_refreshed`,
-  `previews_failed` (links whose page didn't answer), `skipped_lock`, `failed_jobs` (`waitlist`, `previews`) and
-  `duration_ms`.
+- `housekeeping.run`, once a run: `waitlist_deleted`, `audit_deleted`, `previews_checked` (links picked),
+  `previews_refreshed`, `previews_failed` (links whose page didn't answer), `skipped_lock`, `failed_jobs`
+  (`waitlist`, `audit`, `previews`) and `duration_ms`.
 - `housekeeping.job_failed`: a job that raised, with `job` and `error`, the exception's class only.
 - `housekeeping.failed`: a run that couldn't start (the lock itself, say). The loop goes on to the next day.
 
 In CloudWatch Logs Insights:
 ```
 filter event like /^housekeeping\./
-| fields @timestamp, event, waitlist_deleted, previews_checked, previews_refreshed, previews_failed, skipped_lock, failed_jobs.0, job, error, duration_ms
+| fields @timestamp, event, waitlist_deleted, audit_deleted, previews_checked, previews_refreshed, previews_failed, skipped_lock, failed_jobs.0, job, error, duration_ms
 | sort @timestamp desc
 ```
 Each task writes its own `housekeeping.run` line a day (the service runs 1 or 2). The lock keeps two runs from

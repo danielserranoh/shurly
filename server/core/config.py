@@ -51,8 +51,15 @@ class Settings(BaseSettings):
     cors_allow_credentials: bool = False
     cors_allow_methods: list[str] = ["GET", "POST", "PUT", "PATCH", "DELETE"]
     cors_allow_headers: list[str] = ["Authorization", "Content-Type", "X-Request-Id"]
-    # Readable by the frontend: when to retry after a 429, and the id to report.
-    cors_expose_headers: list[str] = ["Retry-After", "X-Request-Id"]
+    # Readable by the frontend: when to retry after a 429, and the id to report. Phase 10.2 — and
+    # a service account's rate limit, on every response to its token (server/utils/rate_limit.py).
+    cors_expose_headers: list[str] = [
+        "Retry-After",
+        "X-Request-Id",
+        "RateLimit-Limit",
+        "RateLimit-Remaining",
+        "RateLimit-Reset",
+    ]
 
     # Phase 3.9.5 — GDPR. Truncate visitor IPs at insert time:
     # IPv4 → /24 (zero last octet), IPv6 → /64. Default ON; disable explicitly via env
@@ -168,6 +175,10 @@ class Settings(BaseSettings):
     # Phase 9.1 — sign-ups to the waitlist (POST /api/v1/waitlist), per client IP, per hour:
     # public, and each writes a row.
     rate_limit_waitlist_per_ip: int = 10
+    # Phase 10.2 — requests per service account, per minute: all its tokens together, so the
+    # old and the new one share it during a renewal's 24 hours. Every response to a service
+    # token says where it stands (`RateLimit-*`); over it, a 429 with `Retry-After`.
+    service_account_rate_limit_per_minute: int = 120
 
     @property
     def mcp_oauth_configured(self) -> bool:

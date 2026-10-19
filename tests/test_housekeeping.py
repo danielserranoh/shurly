@@ -3,10 +3,11 @@ Daily housekeeping inside the app (server/utils/housekeeping.py).
 
 - The waitlist job deletes the entries whose latest sign-up is more than 12 months old; one at
   exactly 12 months stays.
+- The audit job deletes the audit events more than 2 years old; one at exactly 2 years stays.
 - The previews job re-fetches the missing or 30-day-old previews, never-fetched first then oldest,
   at most 200 links a run, each distinct destination once. A page that doesn't answer leaves its
   link as it was.
-- A run skips everything when another task holds the lock; one job failing doesn't stop the other.
+- A run skips everything when another task holds the lock; one job failing doesn't stop the others.
 - Each run logs `housekeeping.run` with counts only.
 - The lifespan starts the loop, and cancels it at shutdown, but not under TESTING.
 """
@@ -21,7 +22,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import text
 
 import main
-from server.core.models import URL, User, WaitlistEntry
+from server.core.models import URL, AuditEvent, User, WaitlistEntry
 from server.utils import housekeeping
 from server.utils.domain import get_or_create_default_domain
 from server.utils.opengraph import OpenGraphMetadata
@@ -94,6 +95,20 @@ def add_waitlist(db, consent_at: datetime) -> WaitlistEntry:
     return entry
 
 
+def add_audit(db, at: datetime) -> AuditEvent:
+    event = AuditEvent(
+        at=at,
+        organization_id=uuid.uuid4(),
+        service_account_id=uuid.uuid4(),
+        action="url.created",
+        target_type="url",
+        target_id=str(uuid.uuid4()),
+    )
+    db.add(event)
+    db.commit()
+    return event
+
+
 def add_link(db, owner, original_url, fetched_at=None, created_at=None) -> URL:
     url = URL(
         short_code=uuid.uuid4().hex[:8],
@@ -143,6 +158,42 @@ def test_waitlist_cutoff_is_naive_utc_whatever_the_clocks_zone(db_session):
     madrid = timezone(timedelta(hours=2))
     add_waitlist(db_session, datetime(2025, 10, 18, 11, 59))  # 13:59 in Madrid, a year ago
     deleted = housekeeping.purge_waitlist(db_session, NOW.astimezone(madrid))
+    assert deleted == 1
+
+
+# --- The audit -----------------------------------------------------------------------------
+
+
+def test_audit_deletes_events_older_than_two_years(db_session, events):
+    two_years_ago = datetime(2024, 10, 18, 12, 0)
+    kept_at_boundary = add_audit(db_session, two_years_ago)
+    kept_recent = add_audit(db_session, NAIVE_NOW - timedelta(days=400))
+    add_audit(db_session, two_years_ago - timedelta(seconds=1))
+    add_audit(db_session, two_years_ago - timedelta(days=30))
+    kept_ids = {kept_at_boundary.id, kept_recent.id}
+
+    counts = run()
+
+    db_session.expire_all()
+    assert {event.id for event in db_session.query(AuditEvent).all()} == kept_ids
+    assert counts["audit_deleted"] == 2
+
+
+def test_audit_two_years_before_the_29th_of_february_is_the_28th(db_session):
+    add_audit(db_session, datetime(2026, 2, 28, 9, 29))
+    kept = add_audit(db_session, datetime(2026, 2, 28, 9, 30))
+    deleted = housekeeping.purge_audit(
+        db_session, datetime(2028, 2, 29, 9, 30, tzinfo=timezone.utc)
+    )
+    assert deleted == 1
+    db_session.expire_all()
+    assert [event.id for event in db_session.query(AuditEvent).all()] == [kept.id]
+
+
+def test_audit_cutoff_is_naive_utc_whatever_the_clocks_zone(db_session):
+    madrid = timezone(timedelta(hours=2))
+    add_audit(db_session, datetime(2024, 10, 18, 11, 59))  # 13:59 in Madrid, two years ago
+    deleted = housekeeping.purge_audit(db_session, NOW.astimezone(madrid))
     assert deleted == 1
 
 
@@ -323,18 +374,39 @@ def test_a_failing_waitlist_job_doesnt_stop_the_previews(db_session, owner, monk
 
 def test_a_failing_previews_job_doesnt_stop_the_waitlist(db_session, owner, events):
     add_waitlist(db_session, datetime(2020, 1, 1))
+    add_audit(db_session, datetime(2020, 1, 1))
     add_link(db_session, owner, "https://example.com/")
 
     counts = run(fetch=FakeFetcher(raises=True))
 
     db_session.expire_all()
     assert db_session.query(WaitlistEntry).count() == 0
+    assert db_session.query(AuditEvent).count() == 0
     assert counts["waitlist_deleted"] == 1
+    assert counts["audit_deleted"] == 1
     assert counts["failed_jobs"] == ["previews"]
+
+
+def test_a_failing_audit_job_doesnt_stop_the_others(db_session, owner, monkeypatch, events):
+    def broken(*_args):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(housekeeping, "purge_audit", broken)
+    add_waitlist(db_session, datetime(2020, 1, 1))
+    link = add_link(db_session, owner, "https://example.com/")
+
+    counts = run()
+
+    db_session.expire_all()
+    assert db_session.query(WaitlistEntry).count() == 0
+    assert db_session.get(URL, link.id).page_og_title == "Title of https://example.com/"
+    assert counts["failed_jobs"] == ["audit"]
+    assert ("housekeeping.job_failed", {"job": "audit", "error": "RuntimeError"}) in events
 
 
 def test_the_run_logs_counts_only(db_session, owner, events):
     add_waitlist(db_session, datetime(2020, 1, 1))
+    add_audit(db_session, datetime(2020, 1, 1))
     add_link(db_session, owner, "https://example.com/private?email=jane.doe@example.com")
 
     run()
@@ -343,6 +415,7 @@ def test_the_run_logs_counts_only(db_session, owner, events):
     assert name == "housekeeping.run"
     assert set(fields) == {
         "waitlist_deleted",
+        "audit_deleted",
         "previews_checked",
         "previews_refreshed",
         "previews_failed",
@@ -351,6 +424,7 @@ def test_the_run_logs_counts_only(db_session, owner, events):
         "duration_ms",
     }
     assert fields["waitlist_deleted"] == 1
+    assert fields["audit_deleted"] == 1
     assert fields["previews_refreshed"] == 1
     assert "example.com" not in repr(events)
 
