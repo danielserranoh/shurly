@@ -207,3 +207,13 @@ class TestReservation:
 
         assert created["short_code"] != "mcp"
         assert "reserved" in created["warning"]
+
+
+class TestApiReservation:
+    """Phase 10.3 — `GET /api/v1/urls/managers` would shadow a link coded `managers` in
+    `GET /api/v1/urls/{short_code}` on any domain, so that code is reserved everywhere."""
+
+    def test_managers_is_reserved_on_every_domain(self, app_host_set):
+        assert is_reserved_short_code("managers", GO)
+        assert is_reserved_short_code("Managers", APP)
+        assert not is_reserved_short_code("manager", GO)

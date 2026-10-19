@@ -1152,7 +1152,7 @@ An API key is kept as its SHA-256 hash and its first 12 characters (`users.api_k
   column back empty.
 - A downgrade past `0007` can't give the keys back: everyone generates a new one.
 
-## Service accounts (Phase 10.1, 10.2)
+## Service accounts (Phase 10.1, 10.2, 10.3)
 
 An integration (Propuestas Griddo) gets a service account instead of a person's API key: its own token, which
 survives people leaving, and links attributed to the person they're for. Spec: `_pm/spec_service_accounts.md`;
@@ -1196,7 +1196,7 @@ for owners, the manual's "Connect another service" (`/manual/connect-a-service/`
   `TRUSTED_PROXIES` that names the ALB (straight to it), the address checked is an edge's or the ALB's, and a token
   with ranges is refused. No ranges means any address.
 - **Revoking and removing** take effect on the next request: a 401. Removing the account also takes it out of the
-  organization; its links keep working.
+  organization; its links keep working, and stay managed by it (below): only an owner's override deletes them.
 - **Little to configure.** No new secret. Migration `0017` adds `users.kind` (every existing account is a
   `person`), the service fields, `service_tokens`, and `urls.via_service_account_id` / `urls.via_token_id`; `0019`
   adds `service_tokens.scopes` (every scope for the tokens already in use), `service_tokens.allowed_ip_ranges` and
@@ -1230,6 +1230,40 @@ for owners, the manual's "Connect another service" (`/manual/connect-a-service/`
   housekeeping deletes the rows older than 2 years (§ Daily housekeeping).
 - A service account never signs in (Google, password, the MCP), never appears among the members, and can't
   generate an API key, set a password, manage service accounts or change the organization.
+- **Its links are managed by it (10.3).** A link a service account made, other than a campaign link, is managed by
+  it (`server/utils/managed.py`; derived from `urls.via_service_account_id`, so nothing to migrate: Propuestas'
+  links in production already are). Only that account changes or deletes it, through its token, as before. People,
+  admins and the person it was made for included, change only its tags; anything else gets a 403 with `code:
+  managed_link_protected`, which names the integration. Its destination is masked (`https://host/…`) for everyone
+  but the account and the organization's owners, in the app, the API and the MCP. In the app, it's in its own tab of
+  the links list, named after the account, not under Links. Admins lose the delete they had on these links: tell
+  them before the 10.3 release.
+- **The override (10.3).** When the integration can't delete a link (a data-protection request it can't serve, a
+  leaked token, a link a failure left behind), an owner, signed in, opens the link's page → menu → **Delete
+  anyway…** and gives a reason (10 to 500 characters); or `POST /api/v1/urls/{short_code}/override-delete` with
+  `{"reason": "…"}`. It's refused to service tokens and isn't an MCP tool. The link and its visits go, and the
+  integration isn't told: it keeps showing the link as active, and whoever has it reaches a dead link. Each override
+  is a `url.deleted` row in the account's audit, with the owner as `actor_id` and `{"override": true, "reason":
+  …}` in `detail`, shown in its **Activity** as "Deleted a link anyway (owner override)" with the reason; the event
+  log has `url.override_deleted`, with ids only.
+- **"Who deleted this link?"** For a managed link, only two can have: the integration, with its token, or an owner,
+  by the override. Both write a `url.deleted` row in the account's audit; the integration's has its `token_id` (and
+  the person it acted for, if it named one), an override has the owner's `actor_id` and the reason. The row names
+  the link by its id (`target_id`), never its code, and a deleted link's code is gone from `urls`: match the id the
+  integration kept (`id`, in every link's response), or the time of the event log's `http.request` line for
+  `DELETE /api/v1/urls/<code>` or `POST /api/v1/urls/<code>/override-delete` (its path has the code; 60 days). In the
+  app: the account's **Activity**. In SQL:
+  ```sql
+  -- The account's deletions, newest first. `at` is naive UTC; `actor_id` and `on_behalf_of_id` are users.id.
+  SELECT at, target_id, token_id, actor_id, on_behalf_of_id,
+         detail->>'override' AS override, detail->>'reason' AS reason
+  FROM audit_events
+  WHERE service_account_id = '<the account id>' AND action = 'url.deleted'
+  ORDER BY at DESC
+  LIMIT 50;
+  ```
+  An ordinary link isn't audited when a person deletes it: the event log's `http.request` line says a `DELETE` of
+  its code happened, and when, but not who.
 
 ## Sign in with Google (Phase 3.13)
 

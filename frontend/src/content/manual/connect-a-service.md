@@ -12,7 +12,7 @@ Only owners make and change service accounts. Admins see them, and what they did
 
 1. On the [Organization page](/dashboard/organization/) (in the account menu, choose your organization’s name), under **Service accounts**, choose **New service account**.
 2. Give it the system’s name (“Propuestas Griddo”), say what it’s for, and pick the **person responsible**: who to ask about it.
-3. Pick its **role**. A **member** changes only the links it made, which is what most services need. An **admin** changes all the organization’s links: give it only to a service that has to.
+3. Pick its **role**. A **member** changes only the links it made, which is what most services need. An **admin** changes all the organization’s links, except those another service manages: give it only to a service that has to.
 4. Choose **Create service account**. The dialog to make its token opens:
    - **What it may do**: every permission is checked to start with. Uncheck what the service doesn’t need. Campaigns and redirect rules go with links, and the service needs **Act for people in the organization** to make links for someone.
    - **Expires**: a year from today, to start with. Pick another day, or **No expiry**. Shurly warns you before it comes (see [When a token needs attention](#when-a-token-needs-attention)).
@@ -39,7 +39,7 @@ To make a link for someone, the service names them by their work email:
 X-Shurly-On-Behalf-Of: ana.garcia@griddo.io
 ```
 
-That person becomes the link’s creator: it’s theirs to see and change, it belongs to the organization, and its page says “Created by Ana García via Propuestas Griddo”. They need to have signed in to Shurly once: until then, the service gets an error and no link is made. Without the header, the service account is the creator, for jobs that act for nobody.
+That person becomes the link’s creator: it belongs to the organization, they find it in Shurly, and its page says “Created by Ana García via Propuestas Griddo”. The link is still the service’s to change: see [Links a service manages](#links-a-service-manages). They need to have signed in to Shurly once: until then, the service gets an error and no link is made. Without the header, the service account is the creator, for jobs that act for nobody.
 
 Naming someone gives the service none of their rights. It still acts with its own role: a member service can’t change an owner’s links by naming the owner.
 
@@ -51,6 +51,15 @@ The answer says why, in `code`:
 - `ip_not_allowed` (403): the request came from outside the token’s allowed IP ranges.
 - `service_account_not_allowed` (403): only people do this, such as managing service accounts.
 - A **429** means too many requests: by default 120 a minute for the service account, all its tokens together. `Retry-After` says how many seconds to wait. Every answer to the service says where it stands, in `RateLimit-Limit`, `RateLimit-Remaining` and `RateLimit-Reset`.
+
+## Links a service manages
+
+A link a service makes is **managed** by it: the service keeps track of it (Propuestas Griddo, for example, shows each recipient’s link as active until it revokes it), so only the service changes or deletes it. Campaign links a service makes are the exception: they stay ordinary campaign links.
+
+- **Its own tab.** The links list has a tab named after each service that manages links, next to **Links** and **Campaign links**. Its links are there, not under **Links**.
+- **Tags are yours.** Its creator (the person it was made for), admins and owners can change its tags, to sort and filter it: choose **Edit tags** on its page. Everything else about it (where it goes, its title, its expiry, its redirect rules, its preview) changes in the service. Its page says so, and a change or a delete from anywhere else, the API and the MCP included, is refused (`managed_link_protected`, in the API).
+- **The destination is hidden.** A service’s links can carry a key in their destination, such as the access to a proposal. So only the service and the organization’s owners see the whole destination; everyone else, the person it was made for and admins too, sees just its start, such as `propuestas.griddo.io/…`, and searching doesn’t look inside it. Whoever opens the short link still gets there.
+- **Deleting it.** Delete it in the service, which then knows it’s gone: in Propuestas Griddo, revoke the link. If the service can’t (a recipient asked for their data to be deleted, a key leaked, or a failure left the link behind), an owner can choose **Delete anyway…** in the link’s menu and say why. The service isn’t told: it keeps showing the link as active, and whoever has it reaches a dead link. The reason is kept with the service’s [activity](#see-what-a-service-did).
 
 ## Renew the token without downtime
 
@@ -74,10 +83,10 @@ Owners and admins also see a dot on their avatar, at the top right, and the acco
 ## Revoke or remove
 
 - **Revoke** ends the service’s tokens at once: its next request is refused. Make it a new token to let it back in.
-- **Remove service account** revokes its tokens and takes it out of the organization. The links it made keep working, and keep its name.
+- **Remove service account** revokes its tokens and takes it out of the organization. The links it made keep working, and keep its name. They stay managed by it, so only an owner can delete them, with **Delete anyway…**.
 
-To see what a service made, choose **Its links**: the links list shows only that service’s. To see what one token made, choose **Links made with it** next to the token: what to check when a token may have leaked, before you renew it.
+To see the links a service manages, choose **Its links**: it opens the service’s tab of the links list. To see what one token made, choose **Links made with it** next to the token: what to check when a token may have leaked, before you renew it.
 
 ## See what a service did
 
-Choose **Activity** next to the service account (owners find it, with **Its links**, in its menu: the button with three dots). It lists, newest first, what the service did with links, campaigns, tags and redirect rules, and on whose behalf, and what was done to it and its token, by whom. **Load more** shows older activity. Shurly keeps it for 2 years.
+Choose **Activity** next to the service account (owners find it, with **Its links**, in its menu: the button with three dots). It lists, newest first, what the service did with links, campaigns, tags and redirect rules, and on whose behalf, and what was done to it and its token, by whom. An owner deleting one of its links with **Delete anyway…** shows as “Deleted a link anyway (owner override)”, by them, with the reason they gave. **Load more** shows older activity. Shurly keeps it for 2 years.

@@ -5,8 +5,11 @@
 // - Where it may be used from (allowed IP ranges): the form's textarea, one range per line.
 // - Its expiry: a year from today unless changed.
 // - Why it needs attention (warnings), and the menu's dot.
-// - What the account did, or what was done to it (the audit), as a sentence and who for.
+// - What the account did, or what was done to it (the audit), as a sentence and who for. Phase 10.3: an owner's
+//   override (deleting a link the account manages) reads "Deleted a link anyway (owner override)", with the reason
+//   they typed on a second line, escaped by the `html` tag: it's free text.
 
+import { html, type RawHTML } from './html';
 import type { AuditEvent, AuditPerson, ServiceScope, ServiceTokenWarning } from './types';
 
 /** Every scope, in the API's order (server/core/models/service_token.py, SERVICE_SCOPES): the form's checkboxes. */
@@ -97,9 +100,13 @@ export function attentionLabel(count: number): string {
 
 // ---------------------------------------------------------------- The audit
 
-/** What happened, as a sentence's start, and the link's code to show after it when there is one. */
+/**
+ * What happened, as a sentence's start, and the link's code to show after it when there is one. `text` is plain
+ * words, or markup (an override's, with its reason's line) built by the escaping `html` tag: either goes straight
+ * into an `html` template.
+ */
 export interface AuditWhat {
-  text: string;
+  text: string | RawHTML;
   code: string | null;
 }
 
@@ -111,14 +118,38 @@ function fieldsOf(event: AuditEvent): string[] {
 }
 
 /**
+ * Phase 10.3 — an owner deleted a link the account manages, past it (`POST /api/v1/urls/{code}/override-delete`):
+ * `url.deleted` with `detail: {override: true, reason}`, the owner as `actor`. The reason, trimmed ('' when there's
+ * none); null for any other event.
+ */
+export function auditOverrideReason(event: AuditEvent): string | null {
+  if (event.action !== 'url.deleted' || event.detail?.override !== true) return null;
+  const reason = event.detail?.reason;
+  return typeof reason === 'string' ? reason.trim() : '';
+}
+
+/** An override in words: the link's code when the reader still sees it (it's gone, so rarely), else "a link". */
+const overrideWords = (event: AuditEvent) =>
+  `Deleted ${event.short_code ? `link ${event.short_code}` : 'a link'} anyway (owner override)`;
+
+/**
  * The event in plain words: "Created link ab12cd", "Changed the tags of a campaign", "Renewed its token". A link
  * that's gone, or that the reader doesn't see, is "a link". An action this page doesn't know shows as it is.
+ * Phase 10.3: an owner's override is "Deleted a link anyway (owner override)", the reason quoted on a line below.
  */
 export function auditWhat(event: AuditEvent): AuditWhat {
   const [type, verb] = event.action.split('.');
   const fields = fieldsOf(event);
   const tagsOnly = fields.length === 1 && fields[0] === 'tags';
   const plain = (text: string): AuditWhat => ({ text, code: null });
+  const reason = auditOverrideReason(event);
+  if (reason !== null) {
+    if (!reason) return plain(overrideWords(event));
+    return {
+      text: html`${overrideWords(event)}<span class="mt-0.5 block whitespace-pre-line break-words text-ink-600" data-audit-reason>“${reason}”</span>`,
+      code: null,
+    };
+  }
   switch (type) {
     case 'url': {
       const what = verb === 'updated' && tagsOnly ? 'Changed the tags of' : VERBS[verb];
@@ -151,10 +182,15 @@ export function auditWhat(event: AuditEvent): AuditWhat {
   return plain(event.action);
 }
 
-/** The whole sentence: "Created link ab12cd". */
+/**
+ * The whole sentence, as text: "Created link ab12cd". An override's reason follows on a second line, quoted:
+ * "Deleted a link anyway (owner override)\n“The recipient asked us to delete their data”".
+ */
 export function auditSentence(event: AuditEvent): string {
+  const reason = auditOverrideReason(event);
+  if (reason !== null) return reason ? `${overrideWords(event)}\n“${reason}”` : overrideWords(event);
   const { text, code } = auditWhat(event);
-  return code ? `${text} ${code}` : text;
+  return code ? `${text} ${code}` : String(text);
 }
 
 /** A person the audit names: their name, else their email; someone deleted keeps only that. */

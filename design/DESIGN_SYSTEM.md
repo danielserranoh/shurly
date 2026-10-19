@@ -61,7 +61,8 @@ Astro components (`frontend/src/components/`): `brand/Logo`, `ui/Icon` (Lucide),
 `ui/StatCard`, `ui/EmptyState`, `ui/Modal`, `ui/ProBadge`, `ui/PasswordField`, `ui/GoogleLogo`,
 `ui/PhotoTrigger` (a photo that's its own button), `ui/PhotoPicker` (the photo dialog, for the avatar and the logo),
 `ui/OrgMark` (the organization's logo, or its initial), `ui/Pager` (Previous and Next under a paged list),
-`illustrations/Illustration` (11 line illustrations), `app/EditLinkModal`, `app/QrModal`,
+`illustrations/Illustration` (11 line illustrations), `app/EditLinkModal` (also tags only, for a managed link),
+`app/OverrideDeleteModal` (an owner's "Delete anyway…"), `app/QrModal`,
 `app/VisibilityToggle` (the "Personal" switch of the create flows).
 
 Rendered in TypeScript (`frontend/src/utils/`): link card (`links.ts`), campaign card
@@ -89,6 +90,27 @@ toasts, confirm dialogs and copy feedback (`ui.ts`), who's looking and locked co
   carry a "Personal" badge. A control the viewer's role can't use stays visible but dimmed (`aria-disabled`):
   it says why on hover (a native `title` inside popover menus, which clip CSS tooltips) and in a toast on
   click. The API still decides: a 403 that gets through shows its message and the page checks the role again.
+- **Managed links** (10.3). A link a service account manages changes only there, so its lock names the manager, not
+  a role: "This link is managed by Propuestas Griddo. Change or delete it from there." (the API's
+  `managed_link_protected` words, `lockFor` / `managedLockReason` in `viewer.ts`), and "Managed by Propuestas
+  Griddo: change it from there" on hover.
+  - **The card** has a "Managed by <name>" badge (plug icon, `badge-outline`), and its menu's Edit and Delete become
+    locked "Edit via <name>" and "Delete via <name>", like a campaign link's "Delete via campaign".
+  - **The page** has a banner under the header (plug icon, `ink-50` panel): "Managed by **<name>**. Change or delete
+    it from there; its tags can be changed here." Controls that would change the rest (Add rule, a rule's delete,
+    the preview's edit, refresh and reset, Delete) are hidden rather than locked, since nobody here can use them;
+    the menu keeps one locked "Delete via <name>" to say where deleting happens.
+  - **A masked destination** (`propuestas.griddo.io/…`) is plain text, not a link, titled "Only <name> and the
+    organization's owners see the full destination", on the card, the page and a rule's target.
+  - **Tags only.** The page's button reads **Edit tags** (tag icon) and opens the link editor on its tags alone: the
+    other fields hidden, a note "Managed by <name>: everything else about this link changes there.", the title "Edit
+    tags" and **Save tags**. For a member who isn't its creator it's locked as tags: "Only its creator, or an admin or
+    owner, can change its tags."
+  - **Delete anyway…**, for owners only, replaces "Delete via <name>" in the menu: a danger item that opens a
+    destructive dialog, "Delete a link <name> manages?", which names the consequence (<name> keeps showing it as
+    active; whoever has it reaches a dead link) and requires a **Reason**: 10 to 500 characters after trimming, a live
+    count, errors inline under the field (the API's 422 lands there too), and a red **Delete it**. Then a toast, and
+    the list on the manager's tab.
 - **Copy.** The button turns blue and reads "Copied!" for 2 s. A toast is added only when the button
   isn't where you're looking (auto-copy after quick create, bulk copy).
 - **Secrets** (an API key, a service account's token) show once, right after they're made: in a box with **Copy**,

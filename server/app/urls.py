@@ -5,13 +5,14 @@ import hashlib
 import logging
 import re
 from datetime import datetime, timezone
+from typing import Literal
 from urllib.parse import urlencode
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from fastapi.responses import PlainTextResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
-from sqlalchemy import func, or_
+from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import Session, selectinload
 
 from server.app.analytics import _exclude_bots
@@ -20,6 +21,7 @@ from server.core.auth import get_current_user
 from server.core.config import settings
 from server.core.models import (
     URL,
+    OrgRole,
     OrphanVisit,
     OrphanVisitType,
     RedirectRule,
@@ -34,20 +36,24 @@ from server.schemas.redirect_rule import (
 )
 from server.schemas.responses import get_responses
 from server.schemas.url import (
+    LinkManagerResponse,
     OpenGraphMetadataResponse,
+    ServiceAccountRef,
     URLCreate,
     URLCustomCreate,
     URLListResponse,
     URLMetadataRequest,
     URLMetadataResponse,
+    URLOverrideDelete,
     URLResponse,
     URLUpdate,
 )
-from server.utils import audit
-from server.utils.access import LinkDomain, find_urls, viewer, visible_url_or_404
+from server.utils import audit, managed
+from server.utils.access import LinkDomain, Viewer, find_urls, viewer, visible_url_or_404
 from server.utils.bounds import MAX_SKIP
 from server.utils.columns import fit, stored_referer, stored_user_agent
 from server.utils.domain import get_or_create_default_domain, resolve_domain_for_host
+from server.utils.errors import service_account_not_allowed
 from server.utils.event_log import log_event
 from server.utils.geo import place_of
 from server.utils.negotiation import prefers_html
@@ -170,14 +176,46 @@ def _click_count(db: Session, url: URL) -> int:
     return _click_counts(db, [url.id]).get(url.id, 0)
 
 
-def _to_url_response(url: URL, click_count: int) -> URLResponse:
-    """Serialize a URL row plus its computed `short_url` and `click_count`."""
+def _to_url_response(url: URL, click_count: int, who: Viewer) -> URLResponse:
+    """
+    Serialize a URL row plus its computed `short_url` and `click_count`, as `who` may read it.
+    Phase 10.3 — a managed link names its manager (`managed_by`), and its destination is
+    masked unless `who` is its manager or an owner of its organization (`destination_for`).
+    """
     response = URLResponse.model_validate(url)
     response.og_fetched_at = response.page_fetched_at  # Phase 8.7 — deprecated, the same
     response.short_url = link_short_url(url)
     response.domain = link_hostname(url)
     response.click_count = click_count
+    response.original_url = managed.destination_for(who, url)
+    if managed.is_managed(url):
+        account = url.via_service_account
+        response.managed_by = (
+            ServiceAccountRef.model_validate(account)
+            if account is not None
+            else ServiceAccountRef(id=url.via_service_account_id)
+        )
     return response
+
+
+def _rule_response(who: Viewer, url: URL, rule: RedirectRule) -> RedirectRuleResponse:
+    """A redirect rule, its target masked as the link's destination is (Phase 10.3)."""
+    response = RedirectRuleResponse.model_validate(rule)
+    if not managed.sees_destination(who, url):
+        response.target_url = managed.masked(rule.target_url)
+    return response
+
+
+def _destination_visible(who: Viewer):
+    """
+    Phase 10.3 — SQL condition: the URL rows whose destination `who` reads unmasked
+    (`managed.sees_destination`): every link that isn't managed, those `who` manages, and,
+    for an owner, every link of their organization.
+    """
+    visible = [managed.not_managed_clause(), URL.via_service_account_id == who.user.id]
+    if who.role == OrgRole.OWNER and who.organization_id is not None:
+        visible.append(URL.organization_id == who.organization_id)
+    return or_(*visible)
 
 
 # Phase 10.1 — `X-Shurly-On-Behalf-Of`, documented on the routes that read it. Not a declared
@@ -248,6 +286,7 @@ async def create_short_url(
     """
     # Phase 10.1 — whom the link is for: a 403 or 422 before anything is made.
     acting = acting_for(db, request, current_user)
+    who = viewer(db, current_user)
 
     # Phase 3.10.1 — bind every URL to a domain. New URLs default to the default
     # domain; multi-tenant API support comes when we expose domain selection.
@@ -293,7 +332,7 @@ async def create_short_url(
         max_visits=url_data.max_visits,
         crawlable=url_data.crawlable,
         created_by=acting.creator.id,
-        organization_id=viewer(db, current_user).organization_for(url_data.visibility),
+        organization_id=who.organization_for(url_data.visibility),
         via_service_account_id=acting.service.id if acting.service else None,
         via_token_id=acting.token_id,
     )
@@ -307,7 +346,7 @@ async def create_short_url(
     _log_service_change("url.created", url.id, acting)
 
     # Build response (a brand-new URL cannot have visits yet)
-    return _to_url_response(url, click_count=0)
+    return _to_url_response(url, click_count=0, who=who)
 
 
 @urls_router.post(
@@ -356,6 +395,7 @@ async def create_custom_url(
     """
     # Phase 10.1 — whom the link is for: a 403 or 422 before anything is made.
     acting = acting_for(db, request, current_user)
+    who = viewer(db, current_user)
 
     # Validate custom code
     if not is_valid_custom_code(url_data.custom_code):
@@ -427,7 +467,7 @@ async def create_custom_url(
         max_visits=url_data.max_visits,
         crawlable=url_data.crawlable,
         created_by=acting.creator.id,
-        organization_id=viewer(db, current_user).organization_for(url_data.visibility),
+        organization_id=who.organization_for(url_data.visibility),
         via_service_account_id=acting.service.id if acting.service else None,
         via_token_id=acting.token_id,
     )
@@ -441,7 +481,7 @@ async def create_custom_url(
     _log_service_change("url.created", url.id, acting)
 
     # Build response (a brand-new URL cannot have visits yet)
-    response = _to_url_response(url, click_count=0)
+    response = _to_url_response(url, click_count=0, who=who)
     response.warning = warning
 
     return response
@@ -505,7 +545,8 @@ def list_urls(
     tag_filter: str = Query("any", description="'all' (AND) or 'any' (OR) for multiple tags"),
     q: str | None = Query(
         None,
-        description="Case-insensitive substring match on title, destination URL or short code",
+        description="Case-insensitive substring match on title, destination URL or short code. "
+        "A managed link's destination is matched only for who may read it",
     ),
     url_type: list[URLType] | None = Query(
         None,
@@ -514,6 +555,15 @@ def list_urls(
     ),
     via_service_account: UUID | None = Query(
         None, description="Only the links this service account created (its id)"
+    ),
+    managed_filter: Literal["exclude", "only"] | None = Query(
+        None,
+        alias="managed",
+        description="'exclude': leave out the links service accounts manage; 'only': just "
+        "those. Without it, every link",
+    ),
+    managed_by: UUID | None = Query(
+        None, description="Only the links this service account manages (its id)"
     ),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -539,8 +589,15 @@ def list_urls(
     - **q**: Case-insensitive substring search over title, destination URL and short code (`%` and `_` match literally; surrounding whitespace is ignored)
     - **url_type**: Only return `standard`, `custom` or `campaign` URLs; repeat it to match several types
     - **via_service_account**: Only the links a service account created (Phase 10.1), by its id
+    - **managed**: `exclude` leaves out the links service accounts manage, `only` keeps just
+      those (Phase 10.3). Without it, every link, as before
+    - **managed_by**: Only the links one service account manages, by its id (Phase 10.3)
 
     Each item includes `click_count`: all-time clicks excluding bots and email tracking-pixel opens.
+
+    Phase 10.3 — a link made through a service account (not a campaign link) is managed by it:
+    `managed_by` names it, and `original_url` is masked (`https://host/…`) for everyone but it
+    and the organization's owners. `q` doesn't match a destination the caller can't read.
 
     **Responses:**
     - **200**: List of URLs retrieved successfully with pagination info
@@ -550,7 +607,8 @@ def list_urls(
     """
     from server.core.models import Tag
 
-    query = db.query(URL).filter(viewer(db, current_user).sees(URL))
+    who = viewer(db, current_user)
+    query = db.query(URL).filter(who.sees(URL))
 
     # Apply tag filtering
     if tags:
@@ -577,7 +635,11 @@ def list_urls(
         query = query.filter(
             or_(
                 URL.title.icontains(search, autoescape=True),
-                URL.original_url.icontains(search, autoescape=True),
+                # Phase 10.3 — never through a destination the caller reads masked.
+                and_(
+                    URL.original_url.icontains(search, autoescape=True),
+                    _destination_visible(who),
+                ),
                 URL.short_code.icontains(search, autoescape=True),
             )
         )
@@ -589,6 +651,14 @@ def list_urls(
     # Phase 10.1 — the links a service account created, for whomever
     if via_service_account is not None:
         query = query.filter(URL.via_service_account_id == via_service_account)
+
+    # Phase 10.3 — the links service accounts manage, or the others
+    if managed_filter == "exclude":
+        query = query.filter(managed.not_managed_clause())
+    elif managed_filter == "only":
+        query = query.filter(managed.managed_clause())
+    if managed_by is not None:
+        query = query.filter(managed.managed_clause(), URL.via_service_account_id == managed_by)
 
     # Tags, creators and their profiles (Phase 3.12: names), and campaigns (their names) for
     # the whole page, one query each: no lazy load per URL, creator or campaign.
@@ -609,9 +679,50 @@ def list_urls(
 
     # Phase 3.11 — click counts for the whole page in one grouped query (no N+1)
     counts = _click_counts(db, [url.id for url in urls])
-    url_responses = [_to_url_response(url, counts.get(url.id, 0)) for url in urls]
+    url_responses = [_to_url_response(url, counts.get(url.id, 0), who) for url in urls]
 
     return URLListResponse(urls=url_responses, total=total)
+
+
+@urls_router.get(
+    "/managers",
+    response_model=list[LinkManagerResponse],
+    responses={
+        200: {"description": "The service accounts managing links the caller can see"},
+        **get_responses(401),
+    },
+)
+def list_link_managers(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    The service accounts managing links the caller can see, by name, each with how many.
+
+    Phase 10.3 — a link made through a service account (not a campaign link) is managed by it.
+    The dashboard shows a tab for each account here; `GET /api/v1/urls?managed_by=<id>` lists
+    its links. An account removed from the organization still manages its links, so it's
+    listed while it has some. Only the accounts with links the caller sees.
+
+    **Authentication:** Required (JWT Bearer token)
+
+    **Responses:**
+    - **200**: `[{id, display_name, link_count}]`, by name; empty when none
+    - **401**: Authentication required or invalid token
+    """
+    who = viewer(db, current_user)
+    rows = (
+        db.query(User.id, User.display_name, func.count(URL.id))
+        .join(URL, URL.via_service_account_id == User.id)
+        .filter(who.sees(URL), managed.managed_clause())
+        .group_by(User.id, User.display_name)
+        .all()
+    )
+    rows.sort(key=lambda row: ((row[1] or "").casefold(), str(row[0])))
+    return [
+        LinkManagerResponse(id=account_id, display_name=name, link_count=count)
+        for account_id, name, count in rows
+    ]
 
 
 # Phase 3.11 — keep this below the static `GET ""` route. Any future static
@@ -646,9 +757,12 @@ def get_url(
     - **200**: URL retrieved successfully
     - **401**: Authentication required or invalid token
     - **404**: URL not found, or someone else's personal link
+
+    Phase 10.3 — a managed link's `original_url` is masked for everyone but its service
+    account and the organization's owners.
     """
     url = visible_url_or_404(db, current_user, short_code, domain)
-    return _to_url_response(url, _click_count(db, url))
+    return _to_url_response(url, _click_count(db, url), viewer(db, current_user))
 
 
 @urls_router.delete(
@@ -680,7 +794,9 @@ def delete_url(
     - **204**: URL deleted successfully (no content returned)
     - **400**: Campaign URLs must be deleted through the campaign endpoint
     - **401**: Authentication required or invalid token
-    - **403**: Only its creator, or an admin or owner, can change this link
+    - **403**: Only its creator, or an admin or owner, can change this link. On a link a
+      service account manages, only that account: `code` `managed_link_protected` for anyone
+      else (an owner may delete it with `POST …/override-delete`)
     - **404**: URL not found, or someone else's personal link
 
     **Note:** Only standard and custom URLs can be deleted directly. Campaign URLs must be deleted through the campaign.
@@ -702,6 +818,89 @@ def delete_url(
     db.commit()
     _log_service_change("url.deleted", url_id, acting)
 
+    return None
+
+
+def _ensure_may_override(who: Viewer, url: URL) -> None:
+    """
+    Phase 10.3 — only a person who owns the link's organization deletes a managed link past
+    its service account: a service gets the 403 `service_account_not_allowed` (its tokens are
+    refused before, server/utils/service_scopes.py), anyone else a 403. A link no service
+    account manages is a 400: it's deleted with DELETE, by the usual rule.
+    """
+    if who.user.is_service:
+        raise service_account_not_allowed()
+    owner = (
+        who.role == OrgRole.OWNER
+        and who.organization_id is not None
+        and who.organization_id == url.organization_id
+    )
+    if not owner:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only an owner of the organization can delete a link its integration manages.",
+        )
+    if not managed.is_managed(url):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This link isn't managed by an integration: delete it with "
+            "DELETE /api/v1/urls/{short_code}.",
+        )
+
+
+@urls_router.post(
+    "/{short_code}/override-delete",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={
+        204: {"description": "Managed link deleted, and the deletion audited"},
+        **get_responses(400, 401, 403, 404, 422),
+    },
+)
+def override_delete_url(
+    short_code: str,
+    body: URLOverrideDelete,
+    domain: LinkDomain = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Delete a link a service account manages, past it, with a reason (Phase 10.3).
+
+    A link made through a service account (an integration such as Griddo Propuestas) is
+    managed by it: only it deletes the link with DELETE. When the integration can't, an owner
+    of the organization deletes it here, saying why. The link goes with its visits, and the
+    service account's audit keeps who deleted it and the reason. The integration isn't told:
+    it will show a dead link.
+
+    **Authentication:** Required (a person: never a service token, nor through the MCP)
+
+    **Request Body:**
+    - **reason**: Why, 10 to 500 characters (surrounding whitespace ignored)
+
+    **Responses:**
+    - **204**: Deleted (no content returned)
+    - **400**: The link isn't managed: delete it with DELETE
+    - **401**: Authentication required or invalid token
+    - **403**: Not an owner of the link's organization, or a service account
+    - **404**: URL not found, or someone else's personal link
+    - **422**: A reason shorter than 10 or longer than 500 characters
+    """
+    url = visible_url_or_404(db, current_user, short_code, domain)
+    who = viewer(db, current_user)
+    _ensure_may_override(who, url)
+
+    url_id, manager, organization_id = url.id, managed.manager_id(url), url.organization_id
+    audit.record_override(db, actor=current_user, url=url, reason=body.reason)
+    db.delete(url)  # its visits and rules with it (the ORM's cascade)
+    db.commit()
+    # Ids only: never the reason, nor the code.
+    log_event(
+        "url.override_deleted",
+        url_id=str(url_id),
+        actor_id=str(current_user.id),
+        service_account_id=str(manager),
+        organization_id=str(organization_id),
+    )
     return None
 
 
@@ -744,7 +943,9 @@ async def update_url(
     - **200**: URL updated successfully
     - **400**: Campaign URLs cannot be updated
     - **401**: Authentication required or invalid token
-    - **403**: Only its creator, or an admin or owner, can change this link
+    - **403**: Only its creator, or an admin or owner, can change this link. On a link a
+      service account manages, only that account: `code` `managed_link_protected` for anyone
+      else (its tags change with `PATCH …/tags`)
     - **404**: URL not found, or someone else's personal link
     - **422**: Validation error (invalid URL format)
 
@@ -784,7 +985,7 @@ async def update_url(
     _log_service_change("url.updated", url.id, acting)
 
     # Build response
-    return _to_url_response(url, _click_count(db, url))
+    return _to_url_response(url, _click_count(db, url), viewer(db, current_user))
 
 
 @urls_router.patch(
@@ -821,10 +1022,13 @@ def update_url_tags(
     - **401**: Authentication required or invalid token
     - **403**: Only its creator, or an admin or owner, can change this link
     - **404**: URL not found, or someone else's personal link
+
+    Phase 10.3 — on a link a service account manages too: its tags are the one thing people
+    change on it, by the same rule.
     """
     from server.core.models import Tag
 
-    url = visible_url_or_404(db, current_user, short_code, domain, to_change=True)
+    url = visible_url_or_404(db, current_user, short_code, domain, to_change="tags")
     acting = acting_on_change(db, request, current_user)
 
     tag_ids_str = tag_data.get("tag_ids", [])
@@ -893,7 +1097,8 @@ def bulk_tag_urls(
 
     **Responses:**
     - **200**: Bulk tagging completed with success count; links you can see but not
-      change are listed in `failed`
+      change are listed in `failed`. A link a service account manages is tagged by the same
+      rule (Phase 10.3: its tags are what people may change on it)
     - **400**: One or more tags not found
     - **401**: Authentication required or invalid token
     """
@@ -932,7 +1137,7 @@ def bulk_tag_urls(
     failed = []
 
     for url in urls:
-        if not who.can_change(url):
+        if not who.can_change_tags(url):
             failed.append(
                 {"short_code": url.short_code, "error": "Not allowed to change this link"}
             )
@@ -1025,7 +1230,8 @@ async def refresh_url_preview(
     **Responses:**
     - **200**: Preview metadata refreshed successfully
     - **401**: Authentication required or invalid token
-    - **403**: Only its creator, or an admin or owner, can change this link
+    - **403**: Only its creator, or an admin or owner, can change this link. On a link a
+      service account manages, only that account (`code` `managed_link_protected`)
     - **404**: URL not found, or someone else's personal link
     """
     url = visible_url_or_404(db, current_user, short_code, domain, to_change=True)
@@ -1079,14 +1285,20 @@ def list_redirect_rules(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    """
+    A link's redirect rules, by priority. Phase 10.3 — on a link a service account manages,
+    each `target_url` is masked as its destination is, for everyone but that account and the
+    organization's owners.
+    """
     url = visible_url_or_404(db, current_user, short_code, domain)
+    who = viewer(db, current_user)
     rules = (
         db.query(RedirectRule)
         .filter(RedirectRule.url_id == url.id)
         .order_by(RedirectRule.priority)
         .all()
     )
-    return [RedirectRuleResponse.model_validate(r) for r in rules]
+    return [_rule_response(who, url, r) for r in rules]
 
 
 @urls_router.post(
@@ -1122,7 +1334,7 @@ def create_redirect_rule(
     )
     db.commit()
     db.refresh(rule)
-    return RedirectRuleResponse.model_validate(rule)
+    return _rule_response(viewer(db, current_user), url, rule)
 
 
 @urls_router.patch(
@@ -1166,7 +1378,7 @@ def update_redirect_rule(
     )
     db.commit()
     db.refresh(rule)
-    return RedirectRuleResponse.model_validate(rule)
+    return _rule_response(viewer(db, current_user), url, rule)
 
 
 @urls_router.delete(

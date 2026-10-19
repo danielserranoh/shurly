@@ -46,6 +46,7 @@ from server.core.models import (
     Visitor,
 )
 from server.schemas.datetimes import utc_isoformat
+from server.utils import managed
 from server.utils.access import Visibility, find_url, viewer
 from server.utils.campaign import (
     generate_campaign_urls,
@@ -210,6 +211,9 @@ def add_redirect_rule(
     if url is None:
         raise LookupError(f"URL with short_code={short_code!r} not found for current user")
     if not who.can_change(url):
+        # Phase 10.3 — a managed link changes only through its service account: say which.
+        if managed.is_managed(url):
+            raise PermissionError(managed.protected_message(url))
         raise PermissionError("Only its creator, or an admin or owner, can change this link.")
 
     rule = RedirectRule(
@@ -255,7 +259,8 @@ def get_url_analytics_summary(
     if days < 1 or days > 90:
         raise ValueError("days must be between 1 and 90")
 
-    url = find_url(db, viewer(db, user), short_code, domain)  # Phase 8.3 — the code on `domain`
+    who = viewer(db, user)
+    url = find_url(db, who, short_code, domain)  # Phase 8.3 — the code on `domain`
     if url is None:
         raise LookupError(f"URL with short_code={short_code!r} not found for current user")
 
@@ -292,7 +297,9 @@ def get_url_analytics_summary(
     return {
         "short_code": url.short_code,
         "domain": link_hostname(url),
-        "original_url": url.original_url,
+        # Phase 10.3 — a managed link's destination, masked for all but its service account
+        # and the organization's owners.
+        "original_url": managed.destination_for(who, url),
         "url_type": url.url_type.value if url.url_type else None,
         "totals": {
             "clicks": total_clicks,

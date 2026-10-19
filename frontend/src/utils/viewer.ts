@@ -6,7 +6,7 @@
 import { ApiError, apiGet } from './api';
 import { html, setHTML, type RawHTML } from './html';
 import { icon } from './icons';
-import { createdBy, isServiceEmail, personName, type ServiceAccountRef } from './people';
+import { createdBy, isServiceEmail, personName, serviceName, type ServiceAccountRef } from './people';
 import { toast } from './ui';
 import type { Organization, OrgRole, User, Visibility } from './types';
 
@@ -114,6 +114,8 @@ interface Owned {
   created_by_last_name?: string | null;
   /** Phase 10.1: the service account that made it (links only); null when a person did. */
   via_service_account?: ServiceAccountRef | null;
+  /** Phase 10.3: the service account managing it (links only); null or absent when none does. */
+  managed_by?: ServiceAccountRef | null;
 }
 
 export function isCreator(item: Owned, viewer: Viewer | null): boolean {
@@ -123,10 +125,29 @@ export function isCreator(item: Owned, viewer: Viewer | null): boolean {
 /**
  * The API's rule (server/utils/access.py): the creator changes their own, and admins and
  * owners change the organization's. Someone else's personal item never reaches the viewer.
+ * Phase 10.3: nobody in the app changes a link a service account manages: only that account does,
+ * and it never signs in. Its tags are the exception (`canChangeTags`).
  */
 export function canChange(item: Owned, viewer: Viewer | null): boolean {
+  if (item.managed_by) return false;
+  return canChangeTags(item, viewer);
+}
+
+/**
+ * Phase 10.3 — may change its tags: the rule from before managed links, for every link (the API's
+ * `can_change_tags`). The creator, and the organization's admins and owners.
+ */
+export function canChangeTags(item: Owned, viewer: Viewer | null): boolean {
   if (!viewer || isCreator(item, viewer)) return true;
   return item.visibility === 'organization' && (viewer.role === 'admin' || viewer.role === 'owner');
+}
+
+/**
+ * Phase 10.3 — may delete a managed link past its service account (`POST …/override-delete`): an owner of the
+ * organization it belongs to, saying why. Never for a link no service account manages.
+ */
+export function canOverrideDelete(item: Owned, viewer: Viewer | null): boolean {
+  return Boolean(item.managed_by) && item.visibility === 'organization' && viewer?.role === 'owner';
 }
 
 /**
@@ -175,6 +196,31 @@ const LOCK_TOOLTIP = `${WHO_CHANGES} can change it`;
 /** Same words as the API's 403. */
 export const lockReason = (noun: Noun) => `${WHO_CHANGES} can change this ${noun}.`;
 
+/** Phase 10.3 — a managed link's tags: the people who could change the whole link before. */
+export const TAGS_LOCK_REASON = `${WHO_CHANGES} can change its tags.`;
+const TAGS_LOCK_TOOLTIP = `${WHO_CHANGES} can change its tags`;
+
+/** Phase 10.3 — why a managed link can't be changed here: the API's 403 `managed_link_protected`, in its words. */
+export const managedLockReason = (manager: ServiceAccountRef) =>
+  `This link is managed by ${serviceName(manager)}. Change or delete it from there.`;
+const managedLockTooltip = (manager: ServiceAccountRef) => `Managed by ${serviceName(manager)}: change it from there`;
+
+/** What a locked control says: on click (`reason`) and on hover (`tooltip`). */
+export interface Lock {
+  reason: string;
+  tooltip: string;
+}
+
+/**
+ * Why the viewer can't use a control that changes `item`, in the API's words: on a managed link (Phase 10.3), its
+ * manager's name; otherwise the creator-or-admin rule. `tags` for the control that changes only its tags.
+ */
+export function lockFor(item: Owned, noun: Noun, what: 'change' | 'tags' = 'change'): Lock {
+  if (what === 'tags') return { reason: TAGS_LOCK_REASON, tooltip: TAGS_LOCK_TOOLTIP };
+  if (item.managed_by) return { reason: managedLockReason(item.managed_by), tooltip: managedLockTooltip(item.managed_by) };
+  return { reason: lockReason(noun), tooltip: LOCK_TOOLTIP };
+}
+
 /**
  * Attributes that lock a menu item rendered with `html` (see `lockControl`). Popover menus
  * clip CSS tooltips (`overflow: auto`), so menu items say why in a native `title`.
@@ -187,15 +233,17 @@ export function lockedMenuAttrs(noun: Noun): RawHTML {
  * Lock a control the viewer can't use. It stays focusable and dims (`aria-disabled`),
  * says why on hover or focus, and a click explains instead of acting (`installLockedControls`).
  * `align` places the tooltip of a button; menu items get a `title` (see `lockedMenuAttrs`).
+ * `lock` words it otherwise (`lockFor`: a managed link names its manager); the noun's rule by default.
  */
-export function lockControl(el: HTMLElement | null, noun: Noun, align: 'center' | 'start' | 'end' = 'end'): void {
+export function lockControl(el: HTMLElement | null, noun: Noun, align: 'center' | 'start' | 'end' = 'end', lock?: Lock): void {
   if (!el) return;
+  const { reason, tooltip } = lock ?? { reason: lockReason(noun), tooltip: LOCK_TOOLTIP };
   el.setAttribute('aria-disabled', 'true');
-  el.dataset.locked = lockReason(noun);
+  el.dataset.locked = reason;
   if (el.classList.contains('menu-item')) {
-    el.title = LOCK_TOOLTIP;
+    el.title = tooltip;
   } else {
-    el.dataset.tooltip = LOCK_TOOLTIP;
+    el.dataset.tooltip = tooltip;
     if (align !== 'center') el.dataset.tooltipAlign = align;
     else delete el.dataset.tooltipAlign;
   }

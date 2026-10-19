@@ -214,15 +214,28 @@ class TestAcceptance:
         assert str(row.via_token_id) == propuestas["issued"]["id"]
         assert row.organization_id is not None
 
-        # Ana sees it as hers, and can change it.
+        # Ana sees it as hers. Since 10.3 it's managed by Propuestas (server/utils/managed.py):
+        # she changes its tags, the one thing people change on it, but not its title or
+        # anything else, which Propuestas changes. The test's point stays: what she may do on
+        # the link made for her, as its creator.
         mine = client.get(f"/api/v1/urls/{link['short_code']}", headers=_session(team["ana"]))
         assert mine.json()["via_service_account"]["display_name"] == "Propuestas Griddo"
+        assert mine.json()["managed_by"]["display_name"] == "Propuestas Griddo"
         changed = client.patch(
             f"/api/v1/urls/{link['short_code']}",
             json={"title": "Mine"},
             headers=_session(team["ana"]),
         )
-        assert changed.status_code == 200
+        assert changed.status_code == 403
+        assert changed.json()["code"] == "managed_link_protected"
+        tag = client.post("/api/v1/tags", json={"name": "Ana's"}, headers=_session(team["ana"]))
+        assert tag.status_code == 201, tag.text
+        tagged = client.patch(
+            f"/api/v1/urls/{link['short_code']}/tags",
+            json={"tag_ids": [tag.json()["id"]]},
+            headers=_session(team["ana"]),
+        )
+        assert tagged.status_code == 200, tagged.text
 
     def test_an_email_that_isnt_a_user_is_a_422_and_no_link(self, client, propuestas, db_session):
         before = db_session.query(URL).count()

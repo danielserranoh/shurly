@@ -1,4 +1,4 @@
-# Service accounts (ROADMAP 10.1, 10.2)
+# Service accounts (ROADMAP 10.1, 10.2, 10.3)
 
 Decided 2026-10-16 with the user, from Propuestas Griddo's proposal (`propuestas.griddo.io`, the first consumer:
 its MCP hosts a proposal, builds a tokenized URL with UTMs, and asks Shurly for the short link). This is the
@@ -31,7 +31,7 @@ sign in to generate a key, and nobody would own it.
 | Decision | Why |
 | --- | --- |
 | A service account is a **user row marked as a service** (`users.kind = 'service'`), with an organization membership and role, and no Google identity or password | Authentication, the organization's rules and every route already work from "the current user". A separate entity would mean revisiting each route. Being a user doesn't let it sign in: Google sign-in, password login, setting a password, the MCP's Google sign-in and the members list all refuse or leave out `kind = 'service'` |
-| **The person is the creator** (`urls.created_by` = their user) | `created_by` is required, and it decides who changes a link and who sees a personal one (`server/utils/access.py`). The person sees the link as theirs and can change it. The proposal had the service account as creator and the person as "on behalf of" only, which would have meant reworking access for every route |
+| **The person is the creator** (`urls.created_by` = their user) | `created_by` is required, and it decides who changes a link and who sees a personal one (`server/utils/access.py`). The person sees the link as theirs and can change it. The proposal had the service account as creator and the person as "on behalf of" only, which would have meant reworking access for every route. *10.3 (2026-10-19):* the person is still the creator, but the link is managed by the service: they change only its tags (§ Managed links) |
 | The person is named **by email** | The integrating service knows its user's Google email. It doesn't know Shurly's internal ids |
 | **A person who isn't a Shurly user yet** gets a **422** (`on_behalf_of_unknown`) | They sign in to Shurly with Google once, then it works. Decided over attributing the link to the service and handing it over at their first sign-in |
 | **No "channel"** (ui / api / mcp) | It answers no useful question, and an honest version would need ui, mcp, personal key and service account. What matters is the creator, and the service account when there was one. An empty service account means the person did it with their own credentials |
@@ -231,3 +231,39 @@ the 18th 1 link for a person and 1 update. Decided with the user on 2026-10-19; 
   `ip_not_allowed`, checked first: such a request is neither counted nor a use.
 - ✕ **Handing links Propuestas made with a person's API key over to its service account.** Dropped by decision
   (2026-10-19): those links can't be told apart from the ones that person made by hand.
+
+## Managed links (10.3), built 2026-10-19
+
+In the tests of 17 October, people could delete or edit the links Propuestas made, and Propuestas didn't know: a
+recipient got a dead link that Propuestas still showed as active, a link recreated by hand lost its type, tag and
+owner (then `revoke_link` failed with a 403), and anyone in the organization could read the destination, which
+carries the proposal's access token. A proposal's link belongs to Propuestas. Decided with the user on 2026-10-19;
+epic `_board/done/epic_service-managed-links.md`, plan `_board/plan_managed-links-propuestas.md`; Propuestas' side is
+its own ticket (`_exchange/issue-shurly-managed-links.md`).
+
+| Decision | Why |
+| --- | --- |
+| **A link made through a service account is managed by it**, derived from `urls.via_service_account_id` and `url_type`: no new column, no migration, no change to what the service sends | Shurly already records it on every link (10.1). Nobody can set or clear it, and a future integration's links behave the same way. Propuestas' 3 links in production already had it |
+| **Campaign links aren't managed**, even when a service made them | They're changed and deleted through their campaign, which has its own rules |
+| **Only the manager changes or deletes a managed link**; anyone else gets a 403 `managed_link_protected`, which names it | Enforced where every changing route decides (`Viewer.ensure_can_change`, `server/utils/access.py`), so the app, the API and the MCP are covered at once. Admins, and the person it was made for, lose the edit and delete they had: the source of truth is the integration |
+| **People change its tags**, by the rule from before (its creator, admins, owners) | Tags are for analysis, in Shurly. A separate path (`can_change_tags`) keeps that rule for every link, managed or not |
+| **A removed service account still manages its links** | Removing it doesn't hand its links to people; only the override deletes them |
+| **The destination is masked for all but the owners and the manager**: the scheme and host, then `…` | It can carry a credential (Propuestas' access token), and the user decided only owners and the manager see it, the person the link was made for included. Every surface that returns a destination masks it (the link, its rules' targets, the overview's top links, the admins' list of an account's links, the curated analytics summary), and search doesn't match what's masked. Following the short link isn't masked: that's what it's for |
+| **The override is an owner's delete, with a required reason, in the audit** | For when the integration can't: a data-protection request, a leaked token, a link a failure left behind. Delete only, never edit, as the user decided. Its own route (`POST …/override-delete`), not a flag on `DELETE`, so it can be refused to service tokens and left out of the MCP: an assistant reading untrusted text can't be talked into it |
+| **The reason is the audit's one free-text field** (`detail.reason`) | The why is the point of the row. Read by the owners and admins who read the audit, kept 2 years, never in the event log (docs/PERSONAL_DATA.md) |
+| **The list's tabs: Links, Campaign links and one per service account, no "All"** | The user doesn't want every link seen together; each link is in one tab. The "Made via" filter went with it; its old address opens the account's tab. `GET /api/v1/urls/managers` names the tabs, since members can't list service accounts |
+| **`GET /api/v1/urls` without the new parameters still returns everything**, managed links masked | The API is versioned: a client that lists links keeps getting them. The app asks for `managed=exclude` or `managed_by` |
+
+- [x] `server/utils/managed.py`: the rule, the mask, `ensure_may_change`, and the SQL conditions; `access.py` uses
+  them for changes and keeps the tags rule apart.
+- [x] The 403 `managed_link_protected` on `DELETE`, `PATCH`, refresh-preview and the rules routes; the tags routes
+  and bulk tags by the tags rule.
+- [x] `managed_by` on every link; masking on every surface; `q` not matching a masked destination.
+- [x] `GET /api/v1/urls?managed=exclude|only&managed_by=<id>`, and `GET /api/v1/urls/managers` (MCP
+  `list_link_managers`, scope `urls:read`); the code `managers` reserved on every domain.
+- [x] `POST /api/v1/urls/{short_code}/override-delete {reason}`: owners, 10 to 500 characters, the audit row
+  (`url.deleted`, `actor_id` the owner, `{override: true, reason}`) in the same transaction; refused to service
+  tokens; not an MCP tool.
+- [x] The app: the tabs, the card's badge and locked menu, the link page's banner, tags-only editing, "Delete
+  anyway…" for owners, and the override in each account's **Activity**.
+- [x] The service account keeps everything it did in v1: it creates, changes the expiry of and deletes its links.

@@ -2357,6 +2357,51 @@ What we learned:
 - **The IP check goes first,** so a token leaked and used from elsewhere can't spend the integration's minute or
   move its "Last used".
 
+### 10.3 Managed links
+In the tests of 2026-10-17, people could delete or edit the links Propuestas made without Propuestas knowing: a
+recipient got a dead link that Propuestas still showed as active, a link recreated by hand lost its type, tag and
+owner, and anyone in the organization could read the destination, which carries the proposal's access token.
+Decided with the user on 2026-10-19 ([`epic_service-managed-links`](../_board/done/epic_service-managed-links.md));
+the spec's § Managed links has the decisions with their reasons ([_pm/spec_service_accounts.md](spec_service_accounts.md)),
+the plan is `_board/plan_managed-links-propuestas.md`.
+
+Decided:
+- **The rule is derived:** a link made through a service account (`urls.via_service_account_id`) is managed by it.
+  No new column and no migration; Propuestas' 3 links in production already qualify.
+- **Campaign links aren't managed**, even when a service account made them.
+- **People change only the tags.** Only the managing account changes or deletes a managed link; admins, and the
+  person it was made for, lose the edit and delete they had (tell admins before the release).
+- **The destination is masked for all but the owners and the managing account**, the person it was made for
+  included.
+- **The override is an owner's delete, with a reason, in the audit.** Delete only, never edit; owners only.
+- **The tabs are Links, Campaign links and one per service account, with no "All".** The "Made via" filter goes.
+- **`GET /api/v1/urls` is unchanged by default:** with no new parameter it still returns every link, managed ones
+  masked, since the API is versioned.
+
+Built:
+- [x] The rule in one place (`server/utils/managed.py`), used by `Viewer.ensure_can_change`: a 403
+      `managed_link_protected` on `DELETE`, `PATCH`, refresh-preview and the redirect rules' routes for anyone but
+      the manager, owners included. Tags change by the rule from before (`can_change_tags`), bulk tags too
+- [x] The mask (`https://host/…`) on every surface that returns a destination: the link's responses, its rules'
+      targets, the overview's `top_urls`, the admins' `GET /service-accounts/{id}/links`, the curated
+      `get_url_analytics_summary`; `q` doesn't match a masked destination
+- [x] `managed_by` on every link; `GET /api/v1/urls?managed=exclude|only&managed_by=<id>`; `GET /api/v1/urls/managers`
+      (MCP `list_link_managers`), with the code `managers` reserved on every domain
+- [x] `POST /api/v1/urls/{short_code}/override-delete {reason}`: owners, 10 to 500 characters, a `url.deleted` audit
+      row with the owner and `{override: true, reason}` (the audit's one free text, docs/PERSONAL_DATA.md); refused
+      to service tokens, not an MCP tool
+- [x] The app: the list's tabs (`?type=all` lands on Links, `?via_service_account=` on the account's tab), the
+      card's "Managed by" badge and locked "Edit via" / "Delete via", the link page's banner, tags-only editing,
+      "Delete anyway…" for owners, and the override with its reason in the account's **Activity**
+      (`e2e/managed-links.spec.ts`)
+- [ ] After the release: Propuestas' 3 links in its tab, masked for a member, their click totals unchanged; and
+      Propuestas still creates, changes the expiry of and revokes them
+- **Still to do, in Propuestas** (not Shurly's work; its ticket is `_exchange/issue-shurly-managed-links.md`):
+      recreating a link that's missing in Shurly (through its service account, with the same code) when
+      `create_links` reuses it; a daily reconciliation that tells the proposal's owner about a missing link or a
+      diverging expiry and never revokes by itself; `set_expiry` and `revoke_link` as the only ways to change its
+      links; and handling the 403 `managed_link_protected`, which reaches only people, never the service account
+
 
 
 ### Test-Driven Development (TDD)

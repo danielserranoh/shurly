@@ -26,6 +26,65 @@ implementation lifecycle and is independent of the URL version segment.
 
 ## [Unreleased]
 
+### Added — links managed by their service account (10.3)
+- **A link made through a service account is managed by it** (`server/utils/managed.py`): the rule is derived from
+  `urls.via_service_account_id`, so there's no new column and no migration, and the links Propuestas already made
+  qualify. A campaign link a service account made stays a campaign link, not managed. A removed service account
+  still manages its links. Only the managing account changes or deletes a managed link (its title, destination,
+  query forwarding, preview, validity window, visit cap, crawlability and redirect rules), exactly as before; people
+  may change its tags, by the rule they had (its creator, admins and owners).
+- **A 403 with `code: managed_link_protected`** for anyone else who changes or deletes one: `DELETE` and `PATCH
+  /api/v1/urls/{short_code}`, refresh-preview, and creating, changing or deleting its redirect rules, from the app,
+  the API or the MCP (the curated `add_redirect_rule` refuses with the same words). The message names the
+  integration: "This link is managed by Propuestas Griddo. Change or delete it from there." Owners get it too: they
+  delete through the override, below. The managing account never gets it.
+- **The destination is masked** (`https://host/…`: the scheme and host, the path and query hidden, credentials in the
+  address dropped) for everyone but the managing account and the owners of the link's organization; the person it
+  was made for and the admins included. On every surface that returns it: `GET /api/v1/urls` and `GET
+  /api/v1/urls/{short_code}` (so the MCP's `list_urls` and `get_url`), its redirect rules' targets, the
+  overview's `top_urls`, the admins' `GET /api/v1/service-accounts/{id}/links`, and the curated
+  `get_url_analytics_summary`. Search (`q`) doesn't match a destination the caller reads masked. Following the short
+  link still reaches the destination: the mask keeps a credential (Propuestas' access token) out of the dashboard and
+  of an assistant's context.
+- **`managed_by: {id, display_name} | null`** on every link: the account managing it.
+- **`GET /api/v1/urls` takes `managed=exclude|only` and `managed_by=<id>`**, both optional: without them, every link,
+  as before.
+- **`GET /api/v1/urls/managers`:** the service accounts managing links the caller can see, `[{id, display_name,
+  link_count}]`, by name. Any role (members can't list service accounts); scope `urls:read` for a service token; the
+  MCP tool `list_link_managers`.
+- **`POST /api/v1/urls/{short_code}/override-delete` `{reason}`:** an owner of the link's organization deletes a
+  managed link past its service account, with a reason of 10 to 500 characters (trimmed), required. The link goes
+  with its visits and rules, and the service account's audit gets a `url.deleted` row with the owner as `actor_id`
+  and `detail` `{"override": true, "reason": …}`, in the same transaction: the reason is the audit's one free-text
+  field (docs/PERSONAL_DATA.md). The event log's `url.override_deleted` has ids only. Anyone else gets a 403, a link
+  that isn't managed a 400 (it's deleted with `DELETE`). Never a service token (`service_account_not_allowed`), and
+  not an MCP tool, so an assistant can't be talked into it. The integration isn't told: its link goes dead.
+- **The links list's tabs** are `Links | Campaign links | <service account>…`, a tab for each account managing links
+  you see (from `GET /urls/managers`), scrolling sideways on a phone. Links leaves the managed links out; an account's
+  tab lists only its links, says they're read-only here apart from their tags, and has its own empty state. Search,
+  tag filters and the pager work within a tab, and a card's tag pills keep it. A managed link's card has a "Managed
+  by <name>" badge, its destination as the API gives it (a mask is plain text), and "Edit via <name>" and "Delete via
+  <name>", locked. The KPIs still count managed links and their clicks, and no longer count them as campaign links.
+- **A managed link's page:** a banner, "Managed by <name>. Change or delete it from there; its tags can be changed
+  here." **Edit tags** opens the editor on its tags alone (`PATCH …/tags`); Add rule, deleting a rule, the preview's
+  edit, refresh and reset, and Delete are gone, and the menu has a locked "Delete via <name>". Owners get **Delete
+  anyway…** instead: a dialog that names the consequence and asks for the reason. Its tag pills and "← Links" lead to
+  the account's tab, where an override also lands.
+- **Activity** shows an override as "Deleted a link anyway (owner override)", by the owner, with the reason quoted
+  on a second line.
+- **The code `managers` is reserved on every domain**, since `GET /api/v1/urls/managers` would shadow a link with
+  it: a custom code `managers` is taken, so it gets a suffix and a warning.
+
+### Changed — managed links for people (10.3)
+- **Admins, and the person a link was made for, lose edit and delete on managed links:** they keep changing its
+  tags. Owners delete one only through the override, with a reason. Tell admins before the release.
+- **The links list has no "All" tab and no "Made via" filter any more.** An old address still works: `?type=all`
+  opens Links, and `?via_service_account=<id>` that account's tab (Links, with a note, if it manages no links you
+  see). "Its links" on the Organization page opens the account's tab.
+- **`GET /api/v1/urls` with no new parameter still returns every link**, managed ones included (the API is
+  versioned), with their destination masked for whoever may not read it. The app asks for `managed=exclude` or
+  `managed_by`.
+
 ### Added — service accounts v2: scopes, a rate limit, IP ranges, warnings and an audit (10.2)
 - **Each service token has scopes:** `urls:read`, `urls:write`, `urls:delete`, `tags:write`, `analytics:read` and
   `act_on_behalf`. Campaigns and redirect rules go with links (`urls:*`), and reading tags is `urls:read`. One map,
