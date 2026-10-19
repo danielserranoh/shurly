@@ -1,10 +1,11 @@
 // Phase 10.2 — a service account's token settings and its audit, in words (src/utils/service-accounts.ts): the
 // scopes' summary on a token's line, the IP ranges typed one per line, the expiry the form starts from, the menu
-// dot's label, and each audit event as a sentence with who it was for or by.
+// dot's label, and each audit event as a sentence with who it was for or by (Phase 10.3: an owner's override, with
+// its reason escaped).
 // Run: `npm test` (node --test; Node 22.18+ runs the TypeScript module as is).
 //
-// The module imports only types, but its imports leave out the `.ts` extension (Vite resolves them): the hook
-// adds it, as in link-badges.test.mjs.
+// Its imports (the `html` tag, and types) leave out the `.ts` extension (Vite resolves them): the hook adds it, as
+// in link-badges.test.mjs.
 
 import assert from 'node:assert/strict';
 import { register } from 'node:module';
@@ -163,6 +164,47 @@ describe('the audit, in words', () => {
     assert.equal(sa.auditWho(event('url.created', { on_behalf_of: { ...ANA, name: null } })), 'On behalf of ana@griddo.io');
     assert.equal(sa.auditWho(event('service_token.renewed', { actor: ANA })), 'By Ana García');
     assert.equal(sa.auditWho(event('url.created')), '');
+  });
+
+  // Phase 10.3 — an owner deleting a link the account manages, past it: the owner as `actor`, the reason in `detail`.
+  describe('an owner’s override', () => {
+    const override = (reason, more = {}) => event('url.deleted', { actor: ANA, detail: { override: true, reason }, ...more });
+
+    test('says it was deleted anyway, by whom, with the reason quoted on a second line', () => {
+      const e = override('The recipient asked us to delete their data');
+      assert.equal(sa.auditSentence(e), 'Deleted a link anyway (owner override)\n“The recipient asked us to delete their data”');
+      assert.equal(sa.auditOverrideReason(e), 'The recipient asked us to delete their data');
+      const what = sa.auditWhat(e);
+      assert.equal(what.code, null);
+      assert.equal(
+        what.text.value,
+        'Deleted a link anyway (owner override)<span class="mt-0.5 block whitespace-pre-line break-words text-ink-600" data-audit-reason>“The recipient asked us to delete their data”</span>',
+      );
+      assert.equal(sa.auditWho(e), 'By Ana García');
+    });
+
+    test('the reason is free text: escaped, never markup', () => {
+      const what = sa.auditWhat(override('<img src=x onerror=alert(1)> & "quotes" it\'s'));
+      assert.match(what.text.value, /“&lt;img src=x onerror=alert\(1\)&gt; &amp; &quot;quotes&quot; it&#39;s”/);
+      assert.doesNotMatch(what.text.value, /<img/);
+    });
+
+    test('the link’s code, if the reader still sees it, is in the sentence', () => {
+      assert.equal(sa.auditSentence(override('A leaked access token', { short_code: 'ab12cd' })), 'Deleted link ab12cd anyway (owner override)\n“A leaked access token”');
+    });
+
+    test('trimmed, and without one, no second line', () => {
+      assert.equal(sa.auditSentence(override('   Orphaned after a failure  ')), 'Deleted a link anyway (owner override)\n“Orphaned after a failure”');
+      assert.deepEqual(sa.auditWhat(override('  ')), { text: 'Deleted a link anyway (owner override)', code: null });
+      assert.deepEqual(sa.auditWhat(override(undefined)), { text: 'Deleted a link anyway (owner override)', code: null });
+    });
+
+    test('a service deleting its own link is not an override', () => {
+      assert.equal(sa.auditOverrideReason(event('url.deleted')), null);
+      assert.equal(sa.auditOverrideReason(event('url.deleted', { detail: { override: false, reason: 'no' } })), null);
+      assert.equal(sa.auditOverrideReason(event('campaign.deleted', { detail: { override: true, reason: 'nope nope' } })), null);
+      assert.equal(say('url.deleted', { short_code: 'ab12cd' }), 'Deleted link ab12cd');
+    });
   });
 
   test('someone deleted shows as deleted', () => {

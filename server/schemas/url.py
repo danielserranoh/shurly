@@ -1,10 +1,10 @@
 """Schemas for URL shortening."""
 
 from datetime import datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Annotated
 from uuid import UUID
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, StringConstraints, field_validator
 
 from server.core.models.url import URLType
 from server.schemas.datetimes import UtcDateTime
@@ -299,6 +299,14 @@ class URLResponse(BaseModel):
     via_service_account: ServiceAccountRef | None = Field(
         None, description="The service account that created the link, {id, display_name}; null"
     )
+    # Phase 10.3 — the service account managing the link (server/utils/managed.py): one made
+    # through a service account, not a campaign link. Only it changes the link, people change
+    # its tags, and `original_url` is masked (`https://host/…`) for all but it and the owners.
+    managed_by: ServiceAccountRef | None = Field(
+        None,
+        description="The service account managing the link, {id, display_name}: only it "
+        "changes or deletes it (people may change its tags). Null: not managed",
+    )
 
     model_config = {"from_attributes": True}
 
@@ -308,6 +316,27 @@ class URLListResponse(BaseModel):
 
     urls: list[URLResponse]
     total: int
+
+
+class LinkManagerResponse(BaseModel):
+    """Phase 10.3 — a service account managing links the caller can see, and how many."""
+
+    id: UUID
+    display_name: str | None = None
+    link_count: int = Field(description="How many of the links it manages the caller can see")
+
+
+class URLOverrideDelete(BaseModel):
+    """Phase 10.3 — why an owner deletes a link a service account manages."""
+
+    reason: Annotated[
+        str, StringConstraints(strip_whitespace=True, min_length=10, max_length=500)
+    ] = Field(
+        description="Why it's deleted from Shurly and not from the integration (10 to 500 "
+        "characters). Kept in the service account's audit"
+    )
+
+    model_config = {"extra": "forbid"}
 
 
 class OpenGraphMetadataResponse(BaseModel):

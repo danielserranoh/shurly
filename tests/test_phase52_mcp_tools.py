@@ -31,6 +31,9 @@ EXPECTED_TOOLS: set[str] = {
     "create_short_url",
     "create_custom_url",
     "list_urls",
+    # Phase 10.3 — the service accounts managing links, counted. Its override-delete is not
+    # a tool (test below).
+    "list_link_managers",
     "delete_url",
     "update_url",
     "update_url_tags",
@@ -202,3 +205,13 @@ def test_the_waitlist_stays_out_of_the_mcp():
     names = _list_tool_names()
     leaked = {n for n in names if "waitlist" in n}
     assert not leaked, f"Waitlist routes exposed as MCP tools: {sorted(leaked)}"
+
+
+def test_deleting_a_managed_link_anyway_stays_out_of_the_mcp():
+    """Phase 10.3 — an owner deletes a link its integration manages, with a reason, signed in.
+    An assistant reading untrusted text (a link's title, a fetched page) could be talked into
+    "delete it anyway", and the integration would show a dead link.
+    """
+    names = _list_tool_names()
+    leaked = {n for n in names if "override" in n}
+    assert not leaked, f"The override delete is exposed as an MCP tool: {sorted(leaked)}"

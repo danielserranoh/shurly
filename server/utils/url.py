@@ -26,6 +26,10 @@ RESERVED_SHORT_CODES = frozenset(
     }
 )
 
+# Phase 10.3 — codes a fixed GET route under /api/v1/urls/ would shadow in
+# `GET /api/v1/urls/{short_code}`, on every domain (the API doesn't depend on the link's host).
+API_RESERVED_SHORT_CODES = frozenset({"managers"})  # GET /api/v1/urls/managers
+
 
 def build_short_url(short_code: str, hostname: str | None = None) -> str:
     """Build the full short URL from a short code.
@@ -96,9 +100,13 @@ def is_reserved_short_code(code: str, hostname: str) -> bool:
 
     Phase 8.4 — the app serves those paths on its own host only (`app_host`): on
     any other domain they're codes like any other (go.griddo.io/mcp is a link).
-    With no app host set, on every domain.
+    With no app host set, on every domain. Phase 10.3 — API_RESERVED_SHORT_CODES on every
+    domain, always.
     """
-    return serves_app_paths(hostname) and normalize_short_code(code) in RESERVED_SHORT_CODES
+    normalized = normalize_short_code(code)
+    if normalized in API_RESERVED_SHORT_CODES:
+        return True
+    return serves_app_paths(hostname) and normalized in RESERVED_SHORT_CODES
 
 
 def make_code_unique(code: str, append_length: int = 3) -> str:

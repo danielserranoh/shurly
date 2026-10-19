@@ -64,6 +64,7 @@ _CAMPAIGN_STATS = f"{_API}/analytics/campaigns/{{campaign_id}}"
 SCOPE_FOR: dict[tuple[str, str], str] = {
     # Reading links, their rules and previews, campaigns and tags.
     ("GET", f"{_API}/urls"): URLS_READ,
+    ("GET", f"{_API}/urls/managers"): URLS_READ,  # 10.3 — the service accounts managing links
     ("GET", _URL): URLS_READ,
     ("GET", f"{_URL}/preview"): URLS_READ,
     ("GET", f"{_URL}/rules"): URLS_READ,
@@ -145,6 +146,9 @@ NOT_FOR_SERVICES: frozenset[tuple[str, str]] = frozenset(
         ("POST", f"{_API}/organization/transfer-ownership"),
         ("GET", f"{_API}/organization/removed-members"),
         ("POST", f"{_API}/organization/adopt-personal-links"),
+        # 10.3 — an owner deleting a link past the service account managing it: never a
+        # service, which deletes its own links with DELETE.
+        ("POST", f"{_URL}/override-delete"),
         ("GET", f"{_API}/waitlist"),
         ("GET", f"{_API}/waitlist/export"),
         ("DELETE", f"{_API}/waitlist/{{entry_id}}"),

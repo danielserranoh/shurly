@@ -101,6 +101,14 @@ EXCLUDED_ROUTE_MAPS: list[RouteMap] = [
     # owner's, signed in (the routes refuse anything else); an assistant talked into "renew
     # the token" would get a secret in its context. Reading them is for the owners and admins.
     RouteMap(pattern=r"^/api/v1/service-accounts(/.*)?$", mcp_type=MCPType.EXCLUDE),
+    # Phase 10.3 — an owner deleting a link past the integration that manages it, with a
+    # reason: the owner's decision, made signed in. An assistant reading untrusted text (a
+    # link's title, a fetched page) could be talked into "delete it anyway".
+    RouteMap(
+        methods=["POST"],
+        pattern=r"^/api/v1/urls/\{short_code\}/override-delete$",
+        mcp_type=MCPType.EXCLUDE,
+    ),
     RouteMap(
         methods=["PUT", "DELETE"],
         pattern=r"^/api/v1/auth/password$",
@@ -145,6 +153,9 @@ MCP_TOOL_NAMES: dict[str, str] = {
     "create_short_url_api_v1_urls_post": "create_short_url",
     "create_custom_url_api_v1_urls_custom_post": "create_custom_url",
     "list_urls_api_v1_urls_get": "list_urls",
+    # Phase 10.3 — the service accounts managing links the caller sees, and how many: the names
+    # each link's `managed_by` already gives, counted.
+    "list_link_managers_api_v1_urls_managers_get": "list_link_managers",
     "delete_url_api_v1_urls__short_code__delete": "delete_url",
     "update_url_api_v1_urls__short_code__patch": "update_url",
     "update_url_tags_api_v1_urls__short_code__tags_patch": "update_url_tags",

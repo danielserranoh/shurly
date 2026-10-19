@@ -13,7 +13,10 @@ tell apart add a `code` beside it, which never changes wording:
 - `scope_missing` (403, Phase 10.2): the service token lacks the scope the route needs, or
   `act_on_behalf` to send `X-Shurly-On-Behalf-Of`; the message names the scope;
 - `ip_not_allowed` (403, Phase 10.2): the service token has allowed IP ranges, and the request
-  came from outside them.
+  came from outside them;
+- `managed_link_protected` (403, Phase 10.3): a person changing or deleting a link a service
+  account manages (server/utils/managed.py); the message names the integration to use instead.
+  The managing service account never gets it: it changes its links as before.
 
 The two 10.2 codes are defined in server/utils/service_scopes.py, beside the checks.
 """
@@ -24,6 +27,7 @@ from fastapi.responses import JSONResponse
 ON_BEHALF_OF_UNKNOWN = "on_behalf_of_unknown"
 ON_BEHALF_OF_NOT_ALLOWED = "on_behalf_of_not_allowed"
 SERVICE_ACCOUNT_NOT_ALLOWED = "service_account_not_allowed"
+MANAGED_LINK_PROTECTED = "managed_link_protected"
 
 
 class CodedHTTPException(HTTPException):

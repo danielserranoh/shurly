@@ -4,13 +4,14 @@ import Icon from '@/components/ui/Icon.astro';
 import StatCard from '@/components/ui/StatCard.astro';
 import EmptyState from '@/components/ui/EmptyState.astro';
 import EditLinkModal from '@/components/app/EditLinkModal.astro';
+import OverrideDeleteModal from '@/components/app/OverrideDeleteModal.astro';
 import QrModal from '@/components/app/QrModal.astro';
 import AnalyticsSection from '@/components/app/AnalyticsSection.astro';
 import { BROWSERS, DEVICES, LANGUAGES } from '@/utils/rules';
 ---
 
 <AppLayout title="Link details" section="links">
-  <a href="/dashboard/" class="mb-4 inline-flex items-center gap-1.5 rounded-md text-sm font-medium text-ink-500 hover:text-ink-950"><Icon name="arrow-left" />Links</a>
+  <a href="/dashboard/" data-back class="mb-4 inline-flex items-center gap-1.5 rounded-md text-sm font-medium text-ink-500 hover:text-ink-950"><Icon name="arrow-left" />Links</a>
 
   <EmptyState id="not-found" hidden illustration="not-found" title="We couldn’t find that link" body="It may have been deleted, or it’s someone else’s personal link.">
     <a href="/dashboard/" class="btn btn-primary"><Icon name="list" />Back to your links</a>
@@ -40,7 +41,7 @@ import { BROWSERS, DEVICES, LANGUAGES } from '@/utils/rules';
           </div>
           <p class="mt-2 flex min-w-0 items-center gap-1.5 text-sm text-ink-500">
             <Icon name="corner-down-right" class="size-4 shrink-0" />
-            <a class="truncate hover:text-ink-900 hover:underline" target="_blank" rel="noopener noreferrer" data-destination></a>
+            <span class="flex min-w-0" data-destination-slot></span>
           </p>
           <p class="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-[13px] text-ink-500" data-meta></p>
           <div class="mt-3 flex flex-wrap gap-1.5" data-tags></div>
@@ -54,6 +55,9 @@ import { BROWSERS, DEVICES, LANGUAGES } from '@/utils/rules';
           <a class="menu-item" data-open-short target="_blank" rel="noopener"><Icon name="external-link" />Open short link</a>
           <div class="menu-sep"></div>
           <button type="button" class="menu-item" data-danger data-delete><Icon name="trash" />Delete link</button>
+          <!-- Phase 10.3: a managed link is deleted by its service account; an owner may still, saying why. -->
+          <button type="button" class="menu-item" hidden data-delete-via><Icon name="lock" /><span data-delete-via-label>Delete via its service account</span></button>
+          <button type="button" class="menu-item" hidden data-danger data-override-delete><Icon name="trash" />Delete anyway…</button>
         </div>
       </div>
     </header>
@@ -65,6 +69,12 @@ import { BROWSERS, DEVICES, LANGUAGES } from '@/utils/rules';
         <p>This is a personalized link in <a class="font-semibold underline underline-offset-2" data-campaign-link>a campaign</a>. It’s managed with the campaign, so it can’t be edited or deleted on its own.</p>
         <div class="mt-2 flex flex-wrap gap-1.5" data-user-data></div>
       </div>
+    </div>
+
+    <!-- Phase 10.3: managed by a service account -->
+    <div data-managed hidden class="mt-6 flex gap-3 rounded-2xl border border-line bg-ink-50 p-4 sm:items-center">
+      <span class="grid size-9 shrink-0 place-items-center rounded-xl bg-white text-ink-700 ring-1 ring-ink-200"><Icon name="plug" /></span>
+      <p class="min-w-0 flex-1 text-sm text-ink-800" data-managed-text></p>
     </div>
 
     <!-- All-time numbers (3.16: /totals) -->
@@ -161,6 +171,7 @@ import { BROWSERS, DEVICES, LANGUAGES } from '@/utils/rules';
   </div>
 
   <EditLinkModal />
+  <OverrideDeleteModal />
   <QrModal />
 </AppLayout>
 
@@ -172,14 +183,15 @@ import { BROWSERS, DEVICES, LANGUAGES } from '@/utils/rules';
   import { html, safeUrl, setHTML } from '@/utils/html';
   import { icon } from '@/utils/icons';
   import { downloadVisits, getBreakdown, getTimeseries, getTotals, getVisits } from '@/utils/link-analytics';
-  import { openLinkEditor } from '@/utils/link-editor';
-  import { campaignHref, deleteLink, getLink, linkBadges, linkThumb, openQr, updateLink } from '@/utils/links';
+  import { openLinkEditor, openOverrideDelete } from '@/utils/link-editor';
+  import { campaignHref, deleteLink, getLink, isMaskedDestination, linkBadges, linkThumb, listHref, LINKS_TAB, managedTitle, openQr, updateLink, type LinkTab } from '@/utils/links';
+  import { serviceName } from '@/utils/people';
   import { linkApi } from '@/utils/link-address';
   import { linkPreview, type PreviewField } from '@/utils/preview';
   import { createRule, deleteRule, listRules, renderRule } from '@/utils/rules';
   import { tagPill } from '@/utils/tags';
   import { confirmDialog, copyWithFeedback, hydrateTimes, setLoading, toast } from '@/utils/ui';
-  import { canChange, creatorEmailBehindName, creatorName, getViewer, installLockedControls, lockControl, onForbidden, type Viewer } from '@/utils/viewer';
+  import { canChange, canChangeTags, canOverrideDelete, creatorEmailBehindName, creatorName, getViewer, installLockedControls, lockControl, lockFor, onForbidden, type Viewer } from '@/utils/viewer';
   import type { LinkTotals, PreviewMetadata, RedirectRule, RuleCondition, RuleConditionType, ShortLink } from '@/utils/types';
 
   // Phase 8.3 — a link is its code and its domain. Without `?domain=` (an old bookmark),
@@ -191,8 +203,11 @@ import { BROWSERS, DEVICES, LANGUAGES } from '@/utils/rules';
   let link: ShortLink;
   let rules: RedirectRule[] = [];
   let viewer: Viewer | null = null;
-  /** The viewer may change this link (its creator, or an admin or owner for the organization's). */
+  /** The viewer may change this link (its creator, or an admin or owner for the organization's; nobody, if it's managed). */
   const changeable = () => canChange(link, viewer);
+  /** Phase 10.3: the list's tab this link is in, where its tag pills and the way back lead. */
+  const tabOf = (l: ShortLink): LinkTab =>
+    l.managed_by ? { kind: 'managed', id: l.managed_by.id } : l.url_type === 'campaign' ? { kind: 'campaign' } : LINKS_TAB;
   installLockedControls();
   onForbidden(async () => {
     viewer = await getViewer();
@@ -208,15 +223,19 @@ import { BROWSERS, DEVICES, LANGUAGES } from '@/utils/rules';
     document.title = `${title} · Shurly`;
     setHTML($('[data-thumb]'), linkThumb(link, 'size-14'));
     $('[data-title]').textContent = title;
-    setHTML($('[data-badges]'), linkBadges(link));
+    const manager = link.managed_by ?? null;
+    setHTML($('[data-badges]'), linkBadges(link, { withManager: false })); // the banner says who manages it
     const short = $<HTMLAnchorElement>('[data-short]');
     short.textContent = prettyUrl(link.short_url);
     short.href = safeUrl(link.short_url);
     $<HTMLAnchorElement>('[data-open-short]').href = safeUrl(link.short_url);
-    const dest = $<HTMLAnchorElement>('[data-destination]');
-    dest.textContent = prettyUrl(link.original_url);
-    dest.href = safeUrl(link.original_url);
-    dest.title = link.original_url;
+    // Phase 10.3: a masked destination (`https://host/…`) isn't a link to open.
+    setHTML(
+      $('[data-destination-slot]'),
+      isMaskedDestination(link.original_url)
+        ? html`<span class="truncate" title="Only ${manager ? serviceName(manager) : 'its service account'} and the organization’s owners see the full destination" data-destination>${prettyUrl(link.original_url)}</span>`
+        : html`<a class="truncate hover:text-ink-900 hover:underline" href="${safeUrl(link.original_url)}" title="${link.original_url}" target="_blank" rel="noopener noreferrer" data-destination>${prettyUrl(link.original_url)}</a>`,
+    );
     setHTML(
       $('[data-meta]'),
       html`<span class="inline-flex items-center gap-1.5" ${creatorEmailBehindName(link, viewer) ? html`title="${creatorEmailBehindName(link, viewer)}"` : ''}>${icon('calendar', 'size-3.5')}Created ${formatDate(link.created_at)}${creatorName(link, viewer) ? ` by ${creatorName(link, viewer)}` : ''}</span>
@@ -225,13 +244,32 @@ import { BROWSERS, DEVICES, LANGUAGES } from '@/utils/rules';
         ${link.valid_until ? html`<span class="inline-flex items-center gap-1.5">${icon('timer', 'size-3.5')}Expires ${formatDateTime(link.valid_until)}</span>` : ''}
         ${link.max_visits ? html`<span class="inline-flex items-center gap-1.5">${icon('ban', 'size-3.5')}${formatNumber(link.click_count)} of ${formatNumber(link.max_visits)} clicks used</span>` : ''}`,
     );
-    setHTML($('[data-tags]'), html`${link.tags.map((t) => tagPill(t, { href: `/dashboard/?tags=${encodeURIComponent(t.id)}` }))}`);
+    const tab = tabOf(link);
+    $<HTMLAnchorElement>('[data-back]').href = listHref(tab);
+    setHTML($('[data-tags]'), html`${link.tags.map((t) => tagPill(t, { href: listHref(tab, [t.id]) }))}`);
     hydrateTimes($('[data-meta]'));
 
     const isCampaign = link.url_type === 'campaign';
+    const overrides = canOverrideDelete(link, viewer);
     $('[data-edit]').hidden = isCampaign;
-    $('[data-edit-og]').hidden = isCampaign;
-    $('[data-delete]').hidden = isCampaign;
+    // Phase 10.3 — a managed link: its tags change here, the rest through its service account (and so do its
+    // preview and rules); an owner may still delete it, saying why.
+    setHTML($('[data-edit]'), manager ? html`${icon('tag')}Edit tags` : html`${icon('pencil')}Edit`);
+    $('[data-edit-og]').hidden = isCampaign || Boolean(manager);
+    $('[data-refresh-og]').hidden = Boolean(manager);
+    $('[data-refresh-og-menu]').hidden = Boolean(manager);
+    $('[data-add-rule]').hidden = Boolean(manager);
+    $('[data-delete]').hidden = isCampaign || Boolean(manager);
+    $('[data-delete-via]').hidden = !manager || overrides;
+    $('[data-override-delete]').hidden = !overrides;
+    $('[data-managed]').hidden = !manager;
+    if (manager) {
+      $('[data-delete-via-label]').textContent = `Delete via ${serviceName(manager)}`;
+      setHTML(
+        $('[data-managed-text]'),
+        html`<span title="${managedTitle(manager)}">Managed by <b class="font-semibold text-ink-950">${serviceName(manager)}</b>.</span> Change or delete it from there; ${canChangeTags(link, viewer) ? 'its tags can be changed here.' : 'its creator, or an admin or owner, can change its tags here.'}`,
+      );
+    }
     $('[data-campaign]').hidden = !isCampaign;
     if (isCampaign) {
       const a = $<HTMLAnchorElement>('[data-campaign-link]');
@@ -246,7 +284,11 @@ import { BROWSERS, DEVICES, LANGUAGES } from '@/utils/rules';
     const pixel = link.short_url ? `<img src="${safeUrl(link.short_url)}/track" width="1" height="1" alt="" style="display:none">` : '';
     $('[data-pixel]').textContent = pixel;
     $('[data-utm-tip]').hidden = !link.forward_parameters || isCampaign;
-    if (!changeable()) {
+    if (manager) {
+      // What's left of a managed link to lock: its tags, for whoever can't change them, and "Delete via …".
+      if (!canChangeTags(link, viewer)) lockControl($('[data-edit]'), 'link', 'start', lockFor(link, 'link', 'tags'));
+      lockControl($('[data-delete-via]'), 'link', 'start', lockFor(link, 'link'));
+    } else if (!changeable()) {
       // Tooltips open rightwards: on phones these controls sit at the left edge.
       ['[data-edit]', '[data-edit-og]', '[data-refresh-og]', '[data-refresh-og-menu]', '[data-delete]', '[data-add-rule]'].forEach((sel) =>
         lockControl($(sel), 'link', sel === '[data-edit-og]' || sel === '[data-refresh-og]' ? 'end' : 'start'),
@@ -314,7 +356,7 @@ import { BROWSERS, DEVICES, LANGUAGES } from '@/utils/rules';
         </div>
         <div class="flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-line px-5 py-3">
           <ul class="flex flex-wrap gap-1.5" aria-label="Where each part comes from">${sources}</ul>
-          ${preview.custom && link.url_type !== 'campaign' ? html`<button type="button" class="btn btn-ghost btn-sm ml-auto" data-reset-og>Use the page’s preview</button>` : ''}
+          ${preview.custom && link.url_type !== 'campaign' && !link.managed_by ? html`<button type="button" class="btn btn-ghost btn-sm ml-auto" data-reset-og>Use the page’s preview</button>` : ''}
         </div>`,
     );
     const reset = document.querySelector<HTMLButtonElement>('[data-reset-og]');
@@ -356,7 +398,20 @@ import { BROWSERS, DEVICES, LANGUAGES } from '@/utils/rules';
   // ------------------------------------------------------------------ Rules
   function renderRules() {
     setHTML($('[data-rules]'), html`${rules.map((r, i) => renderRule(r, i))}`);
-    if (!changeable()) $('[data-rules]').querySelectorAll<HTMLElement>('[data-delete-rule]').forEach((btn) => lockControl(btn, 'link'));
+    if (link.managed_by) {
+      // Phase 10.3 — its service account sets its rules: none to delete here, and a masked target isn't a link.
+      const manager = serviceName(link.managed_by);
+      $('[data-rules]').querySelectorAll<HTMLElement>('[data-delete-rule]').forEach((btn) => btn.remove());
+      for (const rule of rules.filter((r) => isMaskedDestination(r.target_url))) {
+        const a = $('[data-rules]').querySelector<HTMLAnchorElement>(`[data-rule="${CSS.escape(rule.id)}"] a`);
+        if (!a) continue;
+        const span = document.createElement('span');
+        span.className = 'truncate';
+        span.textContent = a.textContent;
+        span.title = `Only ${manager} and the organization’s owners see the full destination`;
+        a.replaceWith(span);
+      }
+    } else if (!changeable()) $('[data-rules]').querySelectorAll<HTMLElement>('[data-delete-rule]').forEach((btn) => lockControl(btn, 'link'));
     $('[data-rules-empty]').classList.toggle('hidden', rules.length > 0);
   }
 
@@ -449,6 +504,14 @@ import { BROWSERS, DEVICES, LANGUAGES } from '@/utils/rules';
   $('[data-refresh-og-menu]').addEventListener('click', () => {
     $('#link-menu').hidePopover();
     void refreshPreview(null);
+  });
+  $('[data-override-delete]').addEventListener('click', () => {
+    $('#link-menu').hidePopover();
+    const back = listHref(tabOf(link));
+    openOverrideDelete(link, () => {
+      sessionStorage.setItem('shurly_flash', 'Link deleted');
+      location.href = back;
+    });
   });
   $('[data-delete]').addEventListener('click', async () => {
     $('#link-menu').hidePopover();

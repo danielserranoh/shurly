@@ -9,11 +9,19 @@ server/core/models/audit_event.py; `_pm/spec_service_accounts.md`, v2).
   (the owner) makes: `actor_id` is theirs, and there is no token or person acted for.
 - **`acting_on_any_change`** is who a change acts as, on the routes that took no
   `X-Shurly-On-Behalf-Of` before 10.2 (tags, redirect rules, campaign delete and tags, bulk tags).
+- **`record_override`** (Phase 10.3) is an owner deleting a link a service account manages,
+  past it (`POST /api/v1/urls/{short_code}/override-delete`): `actor_id` is the owner, the
+  service account the link's manager.
 
 The action is `<target_type>.<verb>`: `url.created`, `campaign.deleted`, `redirect_rule.updated`.
 `target_id` is the target's id, never its short code or name: a slug can be someone's name.
 `detail` holds ids and field names only, never the values (server/utils/event_log.py:9-10):
 `{"fields": ["title", "tags"]}`, `{"tag_ids": [...]}`, `{"url_id": ...}`.
+
+**The one exception** is an override's reason (10.3): `{"override": true, "reason": …}`, the
+free text the owner typed to say why, which is the point of the row. It's the owner's own words,
+read by the organization's owners and admins with the rest of the audit (docs/PERSONAL_DATA.md);
+it never goes to the event log.
 
 **Its organization** is the service account's: the organization it is a member of, whose owners
 and admins read the audit (`ensure_reader`). Whatever a service account touches is that
@@ -31,7 +39,8 @@ import uuid
 from fastapi import Request
 from sqlalchemy.orm import Session
 
-from server.core.models import AuditEvent, User
+from server.core.models import URL, AuditEvent, User
+from server.utils import managed
 from server.utils.event_log import log_event
 from server.utils.organization import get_membership
 from server.utils.service_accounts import Acting, acting_on_change
@@ -129,6 +138,31 @@ def record_account_event(
         target_type=target_type,
         target_id=_as_text(target_id),
         detail=detail or None,
+    )
+    db.add(row)
+    return row
+
+
+def record_override(db: Session, *, actor: User, url: URL, reason: str) -> AuditEvent:
+    """
+    Phase 10.3 — add the audit row of an owner deleting a managed link past its service account,
+    in the caller's transaction (no flush, no commit), before the link goes: `url.deleted` on
+    the link's id, the manager as the service account, the owner as `actor_id`, and in `detail`
+    `{"override": true, "reason": …}`, the one free text the audit keeps (above).
+    """
+    manager = managed.manager_id(url)
+    if manager is None or url.organization_id is None:
+        raise ValueError("An override is for a link a service account manages")
+    row = AuditEvent(
+        organization_id=url.organization_id,
+        service_account_id=manager,
+        token_id=None,
+        actor_id=actor.id,
+        on_behalf_of_id=None,
+        action="url.deleted",
+        target_type=_target_type("url.deleted"),
+        target_id=_as_text(url.id),
+        detail={"override": True, "reason": reason},
     )
     db.add(row)
     return row

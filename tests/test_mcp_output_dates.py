@@ -282,6 +282,7 @@ TOOL_CALLS: dict[str, dict] = {
         "valid_until": _LATER,
     },
     "list_urls": {},
+    "list_link_managers": {},  # Phase 10.3
     "get_url": {"short_code": "{code}"},
     "update_url": {"short_code": "{code}", "title": "Relaunch", "valid_until": _LATER},
     "delete_url": {"short_code": "{code}"},
