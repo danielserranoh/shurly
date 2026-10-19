@@ -20,6 +20,12 @@ in; it authenticates with its one token (`ServiceToken`, server/core/auth.py).
 
 Events (server/utils/event_log.py): `service_account.created`, `.updated`, `.removed`, and
 `service_token.created`, `.renewed`, `.revoked`. Ids only: never a secret, a hash or an email.
+Phase 10.2: each also writes an audit row (`audit.record_account_event`), the owner as its
+actor, in the same transaction; `audit_page` reads them back for the organization.
+
+Phase 10.2 also gives each token its `scopes` and `allowed_ip_ranges` (a renewal inherits them
+unless the request sets them), and its `warnings` (`token_warnings`): it expires within 14
+days, or nothing has used it for 90. `attention_count` counts the tokens with one.
 
 These functions flush but don't commit: the caller owns the transaction.
 """
@@ -30,14 +36,14 @@ import re
 import secrets
 import uuid
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from fastapi import Request
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from server.core.models import OrganizationMember, OrgRole, ServiceToken, User
-from server.core.models.service_token import SERVICE_TOKEN_START
+from server.core.models import AuditEvent, OrganizationMember, OrgRole, ServiceToken, User
+from server.core.models.service_token import SERVICE_SCOPES, SERVICE_TOKEN_START, every_scope
 from server.core.models.user import PERSON, SERVICE, SERVICE_EMAIL_DOMAIN, hash_api_key
 from server.utils.errors import (
     ON_BEHALF_OF_NOT_ALLOWED,
@@ -53,6 +59,14 @@ SERVICE_ROLES = (OrgRole.MEMBER, OrgRole.ADMIN)
 PREFIX_BYTES = 4
 # The secret: 32 random bytes, URL-safe base64 (43 characters).
 SECRET_BYTES = 32
+# Phase 10.2 — when a token needs attention: it expires within this…
+EXPIRES_SOON = timedelta(days=14)
+# …or nothing has used it for this long (`last_used_at`, or `created_at` if never used).
+UNUSED_FOR = timedelta(days=90)
+EXPIRES_SOON_WARNING = "expires_soon"
+UNUSED_WARNING = "unused"
+# A renewal keeps the replaced token's settings unless the request sets them.
+INHERIT = object()
 
 
 class ServiceAccountError(Exception):
@@ -209,6 +223,7 @@ def create_account(
         service_account_id=str(account.id),
         role=membership.role.value,
     )
+    _audit(db, actor, account, mine.organization_id, "service_account.created")
     return account, membership
 
 
@@ -252,6 +267,14 @@ def update_account(
             fields=changed,
             role=membership.role.value,
         )
+        _audit(
+            db,
+            actor,
+            account,
+            mine.organization_id,
+            "service_account.updated",
+            detail={"fields": changed},
+        )
     return account, membership
 
 
@@ -259,7 +282,7 @@ def remove_account(db: Session, actor: User, account_id: uuid.UUID) -> None:
     """Revoke its tokens, take it out of the organization and close it. Its links stay."""
     mine = ensure_owner(db, actor)
     account, membership = get_account(db, mine, account_id)
-    revoked = _revoke(db, actor, account, old_only=False)
+    revoked = _revoke(db, actor, account, mine.organization_id, old_only=False)
     account.is_active = False
     db.delete(membership)
     db.flush()
@@ -268,6 +291,31 @@ def remove_account(db: Session, actor: User, account_id: uuid.UUID) -> None:
         actor_id=str(actor.id),
         service_account_id=str(account.id),
         tokens_revoked=len(revoked),
+    )
+    _audit(db, actor, account, mine.organization_id, "service_account.removed")
+
+
+def _audit(
+    db: Session,
+    actor: User,
+    account: User,
+    organization_id: uuid.UUID,
+    action: str,
+    *,
+    token_id: uuid.UUID | None = None,
+    detail: dict | None = None,
+) -> None:
+    """The event's audit row, by the owner who made it, in the caller's transaction."""
+    from server.utils import audit  # it imports this module
+
+    audit.record_account_event(
+        db,
+        actor=actor,
+        account_id=account.id,
+        organization_id=organization_id,
+        action=action,
+        token_id=token_id,
+        detail=detail,
     )
 
 
@@ -292,8 +340,25 @@ def live_tokens(db: Session, account: User, now: datetime | None = None) -> list
     return [row for row in rows if row.is_valid(now)]
 
 
+def _clean_scopes(scopes) -> list[str]:
+    """Each known scope once, in `SERVICE_SCOPES`' order; Invalid for none or an unknown one."""
+    unknown = [scope for scope in scopes if scope not in SERVICE_SCOPES]
+    if unknown:
+        raise Invalid(f"Unknown scope: {unknown[0]}")
+    cleaned = [scope for scope in SERVICE_SCOPES if scope in scopes]
+    if not cleaned:
+        raise Invalid("A token needs at least one scope.")
+    return cleaned
+
+
 def issue_token(
-    db: Session, actor: User, account_id: uuid.UUID, expires_at: datetime | None
+    db: Session,
+    actor: User,
+    account_id: uuid.UUID,
+    expires_at: datetime | None,
+    *,
+    scopes=INHERIT,
+    allowed_ip_ranges=INHERIT,
 ) -> tuple[User, OrganizationMember, ServiceToken, str, ServiceToken | None]:
     """
     Make the account's token, or renew it: the token it had keeps working for 24 hours, and
@@ -301,12 +366,18 @@ def issue_token(
 
     Returns the account and its membership, the new token's row, the token itself (to show once) and the token
     it replaced, if any. `expires_at` is naive UTC, in the future, or None.
+
+    Phase 10.2 — `scopes` (a non-empty list of `SERVICE_SCOPES`) and `allowed_ip_ranges`
+    (normalized CIDRs; None or empty: any address). Left as `INHERIT`, a renewal keeps the
+    replaced token's, and a first token gets every scope and any address.
     """
     mine = ensure_owner(db, actor)
     account, membership = get_account(db, mine, account_id)
     now = datetime.utcnow()
     if expires_at is not None and expires_at <= now:
         raise Invalid("The expiry must be in the future.")
+    if scopes is not INHERIT:
+        scopes = _clean_scopes(scopes or [])
 
     replaced = None
     for row in live_tokens(db, account, now):
@@ -317,6 +388,10 @@ def issue_token(
             row.revoked_at = now
             row.revoked_by_user_id = actor.id
 
+    if scopes is INHERIT:
+        scopes = list(replaced.scopes or []) if replaced is not None else every_scope()
+    if allowed_ip_ranges is INHERIT:
+        allowed_ip_ranges = replaced.allowed_ip_ranges if replaced is not None else None
     token, prefix = new_service_token()
     row = ServiceToken(
         service_account_id=account.id,
@@ -325,6 +400,8 @@ def issue_token(
         expires_at=expires_at,
         created_by_user_id=actor.id,
         created_at=now,
+        scopes=scopes,
+        allowed_ip_ranges=list(allowed_ip_ranges) if allowed_ip_ranges else None,
     )
     db.add(row)
     db.flush()
@@ -336,6 +413,7 @@ def issue_token(
             token_id=str(row.id),
             expires=expires_at is not None,
         )
+        _audit(db, actor, account, mine.organization_id, "service_token.created", token_id=row.id)
     else:
         log_event(
             "service_token.renewed",
@@ -345,10 +423,21 @@ def issue_token(
             replaced_token_id=str(replaced.id),
             expires=expires_at is not None,
         )
+        _audit(
+            db,
+            actor,
+            account,
+            mine.organization_id,
+            "service_token.renewed",
+            token_id=row.id,
+            detail={"replaced_token_id": str(replaced.id)},
+        )
     return account, membership, row, token, replaced
 
 
-def _revoke(db: Session, actor: User, account: User, *, old_only: bool) -> list[ServiceToken]:
+def _revoke(
+    db: Session, actor: User, account: User, organization_id: uuid.UUID, *, old_only: bool
+) -> list[ServiceToken]:
     now = datetime.utcnow()
     revoked = []
     for row in live_tokens(db, account, now):
@@ -366,6 +455,8 @@ def _revoke(db: Session, actor: User, account: User, *, old_only: bool) -> list[
             token_ids=[str(row.id) for row in revoked],
             old_only=old_only,
         )
+        for row in revoked:  # one row per token: the audit's target is the token
+            _audit(db, actor, account, organization_id, "service_token.revoked", token_id=row.id)
     return revoked
 
 
@@ -375,7 +466,83 @@ def revoke_tokens(
     """End every token of the account at once; with `old_only`, just the one in its overlap."""
     mine = ensure_owner(db, actor)
     account, _ = get_account(db, mine, account_id)
-    return _revoke(db, actor, account, old_only=old_only)
+    return _revoke(db, actor, account, mine.organization_id, old_only=old_only)
+
+
+# ---------------------------------------------------------------- Warnings (Phase 10.2)
+
+
+def token_warnings(row: ServiceToken, now: datetime | None = None) -> list[str]:
+    """
+    Why the active token needs attention, at `now` (naive UTC): `expires_soon`, it stops
+    working within 14 days; `unused`, nothing has used it for 90 days (`last_used_at`, or
+    `created_at` if never used). None for a token in its overlap after a renewal (it ends
+    within a day anyway) or one that no longer works.
+    """
+    now = now or datetime.utcnow()
+    if row.replaced_at is not None or not row.is_valid(now):
+        return []
+    warnings = []
+    if row.expires_at is not None and row.expires_at - now <= EXPIRES_SOON:
+        warnings.append(EXPIRES_SOON_WARNING)
+    if now - (row.last_used_at or row.created_at) >= UNUSED_FOR:
+        warnings.append(UNUSED_WARNING)
+    return warnings
+
+
+def attention_count(db: Session, organization_id: uuid.UUID, now: datetime | None = None) -> int:
+    """How many of the organization's live tokens have a warning: the menu's dot, for owners
+    and admins."""
+    now = now or datetime.utcnow()
+    rows = (
+        db.query(ServiceToken)
+        .join(User, User.id == ServiceToken.service_account_id)
+        .join(OrganizationMember, OrganizationMember.user_id == User.id)
+        .filter(
+            OrganizationMember.organization_id == organization_id,
+            User.kind == SERVICE,
+            User.is_active.is_(True),
+            ServiceToken.revoked_at.is_(None),
+            ServiceToken.replaced_at.is_(None),
+        )
+        .all()
+    )
+    return sum(1 for row in rows if token_warnings(row, now))
+
+
+# ---------------------------------------------------------------- The audit, read (Phase 10.2)
+
+
+def audit_page(
+    db: Session,
+    organization_id: uuid.UUID,
+    *,
+    account_id: uuid.UUID | None = None,
+    before: datetime | None = None,
+    limit: int = 50,
+) -> tuple[list[AuditEvent], datetime | None]:
+    """
+    The organization's audit, newest first: up to `limit` rows strictly older than `before`
+    (naive UTC), and the cursor for the next page (None: no more). Rows of a removed account
+    stay readable. A page never ends between two rows of the same instant, so `before` skips
+    none: it ends before them, or, when they alone fill it, takes them all.
+    """
+    query = db.query(AuditEvent).filter(AuditEvent.organization_id == organization_id)
+    if account_id is not None:
+        query = query.filter(AuditEvent.service_account_id == account_id)
+    if before is not None:
+        query = query.filter(AuditEvent.at < before)
+    rows = query.order_by(AuditEvent.at.desc(), AuditEvent.id.desc()).limit(limit + 1).all()
+    if len(rows) <= limit:
+        return rows, None
+    page, boundary = rows[:limit], rows[limit].at
+    if page[-1].at == boundary:
+        earlier = [row for row in page if row.at != boundary]
+        if earlier:
+            page = earlier
+        else:  # one instant fills the page: all of it, then older
+            page = query.filter(AuditEvent.at == boundary).order_by(AuditEvent.id.desc()).all()
+    return page, page[-1].at
 
 
 # ---------------------------------------------------------------- Acting on behalf of a person

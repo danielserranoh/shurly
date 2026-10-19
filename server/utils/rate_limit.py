@@ -9,7 +9,11 @@ Phase 6.3 — rate limits on what anyone can call.
   /mcp/register and /mcp/token have their own, generous count: claude.ai calls them
   from Anthropic's addresses, shared by everybody.
 - The waitlist's sign-up (Phase 9.1), public and writing a row: per client IP, per hour.
-Redirects, anything signed in and CORS preflights are never limited.
+- Phase 10.2 — a service account's requests, per minute: per account, so a renewed token and its
+  replacement share the count. Counted where its token authenticates (`count_service_request`,
+  from server/core/auth.py); every response to it carries `RateLimit-Limit`, `RateLimit-Remaining`
+  and `RateLimit-Reset`, which the middleware below adds from what the count left on the request.
+Redirects, people signed in (session or API key) and CORS preflights are never limited.
 
 Fixed windows, counted in the database (`rate_limits`) so both tasks share the
 counts and a deploy keeps them. Keys are HMACs of the limit and the IP or address:
@@ -28,9 +32,11 @@ import hmac
 import time
 from dataclasses import dataclass
 
+from fastapi import HTTPException
 from sqlalchemy import case, delete
 from sqlalchemy.dialects import postgresql, sqlite
 from starlette.concurrency import run_in_threadpool
+from starlette.datastructures import MutableHeaders
 from starlette.requests import Request
 from starlette.responses import JSONResponse, PlainTextResponse, RedirectResponse, Response
 
@@ -67,12 +73,17 @@ MCP_CLIENTS_PER_IP = Limit("mcp_clients_ip", 60, "rate_limit_mcp_clients_per_ip"
 CLIENT_ERRORS_PER_IP = Limit("client_errors_ip", 60, "rate_limit_client_errors_per_ip")
 # Phase 9.1 — sign-ups to the waitlist, an hour at a time: a person signs up once or twice.
 WAITLIST_PER_IP = Limit("waitlist_ip", 60 * 60, "rate_limit_waitlist_per_ip")
+# Phase 10.2 — a service account's requests, whichever of its tokens sent them.
+SERVICE_ACCOUNT = Limit("service_account", 60, "service_account_rate_limit_per_minute")
 
 
 @dataclass(frozen=True)
 class Verdict:
     allowed: bool
     retry_after: int = 0  # seconds until the window ends
+    # How many this window has counted, with this one; None when nothing was counted (the
+    # limit is off, or the database couldn't count).
+    count: int | None = None
 
 
 _ALLOWED = Verdict(True)
@@ -104,7 +115,7 @@ def hit(limit: Limit, subject: str) -> Verdict:
     except Exception as exc:  # noqa: BLE001 — whatever the database does, let the request through
         log_event("rate_limit.store_failed", limit=limit.name, error=type(exc).__name__)
         return _ALLOWED
-    return Verdict(count <= limit.per_window, left)
+    return Verdict(count <= limit.per_window, left, count)
 
 
 def check(limit: Limit, subject: str) -> Verdict:
@@ -171,8 +182,12 @@ _ROUTES: dict[tuple[str, str], tuple[Limit, str]] = {
 }
 
 
+def _refusal_headers(retry_after: int) -> dict[str, str]:
+    return {"Retry-After": str(retry_after), "Cache-Control": "no-store"}
+
+
 def refusal(shown_as: str, retry_after: int) -> Response:
-    headers = {"Retry-After": str(retry_after), "Cache-Control": "no-store"}
+    headers = _refusal_headers(retry_after)
     if shown_as == _FRONTEND and settings.frontend_url:
         # Only ever FRONTEND_URL, as the sign-in's own redirects.
         url = f"{settings.frontend_url.rstrip('/')}/login/#error=rate_limited"
@@ -183,19 +198,78 @@ def refusal(shown_as: str, retry_after: int) -> Response:
     return JSONResponse({"detail": message}, status_code=429, headers=headers)
 
 
+# ---------------------------------------------------------------- Service accounts (Phase 10.2)
+
+# Where `count_service_request` leaves the `RateLimit-*` headers for the middleware: the
+# request's state, which a dependency shares with the middleware but can't add headers from.
+_HEADERS_STATE = "service_rate_limit_headers"
+
+
+def count_service_request(request: Request, service_account_id) -> None:
+    """
+    Count one request for the service account, once per request, and leave its `RateLimit-*`
+    headers for the response. Over the limit, a 429 with `Retry-After` and the same headers.
+
+    Nothing to say when nothing was counted: the limit is off (0), or the database failed and
+    the request goes through (`hit`, logged as `rate_limit.store_failed`).
+    """
+    state = request.scope.setdefault("state", {})
+    if _HEADERS_STATE in state:  # already counted: one dependency resolved twice
+        return
+    verdict = hit(SERVICE_ACCOUNT, str(service_account_id))
+    if verdict.count is None:
+        state[_HEADERS_STATE] = None
+        return
+    limit = SERVICE_ACCOUNT.per_window
+    headers = {
+        "RateLimit-Limit": str(limit),
+        "RateLimit-Remaining": str(max(0, limit - verdict.count)),
+        "RateLimit-Reset": str(verdict.retry_after),
+    }
+    state[_HEADERS_STATE] = headers
+    if not verdict.allowed:
+        log_event("http.rate_limited", path=request.url.path, limit=SERVICE_ACCOUNT.name)
+        raise HTTPException(
+            status_code=429,
+            detail=(
+                "Too many requests from this service account. "
+                f"Try again in {verdict.retry_after} seconds."
+            ),
+            headers={**_refusal_headers(verdict.retry_after), **headers},
+        )
+
+
+def _with_service_headers(scope, send):
+    """`send`, adding the `RateLimit-*` headers a service request's count left, if any."""
+    state = scope.setdefault("state", {})
+
+    async def sending(message):
+        if message["type"] == "http.response.start":
+            found = state.get(_HEADERS_STATE)
+            if found:
+                headers = MutableHeaders(scope=message)
+                for name, value in found.items():
+                    if name not in headers:
+                        headers[name] = value
+        await send(message)
+
+    return sending
+
+
 class RateLimitMiddleware:
     """The per-IP limits, by method and path, before the request reaches its route
-    (the MCP's sign-in lives in the mounted fastmcp app, beyond FastAPI's routing)."""
+    (the MCP's sign-in lives in the mounted fastmcp app, beyond FastAPI's routing). And the
+    `RateLimit-*` headers of a service account's request, on its response."""
 
     def __init__(self, app):
         self.app = app
 
     async def __call__(self, scope, receive, send):
-        route = (
-            _ROUTES.get((scope.get("method"), scope.get("path")))
-            if scope["type"] == "http"
-            else None
-        )
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+        send = _with_service_headers(scope, send)
+        route = _ROUTES.get((scope.get("method"), scope.get("path")))
         if route is None:
             await self.app(scope, receive, send)
             return

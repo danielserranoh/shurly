@@ -9,9 +9,14 @@ assistant reading untrusted text must not be talked into minting a token.
 
 A token is returned once, when it's made or renewed: Shurly keeps only its hash, and shows its
 prefix (`shsa_<prefix>`) afterwards.
+
+Phase 10.2: a token's `scopes` and `allowed_ip_ranges` are set when it's made or renewed (a
+renewal keeps the replaced token's unless the request sets them), its `warnings` are shown with
+it, and `GET /service-accounts/audit` reads what the accounts did and what was done to them.
 """
 
 import uuid as uuid_pkg
+from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.orm import Session, selectinload
@@ -19,10 +24,14 @@ from sqlalchemy.orm import Session, selectinload
 from server.app.urls import _click_counts, _to_url_response
 from server.core import get_db
 from server.core.auth import SignedInSession, get_signed_in_session
-from server.core.models import URL, OrgRole, ServiceToken, User
+from server.core.models import URL, AuditEvent, OrgRole, ServiceToken, User
 from server.schemas.datetimes import as_utc
 from server.schemas.responses import get_responses
 from server.schemas.service_account import (
+    AuditEventItem,
+    AuditPage,
+    AuditPerson,
+    AuditServiceAccount,
     ResponsiblePerson,
     ServiceAccountCreate,
     ServiceAccountResponse,
@@ -50,7 +59,7 @@ def _http_error(exc: service.ServiceAccountError) -> HTTPException:
     return HTTPException(status_code=_STATUS[type(exc)], detail=str(exc))
 
 
-def _token_info(row: ServiceToken | None) -> ServiceTokenInfo | None:
+def _token_info(row: ServiceToken | None, now: datetime | None = None) -> ServiceTokenInfo | None:
     if row is None:
         return None
     return ServiceTokenInfo(
@@ -60,6 +69,9 @@ def _token_info(row: ServiceToken | None) -> ServiceTokenInfo | None:
         expires_at=row.expires_at,
         last_used_at=row.last_used_at,
         valid_until=row.overlap_ends_at,
+        scopes=list(row.scopes or []),
+        allowed_ip_ranges=list(row.allowed_ip_ranges or []),
+        warnings=service.token_warnings(row, now),
     )
 
 
@@ -103,6 +115,108 @@ def list_service_accounts(
     return [
         _account_response(db, account, role)
         for account, role in service.accounts_of(db, mine.organization_id)
+    ]
+
+
+# Declared before the `/{account_id}` routes, so `audit` is never read as an id.
+@service_accounts_router.get(
+    "/audit", response_model=AuditPage, responses=get_responses(401, 403, 422)
+)
+def list_service_account_audit(
+    account: uuid_pkg.UUID | None = Query(None, description="Only this service account's events"),
+    before: datetime | None = Query(
+        None, description="Only events strictly older than this (the previous page's `next_before`)"
+    ),
+    limit: int = Query(50, ge=1, le=200, description="Maximum number of events (1-200)"),
+    session: SignedInSession = Depends(get_signed_in_session),
+    db: Session = Depends(get_db),
+):
+    """
+    What the organization's service accounts did (links, campaigns, tags, redirect rules, and
+    for whom) and what was done to them (made, changed, removed; tokens made, renewed,
+    revoked), newest first, kept 2 years. Page with `before=<next_before>`. People are named as
+    they are now: someone deleted shows as `deleted`. Owners and admins, signed in.
+    """
+    try:
+        mine = service.ensure_reader(db, session.user)
+    except service.ServiceAccountError as exc:
+        raise _http_error(exc) from exc
+    if before is not None:
+        before = as_utc(before).replace(tzinfo=None)  # naive UTC, as the column
+    rows, next_before = service.audit_page(
+        db, mine.organization_id, account_id=account, before=before, limit=limit
+    )
+    return AuditPage(items=_audit_items(db, session.user, rows), next_before=next_before)
+
+
+def _as_uuid(value) -> uuid_pkg.UUID | None:
+    try:
+        return value if isinstance(value, uuid_pkg.UUID) else uuid_pkg.UUID(str(value))
+    except (TypeError, ValueError):
+        return None
+
+
+def _audit_items(db: Session, reader: User, rows: list[AuditEvent]) -> list[AuditEventItem]:
+    """The rows, with the people, accounts and links they name looked up now: in one query each."""
+    user_ids = {
+        user_id
+        for row in rows
+        for user_id in (row.service_account_id, row.actor_id, row.on_behalf_of_id)
+        if user_id is not None
+    }
+    users = {
+        user.id: user
+        for user in (
+            db.query(User).options(selectinload(User.profile)).filter(User.id.in_(user_ids)).all()
+            if user_ids
+            else []
+        )
+    }
+    url_ids = {
+        url_id
+        for row in rows
+        if row.target_type == "url" and (url_id := _as_uuid(row.target_id)) is not None
+    }
+    short_codes = dict(
+        db.query(URL.id, URL.short_code)
+        .filter(URL.id.in_(url_ids), viewer(db, reader).sees(URL))
+        .all()
+        if url_ids
+        else []
+    )
+
+    def person(user_id) -> AuditPerson | None:
+        if user_id is None:
+            return None
+        user = users.get(user_id)
+        if user is None:
+            return AuditPerson(id=user_id, deleted=True)
+        name = " ".join(part for part in names(user) if part) or None
+        return AuditPerson(id=user.id, email=user.email, name=name)
+
+    def account(user_id) -> AuditServiceAccount:
+        user = users.get(user_id)
+        if user is None:
+            return AuditServiceAccount(id=user_id, deleted=True)
+        return AuditServiceAccount(id=user.id, display_name=user.display_name)
+
+    return [
+        AuditEventItem(
+            id=row.id,
+            at=row.at,
+            action=row.action,
+            target_type=row.target_type,
+            target_id=row.target_id,
+            short_code=short_codes.get(_as_uuid(row.target_id))
+            if row.target_type == "url"
+            else None,
+            detail=row.detail,
+            service_account=account(row.service_account_id),
+            token_id=row.token_id,
+            actor=person(row.actor_id),
+            on_behalf_of=person(row.on_behalf_of_id),
+        )
+        for row in rows
     ]
 
 
@@ -200,16 +314,20 @@ def issue_service_token(
     """
     Make the account's token, or renew it: the token it had keeps working for 24 hours, so the
     service can switch without failing requests (`DELETE …/token?old_only=true` ends it sooner).
-    Optional `expires_at`, in the future. The owner, signed in.
+    Optional `expires_at`, in the future. Optional `scopes` (at least one) and
+    `allowed_ip_ranges` (CIDRs; empty or null: any address): left out, a first token gets every
+    scope and any address, and a renewal keeps those of the token it replaces. The owner,
+    signed in.
 
     The response has the token, `shsa_<prefix>_<secret>`, this once: Shurly keeps only its hash.
     """
     expires_at = body.expires_at if body else None
     if expires_at is not None:
         expires_at = as_utc(expires_at).replace(tzinfo=None)  # naive UTC, as the columns
+    settings = body.settings_sent() if body else {}
     try:
         account, membership, row, token, replaced = service.issue_token(
-            db, session.user, account_id, expires_at
+            db, session.user, account_id, expires_at, **settings
         )
     except service.ServiceAccountError as exc:
         db.rollback()

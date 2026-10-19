@@ -522,6 +522,11 @@ export interface Organization {
   role: OrgRole;
   /** Phase 3.14.4 — changes with each upload; null without a logo. Absent from APIs older than the logo. */
   logo_version?: string | null;
+  /**
+   * Phase 10.2 — how many service tokens need attention (a warning): the menu's dot. Owners and admins get a
+   * count, members null; absent from older APIs.
+   */
+  service_accounts_attention?: number | null;
 }
 
 export interface OrgMember {
@@ -534,6 +539,12 @@ export interface OrgMember {
   joined_at: string;
 }
 
+/** Phase 10.2 — what a service token may do (server/core/models/service_token.py, SERVICE_SCOPES). */
+export type ServiceScope = 'urls:read' | 'urls:write' | 'urls:delete' | 'tags:write' | 'analytics:read' | 'act_on_behalf';
+
+/** Phase 10.2 — why a token needs attention: it stops working within 14 days, or nothing has used it for 90. */
+export type ServiceTokenWarning = 'expires_soon' | 'unused';
+
 /** Phase 10.1 — a service account's token, as Shurly shows it again: how it starts, never the token. */
 export interface ServiceTokenInfo {
   id: string;
@@ -544,6 +555,12 @@ export interface ServiceTokenInfo {
   last_used_at: string | null;
   /** A renewed token's end of overlap; null for the active one. */
   valid_until: string | null;
+  /** Phase 10.2 — what it may do. Absent from older APIs, whose tokens may do everything. */
+  scopes?: ServiceScope[];
+  /** Phase 10.2 — the CIDRs it works from; empty: any address. Absent from older APIs. */
+  allowed_ip_ranges?: string[];
+  /** Phase 10.2 — why it needs attention; only on the active token. Absent from older APIs. */
+  warnings?: ServiceTokenWarning[];
 }
 
 /** Phase 10.1 — GET /api/v1/service-accounts: another system that makes links for the organization. */
@@ -563,6 +580,42 @@ export interface ServiceTokenIssued extends ServiceTokenInfo {
   token: string;
   renewed: boolean;
   service_account: ServiceAccount;
+}
+
+/** Phase 10.2 — a person the audit names, as they are now: someone deleted keeps only the id. */
+export interface AuditPerson {
+  id: string;
+  email: string | null;
+  /** First and last name, from their profile. */
+  name: string | null;
+  deleted: boolean;
+}
+
+/** Phase 10.2 — one thing a service account did, or that was done to it (GET /api/v1/service-accounts/audit). */
+export interface AuditEvent {
+  id: string;
+  at: string;
+  /** `<target_type>.<verb>`: `url.created`, `redirect_rule.deleted`, `service_token.renewed`… */
+  action: string;
+  target_type: string;
+  target_id: string | null;
+  /** For a link: its short code, while it exists and the reader sees it. */
+  short_code: string | null;
+  /** Ids and the names of fields, never values: `{ fields: ['title', 'tags'] }`. */
+  detail: Record<string, unknown> | null;
+  service_account: { id: string; display_name: string | null; deleted: boolean };
+  /** The token it used, when it acted. */
+  token_id: string | null;
+  /** The person who made an account or token event; null: the service did. */
+  actor: AuditPerson | null;
+  /** The person named in X-Shurly-On-Behalf-Of; null: nobody. */
+  on_behalf_of: AuditPerson | null;
+}
+
+/** Phase 10.2 — a page of the audit, newest first: `before=<next_before>` for the next; null, no more. */
+export interface AuditPage {
+  items: AuditEvent[];
+  next_before: string | null;
 }
 
 /** POST /api/v1/organization/adopt-personal-links: links (a campaign's included) and campaigns moved. */

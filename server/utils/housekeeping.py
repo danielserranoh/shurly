@@ -9,6 +9,8 @@ its own, so one that fails is logged and the next still runs:
 
 - **waitlist**: deletes the entries whose latest sign-up (`consent_at`) is more than 12 months old
   (docs/PERSONAL_DATA.md § The waitlist).
+- **audit**: deletes the audit events (what service accounts did, `audit_events`) more than 2
+  years old (`at`).
 - **previews**: re-fetches the page previews that are missing or more than 30 days old, at most
   `PREVIEW_LIMIT` links a run, oldest first: each distinct destination once, a few at a time
   (`fetch_all`, server/tools/previews.py), and stored as creating a link does
@@ -28,7 +30,7 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import case, or_, text
 
 from server.core import SessionLocal
-from server.core.models import URL, WaitlistEntry
+from server.core.models import URL, AuditEvent, WaitlistEntry
 from server.utils.event_log import log_event
 from server.utils.opengraph import OpenGraphMetadata
 from server.utils.previews import store_page_preview
@@ -114,6 +116,14 @@ def purge_waitlist(db, now: datetime) -> int:
     return deleted
 
 
+def purge_audit(db, now: datetime) -> int:
+    """Delete the audit events more than 2 years before `now`; how many."""
+    cutoff = _naive_utc(_a_year_before(_a_year_before(now)))
+    deleted = db.query(AuditEvent).filter(AuditEvent.at < cutoff).delete(synchronize_session=False)
+    db.commit()
+    return deleted
+
+
 def stale_links(db, now: datetime, limit: int = PREVIEW_LIMIT) -> list[tuple]:
     """
     `(id, original_url)` of the links whose preview is missing or older than `PREVIEW_MAX_AGE`,
@@ -166,7 +176,7 @@ def run_housekeeping(
     factory=None,
 ) -> dict:
     """
-    One run: both jobs under the lock, or nothing when another task holds it. Synchronous (it
+    One run: every job under the lock, or nothing when another task holds it. Synchronous (it
     blocks on the database and runs its own event loop for the fetches): the loop calls it in a
     thread. Returns what it logged.
     """
@@ -176,6 +186,7 @@ def run_housekeeping(
     started = time.perf_counter()
     counts: dict = {
         "waitlist_deleted": 0,
+        "audit_deleted": 0,
         "previews_checked": 0,
         "previews_refreshed": 0,
         "previews_failed": 0,
@@ -193,10 +204,15 @@ def run_housekeeping(
                 with factory() as db:
                     counts["waitlist_deleted"] = purge_waitlist(db, moment)
 
+            def audit() -> None:
+                with factory() as db:
+                    counts["audit_deleted"] = purge_audit(db, moment)
+
             def previews() -> None:
                 counts.update(refresh_previews(factory, moment, fetch))
 
-            for name, job in (("waitlist", waitlist), ("previews", previews)):
+            jobs = (("waitlist", waitlist), ("audit", audit), ("previews", previews))
+            for name, job in jobs:
                 try:
                     job()
                 except Exception as exc:  # one job failing mustn't stop the next

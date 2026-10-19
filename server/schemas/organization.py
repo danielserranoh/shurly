@@ -23,6 +23,14 @@ class OrganizationResponse(BaseModel):
             "The image: GET /api/v1/organization/logo?v=<logo_version>."
         ),
     )
+    # Phase 10.2 — additive: the menu's dot, on a response every dashboard page already loads.
+    service_accounts_attention: int | None = Field(
+        default=None,
+        description=(
+            "Owners and admins: how many service tokens have a warning (expiring soon, or "
+            "unused for 90 days). Null for members."
+        ),
+    )
 
 
 class MemberResponse(BaseModel):

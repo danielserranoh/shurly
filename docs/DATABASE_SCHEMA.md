@@ -21,7 +21,9 @@ migrations in `server/migrations/versions/`, which the app runs when it starts.
 - **`campaigns`** — a CSV-driven batch of personalized links (`urls.campaign_id`).
 - **`tags`**, **`url_tags`** and **`campaign_tags`** — labels, and which links and campaigns carry them.
 - **`redirect_rules`** — a link's conditional redirects, evaluated by priority before the default destination.
-- **`service_tokens`** — a service account's tokens, kept as hashes, with renewal and revocation.
+- **`service_tokens`** — a service account's tokens, kept as hashes, with renewal and revocation, their scopes and
+  the IP ranges they may be used from. **`audit_events`** — what service accounts do and the events on them and their
+  tokens, kept 2 years. Ids only, without foreign keys, so a row outlives what it names.
 - **`waitlist_entries`** — people outside Griddo who asked for Shurly.
 - **`rate_limits`** — rate-limit counters, one row per key, shared by every task.
 - **`mcp_oauth_store`** — what the MCP's OAuth proxy keeps between requests (client registrations, codes, tokens),
@@ -49,6 +51,19 @@ side means at most one child per parent.
 <!-- schema:begin -->
 ```mermaid
 erDiagram
+    audit_events {
+        uuid id PK
+        datetime at
+        uuid organization_id
+        uuid service_account_id
+        uuid token_id "nullable"
+        uuid actor_id "nullable"
+        uuid on_behalf_of_id "nullable"
+        string action
+        string target_type
+        string target_id "nullable"
+        json detail "nullable"
+    }
     campaign_tags {
         uuid campaign_id PK, FK
         uuid tag_id PK, FK
@@ -135,6 +150,8 @@ erDiagram
         datetime replaced_at "nullable"
         datetime revoked_at "nullable"
         uuid revoked_by_user_id FK "nullable"
+        json scopes
+        json allowed_ip_ranges "nullable"
     }
     tags {
         uuid id PK

@@ -1,5 +1,6 @@
 """Database models for Shurly."""
 
+from server.core.models.audit_event import AuditEvent
 from server.core.models.campaign import Campaign
 from server.core.models.domain import Domain
 from server.core.models.identity import GoogleAuthState, LoginCode, UserIdentity
@@ -17,6 +18,7 @@ from server.core.models.visitor import Visitor
 from server.core.models.waitlist import WaitlistEntry
 
 __all__ = [
+    "AuditEvent",
     "User",
     "ApiKeyScope",
     "UserProfile",

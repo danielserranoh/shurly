@@ -26,6 +26,75 @@ implementation lifecycle and is independent of the URL version segment.
 
 ## [Unreleased]
 
+### Added — service accounts v2: scopes, a rate limit, IP ranges, warnings and an audit (10.2)
+- **Each service token has scopes:** `urls:read`, `urls:write`, `urls:delete`, `tags:write`, `analytics:read` and
+  `act_on_behalf`. Campaigns and redirect rules go with links (`urls:*`), and reading tags is `urls:read`. One map,
+  `server/utils/service_scopes.py`, gives every `/api/v1` route a service token may call the scope it needs, by
+  method and route. A token without it gets a 403 with `code: scope_missing`, and the message names the scope.
+  Naming a person in `X-Shurly-On-Behalf-Of` needs `act_on_behalf`, on any route, and so does reading
+  `GET /api/v1/organization/members`, the people a service may name. A test walks the app's routes, so a new one
+  can't go unmapped.
+- **A rate limit per service account:** `SERVICE_ACCOUNT_RATE_LIMIT_PER_MINUTE`, 120 by default, `0` turns it off.
+  It's a fixed one-minute window counted in `rate_limits`, for all the account's tokens together, so a renewed
+  token and the one it replaces share it during their 24 hours. Every response to a service token carries
+  `RateLimit-Limit`, `RateLimit-Remaining` and `RateLimit-Reset` (the seconds left in the window). Over the limit,
+  a 429 with `Retry-After`. `CORS_EXPOSE_HEADERS` adds the three headers.
+- **Allowed IP ranges per token:** CIDRs, IPv4 or IPv6, checked against the client IP as `client_ip` resolves it
+  (CloudFront's viewer address, or past `TRUSTED_PROXIES`). From anywhere else, a 403 with `code: ip_not_allowed`.
+  Empty or null means any address. It's a list the owner sets, never an address Shurly saw.
+- **The checks run in this order** when a service token authenticates: the IP ranges, then the rate limit, then the
+  scope. A request refused for its address is neither counted nor a use (`last_used_at`), so a leaked token used
+  from elsewhere can't spend the service's minute. Each refusal is logged as `service_token.refused`, with the
+  account, the token and the reason (`address`, `scope` or `route`), never the address.
+- **Making or renewing a token** (`POST /api/v1/service-accounts/{id}/token`) takes optional `scopes` (at least one)
+  and `allowed_ip_ranges`. Left out, a first token gets every scope and any address, and a renewal keeps those of
+  the token it replaces. An unknown scope or a range that isn't a CIDR is a 422. The token's info adds `scopes`,
+  `allowed_ip_ranges` and `warnings`.
+- **Warnings, in the app** (no email yet: that waits for the invitations' email): `expires_soon`, the active token
+  stops working within 14 days, and `unused`, nothing has used it for 90 days (`last_used_at`, or `created_at` if
+  it was never used). `GET /api/v1/organization` adds `service_accounts_attention`, how many of the organization's
+  tokens have one, for owners and admins (null for members).
+- **An audit of what service accounts do**, the `audit_events` table. A row for each link, campaign, tag or redirect
+  rule a service account makes, changes or deletes, with the person it acted for (`url.created`, `.updated`,
+  `.deleted`; `campaign.created`, `.updated` for its tags, `.deleted`; `tag.*`; `redirect_rule.*`). And one for
+  each event on an account or its token, with the owner who made it (`actor_id`): `service_account.created`,
+  `.updated`, `.removed`, and `service_token.created`, `.renewed`, `.revoked`. Each row is written in the change's
+  own transaction. Ids and field names only, never the values or an email, and no foreign keys, so a row outlives
+  what it names. Kept 2 years: the daily housekeeping's new `audit` job deletes older rows and logs
+  `audit_deleted`.
+- **`GET /api/v1/service-accounts/audit?account=&before=&limit=`**, for owners and admins, signed in: newest first,
+  50 a page (up to 200), the next page from `next_before`. People are looked up when it's read, with their email
+  and name, and someone deleted shows as deleted. A link shows its short code while it exists and the reader sees
+  it. Not an MCP tool.
+- **The Organization page:**
+  - The token dialog asks **What it may do** (every permission checked to start with, a renewal starting from the
+    current token's), **Expires** (a year from today, or **No expiry**) and **Allowed IP ranges** (one per line).
+  - The token's line shows its permissions and ranges, with an "Expires soon" or "Unused for 90 days" badge.
+  - For owners and admins, a dot on the avatar and "N service tokens need attention" on the account menu's
+    organization row.
+  - **Activity**, for each service account, lists its audit, with **Load more**.
+- Migration `0019`, add-only: `service_tokens.scopes`, whose server default is every scope, so the tokens in use
+  keep doing what they did, `service_tokens.allowed_ip_ranges`, and `audit_events`.
+
+### Changed — what a service token may call (10.2)
+- **Nothing a v1 token did is refused now.** Every existing token has every scope (0019's default) and no IP ranges.
+  It's only held to the rate limit, 120 a minute, twice what Propuestas expected to send.
+- **Routes for people only** (passwords, generating an API key, managing service accounts, changing the
+  organization's members, owner or logo, its removed people, reading or removing waitlist entries) still answer a service token 403 `service_account_not_allowed`. They now refuse it
+  where the token authenticates, not in each route. So does any route the map leaves out.
+- **The account's own routes need no scope:** `GET /api/v1/auth/me`, its profile and avatar, `DELETE
+  /api/v1/auth/api-key`, `GET /api/v1/organization` and its logo, and `POST /api/v1/client-errors`.
+- **`X-Shurly-On-Behalf-Of` from a service token is read on tags, redirect rules, a campaign's delete and tags, and
+  bulk tags too.** These routes ignored it before. Now it names the person in the audit and still grants nothing.
+  From a person, these routes still ignore it.
+
+### Removed — the `urls.og_fetched_at` column (8.7)
+- **Migration `0018` drops `urls.og_fetched_at`.** Nothing has written it since 8.7. The release that stopped
+  mapping it (the cleanup sweep, below) was in production first, so no task still serving during the rollout
+  names it. The downgrade adds it back, nullable and empty.
+- **The API keeps `og_fetched_at` on a link**, deprecated, as a copy of `page_fetched_at`: removing a field within
+  `/api/v1/` would be a breaking change (the policy above).
+
 ### Added — daily housekeeping, inside the app (9.1, 8.7)
 - **A background loop in every task** (`server/utils/housekeeping.py`, started by the app's lifespan): its first run
   5 minutes after the app starts, so a deploy isn't slowed, then one every 24 hours. Each run takes a PostgreSQL
@@ -114,10 +183,10 @@ Not new in this release: the entry ROADMAP 5.7 asked for, describing what the MC
 - **The model no longer maps `urls.og_fetched_at`.** The API's link responses keep `og_fetched_at`, still deprecated
   and still a copy of `page_fetched_at`: removing a field within `/api/v1/` would be a breaking change (the policy
   above).
-- **The column stays one more release, unmapped:** the app migrates at startup, and the
-  previous release's tasks, still serving during the rollout, name every mapped column in their SELECTs. Migration
-  0018 drops it in the next release (`_board/backlog/epic_drop-og-fetched-at.md`); until then the drift test ignores
-  that one column (`_PENDING_DROP`), as it did for `users.api_key`.
+- **The column stayed one more release, unmapped:** the app migrates at startup, and the previous release's tasks,
+  still serving during the rollout, name every mapped column in their SELECTs. Once this release was in production
+  (2026-10-18), migration 0018 drops it (§ Removed — the `urls.og_fetched_at` column, above), and the drift test
+  stopped ignoring it (`_PENDING_DROP` is gone), as it went for `users.api_key`.
 - **The previews backfill no longer separates old copies from overrides,** a job done in production on 2026-10-04:
   it fetches every destination and stores `page_*`, and never touches an override. Its report loses the overrides'
   counts.

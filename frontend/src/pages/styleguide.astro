@@ -25,6 +25,7 @@ import ColorScale from '@/components/styleguide/ColorScale.astro';
 import { animations, bodyFeatures, colorScale, contrast, easings, fontFamilies, namedColors, radii, ratio, shadows, WHITE } from '@/components/styleguide/tokens';
 import { ICON_NAMES, type IconName } from '@/utils/icons';
 import { CATEGORY_LABELS, tagPill } from '@/utils/tags';
+import { SCOPES, WARNING_LABELS } from '@/utils/service-accounts';
 import type { ComponentProps } from 'astro/types';
 
 type IllustrationName = ComponentProps<typeof Illustration>['name'];
@@ -1354,6 +1355,46 @@ const colorCount = allColors.length;
           </div>
         </Specimen>
 
+        <Specimen
+          title="Token permissions"
+          description="A service account’s token form (Phase 10.2): what it may do, a checkbox per scope in a fieldset, every one checked for a first token and the current token’s for a renewal, at least one. Each says it in plain words, the scope’s name quiet under it. The expiry starts a year from today, with No expiry next to it; the IP ranges go one per line."
+          code={['fieldset > legend.label', '.checkbox', 'SCOPES', 'parseRanges()', 'defaultExpiryDay()']}
+          stage="white"
+        >
+          <div class="grid gap-x-8 gap-y-6 lg:grid-cols-2">
+            <fieldset class="grid content-start gap-2.5" aria-describedby="sg-scopes-hint">
+              <legend class="label mb-1">What it may do</legend>
+              <p id="sg-scopes-hint" class="hint -mt-1">Only what the service needs. Campaigns and redirect rules go with links.</p>
+              {
+                SCOPES.map((scope) => (
+                  <label class="flex items-start gap-2.5 text-sm text-ink-800">
+                    <input type="checkbox" class="checkbox mt-0.5" checked={scope.scope !== 'urls:delete' && scope.scope !== 'tags:write'} />
+                    <span class="grid">
+                      <span>{scope.label}</span>
+                      <span class="font-mono text-xs text-ink-500">{scope.scope}</span>
+                    </span>
+                  </label>
+                ))
+              }
+            </fieldset>
+            <div class="grid content-start gap-5">
+              <div class="grid gap-1.5">
+                <label for="sg-token-expires" class="label">Expires</label>
+                <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
+                  <input id="sg-token-expires" type="date" class="input w-auto" value="2027-10-19" aria-describedby="sg-token-expires-hint" />
+                  <label class="flex items-center gap-2.5 text-sm text-ink-800"><input type="checkbox" class="checkbox" />No expiry</label>
+                </div>
+                <p id="sg-token-expires-hint" class="hint">A year from today to start with. This page warns 14 days before it expires, and when nothing has used it for 90 days.</p>
+              </div>
+              <div class="grid gap-1.5">
+                <label for="sg-token-ranges" class="label">Allowed IP ranges <span class="font-normal text-ink-500">(optional)</span></label>
+                <textarea id="sg-token-ranges" class="textarea font-mono text-sm" rows="3" spellcheck="false" aria-invalid="true" aria-describedby="sg-token-ranges-error">{'203.0.113.0/24\n10.0.0.0/33'}</textarea>
+                <p id="sg-token-ranges-error" class="field-error">'10.0.0.0/33' isn’t an IP range (CIDR), such as 203.0.113.0/24</p>
+              </div>
+            </div>
+          </div>
+        </Specimen>
+
         <Specimen title="Password" description="Show and hide without losing focus. The toggle is a real button with a pressed state." code={['<PasswordField />']} stage="white">
           <div class="max-w-sm">
             <PasswordField id="sg-password" label="Password" autocomplete="new-password" minlength={8} hint="At least 8 characters.">
@@ -1482,6 +1523,52 @@ const colorCount = allColors.length;
               <span class="font-mono text-[11px] text-ink-500">.status-dot · currentColor</span>
             </li>
           </ul>
+        </Specimen>
+
+        <Specimen
+          title="A service account’s token and activity"
+          description="Under the token’s line (Phase 10.2): warning badges when it expires within 14 days or nothing has used it for 90 days, what it may do (“All permissions” with every scope) and where from. The avatar gets an amber dot while any token needs attention. Activity lists what the account did, newest first, with Load more: a sentence, a link’s code while it’s there, and who for or by; someone deleted shows as deleted."
+          code={['.badge-warn', 'scopeSummary()', 'rangesSummary()', 'auditWhat()', 'auditWho()']}
+          stage="white"
+        >
+          <div class="grid gap-6">
+            <ul class="grid gap-2" aria-label="Token lines">
+              <li class="grid gap-1.5 rounded-xl bg-ink-50 px-3 py-2.5 text-[13px] text-ink-600">
+                <p class="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5">
+                  <Icon name="key" class="size-3.5 shrink-0 text-ink-500" /><span class="font-mono text-ink-900">shsa_1a2b3c4d…</span><span aria-hidden="true">·</span><span>Made Oct 19, 2025</span><span aria-hidden="true">·</span><span>Expires Oct 26, 2026, 11:59 PM</span><span aria-hidden="true">·</span><span>Last used 4mo ago</span>
+                </p>
+                <p class="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1">
+                  <span class="badge badge-warn"><Icon name="timer" class="size-3" />{WARNING_LABELS.expires_soon}</span><span class="badge badge-warn"><Icon name="clock" class="size-3" />{WARNING_LABELS.unused}</span><span class="inline-flex items-center gap-1"><Icon name="shield" class="size-3.5 shrink-0 text-ink-500" />All permissions</span>
+                </p>
+              </li>
+              <li class="grid gap-1.5 rounded-xl bg-ink-50 px-3 py-2.5 text-[13px] text-ink-600">
+                <p class="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5">
+                  <Icon name="key" class="size-3.5 shrink-0 text-ink-500" /><span class="font-mono text-ink-900">shsa_9f8e7d6c…</span><span aria-hidden="true">·</span><span>Made Oct 19, 2026</span><span aria-hidden="true">·</span><span>Doesn’t expire</span><span aria-hidden="true">·</span><span>Last used 2h ago</span>
+                </p>
+                <p class="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1">
+                  <span class="inline-flex items-center gap-1"><Icon name="shield" class="size-3.5 shrink-0 text-ink-500" />See links, change links, act for people</span><span aria-hidden="true">·</span><span class="inline-flex items-center gap-1"><Icon name="globe" class="size-3.5 shrink-0 text-ink-500" />From 203.0.113.0/24</span>
+                </p>
+              </li>
+            </ul>
+            <ol class="divide-y divide-ink-100 rounded-xl border border-line px-4" aria-label="Activity rows">
+              {
+                [
+                  { icon: 'link' as IconName, text: 'Created link', code: 'ab12cd', when: 'Oct 19, 2026, 9:03 AM', who: 'On behalf of Ana García' },
+                  { icon: 'key' as IconName, text: 'Renewed its token', code: null, when: 'Oct 18, 2026, 5:40 PM', who: 'By María López' },
+                  { icon: 'link' as IconName, text: 'Deleted a link', code: null, when: 'Oct 17, 2026, 11:12 AM', who: 'On behalf of a deleted person' },
+                  { icon: 'tag' as IconName, text: 'Created a tag', code: null, when: 'Oct 17, 2026, 11:10 AM', who: '' },
+                ].map((row) => (
+                  <li class="flex gap-3 py-3">
+                    <span class="grid size-7 shrink-0 place-items-center rounded-lg bg-ink-100 text-ink-600"><Icon name={row.icon} class="size-3.5" /></span>
+                    <div class="min-w-0 flex-1">
+                      <p class="text-sm text-ink-900">{row.text}{row.code && ' '}{row.code && <a class="shortlink text-ink-950 hover:underline" href="#badges">{row.code}</a>}</p>
+                      <p class="mt-0.5 text-xs text-ink-500">{row.when}{row.who && <><span aria-hidden="true"> · </span>{row.who}</>}</p>
+                    </div>
+                  </li>
+                ))
+              }
+            </ol>
+          </div>
         </Specimen>
 
         <Specimen title="Tag colors" description="Predefined categories arrive from the API as colors like blue-500 and map to a family. Your own tags are gray." code={['.tag[data-color]', 'tagPill()']} stage="white" class="py-2!">

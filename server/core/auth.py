@@ -18,6 +18,8 @@ from server.core.models import ServiceToken, User
 from server.core.models.service_token import LAST_USED_RESOLUTION, SERVICE_TOKEN_START
 from server.core.models.user import hash_api_key
 from server.utils.errors import service_account_not_allowed
+from server.utils.rate_limit import count_service_request
+from server.utils.service_scopes import ensure_address_allowed, ensure_allowed
 
 # HTTP Bearer token scheme
 security = HTTPBearer()
@@ -129,7 +131,7 @@ def _looks_like_service_token(token: str) -> bool:
     return token.startswith(SERVICE_TOKEN_START)
 
 
-def get_service_token(db: Session, token: str) -> ServiceToken | None:
+def get_service_token(db: Session, token: str, request: Request) -> ServiceToken | None:
     """
     Phase 10.1 — the service token `token` is, if it authenticates now: not revoked, not
     expired, not past its 24-hour overlap after a renewal, and its service account still
@@ -137,6 +139,13 @@ def get_service_token(db: Session, token: str) -> ServiceToken | None:
 
     By the token's hash, through its unique index, as API keys are. Updates `last_used_at` at
     most once a minute (never an IP), and commits it: the request may only read.
+
+    Phase 10.2 — then what it may do (server/utils/service_scopes.py,
+    server/utils/rate_limit.py), in this order:
+    1. its allowed IP ranges: from elsewhere a 403, neither counted nor a use, so a leaked
+       token used elsewhere can't spend the service's minute;
+    2. its account's rate limit, counted for every request it makes: over it, a 429;
+    3. the scope the route needs, and `act_on_behalf` to name a person: a 403 without.
     """
     if not token:
         return None
@@ -147,27 +156,32 @@ def get_service_token(db: Session, token: str) -> ServiceToken | None:
     account = row.service_account
     if account is None or not account.is_active or not account.is_service:
         return None
+    ensure_address_allowed(request, row)
     if row.last_used_at is None or now - row.last_used_at >= LAST_USED_RESOLUTION:
         row.last_used_at = now
         db.commit()
+    count_service_request(request, row.service_account_id)
+    ensure_allowed(request, row)
     return row
 
 
-def _user_from_bearer(db: Session, token: str, request: Request | None = None) -> User | None:
+def _user_from_bearer(db: Session, token: str, request: Request) -> User | None:
     """
     The account a bearer token stands for, or None. A JWT (two dots) is a session; `shsa_` a
     service token, which also tells `request.state.service_token` which one it was (for the
     link it creates, `urls.via_token_id`); anything else a person's API key. A `shsa_` token
     that isn't a service token is still tried as an API key, so a key made before 6.3's prefix
     that happened to start that way keeps working.
+
+    `request` is required: a service token's scopes, IP ranges and rate limit are checked
+    against it (`get_service_token`).
     """
     if _looks_like_jwt(token):
         return get_user_by_jwt(db, token)
     if _looks_like_service_token(token):
-        row = get_service_token(db, token)
+        row = get_service_token(db, token, request)
         if row is not None:
-            if request is not None:
-                request.state.service_token = row
+            request.state.service_token = row
             return row.service_account
     return get_user_by_api_key(db, token)
 
@@ -275,18 +289,21 @@ def get_current_user(
 
 
 def get_optional_user(
+    request: Request,
     credentials: HTTPAuthorizationCredentials | None = Depends(optional_security),
     db: Session = Depends(get_db),
 ) -> User | None:
     """The active account a request's token is for, or None: no token, or one that doesn't check
-    out. Never an error, for routes anyone may call (a browser's error report)."""
+    out. Never an error, for routes anyone may call (a browser's error report). Phase 10.2 — but
+    a service token is still held to its IP ranges and its rate limit."""
     if credentials is None:
         return None
-    user = _user_from_bearer(db, credentials.credentials)
+    user = _user_from_bearer(db, credentials.credentials, request)
     return user if user is not None and user.is_active else None
 
 
 def get_signed_in_session(
+    request: Request,
     credentials: HTTPAuthorizationCredentials = Depends(security),
     db: Session = Depends(get_db),
 ) -> SignedInSession:
@@ -300,7 +317,7 @@ def get_signed_in_session(
     """
     token = credentials.credentials
     if not _looks_like_jwt(token):
-        user = _user_from_bearer(db, token)
+        user = _user_from_bearer(db, token, request)
         if user is None:
             raise _credentials_error()
         if user.is_service:
