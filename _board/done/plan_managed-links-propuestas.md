@@ -2,16 +2,16 @@
 id: plan_managed-links-propuestas
 title: Links managed by their service account (Propuestas)
 type: plan
-status: wip
+status: done
 priority: high
 created: 2026-10-19
 started: 2026-10-19
-completed: null
+completed: 2026-10-19
 progress: 100
 origin: epic_service-managed-links
-owner: Daniel Serrano
-claimed_at: 2026-10-19T18:22:31Z
-lease_until: 2026-10-19T20:22:31Z
+owner: null
+claimed_at: null
+lease_until: null
 blocked_by: []
 parallel_safe: true
 worktree: null
@@ -169,6 +169,9 @@ verify: cd frontend && npm run e2e -- managed-links.spec.ts service-accounts.spe
   still creates, changes expiry and revokes.
 
 ## Log
+- 2026-10-19T20:51:47Z Daniel Serrano moved wip -> done
+- 2026-10-19T20:51:47Z Daniel Serrano released
+- 2026-10-19T20:51:46Z Daniel Serrano released in #254 (7bccafb, td 53): no migration; the 3 managed links' visits unchanged (1, 2, 1); 0 5xx; tab and mask from a member's session and Propuestas' next create/revoke left for the user
 - 2026-10-19T19:37:48Z Daniel Serrano T1-T6 done and verified: 2707 passed, frontend 328, e2e 145 (rerun-safe); PR to dev
 - 2026-10-19T18:22:31Z Daniel Serrano moved todo -> wip
 - 2026-10-19T18:22:31Z Daniel Serrano claimed (lease 120m)

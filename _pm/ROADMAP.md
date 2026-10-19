@@ -2395,7 +2395,9 @@ Built:
       "Delete anyway…" for owners, and the override with its reason in the account's **Activity**
       (`e2e/managed-links.spec.ts`)
 - [ ] After the release: Propuestas' 3 links in its tab, masked for a member, their click totals unchanged; and
-      Propuestas still creates, changes the expiry of and revokes them
+      Propuestas still creates, changes the expiry of and revokes them → 2026-10-19, released in #254 (td 53):
+      the click totals are unchanged (3if56i 1, 662c6b 2, hbesl9 1, before and after), 0 5xx since the deploy.
+      Still to see: the tab and the mask from a member's session, and Propuestas' next create and revoke
 - **Still to do, in Propuestas** (not Shurly's work; its ticket is `_exchange/issue-shurly-managed-links.md`):
       recreating a link that's missing in Shurly (through its service account, with the same code) when
       `create_links` reuses it; a daily reconciliation that tells the proposal's owner about a missing link or a
