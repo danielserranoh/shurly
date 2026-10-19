@@ -622,7 +622,9 @@ Since go.griddo.io moved to Shurly, "Typos & broken links" (3.10.4) was flooded 
 - [x] Verified: 336 tests, `astro check` clean, e2e smoke of 14 core flows, 1440 px + 390 px layouts
 - [x] Astro 7.3.4 upgrade (Vite 8): rendered text + screenshots match the Astro 6 build
 - [x] Custom-preview badge on link cards → 2026-10-18 (3.7.7)
-- [ ] Campaign edit screen; Pro billing (pricing TBD) — not part of the cleanup sweep (2026-10-18); no epic yet
+- ⇢ [`epic_campaign-edit`](../_board/backlog/epic_campaign-edit.md) Campaign edit screen (rename, add recipients, edit or
+      delete a recipient), scoped 2026-10-18
+- [ ] Pro billing (pricing TBD): no epic yet
 
 ---
 
@@ -2253,10 +2255,11 @@ image and the URL as their title.
 - [x] Campaign links get the page's preview only from the backfill: fetch a campaign's destination once when it's
       made. Not in scope of 8.7 → 2026-10-18: through the API and `create_campaign_from_rows`, after the links are
       committed; a failed fetch doesn't fail the campaign (`store_page_preview_on_links`, `tests/test_campaign_previews.py`)
-- ⇢ [`epic_drop-og-fetched-at`](../_board/backlog/epic_drop-og-fetched-at.md) Drop `urls.og_fetched_at` in a later migration, once the release before 8.7 is gone: unused since 0015, kept
+- [x] Drop `urls.og_fetched_at` in a later migration, once the release before 8.7 is gone: unused since 0015, kept
       because the previous release writes it and the backfill reads it → 2026-10-18: unmapped and out of the backfill; the API keeps
       the deprecated field as a copy of `page_fetched_at` (no breaking change within /api/v1/); the column goes in the next release (0018), since the previous release's tasks still
-      SELECT it during the rollout
+      SELECT it during the rollout → done 2026-10-19 ([`epic_drop-og-fetched-at`](../_board/done/epic_drop-og-fetched-at.md)):
+      migration 0018 drops it, with the release that stopped mapping it in production; the API field stays, deprecated
 
 ---
 
@@ -2309,9 +2312,50 @@ its MCP hosts a proposal and asks Shurly for the short link to it. The spec, dec
       owner, create, renew (the secret shown once), revoke and remove. A filter by service account in the links list
 - [x] Events in the existing event log (`service_account.*`, `service_token.*`, and `url.*` with the account, the
       token and on whose behalf). docs/PERSONAL_DATA.md for the routes and the new columns
-- ⇢ [`epic_service-accounts-v2`](../_board/backlog/epic_service-accounts-v2.md) v2, after v1 is in use: an audit table with its API (2 years), fine-grained scopes, a rate limit per token with
+- [x] v2, after v1 is in use: an audit table with its API (2 years), fine-grained scopes, a rate limit per token with
       `RateLimit-*` headers, warnings before expiry and after 90 days unused, allowed IP ranges, and handing over
-      links Propuestas made with a person's key
+      links Propuestas made with a person's key → done 2026-10-19
+      ([`epic_service-accounts-v2`](../_board/done/epic_service-accounts-v2.md)): 10.2 below; the handover dropped
+
+### 10.2 Service accounts v2
+v1 shipped on 2026-10-17, and Propuestas used it in production at once: on its first day 5 links (1 for a person)
+and 8 updates, on the next 1 link for a person and 1 update. That was the epic's condition ("wait until Propuestas
+has used it"), and the user wanted the topic closed. Decided with the user on 2026-10-19; the spec's § v2 has it
+item by item ([_pm/spec_service_accounts.md](spec_service_accounts.md)), the plan is
+`_board/plan_sa-v2-scopes-audit.md`.
+- [x] Scopes per token: `urls:read`, `urls:write`, `urls:delete`, `tags:write`, `analytics:read`, `act_on_behalf`,
+      with campaigns and redirect rules under `urls:*`. One map from method and route to scope
+      (`server/utils/service_scopes.py`), checked where the token authenticates; the account's own routes need
+      none; any other route is refused to service tokens, and a test walks the app's routes so a new one can't go
+      unmapped. Naming a person, and reading the people list, need `act_on_behalf`. Inherited on renewal. 403
+      `scope_missing`
+- [x] A rate limit per service account, not per token: its old and new token share it during a renewal's 24 hours.
+      `SERVICE_ACCOUNT_RATE_LIMIT_PER_MINUTE` (120), a fixed one-minute window in `rate_limits`, `RateLimit-*` on
+      every response to a service token, a 429 with `Retry-After` over it, the headers exposed to CORS
+- [x] Allowed IP ranges per token (CIDRs, IPv4 or IPv6), against `client_ip`; empty, any address; copied on renewal.
+      403 `ip_not_allowed`, checked before the limit, so a refused request is neither counted nor a use. Refusals
+      logged as `service_token.refused`, never with the address
+- [x] Warnings in the app, not by email (that waits for `epic_invitations-email`): expiring within 14 days, unused
+      for 90. Badges on the token's line, a dot on the avatar and a line in the account menu for owners and admins
+      (`service_accounts_attention` on `GET /api/v1/organization`, a payload every page already loads). The form's
+      expiry starts at a year; "No expiry" stays, and the API without `expires_at` still means none
+- [x] An audit of service accounts only, `audit_events` (migration 0019): their changes to links, campaigns, tags
+      and rules, for whom, and the events on an account or its token, with the owner who made them. Ids only, no
+      foreign keys; people looked up when read. Owners and admins read it (`GET /api/v1/service-accounts/audit`,
+      each account's **Activity**); kept 2 years by the daily housekeeping's `audit` job
+- ✕ Handing over the links Propuestas made with a person's API key before v1: they can't be told apart from the
+      ones that person made by hand (decided 2026-10-19)
+
+What we learned:
+- **The ids-only rule held for the audit too.** The spec expected the audit to hold emails; keeping ids, as the
+  event log does, and resolving people when the audit is read, kept it out of the emails' reach and lets a deleted
+  person show as deleted. Without foreign keys, a row outlives what it names, and nobody's deletion waits 2 years.
+- **A route map with a test that walks the routes** is what keeps scopes honest: a route added later is refused to
+  service tokens until someone gives it a scope, instead of being open by default.
+- **Per account, not per token,** was the only rate limit that survives a renewal: the old and the new token are
+  live together for 24 hours.
+- **The IP check goes first,** so a token leaked and used from elsewhere can't spend the integration's minute or
+  move its "Last used".
 
 
 

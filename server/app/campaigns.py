@@ -17,6 +17,7 @@ from server.schemas.campaign import (
 )
 from server.schemas.responses import get_responses
 from server.schemas.tag import TagResponse
+from server.utils import audit
 from server.utils.access import viewer, visible_campaign_or_404
 from server.utils.bounds import MAX_SKIP
 from server.utils.campaign import generate_campaign_urls, parse_csv, validate_csv
@@ -144,6 +145,7 @@ def create_campaign(
 
     # Add all URLs to session
     db.add_all(urls)
+    audit.record(db, acting=acting, action="campaign.created", target_id=campaign.id)
     db.commit()
     # Phase 8.7 — the destination's own preview, fetched once for all the links (they share it),
     # after the commit: no transaction waits on the page. A failure leaves them without one yet.
@@ -388,6 +390,7 @@ def export_campaign(
 )
 def delete_campaign(
     campaign_id: str,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -411,8 +414,10 @@ def delete_campaign(
     **Warning:** This will cascade delete all URLs and analytics data for this campaign.
     """
     campaign = visible_campaign_or_404(db, current_user, campaign_id, to_change=True)
+    acting = audit.acting_on_any_change(db, request, current_user)
 
     # Delete campaign (cascades to URLs)
+    audit.record(db, acting=acting, action="campaign.deleted", target_id=campaign.id)
     db.delete(campaign)
     db.commit()
 
@@ -429,6 +434,7 @@ def delete_campaign(
 def update_campaign_tags(
     campaign_id: str,
     tag_data: dict,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -465,6 +471,7 @@ def update_campaign_tags(
         ) from e
 
     campaign = visible_campaign_or_404(db, current_user, uuid_id, to_change=True)
+    acting = audit.acting_on_any_change(db, request, current_user)
 
     tag_ids_str = tag_data.get("tag_ids", [])
 
@@ -490,6 +497,13 @@ def update_campaign_tags(
     for url in campaign_urls:
         url.tags = tags
 
+    audit.record(
+        db,
+        acting=acting,
+        action="campaign.updated",
+        target_id=campaign.id,
+        detail={"fields": ["tags"], "tag_ids": [str(tag.id) for tag in tags]},
+    )
     db.commit()
 
     return {

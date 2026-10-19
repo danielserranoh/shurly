@@ -8,7 +8,14 @@ tell apart add a `code` beside it, which never changes wording:
   organization;
 - `on_behalf_of_not_allowed` (403): the header, from a person's API key or session;
 - `service_account_not_allowed` (403): a service account where only a person may act (setting a
-  password, generating an API key, managing service accounts or the organization).
+  password, generating an API key, managing service accounts or the organization), or a route a
+  service token may never call (Phase 10.2, server/utils/service_scopes.py);
+- `scope_missing` (403, Phase 10.2): the service token lacks the scope the route needs, or
+  `act_on_behalf` to send `X-Shurly-On-Behalf-Of`; the message names the scope;
+- `ip_not_allowed` (403, Phase 10.2): the service token has allowed IP ranges, and the request
+  came from outside them.
+
+The two 10.2 codes are defined in server/utils/service_scopes.py, beside the checks.
 """
 
 from fastapi import HTTPException, Request

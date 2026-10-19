@@ -68,7 +68,8 @@ Rendered in TypeScript (`frontend/src/utils/`): link card (`links.ts`), campaign
 (`campaigns.ts`), tag pill and tag picker (`tags.ts`, `tag-input.ts`), charts (`charts.ts`),
 toasts, confirm dialogs and copy feedback (`ui.ts`), who's looking and locked controls
 (`viewer.ts`), the avatar (`avatar.ts`), the photo dialog (`photo-picker.ts`, its rules in `photo-picker-state.ts`, the crop in `avatar-crop.ts`), the organization's logo (`org-logo.ts`), both kept by the API (`stored-image.ts`, `image-file.ts`), a campaign's recipients
-(`recipients.ts`, logic in `recipients-view.ts`). Every interpolation goes through the escaping `html` template tag (`html.ts`).
+(`recipients.ts`, logic in `recipients-view.ts`), a service token's settings, warnings and activity in words
+(`service-accounts.ts`, for the Organization page's service accounts, the avatar's dot and `/styleguide/`). Every interpolation goes through the escaping `html` template tag (`html.ts`).
 
 ## Patterns
 

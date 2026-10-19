@@ -21,7 +21,7 @@ from sqlalchemy.orm import Session, contains_eager
 
 from server.core import get_db
 from server.core.auth import get_current_user
-from server.core.models import Organization, OrganizationMember, User
+from server.core.models import Organization, OrganizationMember, OrgRole, User
 from server.core.models.user import PERSON
 from server.schemas.organization import (
     AdoptedLinks,
@@ -34,6 +34,7 @@ from server.schemas.organization import (
 )
 from server.schemas.responses import get_responses
 from server.utils import organization as org_service
+from server.utils import service_accounts
 from server.utils.errors import CodedHTTPException
 from server.utils.event_log import log_event
 from server.utils.logo import CONTENT_TYPE, MAX_UPLOAD_BYTES, TOO_BIG, ImageRefused, normalize
@@ -89,11 +90,14 @@ def get_organization(db: Session = Depends(get_db), current_user: User = Depends
     """The caller's organization, and their role in it."""
     membership = _my_membership(db, current_user)
     organization = db.get(Organization, membership.organization_id)
-    return _organization_response(organization, membership)
+    attention = None
+    if membership.role in (OrgRole.OWNER, OrgRole.ADMIN):
+        attention = service_accounts.attention_count(db, membership.organization_id)
+    return _organization_response(organization, membership, attention)
 
 
 def _organization_response(
-    organization: Organization, membership: OrganizationMember
+    organization: Organization, membership: OrganizationMember, attention: int | None = None
 ) -> OrganizationResponse:
     return OrganizationResponse(
         id=organization.id,
@@ -101,6 +105,7 @@ def _organization_response(
         google_domain=organization.google_domain,
         role=membership.role,
         logo_version=organization.logo_version,
+        service_accounts_attention=attention,
     )
 
 

@@ -2,16 +2,16 @@
 id: plan_cleanup-sweep
 title: Cleanup sweep
 type: plan
-status: wip
+status: done
 priority: medium
 created: 2026-10-18
 started: 2026-10-18
-completed: null
+completed: 2026-10-18
 progress: 100
 epic: epic_cleanup-sweep
-owner: Daniel Serrano
-claimed_at: 2026-10-18T13:13:41Z
-lease_until: 2026-10-18T21:13:41Z
+owner: null
+claimed_at: null
+lease_until: null
 blocked_by: []
 parallel_safe: true
 worktree: null
@@ -145,6 +145,9 @@ verify: uv run pytest tests/test_personal_data_inventory.py
 - T1 must not edit `server/tools/previews.py` or `server/utils/previews.py` (T2 and T3 own them); it only imports.
 
 ## Log
+- 2026-10-18T18:16:00Z Daniel Serrano moved wip -> done (by hand: board.sh resolves this name to the epic)
+- 2026-10-18T18:16:00Z Daniel Serrano released
+- 2026-10-18T18:15:00Z Daniel Serrano released in #248 (merge a9aec24; push didn't trigger the deploy, dispatched by hand): td 49, 5 secrets kept; first housekeeping.run 18:09:06Z (waitlist 0, previews checked 2, failed 2); 0 5xx
 - 2026-10-18T13:41:30Z Daniel Serrano T1-T8 done, verified: 2363 passed, frontend 274, migrations 7 on PostgreSQL; PR to dev
 - 2026-10-18T13:41:30Z Daniel Serrano fixed: `progress plan_cleanup-sweep` and `log` resolved to the epic again (same name); undone by hand
 - 2026-10-18T13:15:00Z Daniel Serrano fixed: `move epic_cleanup-sweep done` matched this plan (same name) and moved it to done; put back in WIP, not completed

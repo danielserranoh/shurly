@@ -56,15 +56,20 @@ const maxWidth = { default: 'max-w-6xl', narrow: 'max-w-3xl', wide: 'max-w-7xl' 
           <Icon name="plus" />
         </a>
 
-        <button
-          type="button"
-          class="grid size-9 place-items-center rounded-full bg-ink-950 text-sm font-semibold text-brand-300 ring-offset-2 transition hover:ring-2 hover:ring-ink-200"
-          popovertarget="user-menu"
-          aria-label="Account menu"
-          data-user-initial
-        >
-          <span class="size-2 rounded-full bg-brand-400" aria-hidden="true"></span>
-        </button>
+        <!-- Phase 10.2: a dot on the avatar when service tokens need attention (owners and admins); its words are in the label -->
+        <span class="relative grid">
+          <button
+            type="button"
+            class="grid size-9 place-items-center rounded-full bg-ink-950 text-sm font-semibold text-brand-300 ring-offset-2 transition hover:ring-2 hover:ring-ink-200"
+            popovertarget="user-menu"
+            aria-label="Account menu"
+            data-user-initial
+            data-user-menu-button
+          >
+            <span class="size-2 rounded-full bg-brand-400" aria-hidden="true"></span>
+          </button>
+          <span class="pointer-events-none absolute -top-0.5 -right-0.5 size-3 rounded-full bg-amber-500 ring-2 ring-white" aria-hidden="true" hidden data-attention-dot></span>
+        </span>
         <div id="user-menu" popover class="menu w-64" data-align="end">
           <div class="px-2.5 pt-1.5 pb-2.5">
             <p class="text-xs text-ink-500">Signed in as</p>
@@ -79,6 +84,9 @@ const maxWidth = { default: 'max-w-6xl', narrow: 'max-w-3xl', wide: 'max-w-7xl' 
               <span class="grid min-w-0">
                 <span class="text-xs font-normal text-ink-500">Organization</span>
                 <span class="truncate text-sm font-semibold text-ink-950" data-user-org-name></span>
+                <span class="flex items-center gap-1.5 text-xs font-normal text-amber-800" hidden data-attention-text>
+                  <span class="status-dot text-amber-500" aria-hidden="true"></span><span data-attention-label></span>
+                </span>
               </span>
             </a>
           </div>
@@ -140,14 +148,18 @@ const maxWidth = { default: 'max-w-6xl', narrow: 'max-w-3xl', wide: 'max-w-7xl' 
   import { logout } from '@/utils/auth';
   import { avatarUrl } from '@/utils/avatar';
   import { paintOrgMark, type Marked } from '@/utils/org-logo';
+  import { attentionLabel } from '@/utils/service-accounts';
   import { getMe, getMyOrganization, initialOf } from '@/utils/viewer';
   import type { Organization, User } from '@/utils/types';
 
   const CACHE_KEY = 'shurly_me';
   const ORG_CACHE_KEY = 'shurly_org';
 
-  /** The organization as the header shows it, and keeps it in sessionStorage: its role shows the admins' links. */
-  type ShownOrg = Marked & { role?: Organization['role'] | null };
+  /**
+   * The organization as the header shows it, and keeps it in sessionStorage: its role shows the admins' links, and
+   * `attention` (Phase 10.2, owners and admins) how many service tokens need it: the avatar's dot.
+   */
+  type ShownOrg = Marked & { role?: Organization['role'] | null; attention?: number | null };
 
   /** What the header shows, and all it keeps in sessionStorage. */
   interface Shown {
@@ -208,18 +220,29 @@ const maxWidth = { default: 'max-w-6xl', narrow: 'max-w-3xl', wide: 'max-w-7xl' 
   // Phase 3.14.4 — the organization in the account menu: its name, and its logo once loaded
   // (from the browser's cache after the first time: its URL has the version), else the initial.
   const orgRow = document.querySelector<HTMLElement>('[data-user-org]')!;
+  const menuButton = document.querySelector<HTMLElement>('[data-user-menu-button]')!;
+  /** Phase 10.2 — the dot, on the avatar and the organization row: from the organization the header loads anyway. */
+  function paintAttention(count: number) {
+    const label = count > 0 ? attentionLabel(count) : '';
+    document.querySelector<HTMLElement>('[data-attention-dot]')!.hidden = !label;
+    menuButton.setAttribute('aria-label', label ? `Account menu, ${label}` : 'Account menu');
+    orgRow.querySelector<HTMLElement>('[data-attention-text]')!.hidden = !label;
+    orgRow.querySelector<HTMLElement>('[data-attention-label]')!.textContent = label;
+  }
   function paintOrg(org: ShownOrg | null) {
     const admin = org?.role === 'owner' || org?.role === 'admin';
     document.querySelectorAll<HTMLElement>('[data-nav-admins]').forEach((el) => (el.hidden = !admin));
+    paintAttention(admin ? (org?.attention ?? 0) : 0);
     orgRow.hidden = !org;
     if (!org) return;
     orgRow.querySelector<HTMLElement>('[data-user-org-name]')!.textContent = org.name;
     void paintOrgMark(orgRow.querySelector<HTMLElement>('[data-org-mark]')!, org);
   }
   function rememberOrg(org: Organization | null) {
-    if (org) sessionStorage.setItem(ORG_CACHE_KEY, JSON.stringify({ name: org.name, logo_version: org.logo_version ?? null, role: org.role }));
+    const shown: ShownOrg | null = org && { name: org.name, logo_version: org.logo_version ?? null, role: org.role, attention: org.service_accounts_attention ?? null };
+    if (shown) sessionStorage.setItem(ORG_CACHE_KEY, JSON.stringify(shown));
     else sessionStorage.removeItem(ORG_CACHE_KEY);
-    paintOrg(org);
+    paintOrg(shown);
   }
   const cachedOrg = sessionStorage.getItem(ORG_CACHE_KEY);
   if (cachedOrg) {

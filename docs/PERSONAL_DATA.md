@@ -39,7 +39,7 @@ of the same module that the route calls.
 | Guard | Who gets an answer |
 |---|---|
 | public | Anyone, signed in or not |
-| `get_current_user` | Any signed-in account: a session token (JWT), an API key or a service token (10.1) |
+| `get_current_user` | Any signed-in account: a session token (JWT), an API key or a service token (10.1). A service token only on the routes its scopes allow, from its allowed IP ranges (10.2, `server/utils/service_scopes.py`, checked where it authenticates): elsewhere a 403 |
 | `get_signed_in_session` | A session token only: an API key gets a 403, a service token a 403 with `code: service_account_not_allowed` |
 | `sees` | A list, filtered to what the caller can see: their organization's, and their own personal ones (`Viewer.sees`, `server/utils/access.py`) |
 | `visible_url_or_404`, `visible_campaign_or_404` | One link or campaign the caller can see, else 404. When a route changes it, one they can change, else 403: its creator, or an organization admin or owner (`server/utils/access.py`) |
@@ -100,23 +100,24 @@ of the same module that the route calls.
 | `POST /api/v1/client-errors` | none: it logs a browser's error report as a `client.error` line and answers nothing. The line keeps the page's path, never its query or the IP; the account's id when signed in | anyone, limited per IP | public | excluded |
 | `GET /api/v1/health` | none | anyone | public | excluded |
 | `GET /api/v1/health/db` | none | anyone | public | excluded |
-| `GET /api/v1/organization` | **own account**: the organization, and the caller's role | a member | `_my_membership` | `get_organization` |
+| `GET /api/v1/organization` | **own account**: the organization, the caller's role, and for owners and admins how many service tokens need attention (a count) | a member | `_my_membership` | `get_organization` |
 | `POST /api/v1/organization/adopt-personal-links` | none: counts | an owner | `adopt_personal_links` | excluded |
 | `DELETE /api/v1/organization/logo` | none | an owner or admin | `editable_organization` | excluded |
 | `GET /api/v1/organization/logo` | none: the organization's logo | a member | `_my_membership` | excluded |
 | `PUT /api/v1/organization/logo` | **own account**: the organization, and the caller's role, with the new logo's version | an owner or admin | `editable_organization` | excluded |
-| `GET /api/v1/organization/members` | **accounts**: every member's email, names, role and join date | any member | `_my_membership` | `list_organization_members` |
+| `GET /api/v1/organization/members` | **accounts**: every member's email, names, role and join date | any member; a service token only with the `act_on_behalf` scope (10.2): the people it may name | `_my_membership` | `list_organization_members` |
 | `DELETE /api/v1/organization/members/{user_id}` | none | an admin or owner, as `remove_member` allows | `remove_member` | excluded |
 | `PATCH /api/v1/organization/members/{user_id}` | **accounts**: that member's email, names and role | an admin or owner, as `change_role` allows | `change_role` | excluded |
 | `GET /api/v1/organization/removed-members` | **accounts**: removed people's emails and names, and how many links and campaigns each still owns | an owner | `removed_members` | excluded |
 | `POST /api/v1/organization/transfer-ownership` | **accounts**: the new owner's email, names and role | the owner | `transfer_ownership` | excluded |
-| `GET /api/v1/service-accounts` | **accounts**: the organization's service accounts, each one's name, description, role and person responsible (email and names), and its tokens' prefix, creation, expiry and last use. Never a token or its hash, never an IP | an owner or admin, signed in | `get_signed_in_session`, `ensure_reader` | excluded |
+| `GET /api/v1/service-accounts` | **accounts**: the organization's service accounts, each one's name, description, role and person responsible (email and names), and its tokens' prefix, creation, expiry, last use, scopes, warnings and allowed IP ranges (10.2: an allowlist the owner set, never an address seen). Never a token or its hash, never an IP it was used from | an owner or admin, signed in | `get_signed_in_session`, `ensure_reader` | excluded |
 | `POST /api/v1/service-accounts` | **accounts**: the new service account, with its person responsible | the owner, signed in | `get_signed_in_session`, `create_account` | excluded |
+| `GET /api/v1/service-accounts/audit` | **accounts** (10.2): the audit of the organization's service accounts, newest first. Each event's time, action, target id (a link's short code while it exists and the reader sees it), the service account's id and name, the token's id, and the email and name of the person who made it (an owner) or the service acted for, looked up when read: someone deleted shows as deleted, by id. Ids and field names only, never the values changed, never an IP | an owner or admin, signed in | `get_signed_in_session`, `ensure_reader` | excluded |
 | `DELETE /api/v1/service-accounts/{account_id}` | none: it revokes the account's tokens and removes it | the owner, signed in | `get_signed_in_session`, `remove_account` | excluded |
 | `PATCH /api/v1/service-accounts/{account_id}` | **accounts**: the service account, with its person responsible | the owner, signed in | `get_signed_in_session`, `update_account` | excluded |
 | `GET /api/v1/service-accounts/{account_id}/links` | **recipients' rows** and **recipients' activity**: a campaign link's, as `GET /api/v1/urls`. **accounts**: each link's creator's email and names. The links the account made, `?token_id=` those one token made | an owner or admin, signed in | `get_signed_in_session`, `ensure_reader`, `sees` | excluded |
 | `DELETE /api/v1/service-accounts/{account_id}/token` | none | the owner, signed in | `get_signed_in_session`, `revoke_tokens` | excluded |
-| `POST /api/v1/service-accounts/{account_id}/token` | **accounts**: the service account, with its person responsible, and its new token, shown this once | the owner, signed in | `get_signed_in_session`, `issue_token` | excluded |
+| `POST /api/v1/service-accounts/{account_id}/token` | **accounts**: the service account, with its person responsible, and its new token, shown this once, with its scopes and allowed IP ranges (10.2: an allowlist the owner set, never an address seen) | the owner, signed in | `get_signed_in_session`, `issue_token` | excluded |
 | `GET /api/v1/tags` | none: tags are names shared by everyone | any signed-in account | `get_current_user` | `list_tags` |
 | `POST /api/v1/tags` | none | any signed-in account | `get_current_user` | `create_tag` |
 | `DELETE /api/v1/tags/{tag_id}` | none | any signed-in account | `get_current_user` | `delete_tag` |
@@ -186,7 +187,12 @@ Another system, such as Propuestas Griddo, makes links for the organization with
   (`responsible_user_id`), and a placeholder email at `service.invalid`, which is nobody's. Lists of people (the members,
   the removed people) leave it out.
 - **Its tokens** (`service_tokens`): the prefix shown to tell them apart and a SHA-256 of the token, never the token;
-  who made and who revoked each one, when, its expiry, and its last use to the minute. **No IP**, ever.
+  who made and who revoked each one, when, its expiry, and its last use to the minute. **No IP it was used from**,
+  ever.
+- **What each token may do, and from where** (10.2): its `scopes`, and its `allowed_ip_ranges`, CIDRs the owner
+  types to restrict where the token works (an integration's own servers). That's configuration, not an address
+  Shurly observed: a request from outside the ranges is refused and logged (`service_token.refused`) without its
+  address. The owners and admins see the ranges with the token.
 - **On a link:** `urls.via_service_account_id`, the service account that made it, shown with its name ("via
   Propuestas Griddo"), and `urls.via_token_id`, the token it used. The token's reference is internal: it's never in
   a link's response or page, only in what the owners and admins read on the Organization page (`…/links?token_id=`),
@@ -197,6 +203,33 @@ Another system, such as Propuestas Griddo, makes links for the organization with
 Who sees it: the accounts and their tokens' prefixes, the organization's owners and admins; a link's service account,
 whoever sees the link. None of the management routes is an MCP tool, and the MCP never takes a service token or the
 header.
+
+**The people a service may name** (10.2): `GET /api/v1/organization/members` lists every member's email. A service
+token reads it only with the `act_on_behalf` scope, the one it needs to name a person in `X-Shurly-On-Behalf-Of`
+(v1 let every token read it; every v1 token has that scope).
+
+## The audit of service accounts (10.2, decided 2026-10-19)
+
+What service accounts do, and what's done to them, kept longer than the event log's 60 days
+(`audit_events`, `server/core/models/audit_event.py`, written by `server/utils/audit.py`):
+- **A row for each change a service account makes** to a link, a campaign, a tag or a redirect rule, with the token
+  it used and the person it acted for (`on_behalf_of_id`); and **one for each event on an account or its token**
+  (made, changed, removed; token made, renewed, revoked), with the owner who made it (`actor_id`). A person's
+  changes to links, campaigns, tags and rules write none.
+- **Ids only**, as the event log: the service account, the token, the people and the target by id, the action, and
+  in `detail` ids and the names of the fields changed, never their values. No email, no IP, no short code or title
+  (a slug can be someone's name). The ids have no foreign keys, so a row outlives what it names, and deleting a
+  person isn't held up by it.
+- **People are looked up when it's read:** `GET /api/v1/service-accounts/audit` gives the email and name of the
+  person acted for or the owner who acted, as they are then, and someone deleted shows as deleted, with their id
+  only. A link shows its short code while it exists and the reader sees it.
+
+Who sees it: the organization's owners and admins, signed in (`ensure_reader`), the same people who see the service
+accounts: on the Organization page (each account's **Activity**) and through the API. Members get a 403. Not an MCP
+tool, like every route under `/api/v1/service-accounts`.
+
+**Retention:** 2 years from each event. The daily housekeeping (`server/utils/housekeeping.py`, DEPLOYMENT.md
+§ Daily housekeeping) deletes the older rows, and logs how many (`audit_deleted`), never which.
 
 ## The waitlist (9.1, decided 2026-10-05)
 

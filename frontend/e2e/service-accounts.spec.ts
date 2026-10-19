@@ -3,6 +3,10 @@
 //   Done only its prefix is left;
 // - the service, with that token, makes a link for the member (X-Shurly-On-Behalf-Of): its page and its card
 //   say "Created by <member> via <service>", and the links list filters by the service;
+// - Phase 10.2: the token form asks what it may do (every scope to start with, at least one), where from (IP
+//   ranges, one per line, a bad one refused on its field) and when it expires (a year from today, or No expiry);
+//   the token's line says them, and "Expires soon" when it does, with the avatar's dot; a renewal starts from them;
+//   the API holds the token to its scopes; Activity lists what the account did, for whom and by whom, with Load more;
 // - a member doesn't see the section;
 // - axe finds no moderate, serious or critical issue, with the list and with the token dialog open, on a
 //   desktop and on a phone (390 px).
@@ -26,6 +30,14 @@ async function expectNoIssues(page: Page, name: string) {
 interface Account {
   id: string;
   display_name: string;
+}
+
+/** A service account made straight through the API, the owner responsible: for what a test needs, not tests. */
+async function makeAccount(ownerApi: APIRequestContext, name: string): Promise<Account> {
+  const me = (await (await ownerApi.get('/api/v1/auth/me')).json()) as { id: string };
+  const made = await ownerApi.post('/api/v1/service-accounts', { data: { display_name: name, responsible_user_id: me.id, role: 'member' } });
+  expect(made.status()).toBe(201);
+  return (await made.json()) as Account;
 }
 
 /** Whatever an earlier run left: this spec's service accounts go, so the list starts clean. */
@@ -134,6 +146,127 @@ for (const { device, options } of DEVICES) {
       const revoked = await playwright.request.newContext({ baseURL: API_URL, extraHTTPHeaders: { Authorization: `Bearer ${token}` } });
       expect((await revoked.get('/api/v1/auth/me')).status()).toBe(401);
       await revoked.dispose();
+
+      await removeEarlier(ownerApi);
+    });
+
+    test('a token says what it may do, where from and when it ends; it warns, and Activity says what it did', async ({ page, ownerApi, playwright }) => {
+      test.setTimeout(90_000);
+      await removeEarlier(ownerApi);
+      const name = `Propuestas E2E scopes ${device}`;
+      const account = await makeAccount(ownerApi, name);
+
+      await page.goto('/dashboard/organization/');
+      const section = page.getByRole('main').getByRole('region', { name: /Service accounts/ });
+      const row = section.getByRole('listitem').filter({ hasText: name });
+      await row.getByRole('button', { name: 'Create token' }).click();
+      const tokenDialog = page.getByRole('dialog', { name: `Create the token of ${name}` });
+      await expect(tokenDialog).toBeVisible();
+
+      // Every scope to start with, a year from today, anywhere.
+      const scopes = tokenDialog.getByRole('group', { name: 'What it may do' }).getByRole('checkbox');
+      await expect(scopes).toHaveCount(6);
+      for (const box of await scopes.all()) await expect(box).toBeChecked();
+      const expires = tokenDialog.getByLabel('Expires', { exact: true });
+      await expect(expires).toHaveValue(new RegExp(`^${new Date().getFullYear() + 1}-\\d{2}-\\d{2}$`));
+      await expect(tokenDialog.getByText('This page warns 14 days before it expires')).toBeVisible();
+      const ranges = tokenDialog.getByLabel(/Allowed IP ranges/);
+      await expect(ranges).toHaveValue('');
+      await expectNoIssues(page, `the token form, ${device}`);
+
+      // At least one.
+      for (const box of await scopes.all()) await box.uncheck();
+      await tokenDialog.getByRole('button', { name: 'Create token' }).click();
+      await expect(tokenDialog.getByText('Pick at least one thing it may do.')).toBeVisible();
+      await expect(scopes.first()).toBeFocused();
+
+      // A range that isn't one: the API's 422, on its field.
+      await tokenDialog.getByRole('checkbox', { name: /^See links, campaigns and tags/ }).check();
+      await tokenDialog.getByRole('checkbox', { name: /^Make and change links/ }).check();
+      await tokenDialog.getByRole('checkbox', { name: /^Act for people/ }).check();
+      await ranges.fill('127.0.0.0/8\nnot-a-range');
+      await tokenDialog.getByRole('button', { name: 'Create token' }).click();
+      await expect(tokenDialog.locator('[data-error-for="allowed_ip_ranges"]')).toContainText('an IP range (CIDR)');
+      await expect(ranges).toHaveAttribute('aria-invalid', 'true');
+      await expectNoIssues(page, `the token form with an error, ${device}`);
+
+      // Fixed, and no expiry: made.
+      await ranges.fill('127.0.0.0/8\n::1/128');
+      await tokenDialog.getByRole('checkbox', { name: 'No expiry' }).check();
+      await expect(expires).toBeDisabled();
+      await tokenDialog.getByRole('button', { name: 'Create token' }).click();
+      await expect(tokenDialog.getByText('you won’t see it again')).toBeVisible();
+      const token = (await tokenDialog.locator('[data-token-value]').textContent())?.trim() ?? '';
+      expect(token).toMatch(/^shsa_/);
+      await tokenDialog.getByRole('button', { name: 'Done' }).click();
+      await expect(row).toContainText('See links, change links, act for people');
+      await expect(row).toContainText('From 127.0.0.0/8 and ::1/128');
+      await expect(row).toContainText('Doesn’t expire');
+      await expect(row.locator('.badge-warn')).toHaveCount(0);
+
+      // The API holds it to them: it makes a link for the member, and may not delete it.
+      const service = await playwright.request.newContext({
+        baseURL: API_URL,
+        extraHTTPHeaders: { Authorization: `Bearer ${token}`, 'X-Shurly-On-Behalf-Of': MEMBER },
+      });
+      const made = await service.post('/api/v1/urls', { data: { url: 'https://example.com/scoped', title: `Scoped ${device}` } });
+      expect(made.status()).toBe(201);
+      const { short_code: code } = (await made.json()) as { short_code: string };
+      const refused = await service.delete(`/api/v1/urls/${code}`);
+      expect(refused.status()).toBe(403);
+      expect(((await refused.json()) as { code: string }).code).toBe('scope_missing');
+
+      // Renewed to end within a week: it warns, on its line and on the avatar. The rest is inherited.
+      const renewed = await ownerApi.post(`/api/v1/service-accounts/${account.id}/token`, {
+        data: { expires_at: new Date(Date.now() + 7 * 86_400_000).toISOString() },
+      });
+      expect(renewed.status()).toBe(201);
+      await page.reload();
+      await expect(row.locator('.badge-warn')).toHaveText('Expires soon');
+      await expect(row).toContainText('From 127.0.0.0/8 and ::1/128');
+      const avatar = page.getByRole('button', { name: /^Account menu, \d+ service tokens? needs? attention$/ });
+      await expect(avatar).toBeVisible();
+      await expect(page.locator('[data-attention-dot]')).toBeVisible();
+      await expectNoIssues(page, `a token that warns, ${device}`);
+
+      // Renewing in the page starts from what the token may do, and where from.
+      await row.getByRole('button', { name: 'Renew token' }).click();
+      const renewDialog = page.getByRole('dialog', { name: `Renew the token of ${name}` });
+      await expect(renewDialog.getByRole('checkbox', { name: /^See links, campaigns and tags/ })).toBeChecked();
+      await expect(renewDialog.getByRole('checkbox', { name: /^Delete links/ })).not.toBeChecked();
+      await expect(renewDialog.getByLabel(/Allowed IP ranges/)).toHaveValue('127.0.0.0/8\n::1/128');
+      await renewDialog.getByRole('button', { name: 'Cancel' }).click();
+      await expect(renewDialog).toBeHidden();
+
+      // On a desktop, enough links for a second page of activity.
+      const extra = device === 'desktop' ? 48 : 0;
+      for (let i = 0; i < extra; i++) {
+        expect((await service.post('/api/v1/urls', { data: { url: `https://example.com/scoped/${i}` } })).status()).toBe(201);
+      }
+      await service.dispose();
+
+      // Activity: what it did and for whom, what was done to it and by whom.
+      await row.getByRole('button', { name: `More actions for ${name}` }).click();
+      await row.getByRole('button', { name: 'Activity' }).click();
+      const activity = page.getByRole('dialog', { name: `Activity of ${name}` });
+      const events = activity.getByRole('listitem');
+      await expect(activity).toContainText('Newest first.');
+      if (extra) {
+        await expect(events).toHaveCount(50);
+        await expectNoIssues(page, `the activity dialog, ${device}`);
+        await activity.getByRole('button', { name: 'Load more' }).click();
+        await expect(events).toHaveCount(52); // made, its token, 49 links, renewed
+        await expect(activity.getByRole('button', { name: 'Load more' })).toBeHidden();
+      } else {
+        await expect(events).toHaveCount(4);
+        await expectNoIssues(page, `the activity dialog, ${device}`);
+      }
+      await expect(events.filter({ hasText: `Created link ${code}` })).toContainText('On behalf of');
+      await expect(events.filter({ hasText: 'Renewed its token' })).toContainText('By ');
+      await expect(events.filter({ hasText: 'Created its token' })).toHaveCount(1);
+      await expect(events.last()).toContainText('Created the service account');
+      await activity.getByRole('button', { name: 'Close' }).last().click();
+      await expect(activity).toBeHidden();
 
       await removeEarlier(ownerApi);
     });
