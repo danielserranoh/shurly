@@ -14,7 +14,7 @@
 # checked by scripts/fetch_geoip.py. MaxMind's account ID and licence key are build secrets:
 # mounted for that one step, in no layer. On the build platform only, since the data is the
 # same for every platform. It never fails the build; the deploy job does, without GeoLite2.
-FROM --platform=$BUILDPLATFORM python:3.11-slim@sha256:e88e9763f943ec1834f992a4b51e0f24500486803e8bc534e5767af9ea65f6ce AS geoip
+FROM --platform=$BUILDPLATFORM python:3.11-slim@sha256:07d4824036af339fa1b6ef769cc99d9c10a141769538b52b3b597c84f7a7b535 AS geoip
 RUN pip install --no-cache-dir "maxminddb>=3.2,<4"
 COPY scripts/fetch_geoip.py /fetch_geoip.py
 # A new value each run, so no cache ever serves last week's databases.
@@ -27,7 +27,7 @@ RUN --mount=type=secret,id=maxmind_account_id --mount=type=secret,id=maxmind_lic
 FROM scratch AS geoip-data
 COPY --from=geoip /geoip/ /
 
-FROM python:3.11-slim@sha256:e88e9763f943ec1834f992a4b51e0f24500486803e8bc534e5767af9ea65f6ce AS builder
+FROM python:3.11-slim@sha256:07d4824036af339fa1b6ef769cc99d9c10a141769538b52b3b597c84f7a7b535 AS builder
 
 # uv for fast, deterministic installs from the lockfile.
 COPY --from=ghcr.io/astral-sh/uv:0.11.1@sha256:fc93e9ecd7218e9ec8fba117af89348eef8fd2463c50c13347478769aaedd0ce /uv /usr/local/bin/uv
@@ -47,7 +47,7 @@ RUN uv sync --no-dev --frozen --extra mcp
 
 # ─── Runtime image ──────────────────────────────────────────────────────────
 
-FROM python:3.11-slim@sha256:e88e9763f943ec1834f992a4b51e0f24500486803e8bc534e5767af9ea65f6ce
+FROM python:3.11-slim@sha256:07d4824036af339fa1b6ef769cc99d9c10a141769538b52b3b597c84f7a7b535
 
 # libpq5 is required by psycopg2-binary at runtime. ca-certificates ensures
 # httpx's OG fetcher can validate TLS for upstream targets. curl is included so
